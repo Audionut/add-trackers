@@ -16,16 +16,17 @@
     /////////////////////////                                   USER OPTIONS                     ////////////////////////////////////
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    //  available trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "MTV", "ANT", "BLU"*, "TIK"*, "Aither"*, "RFX"*, "OE"*, "AvistaZ"**, "CinemaZ"**, "PHD"**
+    //  available trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "MTV", "ANT", "BLU"*, "TIK"*, "Aither"*, "RFX"*, "OE"*, "UNO", "AvistaZ"**, "CinemaZ"**, "PHD"**
     //  // if you don't need the results from some of these trackers, do not add them. the fewer you add, the faster the code execution.
     //  *requires API key     **performs two requests
-   const trackers = ["PTP", "MTV", "ANT"];
+    const trackers = ["PTP", "MTV", "ANT", "UNO"];
 
     const BLU_API_TOKEN = ""; // if you want to use BLU - find your api key here: https://blutopia.cc/users/YOUR_USERNAME_HERE/apikeys
     const TIK_API_TOKEN = ""; // if you want to use TIK - find your api key here: https://cinematik.net/users/YOUR_USERNAME_HERE/apikeys
     const AITHER_API_TOKEN = ""; // if you want to use Aither - find your api key here: https:/aither.cc/users/YOUR_USERNAME_HERE/apikeys
     const RFX_API_TOKEN = ""; // if you want to use RFX - find your api key here: https:/reelflix.xyz/users/YOUR_USERNAME_HERE/apikeys
     const OE_API_TOKEN = ""; /// if you want to use OE - find your api key here: https:/onlyencodes.cc/users/YOUR_USERNAME_HERE/apikeys
+    const UNO_API_TOKEN = ""; // if you want to use UNO - find your api key here: https://hawke.uno/users/YOUR_USERNAME_HERE/settings/security#api
 
     const hide_blank_links = true; // false = will also create blank [PL] [RP] links ||| true = will only show [DL] link
     const show_tracker_icon = true; // false = will show default green checked icon ||| true = will show tracker logo instead of checked icon
@@ -129,7 +130,7 @@
                 }
             }
         }
-        else if (["BLU", "Aither", "RFX", "OE", "TIK"].includes(tracker)) {
+        else if (["BLU", "Aither", "RFX", "OE", "TIK", "UNO"].includes(tracker)) {
             return true;
         }
         else if (tracker === "FL") {
@@ -182,8 +183,9 @@
         else if (tracker === "HDB") return "https://hdbits.org/pic/favicon/favicon.ico";
         else if (tracker === "KG") return "https://karagarga.in/favicon.ico";
         else if (tracker === "TIK") return "https://cinematik.net/favicon.ico";
-		    else if (tracker === "MTV") return "https://www.morethantv.me/favicon.ico";
-		    else if (tracker === "ANT") return "https://anthelion.me/favicon.ico";
+	else if (tracker === "MTV") return "https://www.morethantv.me/favicon.ico";
+	else if (tracker === "ANT") return "https://anthelion.me/favicon.ico";
+	else if (tracker === "UNO") return "https://hawke.uno/favicon.ico";
     };
 
 
@@ -193,6 +195,7 @@
             (tracker === "Aither") ||
             (tracker === "RFX") ||
             (tracker === "OE") ||
+	    (tracker === "UNO") ||
             (tracker === "TIK")
         )
             return true;
@@ -524,7 +527,7 @@
         else if (tracker === "BHD") {
             if (html.querySelectorAll(".bhd-meta-box").length === 0) return false;
             else return true;
-        } else if (tracker === "BLU" || tracker === "Aither" || tracker === "RFX" || tracker === "OE" || tracker === "TIK") {
+        } else if (tracker === "BLU" || tracker === "Aither" || tracker === "RFX" || tracker === "OE" || tracker === "UNO" || tracker === "TIK") {
             if (html.querySelector(".torrent-search--list__no-result") === null) return true;
             else return false;
         }
@@ -637,6 +640,13 @@
                     "&categories[0]=1&api_token=" +
                     OE_API_TOKEN;
             }
+            else if (tracker === "UNO") {
+                api_query_url =
+                    "https://hawke.uno/api/torrents/filter?imdbId=" +
+                    imdb_id.split("tt")[1] +
+                    "&categories[0]=1&api_token=" +
+                    UNO_API_TOKEN;
+            }
             else if (tracker === "AvistaZ") {
                 query_url = "https://avistaz.to/movies?search=&imdb=" + imdb_id + "&view=lists";
             }
@@ -698,6 +708,7 @@
             tracker === "Aither" ||
             tracker === "RFX" ||
             tracker === "OE" ||
+	    tracker === "UNO" ||
             tracker === "TIK"
         ) {
             torrent_objs = json.data.map((element) => {
