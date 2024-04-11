@@ -19,7 +19,7 @@
     //  available trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "MTV", "ANT", "BLU"*, "TIK"*, "Aither"*, "RFX"*, "OE"*, "UNO", "AvistaZ"**, "CinemaZ"**, "PHD"**
     //  // if you don't need the results from some of these trackers, do not add them. the fewer you add, the faster the code execution.
     //  *requires API key     **performs two requests
-    const trackers = ["PTP", "MTV", "ANT"];
+    const trackers = ["PTP", "MTV", "ANT", "UNO"];
 
     const BLU_API_TOKEN = ""; // if you want to use BLU - find your api key here: https://blutopia.cc/users/YOUR_USERNAME_HERE/apikeys
     const TIK_API_TOKEN = ""; // if you want to use TIK - find your api key here: https://cinematik.net/users/YOUR_USERNAME_HERE/apikeys
@@ -195,7 +195,7 @@
             (tracker === "Aither") ||
             (tracker === "RFX") ||
             (tracker === "OE") ||
-	    (tracker === "OE") ||
+	    (tracker === "UNO") ||
             (tracker === "TIK")
         )
             return true;
