@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers - other
 // @namespace    https://github.com/Audionut
-// @version      1.2.2
+// @version      1.2.3
 // @updateURL    https://raw.githubusercontent.com/Audionut/add-trackers/main/ptp-add-filter-all-releases-anut.js
 // @downloadURL  https://raw.githubusercontent.com/Audionut/add-trackers/main/ptp-add-filter-all-releases-anut.js
 // @description  add releases from other trackers
@@ -10,7 +10,7 @@
 // @icon         https://passthepopcorn.me/favicon.ico
 // @grant        GM_xmlhttpRequest
 // ==/UserScript==
-// test update function
+
 (function () {
     "use strict";
 
@@ -18,11 +18,11 @@
     /////////////////////////                                   USER OPTIONS                     ////////////////////////////////////
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    //  available trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "MTV", "ANT", "BLU"*, "TIK"*, "HUNO", "Aither"*, "RFX"*, "OE"*, "AvistaZ"**, "CinemaZ"**, "PHD"**
-    //  available tv_trackers: "BTN", "NBL", "TVV" - not quite yet
+    //  available trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "MTV", "ANT", "BLU"*, "HUNO", TIK"*, "Aither"*, "RFX"*, "OE"*, "AvistaZ"**, "CinemaZ"**, "PHD"**
+    //  available tv_trackers: "BTN", "NBL", "TVV" - NOT WORKING YET
     //  if you don't need the results from some of these trackers, do not add them. the fewer you add, the faster the code execution.
     //  *requires API key     **performs two requests
-    const trackers = ["PTP", "MTV", "ANT", "HUNO"];
+   const trackers = ["BHD", "CG", "FL", "HDB", "KG", "PTP", "MTV", "ANT", "BLU", "HUNO", "TIK", "Aither", "RFX", "OE", "AvistaZ", "CinemaZ", "PHD"];
 
     const BLU_API_TOKEN = ""; // if you want to use BLU - find your api key here: https://blutopia.cc/users/YOUR_USERNAME_HERE/apikeys
     const TIK_API_TOKEN = ""; // if you want to use TIK - find your api key here: https://cinematik.net/users/YOUR_USERNAME_HERE/apikeys
@@ -40,7 +40,7 @@
     const show_only_ptp_by_default = false; // false = will show all torrents by default, including external ones ||| true = will only show PTP torrents by default
     const hide_dead_external_torrents = false; // true = won't display dead external torrents
     const open_in_new_tab = true; // false : when you click external torrent, it will open the page in new tab. ||| true : it will replace current tab.
-    //const include_miniseries = false; // true : will also search tv_trackers added above ||| false : don't search the tv_trackers when it's a miniseries.
+    //const include_miniseries = false; // true : will also search tv_trackers added above ||| false : don't search the tv_trackers when it's a miniseries.  - NOT WORKING YET
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -205,7 +205,7 @@
 	else if (tracker === "ANT") return "https://anthelion.me/favicon.ico";
 	else if (tracker === "RTF") return "https://retroflix.club/favicon.ico";
 	else if (tracker === "HUNO") return "https://hawke.uno/favicon.ico";
-        //else if (tracker === "BTN") return "https://broadcasthe.net/favicon.ico";
+        else if (tracker === "BTN") return "https://broadcasthe.net/favicon.ico";
     };
 
 
