@@ -1,7 +1,9 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers - other
-// @namespace    http://tampermonkey.net/
+// @namespace    https://github.com/Audionut
 // @version      1.2.1
+// @updateURL    https://raw.githubusercontent.com/Audionut/add-trackers/main/ptp-add-filter-all-releases-anut.js
+// @downloadURL  https://raw.githubusercontent.com/Audionut/add-trackers/main/ptp-add-filter-all-releases-anut.js
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
