@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers - other
 // @namespace    https://github.com/Audionut
-// @version      1.2.1
+// @version      1.2.2
 // @updateURL    https://raw.githubusercontent.com/Audionut/add-trackers/main/ptp-add-filter-all-releases-anut.js
 // @downloadURL  https://raw.githubusercontent.com/Audionut/add-trackers/main/ptp-add-filter-all-releases-anut.js
 // @description  add releases from other trackers
@@ -10,7 +10,7 @@
 // @icon         https://passthepopcorn.me/favicon.ico
 // @grant        GM_xmlhttpRequest
 // ==/UserScript==
-
+// test update function
 (function () {
     "use strict";
 
