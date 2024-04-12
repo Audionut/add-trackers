@@ -20,12 +20,12 @@
     //  available tv_trackers: "BTN", "NBL", "TVV" - not quite yet
     //  if you don't need the results from some of these trackers, do not add them. the fewer you add, the faster the code execution.
     //  *requires API key     **performs two requests
-    const trackers = [""PTP", "MTV", "ANT", "HUNO"];
+    const trackers = ["PTP", "MTV", "ANT", "HUNO"];
 
     const BLU_API_TOKEN = ""; // if you want to use BLU - find your api key here: https://blutopia.cc/users/YOUR_USERNAME_HERE/apikeys
     const TIK_API_TOKEN = ""; // if you want to use TIK - find your api key here: https://cinematik.net/users/YOUR_USERNAME_HERE/apikeys
     const AITHER_API_TOKEN = ""; // if you want to use Aither - find your api key here: https:/aither.cc/users/YOUR_USERNAME_HERE/apikeys
-    const UNO_API_TOKEN = ""; // if you want to use UNO - find your api key here: https://hawke.uno/users/YOUR_USERNAME_HERE/settings/security#api
+    const HUNO_API_TOKEN = ""; // if you want to use UNO - find your api key here: https://hawke.uno/users/YOUR_USERNAME_HERE/settings/security#api
     const RFX_API_TOKEN = ""; // if you want to use RFX - find your api key here: https:/reelflix.xyz/users/YOUR_USERNAME_HERE/apikeys
     const OE_API_TOKEN = ""; /// if you want to use OE - find your api key here: https:/onlyencodes.cc/users/YOUR_USERNAME_HERE/apikeys
 
