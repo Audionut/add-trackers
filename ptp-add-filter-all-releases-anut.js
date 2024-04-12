@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers - other
 // @namespace    http://tampermonkey.net/
-// @version      1.0
+// @version      1.1
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -16,10 +16,10 @@
     /////////////////////////                                   USER OPTIONS                     ////////////////////////////////////
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    //  available trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "MTV", "ANT", "BLU"*, "TIK"*, "Aither"*, "RFX"*, "OE"*, "UNO", "AvistaZ"**, "CinemaZ"**, "PHD"**
+    //  available trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "MTV", "ANT", "BLU"*, "TIK"*, "Aither"*, "RFX"*, "OE"*, "HUNO", "AvistaZ"**, "CinemaZ"**, "PHD"**
     //  // if you don't need the results from some of these trackers, do not add them. the fewer you add, the faster the code execution.
     //  *requires API key     **performs two requests
-    const trackers = ["PTP", "MTV", "ANT", "UNO"];
+    const trackers = ["PTP", "MTV", "ANT", "HUNO"];
 
     const BLU_API_TOKEN = ""; // if you want to use BLU - find your api key here: https://blutopia.cc/users/YOUR_USERNAME_HERE/apikeys
     const TIK_API_TOKEN = ""; // if you want to use TIK - find your api key here: https://cinematik.net/users/YOUR_USERNAME_HERE/apikeys
@@ -130,7 +130,7 @@
                 }
             }
         }
-        else if (["BLU", "Aither", "RFX", "OE", "TIK", "UNO"].includes(tracker)) {
+        else if (["BLU", "Aither", "RFX", "OE", "TIK", "HUNO"].includes(tracker)) {
             return true;
         }
         else if (tracker === "FL") {
@@ -185,7 +185,7 @@
         else if (tracker === "TIK") return "https://cinematik.net/favicon.ico";
 	else if (tracker === "MTV") return "https://www.morethantv.me/favicon.ico";
 	else if (tracker === "ANT") return "https://anthelion.me/favicon.ico";
-	else if (tracker === "UNO") return "https://hawke.uno/favicon.ico";
+	else if (tracker === "HUNO") return "https://hawke.uno/favicon.ico";
     };
 
 
@@ -195,7 +195,7 @@
             (tracker === "Aither") ||
             (tracker === "RFX") ||
             (tracker === "OE") ||
-	    (tracker === "UNO") ||
+	    (tracker === "HUNO") ||
             (tracker === "TIK")
         )
             return true;
@@ -527,7 +527,7 @@
         else if (tracker === "BHD") {
             if (html.querySelectorAll(".bhd-meta-box").length === 0) return false;
             else return true;
-        } else if (tracker === "BLU" || tracker === "Aither" || tracker === "RFX" || tracker === "OE" || tracker === "UNO" || tracker === "TIK") {
+        } else if (tracker === "BLU" || tracker === "Aither" || tracker === "RFX" || tracker === "OE" || tracker === "HUNO" || tracker === "TIK") {
             if (html.querySelector(".torrent-search--list__no-result") === null) return true;
             else return false;
         }
@@ -640,7 +640,7 @@
                     "&categories[0]=1&api_token=" +
                     OE_API_TOKEN;
             }
-            else if (tracker === "UNO") {
+            else if (tracker === "HUNO") {
                 api_query_url =
                     "https://hawke.uno/api/torrents/filter?imdbId=" +
                     imdb_id.split("tt")[1] +
@@ -708,7 +708,7 @@
             tracker === "Aither" ||
             tracker === "RFX" ||
             tracker === "OE" ||
-	    tracker === "UNO" ||
+	    tracker === "HUNO" ||
             tracker === "TIK"
         ) {
             torrent_objs = json.data.map((element) => {
