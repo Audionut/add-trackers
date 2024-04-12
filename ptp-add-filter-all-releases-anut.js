@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers - other
 // @namespace    http://tampermonkey.net/
-// @version      1.1.1
+// @version      1.2.1
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -16,17 +16,18 @@
     /////////////////////////                                   USER OPTIONS                     ////////////////////////////////////
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    //  available trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "MTV", "ANT", "BLU"*, "TIK"*, "Aither"*, "RFX"*, "OE"*, "HUNO", "AvistaZ"**, "CinemaZ"**, "PHD"**
-    //  // if you don't need the results from some of these trackers, do not add them. the fewer you add, the faster the code execution.
+    //  available trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "MTV", "ANT", "BLU"*, "TIK"*, "HUNO", "Aither"*, "RFX"*, "OE"*, "AvistaZ"**, "CinemaZ"**, "PHD"**
+    //  available tv_trackers: "BTN", "NBL", "TVV" - not quite yet
+    //  if you don't need the results from some of these trackers, do not add them. the fewer you add, the faster the code execution.
     //  *requires API key     **performs two requests
     const trackers = ["PTP", "MTV", "ANT", "HUNO"];
 
     const BLU_API_TOKEN = ""; // if you want to use BLU - find your api key here: https://blutopia.cc/users/YOUR_USERNAME_HERE/apikeys
     const TIK_API_TOKEN = ""; // if you want to use TIK - find your api key here: https://cinematik.net/users/YOUR_USERNAME_HERE/apikeys
     const AITHER_API_TOKEN = ""; // if you want to use Aither - find your api key here: https:/aither.cc/users/YOUR_USERNAME_HERE/apikeys
+    const HUNO_API_TOKEN = ""; // if you want to use UNO - find your api key here: https://hawke.uno/users/YOUR_USERNAME_HERE/settings/security#api
     const RFX_API_TOKEN = ""; // if you want to use RFX - find your api key here: https:/reelflix.xyz/users/YOUR_USERNAME_HERE/apikeys
     const OE_API_TOKEN = ""; /// if you want to use OE - find your api key here: https:/onlyencodes.cc/users/YOUR_USERNAME_HERE/apikeys
-    const UNO_API_TOKEN = ""; // if you want to use UNO - find your api key here: https://hawke.uno/users/YOUR_USERNAME_HERE/settings/security#api
 
     const hide_blank_links = true; // false = will also create blank [PL] [RP] links ||| true = will only show [DL] link
     const show_tracker_icon = true; // false = will show default green checked icon ||| true = will show tracker logo instead of checked icon
@@ -37,6 +38,7 @@
     const show_only_ptp_by_default = false; // false = will show all torrents by default, including external ones ||| true = will only show PTP torrents by default
     const hide_dead_external_torrents = false; // true = won't display dead external torrents
     const open_in_new_tab = true; // false : when you click external torrent, it will open the page in new tab. ||| true : it will replace current tab.
+    //const include_miniseries = false; // true : will also search tv_trackers added above ||| false : don't search the tv_trackers when it's a miniseries.
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -96,6 +98,13 @@
 
     get_default_doms();
 
+    const is_it_miniseries = () => {
+        if ([...document.querySelectorAll("span.basic-movie-list__torrent-edition__main")].some(d => d.textContent.includes("Miniseries"))) {
+                return "Miniseries";
+            } else {
+                return "Not included";
+            }
+    };
 
     function insertAfter(newNode, referenceNode) {
         referenceNode.parentNode.insertBefore(newNode, referenceNode.nextSibling);
@@ -136,12 +145,19 @@
         else if (tracker === "FL") {
             if ([...div.querySelectorAll("img")].find(e => e.alt === "FreeLeech") != undefined) return "Freeleech";
         }
-        //else if (tracker === "MTV") {
-        //    if ([...div.querySelectorAll("img")].find(e => e.alt === "FreeLeech") != undefined) return "Freeleech";
-        //}
-        //else if (tracker === "ANT") {
-        //    if ([...div.querySelectorAll("img")].find(e => e.alt === "FreeLeech") != undefined) return "Freeleech";
-        //}
+        else if (tracker === "MTV") {
+            if ([...div.querySelectorAll("img")].find(e => e.alt === "FreeLeech") != undefined) return "Freeleech";
+        }
+        else if (tracker === "ANT") {
+          const freeleechLabels = div.querySelectorAll("strong.torrent_label.tooltip.tl_free");
+          if (freeleechLabels.length > 0) {
+            for (const label of freeleechLabels) {
+              if (label.textContent.includes("FreeLeech")) {
+                return "Freeleech";
+              }
+            }
+          }
+        }
         else if (tracker === "CG") {
             if ([...div.querySelectorAll("img")].find(e => e.alt === "100% bonus") != undefined) return "Freeleech";
         }
@@ -185,7 +201,9 @@
         else if (tracker === "TIK") return "https://cinematik.net/favicon.ico";
 	else if (tracker === "MTV") return "https://www.morethantv.me/favicon.ico";
 	else if (tracker === "ANT") return "https://anthelion.me/favicon.ico";
+	else if (tracker === "RTF") return "https://retroflix.club/favicon.ico";
 	else if (tracker === "HUNO") return "https://hawke.uno/favicon.ico";
+        //else if (tracker === "BTN") return "https://broadcasthe.net/favicon.ico";
     };
 
 
@@ -195,7 +213,7 @@
             (tracker === "Aither") ||
             (tracker === "RFX") ||
             (tracker === "OE") ||
-	    (tracker === "HUNO") ||
+            (tracker === "HUNO") ||
             (tracker === "TIK")
         )
             return true;
@@ -243,9 +261,9 @@
                 else if (size.includes("MiB")) size = parseInt(parseFloat(size.split("MiB")[0]));
                 // Extracting data
                 torrent_obj.size = size;
-		const infoText = d.querySelector("a.overlay_torrent").textContent;
-		const modifiedInfoText = infoText.replace(/\./g, ' ');
-		const isInternal = modifiedInfoText.includes("-hallowed") || modifiedInfoText.includes("-TEPES") || modifiedInfoText.includes("-END") || modifiedInfoText.includes("-WDYM");
+                const infoText = d.querySelector("a.overlay_torrent").textContent;
+                const modifiedInfoText = infoText.replace(/\./g, ' ');
+                const isInternal = modifiedInfoText.includes("-hallowed") || modifiedInfoText.includes("-TEPES") || modifiedInfoText.includes("-END") || modifiedInfoText.includes("-WDYM");
                 torrent_obj.info_text = modifiedInfoText;
                 torrent_obj.site = "MTV";
                 torrent_obj.download_link = [...d.querySelectorAll("a")].find(a => a.href.includes("torrents.php?action=")).href.replace("passthepopcorn.me", "morethantv.me");
@@ -259,6 +277,44 @@
                 //torrent_obj.exclusive = false; // You need to extract exclusive status from the HTML
 
                 torrent_objs.push(torrent_obj);
+            });
+        }
+        else if (include_miniseries && tracker === "BTN") {
+            // Fetch the redirected URL
+            fetch(response.url)
+                .then(response => response.text())
+                .then(htmlText => {
+                    // Parse the HTML text to create a new HTML document
+                    const newHtml = new DOMParser().parseFromString(htmlText, 'text/html');
+
+            // Use querySelectorAll on the new HTML document
+            newHtml.querySelectorALL("tr.group_torrent.discog").forEach((d) => {
+                let torrent_obj = {};
+                let size = d.querySelectorAll("td")[1].textContent;
+
+                if (size.includes("GB")) {
+                    size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // MB
+                }
+                else if (size.includes("MB")) size = parseInt(parseFloat(size.split("MB")[0]));
+                // Extracting data
+                torrent_obj.size = size;
+                const infoText = d.querySelector("tr.group_torrent discog > td > a").textContent;
+                const modifiedInfoText = infoText.replace(/\//g, '');
+                //const isInternal = modifiedInfoText.includes("-hallowed") || modifiedInfoText.includes("-TEPES") || modifiedInfoText.includes("-END") || modifiedInfoText.includes("-WDYM");
+                torrent_obj.info_text = modifiedInfoText;
+                torrent_obj.site = "BTN";
+                torrent_obj.download_link = [...d.querySelectorAll("a")].find(a => a.href.includes("torrents.php?action=")).href.replace("passthepopcorn.me", "broadcasthe.net");
+                torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(3)").textContent);
+                torrent_obj.seed = parseInt(d.querySelector("td:nth-child(4)").textContent);
+                torrent_obj.leech = parseInt(d.querySelector("td:nth-child(5)").textContent);
+                //torrent_obj.torrent_page = [...d.querySelectorAll("a.overlay_torrent")].find(a => a.href.includes("/torrents.php?id=")).href.replace("passthepopcorn.me", "broadcasthe.net");
+                //torrent_obj.status = "default"; // You need to extract status from the HTML
+                //torrent_obj.discount = ""; // You need to extract discount from the HTML
+                //torrent_obj.internal = isInternal ? true : false;
+                //torrent_obj.exclusive = false; // You need to extract exclusive status from the HTML
+
+                torrent_objs.push(torrent_obj);
+            });
             });
         }
         else if (tracker === "ANT") {
@@ -302,6 +358,47 @@
             } catch (error) {
                 console.error("Error in ANT section:", error); // Add this check
             }
+        }
+        else if (tracker === "RTF") {
+            // Handling for MTV tracker
+            html.querySelector(".col-12").querySelectorAll("row pt-2 pb-2").forEach((d) => {
+                let torrent_obj = {};
+                //let size = d.querySelectorAll('.text-center').textContent;
+
+                //if (size.includes("GB")) {
+                //    size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // MB
+                //}
+                //else if (size.includes("MB")) size = parseInt(parseFloat(size.split("MB")[0]));
+                //console.log(size);
+                let elements = d.querySelectorAll('.text-center');
+                let size = 0;
+
+                elements.forEach(element => {
+                    let text = element.textContent;
+
+                    if (text.includes("GB")) {
+                      size = parseInt(parseFloat(text.split("GB")[0]) * 1024); // Convert GB to MB
+                    } else if (text.includes("MB")) {
+                      size = parseInt(parseFloat(text.split("MB")[0])); // Extract the size in MB
+                    }
+                });
+                console.log(size);
+                // Extracting data
+                torrent_obj.size = size;
+                torrent_obj.info_text = d.querySelector(".font-weight-bold").textContent;
+                torrent_obj.site = "MTV";
+                torrent_obj.download_link = [...d.querySelectorAll("a")].find(a => a.href.includes("/download.php?id=")).href.replace("passthepopcorn.me", "retroflix.club");
+                torrent_obj.snatch = parseInt(d.querySelectorALL(".text-success").textContent);
+                torrent_obj.seed = parseInt(d.querySelectorALL(".text-success").textContent);
+                torrent_obj.leech = parseInt(d.querySelectorALL(".text-muted").textContent);
+                //torrent_obj.torrent_page = [...d.querySelectorAll("a.overlay_torrent")].find(a => a.href.includes("/torrents.php?id=")).href.replace("passthepopcorn.me", "retroflix.club");
+                //torrent_obj.status = "default"; // You need to extract status from the HTML
+                //torrent_obj.discount = ""; // You need to extract discount from the HTML
+                //torrent_obj.internal = false; // You need to extract internal status from the HTML
+                //torrent_obj.exclusive = false; // You need to extract exclusive status from the HTML
+
+                torrent_objs.push(torrent_obj);
+            });
         }
         else if (tracker === "BHD") {
             [...html.querySelector(".table-new").querySelectorAll("tr.bhd-sub-header-compact")].filter(e => !["Extras", "Specials"].includes(e.textContent.trim())).forEach((d) => {
@@ -523,8 +620,16 @@
             if (html.querySelector(".numsearchresults").textContent.includes("0 results")) return false;
             else return true;
         }
+        else if (tracker === "BTN") {
+            if (html.querySelector(".thin").textContent.includes("Error")) return false;
+            else return true;
+        }
         else if (tracker === "ANT") {
             if (html.querySelector(".head").textContent.includes("Basic Search (")) return false;
+            else return true;
+        }
+        else if (tracker === "RTF") {
+            if (html.querySelector(".col-md-12").textContent.includes("No results found.")) return false;
             else return true;
         }
         else if (tracker === "BHD") {
@@ -602,8 +707,43 @@
             else if (tracker === "MTV") {
                 query_url = "https://www.morethantv.me/torrents/browse?page=1&order_by=time&order_way=desc&=Search&=Reset&=Search&searchtext=" + imdb_id + "&action=advanced&title=&sizeall=&sizetype=kb&sizerange=0.01&filelist=&autocomplete_toggle=on";
             }
+            else if (tracker === "BTN") {
+                query_url = "https://broadcasthe.net/torrents.php?action=advanced&imdb=" + imdb_id;
+                // Perform the HTTP request to the BTN advanced search page
+                fetch(query_url)
+                    .then(response => {
+                        // Check if the response indicates a successful redirection
+                        if (response.redirected) {
+                            // Redirected, so wait for the new page to load
+                            return fetch(response.url);
+                        } else {
+                            // Not redirected, handle the response as needed
+                            return response.text(); // Or return any other data you need
+                        }
+                    })
+                    .then(newResponse => {
+                        // Now you have the response from the redirected page
+                        // You can set an output based on this response
+                        // For example, check the URL or content of the page
+                        if (newResponse.url === "https://example.com/redirected-page") {
+                            // Set output based on the redirection
+                            // For example:
+                            console.log("Redirection successful");
+                        } else {
+                            // Handle other cases
+                            console.log("Redirection failed");
+                        }
+                    })
+                    .catch(error => {
+                        // Handle errors
+                        console.error("Error:", error);
+                    });
+            }
             else if (tracker === "ANT") {
                 query_url = "https://anthelion.me/torrents.php?searchstr=" + imdb_id +"&order_by=time&order_way=desc&group_results=1&action=basic&searchsubmit=1";
+            }
+            else if (tracker === "RTF") {
+                query_url = "https://retroflix.club/browse?years%5B%5D=1890&years%5B%5D=2024&includingDead=1&promotionType=&bookmarked=&search=" + imdb_id + "&searchIn=4&termMatchKind=0&submit=";
             }
             else if (tracker === "BHD") {
                 query_url = "https://beyond-hd.me/library/movies?activity=&q=" + imdb_id;
@@ -701,7 +841,9 @@
         else if (text === "100%") return "Freeleech";
         else return text + " Freeleech";
     };
-
+    const get_api_internal = (internal) => {
+        return internal === "1" ? true : false;
+    };
 
     const get_api_torrent_objects = (tracker, json) => {
         let torrent_objs = [];
@@ -711,7 +853,7 @@
             tracker === "Aither" ||
             tracker === "RFX" ||
             tracker === "OE" ||
-	    tracker === "HUNO" ||
+            tracker === "HUNO" ||
             tracker === "TIK"
         ) {
             torrent_objs = json.data.map((element) => {
@@ -726,12 +868,13 @@
                     download_link: element.attributes.download_link,
                     torrent_page: element.attributes.details_link,
                     discount: element.attributes.freeleech,
+                    internal: element.attributes.internal,
                 };
             });
         }
 
         torrent_objs = torrent_objs.map(e => {
-            return { ...e, "quality": get_torrent_quality(e), "discount": get_api_discount(e.discount) };
+            return { ...e, "quality": get_torrent_quality(e), "discount": get_api_discount(e.discount), "internal": get_api_internal(e.internal)};
         });
 
         return torrent_objs;
@@ -968,9 +1111,12 @@
                 torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
                 torrent.exclusive ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #a14989'>Exclusive</span>" : false;
             }
-	    if (torrent.site === "MTV") {
-	    	torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
-	    }
+            if (torrent.site === "MTV") {
+                torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
+            }
+            if (torrent.site === "BLU") {
+                torrent.internal ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>") : false;
+            }
             torrent.discount != "None" ? cln.querySelector(".torrent-info-link").innerHTML += ` / <span style='font-weight: bold;color:${get_discount_color(torrent.discount)};'>` + torrent.discount + "!</span>" : false;
 
             //cln.querySelector(".torrent-info-link").textContent = torrent.info_text;
