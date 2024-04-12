@@ -19,7 +19,7 @@
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     //  available trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "MTV", "ANT", "BLU"*, "HUNO", TIK"*, "Aither"*, "RFX"*, "OE"*, "AvistaZ"**, "CinemaZ"**, "PHD"**
-    //  available tv_trackers: "BTN", "NBL", "TVV"
+    //  available tv_trackers: "BTN", "NBL", "TVV" - NOT WORKING YET
     //  if you don't need the results from some of these trackers, do not add them. the fewer you add, the faster the code execution.
     //  *requires API key     **performs two requests
    const trackers = ["BHD", "CG", "FL", "HDB", "KG", "PTP", "MTV", "ANT", "BLU", "HUNO", "TIK", "Aither", "RFX", "OE", "AvistaZ", "CinemaZ", "PHD"];
@@ -40,7 +40,7 @@
     const show_only_ptp_by_default = false; // false = will show all torrents by default, including external ones ||| true = will only show PTP torrents by default
     const hide_dead_external_torrents = false; // true = won't display dead external torrents
     const open_in_new_tab = true; // false : when you click external torrent, it will open the page in new tab. ||| true : it will replace current tab.
-    const include_miniseries = false; // true : will also search tv_trackers added above ||| false : don't search the tv_trackers when it's a miniseries.
+    //const include_miniseries = false; // true : will also search tv_trackers added above ||| false : don't search the tv_trackers when it's a miniseries.  - NOT WORKING YET
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
