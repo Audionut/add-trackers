@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers - other
 // @namespace    http://tampermonkey.net/
-// @version      1.1
+// @version      1.1.1
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -243,7 +243,10 @@
                 else if (size.includes("MiB")) size = parseInt(parseFloat(size.split("MiB")[0]));
                 // Extracting data
                 torrent_obj.size = size;
-                torrent_obj.info_text = d.querySelector(".overlay_torrent").textContent.replace(/\./g, ' ');
+		const infoText = d.querySelector("a.overlay_torrent").textContent;
+		const modifiedInfoText = infoText.replace(/\./g, ' ');
+		const isInternal = modifiedInfoText.includes("-hallowed") || modifiedInfoText.includes("-TEPES") || modifiedInfoText.includes("-END") || modifiedInfoText.includes("-WDYM");
+                torrent_obj.info_text = modifiedInfoText;
                 torrent_obj.site = "MTV";
                 torrent_obj.download_link = [...d.querySelectorAll("a")].find(a => a.href.includes("torrents.php?action=")).href.replace("passthepopcorn.me", "morethantv.me");
                 torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(6)").textContent);
@@ -252,7 +255,7 @@
                 torrent_obj.torrent_page = [...d.querySelectorAll("a.overlay_torrent")].find(a => a.href.includes("/torrents.php?id=")).href.replace("passthepopcorn.me", "morethantv.me");
                 //torrent_obj.status = "default"; // You need to extract status from the HTML
                 //torrent_obj.discount = ""; // You need to extract discount from the HTML
-                //torrent_obj.internal = false; // You need to extract internal status from the HTML
+                torrent_obj.internal = isInternal ? true : false;
                 //torrent_obj.exclusive = false; // You need to extract exclusive status from the HTML
 
                 torrent_objs.push(torrent_obj);
@@ -965,6 +968,9 @@
                 torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
                 torrent.exclusive ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #a14989'>Exclusive</span>" : false;
             }
+	    if (torrent.site === "MTV") {
+	    	torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
+	    }
             torrent.discount != "None" ? cln.querySelector(".torrent-info-link").innerHTML += ` / <span style='font-weight: bold;color:${get_discount_color(torrent.discount)};'>` + torrent.discount + "!</span>" : false;
 
             //cln.querySelector(".torrent-info-link").textContent = torrent.info_text;
