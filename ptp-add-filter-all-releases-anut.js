@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers - other
 // @namespace    https://github.com/Audionut
-// @version      1.2.4
+// @version      1.2.5
 // @updateURL    https://raw.githubusercontent.com/Audionut/add-trackers/main/ptp-add-filter-all-releases-anut.js
 // @downloadURL  https://raw.githubusercontent.com/Audionut/add-trackers/main/ptp-add-filter-all-releases-anut.js
 // @description  add releases from other trackers
@@ -44,7 +44,7 @@
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "25% Freeleech", "Refundable", "Rewind", "Rescuable", "None"];
+    let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "25% Freeleech", "Refundable", "Rewind", "Rescuable", "Pollination", "None"];
     let qualities = ["SD", "480p", "576p", "720p", "1080p", "2160p"];
     let filters = {
         "trackers": trackers.map((e) => {
@@ -151,14 +151,21 @@
             if ([...div.querySelectorAll("img")].find(e => e.alt === "FreeLeech") != undefined) return "Freeleech";
         }
         else if (tracker === "ANT") {
-          const freeleechLabels = div.querySelectorAll("strong.torrent_label.tooltip.tl_free");
-          if (freeleechLabels.length > 0) {
-            for (const label of freeleechLabels) {
-              if (label.textContent.includes("FreeLeech")) {
+            const pollenLabel = div.querySelector(".torrent_table#torrent_details .torrent_label.tooltip.tl_pollen");
+            const freeLabel = div.querySelector(".torrent_table#torrent_details .torrent_label.tooltip.tl_free");
+
+            if (pollenLabel !== null) {
+                const labelText = pollenLabel.textContent.trim();
+                let pollenText = labelText.split("Pollination")[1].trim();
+                // Remove the exclamation mark if it appears after "Pollination"
+                if (pollenText.charAt(0) === '!') {
+                    pollenText = pollenText.substring(1);
+                }
+                const Pollute = pollenText
+                return "Pollination" + (pollenText.length > 0 ? ` ${pollenText}` : "");
+            } else if (freeLabel !== null) {
                 return "Freeleech";
-              }
             }
-          }
         }
         else if (tracker === "CG") {
             if ([...div.querySelectorAll("img")].find(e => e.alt === "100% bonus") != undefined) return "Freeleech";
@@ -357,7 +364,14 @@
 
                             // Extracting data
                             torrent_obj.size = size;
-                            torrent_obj.info_text = d.querySelector("td:nth-child(1) > a").textContent.replace(/\//g, '');
+
+                            // Select the <a> element within the <td> and exclude specific elements by class
+                            const title = Array.from(d.querySelector("td:nth-child(1) > a").childNodes)
+                                .filter(node => node.nodeType === Node.TEXT_NODE)
+                                .map(node => node.textContent.trim().replace(/\//g, ''))
+                                .join(' / ');
+                            torrent_obj.info_text = title;
+
                             torrent_obj.site = "ANT";
                             torrent_obj.download_link = [...d.querySelectorAll("a")].find(a => a.href.includes("torrents.php?action=") && !a.href.includes("&usetoken=1")).href.replace("passthepopcorn.me", "anthelion.me");
                             torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(3)").textContent);
@@ -365,9 +379,9 @@
                             torrent_obj.leech = parseInt(d.querySelector("td:nth-child(5)").textContent);
                             torrent_obj.torrent_page = torrentPageUrl;
                             //torrent_obj.status = "default"; // You need to extract status from the HTML
-                            //torrent_obj.discount = ""; // You need to extract discount from the HTML
+                            torrent_obj.discount = get_discount_text(d, tracker); // You need to extract discount from the HTML
                             //torrent_obj.internal = false; // You need to extract internal status from the HTML
-                            //torrent_obj.exclusive = false; // You need to extract exclusive status from the HTML
+                            //torrent_obj.pollination = hasPollination; // Set to true if label exists, false otherwise
 
                             torrent_objs.push(torrent_obj);
                         }
@@ -1745,18 +1759,19 @@
 
 
     const get_sorted_discounts = (discounts) => {
-        // let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "25% Freeleech", "Refundable", "Rewind", "Rescuable", "None"]
+        // let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "25% Freeleech", "Refundable", "Rewind", "Rescuable", "Pollination", "None"]
         let arr = [];
 
         discounts.forEach(q => {
             if (q === "None") arr.push({ "value": 0, "name": q });
-            else if (q === "Rescuable") arr.push({ "value": 1, "name": q });
-            else if (q === "Rewind") arr.push({ "value": 2, "name": q });
-            else if (q === "Refundable") arr.push({ "value": 3, "name": q });
-            else if (q === "25% Freeleech") arr.push({ "value": 4, "name": q });
-            else if (q === "50% Freeleech") arr.push({ "value": 5, "name": q });
-            else if (q === "75% Freeleech") arr.push({ "value": 6, "name": q });
-            else if (q === "Freeleech") arr.push({ "value": 7, "name": q });
+            else if (q === "Pollination") arr.push({ "value": 1, "name": q });
+            else if (q === "Rescuable") arr.push({ "value": 2, "name": q });
+            else if (q === "Rewind") arr.push({ "value": 3, "name": q });
+            else if (q === "Refundable") arr.push({ "value": 4, "name": q });
+            else if (q === "25% Freeleech") arr.push({ "value": 5, "name": q });
+            else if (q === "50% Freeleech") arr.push({ "value": 6, "name": q });
+            else if (q === "75% Freeleech") arr.push({ "value": 7, "name": q });
+            else if (q === "Freeleech") arr.push({ "value": 8, "name": q });
         });
 
         return arr.sort((a, b) => (a.value < b.value) ? 1 : -1).map(e => e.name);
