@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers - other
 // @namespace    https://github.com/Audionut
-// @version      1.2.5
+// @version      1.2.7
 // @updateURL    https://raw.githubusercontent.com/Audionut/add-trackers/main/ptp-add-filter-all-releases-anut.js
 // @downloadURL  https://raw.githubusercontent.com/Audionut/add-trackers/main/ptp-add-filter-all-releases-anut.js
 // @description  add releases from other trackers
@@ -288,44 +288,6 @@
                 torrent_objs.push(torrent_obj);
             });
         }
-        else if (include_miniseries && tracker === "BTN") {
-            // Fetch the redirected URL
-            fetch(response.url)
-                .then(response => response.text())
-                .then(htmlText => {
-                    // Parse the HTML text to create a new HTML document
-                    const newHtml = new DOMParser().parseFromString(htmlText, 'text/html');
-
-            // Use querySelectorAll on the new HTML document
-            newHtml.querySelectorALL("tr.group_torrent.discog").forEach((d) => {
-                let torrent_obj = {};
-                let size = d.querySelectorAll("td")[1].textContent;
-
-                if (size.includes("GB")) {
-                    size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // MB
-                }
-                else if (size.includes("MB")) size = parseInt(parseFloat(size.split("MB")[0]));
-                // Extracting data
-                torrent_obj.size = size;
-                const infoText = d.querySelector("tr.group_torrent discog > td > a").textContent;
-                const modifiedInfoText = infoText.replace(/\//g, '');
-                //const isInternal = modifiedInfoText.includes("-hallowed") || modifiedInfoText.includes("-TEPES") || modifiedInfoText.includes("-END") || modifiedInfoText.includes("-WDYM");
-                torrent_obj.info_text = modifiedInfoText;
-                torrent_obj.site = "BTN";
-                torrent_obj.download_link = [...d.querySelectorAll("a")].find(a => a.href.includes("torrents.php?action=")).href.replace("passthepopcorn.me", "broadcasthe.net");
-                torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(3)").textContent);
-                torrent_obj.seed = parseInt(d.querySelector("td:nth-child(4)").textContent);
-                torrent_obj.leech = parseInt(d.querySelector("td:nth-child(5)").textContent);
-                //torrent_obj.torrent_page = [...d.querySelectorAll("a.overlay_torrent")].find(a => a.href.includes("/torrents.php?id=")).href.replace("passthepopcorn.me", "broadcasthe.net");
-                //torrent_obj.status = "default"; // You need to extract status from the HTML
-                //torrent_obj.discount = ""; // You need to extract discount from the HTML
-                //torrent_obj.internal = isInternal ? true : false;
-                //torrent_obj.exclusive = false; // You need to extract exclusive status from the HTML
-
-                torrent_objs.push(torrent_obj);
-            });
-            });
-        }
         else if (tracker === "ANT") {
             try {
                 // Handling for ANT tracker
@@ -379,9 +341,9 @@
                             torrent_obj.leech = parseInt(d.querySelector("td:nth-child(5)").textContent);
                             torrent_obj.torrent_page = torrentPageUrl;
                             //torrent_obj.status = "default"; // You need to extract status from the HTML
-                            torrent_obj.discount = get_discount_text(d, tracker); // You need to extract discount from the HTML
+                            torrent_obj.discount = get_discount_text(d, tracker);
                             //torrent_obj.internal = false; // You need to extract internal status from the HTML
-                            //torrent_obj.pollination = hasPollination; // Set to true if label exists, false otherwise
+                            //torrent_obj.pollination = false; // You need to extract exclusive status from the HTML
 
                             torrent_objs.push(torrent_obj);
                         }
