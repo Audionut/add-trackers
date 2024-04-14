@@ -1,8 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers - other
 // @namespace    https://github.com/Audionut
-// @version      1.2.8
-// @updateURL    https://raw.githubusercontent.com/Audionut/add-trackers/main/ptp-add-filter-all-releases-anut.js
+// @version      1.2.9
 // @downloadURL  https://raw.githubusercontent.com/Audionut/add-trackers/main/ptp-add-filter-all-releases-anut.js
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
@@ -22,62 +21,25 @@
     //  available tv_trackers: "BTN", "NBL", "TVV" - NOT WORKING YET
     //  if you don't need the results from some of these trackers, do not add them. the fewer you add, the faster the code execution.
     //  *requires API key     **performs two requests
+   const trackers = ["BHD", "CG", "FL", "HDB", "KG", "PTP", "MTV", "ANT", "BLU", "HUNO", "TIK", "Aither", "RFX", "OE", "AvistaZ", "CinemaZ", "PHD"];
 
-    // BLU_API_TOKEN = ""; // if you want to use BLU - find your api key here: https://blutopia.cc/users/YOUR_USERNAME_HERE/apikeys
-    // TIK_API_TOKEN = ""; // if you want to use TIK - find your api key here: https://cinematik.net/users/YOUR_USERNAME_HERE/apikeys
-    // AITHER_API_TOKEN = ""; // if you want to use Aither - find your api key here: https:/aither.cc/users/YOUR_USERNAME_HERE/apikeys
-    // HUNO_API_TOKEN = ""; // if you want to use HUNO - find your api key here: https://hawke.uno/users/YOUR_USERNAME_HERE/settings/security#api
-    // RFX_API_TOKEN = ""; // if you want to use RFX - find your api key here: https:/reelflix.xyz/users/YOUR_USERNAME_HERE/apikeys
-    // OE_API_TOKEN = ""; /// if you want to use OE - find your api key here: https:/onlyencodes.cc/users/YOUR_USERNAME_HERE/apikeys
+    const BLU_API_TOKEN = ""; // if you want to use BLU - find your api key here: https://blutopia.cc/users/YOUR_USERNAME_HERE/apikeys
+    const TIK_API_TOKEN = ""; // if you want to use TIK - find your api key here: https://cinematik.net/users/YOUR_USERNAME_HERE/apikeys
+    const AITHER_API_TOKEN = ""; // if you want to use Aither - find your api key here: https:/aither.cc/users/YOUR_USERNAME_HERE/apikeys
+    const HUNO_API_TOKEN = ""; // if you want to use HUNO - find your api key here: https://hawke.uno/users/YOUR_USERNAME_HERE/settings/security#api
+    const RFX_API_TOKEN = ""; // if you want to use RFX - find your api key here: https:/reelflix.xyz/users/YOUR_USERNAME_HERE/apikeys
+    const OE_API_TOKEN = ""; /// if you want to use OE - find your api key here: https:/onlyencodes.cc/users/YOUR_USERNAME_HERE/apikeys
 
-    // hide_blank_links = true; // false = will also create blank [PL] [RP] links ||| true = will only show [DL] link
-    // show_tracker_icon = true; // false = will show default green checked icon ||| true = will show tracker logo instead of checked icon
-    // show_tracker_name = true; // false = will hide tracker name ||| true = will show tracker name
-    // hide_if_torrent_with_same_size_exists = false; // true = will hide torrents with the same file size as existing PTP ones
-    // log_torrents_with_same_size = false; // true = will log torrents with the same file size as existing PTP ones in console (F12)
-    // hide_filters_div = false; // false = will show filters box ||| true = will hide filters box
-    // show_only_ptp_by_default = false; // false = will show all torrents by default, including external ones ||| true = will only show PTP torrents by default
-    // hide_dead_external_torrents = false; // true = won't display dead external torrents
-    // open_in_new_tab = true; // false : when you click external torrent, it will open the page in new tab. ||| true : it will replace current tab.
-
-    // Load user configuration from local storage
-    const userConfig = loadUserConfig();
-
-    // Merge default options with user-defined options
-    const options = Object.assign({}, defaultOptions, userConfig);
-
-    // Define default options  - enter or edit the required values below to save to browser when script updates.
-    const defaultOptions = {
-        trackers: ["BHD", "CG", "FL", "HDB", "KG", "PTP", "MTV", "ANT", "BLU", "HUNO", "TIK", "Aither", "RFX", "OE", "AvistaZ", "CinemaZ", "PHD"],
-        BLU_API_TOKEN: "",
-        TIK_API_TOKEN: "",
-        AITHER_API_TOKEN: "",
-        HUNO_API_TOKEN: "",
-        RFX_API_TOKEN: "",
-        OE_API_TOKEN: "",
-        hide_blank_links: true,
-        show_tracker_icon: true,
-        show_tracker_name: true,
-        hide_if_torrent_with_same_size_exists: false,
-        log_torrents_with_same_size: false,
-        hide_filters_div: false,
-        show_only_ptp_by_default: false,
-        hide_dead_external_torrents: false,
-        open_in_new_tab: true
-    };
-
-    // Load user configuration from local storage
-    function loadUserConfig() {
-        // Load user configuration from local storage
-        const storedConfig = localStorage.getItem("ptp_user_config");
-        return storedConfig ? JSON.parse(storedConfig) : {};
-    }
-
-    // Save user configuration to local storage
-    function saveUserConfig(userConfig) {
-        // Save user configuration to local storage
-        localStorage.setItem("ptp_user_config", JSON.stringify(userConfig));
-    }
+    const hide_blank_links = true; // false = will also create blank [PL] [RP] links ||| true = will only show [DL] link
+    const show_tracker_icon = true; // false = will show default green checked icon ||| true = will show tracker logo instead of checked icon
+    const show_tracker_name = true; // false = will hide tracker name ||| true = will show tracker name
+    const hide_if_torrent_with_same_size_exists = false; // true = will hide torrents with the same file size as existing PTP ones
+    const log_torrents_with_same_size = false; // true = will log torrents with the same file size as existing PTP ones in console (F12)
+    const hide_filters_div = false; // false = will show filters box ||| true = will hide filters box
+    const show_only_ptp_by_default = false; // false = will show all torrents by default, including external ones ||| true = will only show PTP torrents by default
+    const hide_dead_external_torrents = false; // true = won't display dead external torrents
+    const open_in_new_tab = true; // false : when you click external torrent, it will open the page in new tab. ||| true : it will replace current tab.
+    //const include_miniseries = false; // true : will also search tv_trackers added above ||| false : don't search the tv_trackers when it's a miniseries.  - NOT WORKING YET
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
