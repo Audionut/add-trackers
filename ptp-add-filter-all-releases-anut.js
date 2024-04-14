@@ -207,10 +207,10 @@
         else if (tracker === "HDB") return "https://hdbits.org/pic/favicon/favicon.ico";
         else if (tracker === "KG") return "https://karagarga.in/favicon.ico";
         else if (tracker === "TIK") return "https://cinematik.net/favicon.ico";
-	else if (tracker === "MTV") return "https://www.morethantv.me/favicon.ico";
-	else if (tracker === "ANT") return "https://anthelion.me/favicon.ico";
-	else if (tracker === "RTF") return "https://retroflix.club/favicon.ico";
-	else if (tracker === "HUNO") return "https://hawke.uno/favicon.ico";
+	    else if (tracker === "MTV") return "https://www.morethantv.me/favicon.ico";
+	    else if (tracker === "ANT") return "https://anthelion.me/favicon.ico";
+	    else if (tracker === "RTF") return "https://retroflix.club/favicon.ico";
+	    else if (tracker === "HUNO") return "https://hawke.uno/favicon.ico";
         else if (tracker === "BTN") return "https://broadcasthe.net/favicon.ico";
     };
 
@@ -296,32 +296,27 @@
                     try {
                         let torrent_obj = {};
                         let size = d.querySelectorAll("td")[1].textContent;
-                        try {
                             if (size.includes("GiB")) {
                                 size = parseInt(parseFloat(size.split("GiB")[0]) * 1024); // MB
                             } else if (size.includes("MiB")) {
                                 size = parseInt(parseFloat(size.split("MiB")[0]));
                             }
-                        } catch (error) {
-                            console.error("Error parsing size:", error); // Add this check
-                            size = null; // Set size to null in case of error
-                        }
 
-                        // Extract the group number from the class name
-                        const classValue = d.getAttribute('class');
-                        const match = classValue.match(/groupid_(\d+)/);
-                        let group = null;
+                        // Extract the torrent ID from the href attribute
+                        const hrefValue = d.querySelector('a[data-toggle-target^="#torrent_"]').getAttribute('data-toggle-target');
+                        const match = hrefValue.match(/#torrent_(\d+)/);
+                        let torrentId = null;
                         if (match) {
-                            group = match[1];
+                            torrentId = match[1];
                         }
 
                         // Define the base URL
-                        const baseUrl = 'https://anthelion.me/torrents.php?id=';
+                        const baseUrl = 'https://anthelion.me/torrents.php?';
 
-                        // Check if the group number was extracted
-                        if (group !== null) {
-                            // Concatenate the group number with the base URL
-                            const torrentPageUrl = `${baseUrl}${group}`;
+                        // Check if the torrent ID number was extracted
+                        if (torrentId !== null) {
+                            // Concatenate the torrent ID number with the base URL
+                            const torrentPageUrl = `${baseUrl}torrentid=${torrentId}`;
 
                             // Extracting data
                             torrent_obj.size = size;
