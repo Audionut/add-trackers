@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers - other
 // @namespace    https://github.com/Audionut
-// @version      1.2.3
+// @version      1.2.4
 // @updateURL    https://raw.githubusercontent.com/Audionut/add-trackers/main/ptp-add-filter-all-releases-anut.js
 // @downloadURL  https://raw.githubusercontent.com/Audionut/add-trackers/main/ptp-add-filter-all-releases-anut.js
 // @description  add releases from other trackers
@@ -322,7 +322,8 @@
         else if (tracker === "ANT") {
             try {
                 // Handling for ANT tracker
-                const rows = html.querySelector(".torrent_table#torrent_details > tbody").querySelectorAll("tr:not(.colhead_dark):not(.sortGroup)").forEach((d) => {;
+                const rows = html.querySelector(".torrent_table#torrent_details > tbody").querySelectorAll("tr:not(.colhead_dark):not(.sortGroup)");
+                rows.forEach((d) => {
                     console.log("Inside ANT forEach loop"); // Add this check
                     try {
                         let torrent_obj = {};
@@ -338,21 +339,38 @@
                             size = null; // Set size to null in case of error
                         }
 
-                        // Extracting data
-                        torrent_obj.size = size;
-                        torrent_obj.info_text = d.querySelector("td:nth-child(1) > a").textContent.replace(/\//g, '');
-                        torrent_obj.site = "ANT";
-                        torrent_obj.download_link = [...d.querySelectorAll("a")].find(a => a.href.includes("torrents.php?action=") && !a.href.includes("&usetoken=1")).href.replace("passthepopcorn.me", "anthelion.me");
-                        torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(3)").textContent);
-                        torrent_obj.seed = parseInt(d.querySelector("td:nth-child(4)").textContent);
-                        torrent_obj.leech = parseInt(d.querySelector("td:nth-child(5)").textContent);
-                        //torrent_obj.torrent_page = "https://anthelion.me/torrents.php?searchstr=" + imdb_id +"&order_by=time&order_way=desc&group_results=1&action=basic&searchsubmit=1"
-                        //torrent_obj.status = "default"; // You need to extract status from the HTML
-                        //torrent_obj.discount = ""; // You need to extract discount from the HTML
-                        //torrent_obj.internal = false; // You need to extract internal status from the HTML
-                        //torrent_obj.exclusive = false; // You need to extract exclusive status from the HTML
+                        // Extract the group number from the class name
+                        const classValue = d.getAttribute('class');
+                        const match = classValue.match(/groupid_(\d+)/);
+                        let group = null;
+                        if (match) {
+                            group = match[1];
+                        }
 
-                        torrent_objs.push(torrent_obj);
+                        // Define the base URL
+                        const baseUrl = 'https://anthelion.me/torrents.php?id=';
+
+                        // Check if the group number was extracted
+                        if (group !== null) {
+                            // Concatenate the group number with the base URL
+                            const torrentPageUrl = `${baseUrl}${group}`;
+
+                            // Extracting data
+                            torrent_obj.size = size;
+                            torrent_obj.info_text = d.querySelector("td:nth-child(1) > a").textContent.replace(/\//g, '');
+                            torrent_obj.site = "ANT";
+                            torrent_obj.download_link = [...d.querySelectorAll("a")].find(a => a.href.includes("torrents.php?action=") && !a.href.includes("&usetoken=1")).href.replace("passthepopcorn.me", "anthelion.me");
+                            torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(3)").textContent);
+                            torrent_obj.seed = parseInt(d.querySelector("td:nth-child(4)").textContent);
+                            torrent_obj.leech = parseInt(d.querySelector("td:nth-child(5)").textContent);
+                            torrent_obj.torrent_page = torrentPageUrl;
+                            //torrent_obj.status = "default"; // You need to extract status from the HTML
+                            //torrent_obj.discount = ""; // You need to extract discount from the HTML
+                            //torrent_obj.internal = false; // You need to extract internal status from the HTML
+                            //torrent_obj.exclusive = false; // You need to extract exclusive status from the HTML
+
+                            torrent_objs.push(torrent_obj);
+                        }
                     } catch (error) {
                         console.error("Error inside ANT forEach loop:", error); // Add this check
                     }
