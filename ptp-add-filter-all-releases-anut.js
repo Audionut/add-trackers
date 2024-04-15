@@ -160,6 +160,8 @@
                 if (pollenText.charAt(0) === '!') {
                     pollenText = pollenText.substring(1);
                 }
+                // Remove brackets
+                pollenText = pollenText.replace(/\(|\)/g, "").trim();
                 return "Pollination" + (pollenText.length > 0 ? ` ${pollenText}` : "");
             } else if (freeLabel !== null) {
                 return "Freeleech";
@@ -300,7 +302,7 @@
                         size = parseInt(parseFloat(size.split("MiB")[0]));
                     }
                 }
-        
+
                 let torrentId = null;
                 const hrefElement = d.querySelector('a[data-toggle-target^="#torrent_"]');
                 if (hrefElement) {
@@ -310,13 +312,13 @@
                         torrentId = match[1];
                     }
                 }
-        
+
                 const baseUrl = 'https://anthelion.me/torrents.php?';
-        
+
                 if (torrentId !== null) {
                     const torrentPageUrl = `${baseUrl}torrentid=${torrentId}`;
                     torrent_obj.size = size;
-        
+
                     const titleElement = d.querySelector("td:nth-child(1) > a");
                     if (titleElement) {
                         let infoTextParts = [];
@@ -342,7 +344,7 @@
                         });
                         torrent_obj.info_text = infoTextParts.join(' / ').replace(/\/\s*\/\s*/g, ' / ');
                     }
-        
+
                     torrent_obj.site = "ANT";
                     torrent_obj.download_link = [...d.querySelectorAll("a")].find(a => a.href.includes("torrents.php?action=") && !a.href.includes("&usetoken=1")).href.replace("passthepopcorn.me", "anthelion.me");
                     torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(3)").textContent);
@@ -350,7 +352,7 @@
                     torrent_obj.leech = parseInt(d.querySelector("td:nth-child(5)").textContent);
                     torrent_obj.torrent_page = torrentPageUrl;
                     torrent_obj.discount = get_discount_text(d, tracker);
-        
+
                     torrent_objs.push(torrent_obj);
                 }
             });
