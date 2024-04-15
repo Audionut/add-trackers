@@ -158,7 +158,7 @@
             const infoTextParts = [];
 
             if (seedingLabel !== null) {
-                infoTextParts.push(`<span style="color: #008000;">Seeding</span>`); // Green color for Seeding
+                infoTextParts.push(`<span style="color: #FFA500;">Seeding</span>`); // Green color for Seeding
             }
 
             if (pollenLabel !== null) {
@@ -1740,19 +1740,21 @@
 
 
     const get_sorted_discounts = (discounts) => {
-        // let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "25% Freeleech", "Refundable", "Rewind", "Rescuable", "Pollination", "None"]
+        // let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "25% Freeleech", "Refundable", "Rewind", "Rescuable", "Seeding", Pollination", "Reported", None"]
         let arr = [];
 
         discounts.forEach(q => {
             if (q === "None") arr.push({ "value": 0, "name": q });
-            else if (q === "Pollination") arr.push({ "value": 1, "name": q });
-            else if (q === "Rescuable") arr.push({ "value": 2, "name": q });
-            else if (q === "Rewind") arr.push({ "value": 3, "name": q });
-            else if (q === "Refundable") arr.push({ "value": 4, "name": q });
-            else if (q === "25% Freeleech") arr.push({ "value": 5, "name": q });
-            else if (q === "50% Freeleech") arr.push({ "value": 6, "name": q });
-            else if (q === "75% Freeleech") arr.push({ "value": 7, "name": q });
-            else if (q === "Freeleech") arr.push({ "value": 8, "name": q });
+            else if (q === "Seeding") arr.push({ "value": 1, "name": q });
+            else if (q === "Pollination") arr.push({ "value": 2, "name": q });
+            else if (q === "Rescuable") arr.push({ "value": 3, "name": q });
+            else if (q === "Rewind") arr.push({ "value": 4, "name": q });
+            else if (q === "Refundable") arr.push({ "value": 5, "name": q });
+            else if (q === "25% Freeleech") arr.push({ "value": 6, "name": q });
+            else if (q === "50% Freeleech") arr.push({ "value": 7, "name": q });
+            else if (q === "75% Freeleech") arr.push({ "value": 8, "name": q });
+            else if (q === "Freeleech") arr.push({ "value": 9, "name": q });
+            else if (q === "Repoorted") arr.push({ "value": 10, "name": q });
         });
 
         return arr.sort((a, b) => (a.value < b.value) ? 1 : -1).map(e => e.name);
