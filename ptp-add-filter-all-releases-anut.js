@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers - other
 // @namespace    https://github.com/Audionut
-// @version      1.4.0
+// @version      1.4.1
 // @downloadURL  https://raw.githubusercontent.com/Audionut/add-trackers/main/ptp-add-filter-all-releases-anut.js
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
@@ -871,19 +871,41 @@
     };
 
 
-    const get_api_discount = (text) => {
-        if (text === 0 || text === "0%") return "None";
-        else if (text === "25%") return "25% Freeleech";
-        else if (text === "50%") return "50% Freeleech";
-        else if (text === "75%") return "75% Freeleech";
-        else if (text === "100%") return "Freeleech";
-        else return text + " Freeleech";
+    const get_api_discount = (text, refundable) => {
+        let discountText = "";
+
+        if (refundable === true) {
+            discountText += "Refundable";
+        } else {
+            if (text === 0 || text === "0%") {
+                discountText = "None";
+            } else if (text === "25%") {
+                discountText = "25% Freeleech";
+            } else if (text === "50%") {
+                discountText = "50% Freeleech";
+            } else if (text === "75%") {
+                discountText = "75% Freeleech";
+            } else if (text === "100%") {
+                discountText = "Freeleech";
+            } else {
+                discountText = text + " Freeleech";
+            }
+        }
+
+        return discountText;
     };
+
     const get_api_internal = (internal) => {
         return !!internal; // Convert internal to boolean directly
     };
+
     const get_api_double_upload = (double_upload) => {
         if (double_upload === true) return "DU";
+        else return false;
+    };
+
+    const get_api_refundable = (refundable) => {
+        if (refundable === true) return "Refundable";
         else return false;
     };
 
@@ -919,6 +941,7 @@
                     discount: element.attributes.freeleech,
                     internal: element.attributes.internal,
                     double_upload: element.attributes.double_upload,
+                    refundable: element.attributes.refundable
                 };
 
                 // Logging the mapped torrent object
@@ -930,7 +953,7 @@
 
         // Mapping additional properties and logging the final torrent objects
         torrent_objs = torrent_objs.map(e => {
-            const mappedObj = { ...e, "quality": get_torrent_quality(e), "discount": get_api_discount(e.discount), "internal": get_api_internal(e.internal)};
+            const mappedObj = { ...e, "quality": get_torrent_quality(e), "discount": get_api_discount(e.discount, e.refundable), "internal": get_api_internal(e.internal), "Refundable": get_api_refundable(e.refundable)};
             console.log("Final torrent object:", mappedObj);
             return mappedObj;
         });
