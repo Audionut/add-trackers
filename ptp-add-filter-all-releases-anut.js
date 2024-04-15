@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers - other
 // @namespace    https://github.com/Audionut
-// @version      1.2.9
+// @version      1.3.0
 // @downloadURL  https://raw.githubusercontent.com/Audionut/add-trackers/main/ptp-add-filter-all-releases-anut.js
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
@@ -160,7 +160,6 @@
                 if (pollenText.charAt(0) === '!') {
                     pollenText = pollenText.substring(1);
                 }
-                const Pollute = pollenText
                 return "Pollination" + (pollenText.length > 0 ? ` ${pollenText}` : "");
             } else if (freeLabel !== null) {
                 return "Freeleech";
@@ -207,10 +206,10 @@
         else if (tracker === "HDB") return "https://hdbits.org/pic/favicon/favicon.ico";
         else if (tracker === "KG") return "https://karagarga.in/favicon.ico";
         else if (tracker === "TIK") return "https://cinematik.net/favicon.ico";
-	    else if (tracker === "MTV") return "https://www.morethantv.me/favicon.ico";
-	    else if (tracker === "ANT") return "https://anthelion.me/favicon.ico";
-	    else if (tracker === "RTF") return "https://retroflix.club/favicon.ico";
-	    else if (tracker === "HUNO") return "https://hawke.uno/favicon.ico";
+        else if (tracker === "MTV") return "https://www.morethantv.me/favicon.ico";
+        else if (tracker === "ANT") return "https://anthelion.me/favicon.ico";
+        else if (tracker === "RTF") return "https://retroflix.club/favicon.ico";
+        else if (tracker === "HUNO") return "https://hawke.uno/favicon.ico";
         else if (tracker === "BTN") return "https://broadcasthe.net/favicon.ico";
     };
 
