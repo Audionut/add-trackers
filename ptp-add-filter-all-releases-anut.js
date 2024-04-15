@@ -287,98 +287,85 @@
             });
         }
         else if (tracker === "ANT") {
-            try {
-                // Handling for ANT tracker
-                const rows = html.querySelector(".torrent_table#torrent_details > tbody").querySelectorAll("tr:not(.colhead_dark):not(.sortGroup)");
-                rows.forEach((d, index) => { // Add index as the second argument
-                    console.log(`Processing row ${index + 1}`);
-                    try {
-                        let torrent_obj = {};
-                        let size = d.querySelectorAll("td")[1].textContent;
-                            if (size.includes("GiB")) {
-                                size = parseInt(parseFloat(size.split("GiB")[0]) * 1024); // MB
-                            } else if (size.includes("MiB")) {
-                                size = parseInt(parseFloat(size.split("MiB")[0]));
-                            }
-
-                        // Extract the torrent ID from the href attribute
-                        const hrefValue = d.querySelector('a[data-toggle-target^="#torrent_"]').getAttribute('data-toggle-target');
-                        const match = hrefValue.match(/#torrent_(\d+)/);
-                        let torrentId = null;
-                        if (match) {
-                            torrentId = match[1];
-                        }
-
-                        // Define the base URL
-                        const baseUrl = 'https://anthelion.me/torrents.php?';
-
-                        // Check if the torrent ID number was extracted
-                        if (torrentId !== null) {
-                            // Concatenate the torrent ID number with the base URL
-                            const torrentPageUrl = `${baseUrl}torrentid=${torrentId}`;
-
-                            // Extracting data
-                            torrent_obj.size = size;
-
-
-                            // Select the <a> element within the <td> and exclude specific elements by class
-                            const titleElement = d.querySelector("td:nth-child(1) > a");
-                            if (titleElement) {
-                                let infoTextParts = [];
-
-                                // Extract title text
-                                const titleText = Array.from(titleElement.childNodes)
-                                    .filter(node => node.nodeType === Node.TEXT_NODE)
-                                    .map(node => node.textContent.trim().replace(/\//g, ''))
-                                    .join(' / ');
-
-                                if (titleText) {
-                                    infoTextParts.push(titleText);
-                                }
-
-                                // Extract additional texts within <strong> tags
-                                const strongElements = titleElement.querySelectorAll("strong.torrent_label");
-                                strongElements.forEach(strong => {
-                                    const text = strong.textContent.trim();
-                                    // Check for specific classes and append to infoTextParts accordingly
-                                    if (strong.classList.contains("tl_notice") || strong.classList.contains("tl_seeding")) {
-                                        infoTextParts.push(text);
-                                    } else if (strong.classList.contains("tl_free")) {
-                                        const match = text.match(/\((.*?)\)/); // Match text within parentheses
-                                        if (match) {
-                                            const duration = match[1]; // Extract duration text
-                                            infoTextParts.push(duration); // Append duration to infoTextParts
-                                        }
-                                    }
-                                });
-
-                                // Join infoTextParts with a single slash and remove extra slashes
-                                torrent_obj.info_text = infoTextParts.join(' / ').replace(/\/\s*\/\s*/g, ' / ');
-                            } else {
-                                console.error(`Title element not found for row ${index + 1}`);
-                                torrent_obj.info_text = null;
-                            }
-
-                            torrent_obj.site = "ANT";
-                            torrent_obj.download_link = [...d.querySelectorAll("a")].find(a => a.href.includes("torrents.php?action=") && !a.href.includes("&usetoken=1")).href.replace("passthepopcorn.me", "anthelion.me");
-                            torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(3)").textContent);
-                            torrent_obj.seed = parseInt(d.querySelector("td:nth-child(4)").textContent);
-                            torrent_obj.leech = parseInt(d.querySelector("td:nth-child(5)").textContent);
-                            torrent_obj.torrent_page = torrentPageUrl;
-                            //torrent_obj.status = "default"; // You need to extract status from the HTML
-                            torrent_obj.discount = get_discount_text(d, tracker);
-                            //torrent_obj.internal = false; // You need to extract internal status from the HTML
-                            //torrent_obj.pollination = false; // You need to extract exclusive status from the HTML
-
-                            torrent_objs.push(torrent_obj);
-                        }
-                    } catch (error) {
-                        console.error(`Error processing row ${index + 1}:`, error);
+            const rows = html.querySelector(".torrent_table#torrent_details > tbody").querySelectorAll("tr:not(.colhead_dark):not(.sortGroup)");
+            rows.forEach((d, index) => { // Add index as the second argument
+                let torrent_obj = {};
+                let size = null;
+                const tdElements = d.querySelectorAll("td");
+                if (tdElements.length >= 2) {
+                    size = tdElements[1].textContent;
+                    if (size.includes("GiB")) {
+                        size = parseInt(parseFloat(size.split("GiB")[0]) * 1024); // MB
+                    } else if (size.includes("MiB")) {
+                        size = parseInt(parseFloat(size.split("MiB")[0]));
                     }
-                });
-            } catch (error) {
-                console.error("Error in ANT section:", error); // Add this check
-            }
+                } else {
+                    console.error(`Not enough <td> elements found for row ${index + 1}`);
+                    return;
+                }
+        
+                let torrentId = null;
+                const hrefElement = d.querySelector('a[data-toggle-target^="#torrent_"]');
+                if (hrefElement) {
+                    const hrefValue = hrefElement.getAttribute('data-toggle-target');
+                    const match = hrefValue.match(/#torrent_(\d+)/);
+                    if (match) {
+                        torrentId = match[1];
+                    } else {
+                        console.error(`Torrent ID not found for row ${index + 1}`);
+                        return;
+                    }
+                } else {
+                    console.error(`Torrent ID element not found for row ${index + 1}`);
+                    return;
+                }
+        
+                const baseUrl = 'https://anthelion.me/torrents.php?';
+        
+                if (torrentId !== null) {
+                    const torrentPageUrl = `${baseUrl}torrentid=${torrentId}`;
+                    torrent_obj.size = size;
+        
+                    const titleElement = d.querySelector("td:nth-child(1) > a");
+                    if (titleElement) {
+                        let infoTextParts = [];
+                        const titleText = Array.from(titleElement.childNodes)
+                            .filter(node => node.nodeType === Node.TEXT_NODE)
+                            .map(node => node.textContent.trim().replace(/\//g, ''))
+                            .join(' / ');
+                        if (titleText) {
+                            infoTextParts.push(titleText);
+                        }
+                        const strongElements = titleElement.querySelectorAll("strong.torrent_label");
+                        strongElements.forEach(strong => {
+                            const text = strong.textContent.trim();
+                            if (strong.classList.contains("tl_notice") || strong.classList.contains("tl_seeding")) {
+                                infoTextParts.push(text);
+                            } else if (strong.classList.contains("tl_free")) {
+                                const match = text.match(/\((.*?)\)/);
+                                if (match) {
+                                    const duration = match[1];
+                                    infoTextParts.push(duration);
+                                }
+                            }
+                        });
+                        torrent_obj.info_text = infoTextParts.join(' / ').replace(/\/\s*\/\s*/g, ' / ');
+                    } else {
+                        console.error(`Title element not found for row ${index + 1}`);
+                        return;
+                    }
+        
+                    torrent_obj.site = "ANT";
+                    torrent_obj.download_link = [...d.querySelectorAll("a")].find(a => a.href.includes("torrents.php?action=") && !a.href.includes("&usetoken=1")).href.replace("passthepopcorn.me", "anthelion.me");
+                    torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(3)").textContent);
+                    torrent_obj.seed = parseInt(d.querySelector("td:nth-child(4)").textContent);
+                    torrent_obj.leech = parseInt(d.querySelector("td:nth-child(5)").textContent);
+                    torrent_obj.torrent_page = torrentPageUrl;
+                    torrent_obj.discount = get_discount_text(d, tracker);
+        
+                    torrent_objs.push(torrent_obj);
+                }
+            });
         }
         else if (tracker === "RTF") {
             // Handling for MTV tracker
