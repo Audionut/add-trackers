@@ -160,11 +160,18 @@
                 if (pollenText.charAt(0) === '!') {
                     pollenText = pollenText.substring(1);
                 }
-                // Remove brackets
-                pollenText = pollenText.replace(/\(|\)/g, "").trim();
-                return "Pollination" + (pollenText.length > 0 ? ` ${pollenText}` : "");
+                // Extract time value from pollenText
+                const pollenTime = pollenText.match(/\(([^)]+)\)/)[1];
+                // Remove brackets from pollenText
+                pollenText = pollenText.replace(/\(([^)]+)\)/, "").trim();
+                return `<span style="color: #FFFF00;">Pollination ${pollenText} (${pollenTime})</span>`;
             } else if (freeLabel !== null) {
-                return "Freeleech";
+                const labelText = freeLabel.textContent.trim();
+                // Extract time value from labelText
+                const freeTime = labelText.match(/\(([^)]+)\)/)[1];
+                // Remove brackets from labelText
+                const freeText = labelText.replace(/\(([^)]+)\)/, "").trim();
+                return `<span style="color: #32CD32;">Freeleech (${freeTime})</span>`;
             }
         }
         else if (tracker === "CG") {
@@ -319,31 +326,27 @@
                     const torrentPageUrl = `${baseUrl}torrentid=${torrentId}`;
                     torrent_obj.size = size;
 
-                    const titleElement = d.querySelector("td:nth-child(1) > a");
-                    if (titleElement) {
-                        let infoTextParts = [];
-                        const titleText = Array.from(titleElement.childNodes)
-                            .filter(node => node.nodeType === Node.TEXT_NODE)
-                            .map(node => node.textContent.trim().replace(/\//g, ''))
-                            .join(' / ');
-                        if (titleText) {
-                            infoTextParts.push(titleText);
-                        }
-                        const strongElements = titleElement.querySelectorAll("strong.torrent_label");
-                        strongElements.forEach(strong => {
-                            const text = strong.textContent.trim();
-                            if (strong.classList.contains("tl_notice") || strong.classList.contains("tl_seeding")) {
-                                infoTextParts.push(text);
-                            } else if (strong.classList.contains("tl_free")) {
-                                const match = text.match(/\((.*?)\)/);
-                                if (match) {
-                                    const duration = match[1];
-                                    infoTextParts.push(duration);
-                                }
-                            }
-                        });
-                        torrent_obj.info_text = infoTextParts.join(' / ').replace(/\/\s*\/\s*/g, ' / ');
+                const titleElement = d.querySelector("td:nth-child(1) > a");
+                if (titleElement) {
+                    let infoTextParts = [];
+                    const titleText = Array.from(titleElement.childNodes)
+                        .filter(node => node.nodeType === Node.TEXT_NODE)
+                        .map(node => node.textContent.trim().replace(/\//g, ''))
+                        .join(' / ');
+                    if (titleText) {
+                        infoTextParts.push(titleText);
                     }
+                    const strongElements = titleElement.querySelectorAll("strong.torrent_label");
+                    strongElements.forEach(strong => {
+                        const text = strong.textContent.trim();
+                        if (strong.classList.contains("tl_notice") || strong.classList.contains("tl_seeding")) {
+                            infoTextParts.push(text);
+                        } else if (strong.classList.contains("tl_reported")) { // Add handling for tl_reported
+                            infoTextParts.push("Reported");
+                        }
+                    });
+                    torrent_obj.info_text = infoTextParts.join(' / ').replace(/\/\s*\/\s*/g, ' / ');
+                }
 
                     torrent_obj.site = "ANT";
                     torrent_obj.download_link = [...d.querySelectorAll("a")].find(a => a.href.includes("torrents.php?action=") && !a.href.includes("&usetoken=1")).href.replace("passthepopcorn.me", "anthelion.me");
