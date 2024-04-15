@@ -147,7 +147,13 @@
             if ([...div.querySelectorAll("img")].find(e => e.alt === "FreeLeech") != undefined) return "Freeleech";
         }
         else if (tracker === "MTV") {
-            if ([...div.querySelectorAll("img")].find(e => e.alt === "FreeLeech") != undefined) return "Freeleech";
+            const reportedLabel = div.querySelector(".reported");
+            const infoTextParts = [];
+
+            if (reportedLabel !== null) {
+                infoTextParts.push(`<span style="color: #FF0000;">Reported</span>`);
+            }
+            return infoTextParts.join('');
         }
         else if (tracker === "ANT") {
             const pollenLabel = div.querySelector(".torrent_table#torrent_details .torrent_label.tooltip.tl_pollen");
@@ -158,7 +164,7 @@
             const infoTextParts = [];
 
             if (seedingLabel !== null) {
-                infoTextParts.push(`<span style="color: #FFA500;">Seeding</span>`); // Green color for Seeding
+                infoTextParts.push(`<span style="color: #FFA500;">Seeding</span>`); // Orange color for Seeding
             }
 
             if (pollenLabel !== null) {
@@ -293,7 +299,21 @@
                 else if (size.includes("MiB")) size = parseInt(parseFloat(size.split("MiB")[0]));
                 // Extracting data
                 torrent_obj.size = size;
-                const infoText = d.querySelector("a.overlay_torrent").textContent;
+                const overlayTorrentLink = d.querySelector("a.overlay_torrent");
+                let infoText = overlayTorrentLink.innerText;
+                const spanElements = overlayTorrentLink.querySelectorAll('span');
+
+                // Remove forward slashes
+                infoText = infoText.replace(/\//g, '');
+
+                spanElements.forEach(span => {
+                    const spanText = span.innerText || span.textContent;
+                    infoText = infoText.replace(spanText, '');
+                });
+
+                // Remove extra whitespaces
+                infoText = infoText.replace(/\s+/g, ' ').trim();
+
                 const modifiedInfoText = infoText.replace(/\./g, ' ');
                 const isInternal = modifiedInfoText.includes("-hallowed") || modifiedInfoText.includes("-TEPES") || modifiedInfoText.includes("-END") || modifiedInfoText.includes("-WDYM");
                 torrent_obj.info_text = modifiedInfoText;
@@ -304,7 +324,7 @@
                 torrent_obj.leech = parseInt(d.querySelector("td:nth-child(8)").textContent);
                 torrent_obj.torrent_page = [...d.querySelectorAll("a.overlay_torrent")].find(a => a.href.includes("/torrents.php?id=")).href.replace("passthepopcorn.me", "morethantv.me");
                 //torrent_obj.status = "default"; // You need to extract status from the HTML
-                //torrent_obj.discount = ""; // You need to extract discount from the HTML
+                torrent_obj.discount = get_discount_text(d, tracker);
                 torrent_obj.internal = isInternal ? true : false;
                 //torrent_obj.exclusive = false; // You need to extract exclusive status from the HTML
 
