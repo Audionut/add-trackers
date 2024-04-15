@@ -291,8 +291,8 @@
             try {
                 // Handling for ANT tracker
                 const rows = html.querySelector(".torrent_table#torrent_details > tbody").querySelectorAll("tr:not(.colhead_dark):not(.sortGroup)");
-                rows.forEach((d) => {
-                    console.log("Inside ANT forEach loop"); // Add this check
+                rows.forEach((d, index) => { // Add index as the second argument
+                    console.log(`Processing row ${index + 1}`);
                     try {
                         let torrent_obj = {};
                         let size = d.querySelectorAll("td")[1].textContent;
@@ -321,12 +321,44 @@
                             // Extracting data
                             torrent_obj.size = size;
 
+
                             // Select the <a> element within the <td> and exclude specific elements by class
-                            const title = Array.from(d.querySelector("td:nth-child(1) > a").childNodes)
-                                .filter(node => node.nodeType === Node.TEXT_NODE)
-                                .map(node => node.textContent.trim().replace(/\//g, ''))
-                                .join(' / ');
-                            torrent_obj.info_text = title;
+                            const titleElement = d.querySelector("td:nth-child(1) > a");
+                            if (titleElement) {
+                                let infoTextParts = [];
+
+                                // Extract title text
+                                const titleText = Array.from(titleElement.childNodes)
+                                    .filter(node => node.nodeType === Node.TEXT_NODE)
+                                    .map(node => node.textContent.trim().replace(/\//g, ''))
+                                    .join(' / ');
+
+                                if (titleText) {
+                                    infoTextParts.push(titleText);
+                                }
+
+                                // Extract additional texts within <strong> tags
+                                const strongElements = titleElement.querySelectorAll("strong.torrent_label");
+                                strongElements.forEach(strong => {
+                                    const text = strong.textContent.trim();
+                                    // Check for specific classes and append to infoTextParts accordingly
+                                    if (strong.classList.contains("tl_notice") || strong.classList.contains("tl_seeding")) {
+                                        infoTextParts.push(text);
+                                    } else if (strong.classList.contains("tl_free")) {
+                                        const match = text.match(/\((.*?)\)/); // Match text within parentheses
+                                        if (match) {
+                                            const duration = match[1]; // Extract duration text
+                                            infoTextParts.push(duration); // Append duration to infoTextParts
+                                        }
+                                    }
+                                });
+
+                                // Join infoTextParts with a single slash and remove extra slashes
+                                torrent_obj.info_text = infoTextParts.join(' / ').replace(/\/\s*\/\s*/g, ' / ');
+                            } else {
+                                console.error(`Title element not found for row ${index + 1}`);
+                                torrent_obj.info_text = null;
+                            }
 
                             torrent_obj.site = "ANT";
                             torrent_obj.download_link = [...d.querySelectorAll("a")].find(a => a.href.includes("torrents.php?action=") && !a.href.includes("&usetoken=1")).href.replace("passthepopcorn.me", "anthelion.me");
@@ -342,7 +374,7 @@
                             torrent_objs.push(torrent_obj);
                         }
                     } catch (error) {
-                        console.error("Error inside ANT forEach loop:", error); // Add this check
+                        console.error(`Error processing row ${index + 1}:`, error);
                     }
                 });
             } catch (error) {
