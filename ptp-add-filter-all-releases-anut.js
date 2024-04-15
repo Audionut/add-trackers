@@ -43,7 +43,7 @@
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "25% Freeleech", "Refundable", "Rewind", "Rescuable", "Seeding", "Pollination", "Reported", "double_upload", "None"];
+    let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "25% Freeleech", "Refundable", "Rewind", "Rescuable", "Seeding", "Pollination", "Reported", "DU", "None"];
     let qualities = ["SD", "480p", "576p", "720p", "1080p", "2160p"];
     let filters = {
         "trackers": trackers.map((e) => {
@@ -883,7 +883,8 @@
         return !!internal; // Convert internal to boolean directly
     };
     const get_api_double_upload = (double_upload) => {
-        return double_upload === "double_upload"; // Parse as boolean
+        if (double_upload === true) return "DU";
+        else return false;
     };
 
     const get_api_torrent_objects = (tracker, json) => {
@@ -1174,13 +1175,15 @@
             }
             if (torrent.site === "BLU") {
                 get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>") : false;
-                get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>double_upload</span>") : false;
+                get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #a14989'>DU</span>") : false;
             }
             if (torrent.site === "Aither") {
                 get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>") : false;
+                get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #a14989'>DU</span>") : false;
             }
             if (torrent.site === "HUNO") {
                 get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>") : false;
+                get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #a14989'>DU</span>") : false;
             }
             torrent.discount != "None" ? cln.querySelector(".torrent-info-link").innerHTML += ` / <span style='font-weight: bold;color:${get_discount_color(torrent.discount)};'>` + torrent.discount + "!</span>" : false;
 
