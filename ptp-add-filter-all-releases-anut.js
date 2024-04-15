@@ -299,9 +299,6 @@
                     } else if (size.includes("MiB")) {
                         size = parseInt(parseFloat(size.split("MiB")[0]));
                     }
-                } else {
-                    console.error(`Not enough <td> elements found for row ${index + 1}`);
-                    return;
                 }
         
                 let torrentId = null;
@@ -311,13 +308,7 @@
                     const match = hrefValue.match(/#torrent_(\d+)/);
                     if (match) {
                         torrentId = match[1];
-                    } else {
-                        console.error(`Torrent ID not found for row ${index + 1}`);
-                        return;
                     }
-                } else {
-                    console.error(`Torrent ID element not found for row ${index + 1}`);
-                    return;
                 }
         
                 const baseUrl = 'https://anthelion.me/torrents.php?';
@@ -350,9 +341,6 @@
                             }
                         });
                         torrent_obj.info_text = infoTextParts.join(' / ').replace(/\/\s*\/\s*/g, ' / ');
-                    } else {
-                        console.error(`Title element not found for row ${index + 1}`);
-                        return;
                     }
         
                     torrent_obj.site = "ANT";
