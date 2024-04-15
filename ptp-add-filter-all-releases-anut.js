@@ -43,7 +43,7 @@
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "25% Freeleech", "Refundable", "Rewind", "Rescuable", "Seeding", "Pollination", "Reported", "None"];
+    let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "25% Freeleech", "Refundable", "Rewind", "Rescuable", "Seeding", "Pollination", "Reported", "double_upload", "None"];
     let qualities = ["SD", "480p", "576p", "720p", "1080p", "2160p"];
     let filters = {
         "trackers": trackers.map((e) => {
@@ -872,12 +872,18 @@
 
 
     const get_api_discount = (text) => {
-        if (text === "0%") return "None";
+        if (text === 0 || text === "0%") return "None";
+        else if (text === "25%") return "25% Freeleech";
+        else if (text === "50%") return "50% Freeleech";
+        else if (text === "75%") return "75% Freeleech";
         else if (text === "100%") return "Freeleech";
         else return text + " Freeleech";
     };
     const get_api_internal = (internal) => {
-        return internal === "1" ? true : false;
+        return !!internal; // Convert internal to boolean directly
+    };
+    const get_api_double_upload = (double_upload) => {
+        return double_upload === "double_upload"; // Parse as boolean
     };
 
     const get_api_torrent_objects = (tracker, json) => {
@@ -891,10 +897,17 @@
             tracker === "HUNO" ||
             tracker === "TIK"
         ) {
+            // Logging JSON data to check its structure
+            console.log("JSON data:", json);
+
             torrent_objs = json.data.map((element) => {
-                return {
+                // Logging element data to check its structure
+                console.log("Element:", element);
+
+                // Mapping element attributes to a torrent object
+                const torrentObj = {
                     size: parseInt(element.attributes.size / (1024 * 1024)),
-                    info_text: element.attributes.name,
+                    info_text: tracker === "HUNO" ? element.attributes.name.replace(/[()]/g, "") : element.attributes.name,
                     tracker: tracker,
                     site: tracker,
                     snatch: element.attributes.times_completed,
@@ -904,14 +917,24 @@
                     torrent_page: element.attributes.details_link,
                     discount: element.attributes.freeleech,
                     internal: element.attributes.internal,
+                    double_upload: element.attributes.double_upload,
                 };
+
+                // Logging the mapped torrent object
+                console.log("Torrent object:", torrentObj);
+
+                return torrentObj;
             });
         }
 
+        // Mapping additional properties and logging the final torrent objects
         torrent_objs = torrent_objs.map(e => {
-            return { ...e, "quality": get_torrent_quality(e), "discount": get_api_discount(e.discount), "internal": get_api_internal(e.internal)};
+            const mappedObj = { ...e, "quality": get_torrent_quality(e), "discount": get_api_discount(e.discount), "internal": get_api_internal(e.internal)};
+            console.log("Final torrent object:", mappedObj);
+            return mappedObj;
         });
 
+        // Returning the final torrent objects
         return torrent_objs;
     };
 
@@ -1150,7 +1173,14 @@
                 torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
             }
             if (torrent.site === "BLU") {
-                torrent.internal ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>") : false;
+                get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>") : false;
+                get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>double_upload</span>") : false;
+            }
+            if (torrent.site === "Aither") {
+                get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>") : false;
+            }
+            if (torrent.site === "HUNO") {
+                get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>") : false;
             }
             torrent.discount != "None" ? cln.querySelector(".torrent-info-link").innerHTML += ` / <span style='font-weight: bold;color:${get_discount_color(torrent.discount)};'>` + torrent.discount + "!</span>" : false;
 
@@ -1760,21 +1790,22 @@
 
 
     const get_sorted_discounts = (discounts) => {
-        // let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "25% Freeleech", "Refundable", "Rewind", "Rescuable", "Seeding", Pollination", "Reported", None"]
+        // let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "25% Freeleech", "Refundable", "Rewind", "Rescuable", "Seeding", Pollination", "Reported", "Double_Upload", "None"]
         let arr = [];
 
         discounts.forEach(q => {
             if (q === "None") arr.push({ "value": 0, "name": q });
             else if (q === "Seeding") arr.push({ "value": 1, "name": q });
-            else if (q === "Pollination") arr.push({ "value": 2, "name": q });
-            else if (q === "Rescuable") arr.push({ "value": 3, "name": q });
-            else if (q === "Rewind") arr.push({ "value": 4, "name": q });
-            else if (q === "Refundable") arr.push({ "value": 5, "name": q });
-            else if (q === "25% Freeleech") arr.push({ "value": 6, "name": q });
-            else if (q === "50% Freeleech") arr.push({ "value": 7, "name": q });
-            else if (q === "75% Freeleech") arr.push({ "value": 8, "name": q });
-            else if (q === "Freeleech") arr.push({ "value": 9, "name": q });
-            else if (q === "Repoorted") arr.push({ "value": 10, "name": q });
+            else if (q === "double_upload") arr.push({ "value": 2, "name": q });
+            else if (q === "Pollination") arr.push({ "value": 3, "name": q });
+            else if (q === "Rescuable") arr.push({ "value": 4, "name": q });
+            else if (q === "Rewind") arr.push({ "value": 5, "name": q });
+            else if (q === "Refundable") arr.push({ "value": 6, "name": q });
+            else if (q === "25% Freeleech") arr.push({ "value": 7, "name": q });
+            else if (q === "50% Freeleech") arr.push({ "value": 8, "name": q });
+            else if (q === "75% Freeleech") arr.push({ "value": 9, "name": q });
+            else if (q === "Freeleech") arr.push({ "value": 10, "name": q });
+            else if (q === "Repoorted") arr.push({ "value": 11, "name": q });
         });
 
         return arr.sort((a, b) => (a.value < b.value) ? 1 : -1).map(e => e.name);
