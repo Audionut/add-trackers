@@ -43,7 +43,7 @@
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "25% Freeleech", "Refundable", "Rewind", "Rescuable", "Pollination", "None"];
+    let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "25% Freeleech", "Refundable", "Rewind", "Rescuable", "Seeding", "Pollination", "Reported", "None"];
     let qualities = ["SD", "480p", "576p", "720p", "1080p", "2160p"];
     let filters = {
         "trackers": trackers.map((e) => {
@@ -152,6 +152,14 @@
         else if (tracker === "ANT") {
             const pollenLabel = div.querySelector(".torrent_table#torrent_details .torrent_label.tooltip.tl_pollen");
             const freeLabel = div.querySelector(".torrent_table#torrent_details .torrent_label.tooltip.tl_free");
+            const reportedLabel = div.querySelector(".torrent_table#torrent_details .torrent_label.tl_reported.tooltip");
+            const seedingLabel = div.querySelector(".torrent_table#torrent_details .torrent_label.tl_seeding.tooltip");
+
+            const infoTextParts = [];
+
+            if (seedingLabel !== null) {
+                infoTextParts.push(`<span style="color: #008000;">Seeding</span>`); // Green color for Seeding
+            }
 
             if (pollenLabel !== null) {
                 const labelText = pollenLabel.textContent.trim();
@@ -164,15 +172,23 @@
                 const pollenTime = pollenText.match(/\(([^)]+)\)/)[1];
                 // Remove brackets from pollenText
                 pollenText = pollenText.replace(/\(([^)]+)\)/, "").trim();
-                return `<span style="color: #FFFF00;">Pollination ${pollenText} (${pollenTime})</span>`;
-            } else if (freeLabel !== null) {
+                infoTextParts.push(`<span style="color: #FFFF00;">Pollination ${pollenText} (${pollenTime})</span>`);
+            }
+
+            if (freeLabel !== null) {
                 const labelText = freeLabel.textContent.trim();
                 // Extract time value from labelText
                 const freeTime = labelText.match(/\(([^)]+)\)/)[1];
                 // Remove brackets from labelText
                 const freeText = labelText.replace(/\(([^)]+)\)/, "").trim();
-                return `<span style="color: #32CD32;">Freeleech (${freeTime})</span>`;
+                infoTextParts.push(`<span style="color: #32CD32;">Freeleech (${freeTime})</span>`);
             }
+
+            if (reportedLabel !== null) {
+                infoTextParts.push(`<span style="color: #FF0000;">Reported</span>`);
+            }
+
+            return infoTextParts.join(' / ');
         }
         else if (tracker === "CG") {
             if ([...div.querySelectorAll("img")].find(e => e.alt === "100% bonus") != undefined) return "Freeleech";
@@ -339,10 +355,8 @@
                     const strongElements = titleElement.querySelectorAll("strong.torrent_label");
                     strongElements.forEach(strong => {
                         const text = strong.textContent.trim();
-                        if (strong.classList.contains("tl_notice") || strong.classList.contains("tl_seeding")) {
+                        if (strong.classList.contains("tl_notice")) {
                             infoTextParts.push(text);
-                        } else if (strong.classList.contains("tl_reported")) { // Add handling for tl_reported
-                            infoTextParts.push("Reported");
                         }
                     });
                     torrent_obj.info_text = infoTextParts.join(' / ').replace(/\/\s*\/\s*/g, ' / ');
