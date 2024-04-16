@@ -140,7 +140,7 @@
                 }
             }
         }
-        else if (["BLU", "Aither", "RFX", "OE", "TIK", "HUNO"].includes(tracker)) {
+        else if (["BLU", "Aither", "RFX", "OE", "TIK", "HUNO", "RTF"].includes(tracker)) {
             return true;
         }
         else if (tracker === "FL") {
@@ -252,7 +252,8 @@
             (tracker === "RFX") ||
             (tracker === "OE") ||
             (tracker === "HUNO") ||
-            (tracker === "TIK")
+            (tracker === "TIK") ||
+            (tracker === "RTF")
         )
             return true;
         else return false;
@@ -670,7 +671,7 @@
         else if (tracker === "BHD") {
             if (html.querySelectorAll(".bhd-meta-box").length === 0) return false;
             else return true;
-        } else if (tracker === "BLU" || tracker === "Aither" || tracker === "RFX" || tracker === "OE" || tracker === "HUNO" || tracker === "TIK") {
+        } else if (tracker === "BLU" || tracker === "Aither" || tracker === "RFX" || tracker === "OE" || tracker === "HUNO" || tracker === "TIK" || tracker === "RTF") {
             if (html.querySelector(".torrent-search--list__no-result") === null) return true;
             else return false;
         }
@@ -825,6 +826,14 @@
                     "&categories[0]=1&api_token=" +
                     HUNO_API_TOKEN;
             }
+            else if (tracker === "RTF") {
+                if (!RTF_API_TOKEN) {
+                    reject("RTF API token is missing.");
+                    return;
+                }
+                // Constructing the API query URL for RTF
+                api_query_url = `https://retroflix.club/api/torrent?imdbId=${imdb_id}&includingDead=1`;
+            }
             else if (tracker === "AvistaZ") {
                 query_url = "https://avistaz.to/movies?search=&imdb=" + imdb_id + "&view=lists";
             }
@@ -860,6 +869,15 @@
             }
             else {
                 fetch(api_query_url).then((res) => {
+                    headers: {
+                        'accept': 'application/json',
+                        'Authorization': `Bearer ${RTF_API_TOKEN}`
+                    }
+                }).then((res) => {
+                    if (!res.ok) {
+                        reject(`Failed to fetch data from ${tracker} API.`);
+                        return;
+                    }
                     res.json().then((data) => {
                         resolve(get_api_torrent_objects(tracker, data));
                     });
@@ -918,14 +936,21 @@
             tracker === "RFX" ||
             tracker === "OE" ||
             tracker === "HUNO" ||
-            tracker === "TIK"
+            tracker === "TIK" ||
+            tracker === "RTF"
         ) {
             // Logging JSON data to check its structure
             console.log("JSON data:", json);
 
-            torrent_objs = json.data.map((element) => {
-                // Logging element data to check its structure
-                console.log("Element:", element);
+            if (tracker === "HUNO") {
+                // Parsing the entire JSON response from HUNO for inspection
+                console.log("Parsed JSON from HUNO:", json);
+            }
+
+            json.data.forEach((element) => {
+                Object.keys(element.attributes).forEach(key => {
+                    console.log(`${key}:`, element.attributes[key]);
+                });
 
                 // Mapping element attributes to a torrent object
                 const torrentObj = {
@@ -947,7 +972,7 @@
                 // Logging the mapped torrent object
                 console.log("Torrent object:", torrentObj);
 
-                return torrentObj;
+                torrent_objs.push(torrentObj);
             });
         }
 
