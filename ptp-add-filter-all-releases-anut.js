@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers - other
 // @namespace    https://github.com/Audionut
-// @version      1.4.3
+// @version      1.4.2
 // @downloadURL  https://raw.githubusercontent.com/Audionut/add-trackers/main/ptp-add-filter-all-releases-anut.js
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
@@ -17,11 +17,11 @@
     /////////////////////////                                   USER OPTIONS                     ////////////////////////////////////
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    //  available trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "MTV", "ANT", "BLU"*, "HUNO", "RTF"*, TIK"*, "Aither"*, "RFX"*, "OE"*, "AvistaZ"**, "CinemaZ"**, "PHD"**
+    //  available trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "MTV", "ANT", "BLU"*, "HUNO", TIK"*, "Aither"*, "RFX"*, "OE"*, "AvistaZ"**, "CinemaZ"**, "PHD"**
     //  available tv_trackers: "BTN", "NBL", "TVV" - NOT WORKING YET
     //  if you don't need the results from some of these trackers, do not add them. the fewer you add, the faster the code execution.
     //  *requires API key     **performs two requests
-   const trackers = ["BHD", "CG", "FL", "HDB", "KG", "PTP", "MTV", "ANT", "BLU", "HUNO", "RTF", "TIK", "Aither", "RFX", "OE", "AvistaZ", "CinemaZ", "PHD"];
+   const trackers = ["BHD", "CG", "FL", "HDB", "KG", "PTP", "MTV", "ANT", "BLU", "HUNO", "TIK", "Aither", "RFX", "OE", "AvistaZ", "CinemaZ", "PHD"];
 
     const BLU_API_TOKEN = ""; // if you want to use BLU - find your api key here: https://blutopia.cc/users/YOUR_USERNAME_HERE/apikeys
     const TIK_API_TOKEN = ""; // if you want to use TIK - find your api key here: https://cinematik.net/users/YOUR_USERNAME_HERE/apikeys
@@ -29,7 +29,6 @@
     const HUNO_API_TOKEN = ""; // if you want to use HUNO - find your api key here: https://hawke.uno/users/YOUR_USERNAME_HERE/settings/security#api
     const RFX_API_TOKEN = ""; // if you want to use RFX - find your api key here: https:/reelflix.xyz/users/YOUR_USERNAME_HERE/apikeys
     const OE_API_TOKEN = ""; /// if you want to use OE - find your api key here: https:/onlyencodes.cc/users/YOUR_USERNAME_HERE/apikeys
-    const RTF_API_TOKEN = ""; // if you want to use RTF - get your api kere by running /api/ login command from https://retroflix.club/api/doc
 
     const hide_blank_links = true; // false = will also create blank [PL] [RP] links ||| true = will only show [DL] link
     const show_tracker_icon = true; // false = will show default green checked icon ||| true = will show tracker logo instead of checked icon
@@ -141,7 +140,7 @@
                 }
             }
         }
-        else if (["BLU", "Aither", "RFX", "OE", "TIK", "HUNO", "RTF"].includes(tracker)) {
+        else if (["BLU", "Aither", "RFX", "OE", "TIK", "HUNO"].includes(tracker)) {
             return true;
         }
         else if (tracker === "FL") {
@@ -253,8 +252,7 @@
             (tracker === "RFX") ||
             (tracker === "OE") ||
             (tracker === "HUNO") ||
-            (tracker === "TIK") ||
-            (tracker === "RTF")
+            (tracker === "TIK")
         )
             return true;
         else return false;
@@ -672,7 +670,7 @@
         else if (tracker === "BHD") {
             if (html.querySelectorAll(".bhd-meta-box").length === 0) return false;
             else return true;
-        } else if (tracker === "BLU" || tracker === "Aither" || tracker === "RFX" || tracker === "OE" || tracker === "HUNO" || tracker === "TIK" || tracker === "RTF") {
+        } else if (tracker === "BLU" || tracker === "Aither" || tracker === "RFX" || tracker === "OE" || tracker === "HUNO" || tracker === "TIK") {
             if (html.querySelector(".torrent-search--list__no-result") === null) return true;
             else return false;
         }
@@ -827,14 +825,6 @@
                     "&categories[0]=1&api_token=" +
                     HUNO_API_TOKEN;
             }
-            else if (tracker === "RTF") {
-                if (!RTF_API_TOKEN) {
-                    reject("RTF API token is missing.");
-                    return;
-                }
-                // Constructing the API query URL for RTF
-                api_query_url = `https://retroflix.club/api/torrent?imdbId=${imdb_id}&includingDead=1`;
-            }
             else if (tracker === "AvistaZ") {
                 query_url = "https://avistaz.to/movies?search=&imdb=" + imdb_id + "&view=lists";
             }
@@ -870,15 +860,6 @@
             }
             else {
                 fetch(api_query_url).then((res) => {
-                    headers: {
-                        'accept': 'application/json',
-                        'Authorization': `Bearer ${RTF_API_TOKEN}`
-                    }
-                }).then((res) => {
-                    if (!res.ok) {
-                        reject(`Failed to fetch data from ${tracker} API.`);
-                        return;
-                    }
                     res.json().then((data) => {
                         resolve(get_api_torrent_objects(tracker, data));
                     });
@@ -937,21 +918,14 @@
             tracker === "RFX" ||
             tracker === "OE" ||
             tracker === "HUNO" ||
-            tracker === "TIK" ||
-            tracker === "RTF"
+            tracker === "TIK"
         ) {
             // Logging JSON data to check its structure
             console.log("JSON data:", json);
 
-            if (tracker === "HUNO") {
-                // Parsing the entire JSON response from HUNO for inspection
-                console.log("Parsed JSON from HUNO:", json);
-            }
-
-            json.data.forEach((element) => {
-                Object.keys(element.attributes).forEach(key => {
-                    console.log(`${key}:`, element.attributes[key]);
-                });
+            torrent_objs = json.data.map((element) => {
+                // Logging element data to check its structure
+                console.log("Element:", element);
 
                 // Mapping element attributes to a torrent object
                 const torrentObj = {
@@ -973,7 +947,7 @@
                 // Logging the mapped torrent object
                 console.log("Torrent object:", torrentObj);
 
-                torrent_objs.push(torrentObj);
+                return torrentObj;
             });
         }
 
