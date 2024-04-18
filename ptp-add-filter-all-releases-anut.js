@@ -822,27 +822,46 @@
             }
             // console.log(query_url);
 
-            if (use_api_instead(tracker) === false) {
-                fetch_url(query_url)
-                    .then(result => {
-                        let movie_exist = is_movie_exist(tracker, result);
+            try {
+                if (use_api_instead(tracker) === false) {
+                    fetch_url(query_url)
+                        .then(result => {
+                            let movie_exist = is_movie_exist(tracker, result);
 
-                        if (movie_exist === false) {
-                            resolve([]);
-                        }
-                        else { // movie exist (not sure about exact size yet)
-                            resolve(get_torrent_objs(tracker, result)); // torrent objs doner, sorted by size.
-                        }
-                    });
-            }
-            else {
-                fetch(api_query_url).then((res) => {
-                    res.json().then((data) => {
-                        resolve(get_api_torrent_objects(tracker, data));
-                    });
-                }).catch(function () {
-                    resolve([]);
-                });
+                            if (movie_exist === false) {
+                                console.log(`No data found on ${tracker}`);
+                                resolve([]);
+                            }
+                            else {
+                                console.log(`Data fetched successfully from ${tracker}`);
+                                resolve(get_torrent_objs(tracker, result));
+                            }
+                        })
+                        .catch(error => {
+                            console.error(`Error fetching data from ${tracker}:`, error);
+                            resolve([]); // Resolve with empty array if there's an error
+                        });
+                }
+                else {
+                    fetch(api_query_url)
+                        .then(res => {
+                            if (!res.ok) {
+                                throw new Error(`Failed to fetch data from ${tracker}`);
+                            }
+                            return res.json();
+                        })
+                        .then(data => {
+                            console.log(`Data fetched successfully from ${tracker}`);
+                            resolve(get_api_torrent_objects(tracker, data));
+                        })
+                        .catch(error => {
+                            console.error(`Error fetching data from ${tracker}:`, error);
+                            resolve([]); // Resolve with empty array if there's an error
+                        });
+                }
+            } catch (error) {
+                console.error(`Error fetching data from ${tracker}:`, error);
+                resolve([]); // Resolve with empty array if there's an error
             }
         });
     };
