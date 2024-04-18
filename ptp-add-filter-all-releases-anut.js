@@ -146,19 +146,33 @@
         else if (tracker === "FL") {
             if ([...div.querySelectorAll("img")].find(e => e.alt === "FreeLeech") != undefined) return "Freeleech";
         }
-        else if (tracker === "MTV") { // only fixes display results, doesn't refer to any freeleech
+        else if (tracker === "MTV") {
+            const reportedLabel = div.querySelector(".reported");
+            const infoTextParts = [];
+
+            if (reportedLabel !== null) {
+                infoTextParts.push(`<span style="color: #FF0000;">Reported</span>`);
+            }
+
             let discount = [...div.querySelectorAll("i.fa-star")].find(i => {
                 return (
                     i.getAttribute("title") != null &&
                     i.getAttribute("title").includes("Free")
                 );
             });
-            if (discount === undefined) return "None";
-            else {
-                let discount_value = discount.getAttribute("title").split(" ")[0]; 
-                if (discount_value === "100%") return "Freeleech";
-                else return discount_value + " Freeleech";
+
+            if (discount === undefined) {
+                infoTextParts.push("None");
+            } else {
+                let discount_value = discount.getAttribute("title").split(" ")[0]; // returns 50%
+                if (discount_value === "100%") {
+                    infoTextParts.push("Freeleech");
+                } else {
+                    infoTextParts.push(discount_value + " Freeleech");
+                }
             }
+
+            return infoTextParts.join('');
         }
         else if (tracker === "ANT") {
             const pollenLabel = div.querySelector(".torrent_table#torrent_details .torrent_label.tooltip.tl_pollen");
@@ -316,7 +330,7 @@
                 infoText = infoText.replace(/\s+/g, ' ').trim();
 
                 const modifiedInfoText = infoText.replace(/\./g, ' ');
-                const isInternal = modifiedInfoText.includes("-hallowed") || modifiedInfoText.includes("-TEPES") || modifiedInfoText.includes("-END") || modifiedInfoText.includes("-WDYM");
+                const isInternal = infoText.includes("-hallowed") || infoText.includes("-TEPES") || infoText.includes("-E.N.D") || infoText.includes("-WDYM");
                 torrent_obj.info_text = modifiedInfoText;
                 torrent_obj.site = "MTV";
                 torrent_obj.download_link = [...d.querySelectorAll("a")].find(a => a.href.includes("torrents.php?action=")).href.replace("passthepopcorn.me", "morethantv.me");
