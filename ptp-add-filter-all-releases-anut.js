@@ -740,7 +740,9 @@
         return new Promise((resolve, reject) => {
             let query_url = "";
             let api_query_url = "";
-
+            let successMessage = '';
+            let errorMessage = '';
+            
             if (tracker === "PTP") {
                 query_url = "https://passthepopcorn.me/torrents.php?imdb=" + imdb_id;
             }
@@ -820,26 +822,28 @@
             else if (tracker === "KG") {
                 query_url = "https://karagarga.in/browse.php?sort=size&search=" + imdb_id + "&search_type=imdb&d=DESC";
             }
-            // console.log(query_url);
 
             try {
                 if (use_api_instead(tracker) === false) {
                     fetch_url(query_url)
                         .then(result => {
                             let movie_exist = is_movie_exist(tracker, result);
-
+    
                             if (movie_exist === false) {
-                                console.log(`No data found on ${tracker}`);
-                                resolve([]);
+                                errorMessage = `No data found on ${tracker}`;
+                                console.log(errorMessage);
+                                resolve({ success: false, error: errorMessage, data: [] });
                             }
                             else {
-                                console.log(`Data fetched successfully from ${tracker}`);
-                                resolve(get_torrent_objs(tracker, result));
+                                successMessage = `Data fetched successfully from ${tracker}`;
+                                console.log(successMessage);
+                                resolve({ success: true, message: successMessage, data: get_torrent_objs(tracker, result) });
                             }
                         })
                         .catch(error => {
-                            console.error(`Error fetching data from ${tracker}:`, error);
-                            resolve([]); // Resolve with empty array if there's an error
+                            errorMessage = `Error fetching data from ${tracker}: ${error}`;
+                            console.error(errorMessage);
+                            resolve({ success: false, error: errorMessage, data: [] });
                         });
                 }
                 else {
@@ -851,21 +855,23 @@
                             return res.json();
                         })
                         .then(data => {
-                            console.log(`Data fetched successfully from ${tracker}`);
-                            resolve(get_api_torrent_objects(tracker, data));
+                            successMessage = `Data fetched successfully from ${tracker}`;
+                            console.log(successMessage);
+                            resolve({ success: true, message: successMessage, data: get_api_torrent_objects(tracker, data) });
                         })
                         .catch(error => {
-                            console.error(`Error fetching data from ${tracker}:`, error);
-                            resolve([]); // Resolve with empty array if there's an error
+                            errorMessage = `Error fetching data from ${tracker}: ${error}`;
+                            console.error(errorMessage);
+                            resolve({ success: false, error: errorMessage, data: [] });
                         });
                 }
             } catch (error) {
-                console.error(`Error fetching data from ${tracker}:`, error);
-                resolve([]); // Resolve with empty array if there's an error
+                errorMessage = `Error fetching data from ${tracker}: ${error}`;
+                console.error(errorMessage);
+                resolve({ success: false, error: errorMessage, data: [] });
             }
         });
     };
-
 
     const get_api_discount = (text, refundable) => {
         let discountText = "";
