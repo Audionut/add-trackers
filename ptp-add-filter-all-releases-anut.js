@@ -929,13 +929,7 @@
             tracker === "HUNO" ||
             tracker === "TIK"
         ) {
-            // Logging JSON data to check its structure
-            console.log("JSON data:", json);
-
             torrent_objs = json.data.map((element) => {
-                // Logging element data to check its structure
-                console.log("Element:", element);
-
                 // Mapping element attributes to a torrent object
                 const torrentObj = {
                     size: parseInt(element.attributes.size / (1024 * 1024)),
@@ -953,22 +947,18 @@
                     refundable: element.attributes.refundable
                 };
 
-                // Logging the mapped torrent object
-                console.log("Torrent object:", torrentObj);
-
                 return torrentObj;
             });
+
+            // Mapping additional properties and logging the final torrent objects
+            torrent_objs = torrent_objs.map(e => {
+                const mappedObj = { ...e, "quality": get_torrent_quality(e), "discount": get_api_discount(e.discount, e.refundable), "internal": get_api_internal(e.internal), "Refundable": get_api_refundable(e.refundable)};
+                return mappedObj;
+            });
+
+            // Returning the final torrent objects
+            return torrent_objs;
         }
-
-        // Mapping additional properties and logging the final torrent objects
-        torrent_objs = torrent_objs.map(e => {
-            const mappedObj = { ...e, "quality": get_torrent_quality(e), "discount": get_api_discount(e.discount, e.refundable), "internal": get_api_internal(e.internal), "Refundable": get_api_refundable(e.refundable)};
-            console.log("Final torrent object:", mappedObj);
-            return mappedObj;
-        });
-
-        // Returning the final torrent objects
-        return torrent_objs;
     };
 
 
