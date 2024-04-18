@@ -751,38 +751,6 @@
             else if (tracker === "MTV") {
                 query_url = "https://www.morethantv.me/torrents/browse?page=1&order_by=time&order_way=desc&=Search&=Reset&=Search&searchtext=" + imdb_id + "&action=advanced&title=&sizeall=&sizetype=kb&sizerange=0.01&filelist=&autocomplete_toggle=on";
             }
-            else if (tracker === "BTN") {
-                query_url = "https://broadcasthe.net/torrents.php?action=advanced&imdb=" + imdb_id;
-                // Perform the HTTP request to the BTN advanced search page
-                fetch(query_url)
-                    .then(response => {
-                        // Check if the response indicates a successful redirection
-                        if (response.redirected) {
-                            // Redirected, so wait for the new page to load
-                            return fetch(response.url);
-                        } else {
-                            // Not redirected, handle the response as needed
-                            return response.text(); // Or return any other data you need
-                        }
-                    })
-                    .then(newResponse => {
-                        // Now you have the response from the redirected page
-                        // You can set an output based on this response
-                        // For example, check the URL or content of the page
-                        if (newResponse.url === "https://example.com/redirected-page") {
-                            // Set output based on the redirection
-                            // For example:
-                            console.log("Redirection successful");
-                        } else {
-                            // Handle other cases
-                            console.log("Redirection failed");
-                        }
-                    })
-                    .catch(error => {
-                        // Handle errors
-                        console.error("Error:", error);
-                    });
-            }
             else if (tracker === "ANT") {
                 query_url = "https://anthelion.me/torrents.php?searchstr=" + imdb_id +"&order_by=time&order_way=desc&group_results=1&action=basic&searchsubmit=1";
             }
