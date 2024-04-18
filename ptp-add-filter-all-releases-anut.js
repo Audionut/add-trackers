@@ -159,13 +159,9 @@
             const pollenLabel = div.querySelector(".torrent_table#torrent_details .torrent_label.tooltip.tl_pollen");
             const freeLabel = div.querySelector(".torrent_table#torrent_details .torrent_label.tooltip.tl_free");
             const reportedLabel = div.querySelector(".torrent_table#torrent_details .torrent_label.tl_reported.tooltip");
-            const seedingLabel = div.querySelector(".torrent_table#torrent_details .torrent_label.tl_seeding.tooltip");
+            const trumpableLabel = div.querySelector(".torrent_table#torrent_details .torrent_label.tl_trumpable.tooltip");
 
-            const infoTextParts = [];
-
-            if (seedingLabel !== null) {
-                infoTextParts.push(`<span style="color: #FFA500;">Seeding</span>`); // Orange color for Seeding
-            }
+            const labels = [];
 
             if (pollenLabel !== null) {
                 const labelText = pollenLabel.textContent.trim();
@@ -178,23 +174,26 @@
                 const pollenTime = pollenText.match(/\(([^)]+)\)/)[1];
                 // Remove brackets from pollenText
                 pollenText = pollenText.replace(/\(([^)]+)\)/, "").trim();
-                infoTextParts.push(`<span style="color: #FFFF00;">Pollination ${pollenText} (${pollenTime})</span>`);
+                labels.push(`<span style="color: #FFFF00;">Pollination ${pollenText} (${pollenTime})</span>`);
             }
 
             if (freeLabel !== null) {
                 const labelText = freeLabel.textContent.trim();
-                // Extract time value from labelText
                 const freeTime = labelText.match(/\(([^)]+)\)/)[1];
-                // Remove brackets from labelText
                 const freeText = labelText.replace(/\(([^)]+)\)/, "").trim();
-                infoTextParts.push(`<span style="color: #32CD32;">Freeleech (${freeTime})</span>`);
+                labels.push(`<span style="color: #32CD32;">Freeleech (${freeTime})</span>`);
             }
 
             if (reportedLabel !== null) {
-                infoTextParts.push(`<span style="color: #FF0000;">Reported</span>`);
+                labels.push(`<span style="color: #FF0000;">Reported</span>`);
             }
 
-            return infoTextParts.join(' / ');
+            if (trumpableLabel !== null) {
+                labels.push(`<span style="color: #FF0000;">Trumpable</span>`);
+            }
+
+            // Return concatenated labels or a default value if no labels are found
+            return labels.length > 0 ? labels.join(' / ') : "None";
         }
         else if (tracker === "CG") {
             if ([...div.querySelectorAll("img")].find(e => e.alt === "100% bonus") != undefined) return "Freeleech";
@@ -389,6 +388,8 @@
                     torrent_obj.leech = parseInt(d.querySelector("td:nth-child(5)").textContent);
                     torrent_obj.torrent_page = torrentPageUrl;
                     torrent_obj.discount = get_discount_text(d, tracker);
+                    const elements = d.querySelectorAll('strong.torrent_label.tl_seeding.tooltip');
+                    torrent_obj.status = elements.length > 0 ? 'seeding' : 'default';
 
                     torrent_objs.push(torrent_obj);
                 }
