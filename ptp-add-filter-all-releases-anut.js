@@ -147,13 +147,19 @@
             if ([...div.querySelectorAll("img")].find(e => e.alt === "FreeLeech") != undefined) return "Freeleech";
         }
         else if (tracker === "MTV") {
-            const reportedLabel = div.querySelector(".reported");
-            const infoTextParts = [];
-
-            if (reportedLabel !== null) {
-                infoTextParts.push(`<span style="color: #FF0000;">Reported</span>`);
+            let discount = [...div.querySelectorAll("i.fa-star")].find(i => {
+                return (
+                    i.getAttribute("title") != null &&
+                    i.getAttribute("title").includes("Free")
+                );
+            });
+            //[...div.querySelectorAll("i.fa-star")].forEach(a => console.log(a));
+            if (discount === undefined) return "None";
+            else {
+                let discount_value = discount.getAttribute("title").split(" ")[0]; // returns 50%
+                if (discount_value === "100%") return "Freeleech";
+                else return discount_value + " Freeleech";
             }
-            return infoTextParts.join('');
         }
         else if (tracker === "ANT") {
             const pollenLabel = div.querySelector(".torrent_table#torrent_details .torrent_label.tooltip.tl_pollen");
@@ -322,7 +328,9 @@
                 torrent_obj.seed = parseInt(d.querySelector("td:nth-child(7)").textContent);
                 torrent_obj.leech = parseInt(d.querySelector("td:nth-child(8)").textContent);
                 torrent_obj.torrent_page = [...d.querySelectorAll("a.overlay_torrent")].find(a => a.href.includes("/torrents.php?id=")).href.replace("passthepopcorn.me", "morethantv.me");
-                //torrent_obj.status = "default"; // You need to extract status from the HTML
+                // Select all elements with the title attribute "Currently Seeding Torrent"
+                const titleElements = document.querySelectorAll('a[title="Currently Seeding Torrent"]');
+                torrent_obj.status = titleElements.length > 0 ? 'seeding' : 'default';
                 torrent_obj.discount = get_discount_text(d, tracker);
                 torrent_obj.internal = isInternal ? true : false;
                 //torrent_obj.exclusive = false; // You need to extract exclusive status from the HTML
