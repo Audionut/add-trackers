@@ -2,7 +2,6 @@
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut
 // @version      3.2.0-A
-// @downloadURL  https://raw.githubusercontent.com/Audionut/add-trackers/main/ptp-add-filter-all-releases-anut.js
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
