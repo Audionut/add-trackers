@@ -43,7 +43,7 @@
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "25% Freeleech", "Refundable", "Rewind", "Rescuable", "Seeding", "Pollination", "Reported", "DU", "None"];
+    let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "25% Freeleech", "Copper", "Bronze", "Silver", "Golden", "Refundable", "Rewind", "Rescuable", "Seeding", "Pollination", "Reported", "DU", "None"];
     let qualities = ["SD", "480p", "576p", "720p", "1080p", "2160p"];
     let filters = {
         "trackers": trackers.map((e) => {
@@ -828,12 +828,20 @@
                 discountText = "None";
             } else if (text === "25%") {
                 discountText = "25% Freeleech";
+            } else if (text === "Copper") {
+                discountText = "Copper";
             } else if (text === "50%") {
                 discountText = "50% Freeleech";
+            } else if (text === "Bronze") {
+                discountText = "Bronze";
             } else if (text === "75%") {
                 discountText = "75% Freeleech";
+            } else if (text === "Silver") {
+                discountText = "Silver";
             } else if (text === "100%") {
                 discountText = "Freeleech";
+            } else if (text === "Golden") {
+                discountText = "Golden";
             } else {
                 discountText = text + " Freeleech";
             }
@@ -879,7 +887,15 @@
                     leech: element.attributes.leechers,
                     download_link: element.attributes.download_link,
                     torrent_page: element.attributes.details_link,
-                    discount: element.attributes.freeleech,
+                    discount: (tracker === "TIK") ?
+                        (
+                            (element.attributes.freeleech === "75%") ? "Silver" :
+                            (element.attributes.freeleech === "50%") ? "Bronze" :
+                            (element.attributes.freeleech === "100%") ? "Golden" :
+                            (element.attributes.freeleech === "25%") ? "Copper" :
+                            element.attributes.freeleech
+                        ) :
+                        element.attributes.freeleech,
                     internal: element.attributes.internal,
                     double_upload: element.attributes.double_upload,
                     refundable: element.attributes.refundable
@@ -1757,10 +1773,14 @@
             else if (q === "Rewind") arr.push({ "value": 5, "name": q });
             else if (q === "Refundable") arr.push({ "value": 6, "name": q });
             else if (q === "25% Freeleech") arr.push({ "value": 7, "name": q });
-            else if (q === "50% Freeleech") arr.push({ "value": 8, "name": q });
-            else if (q === "75% Freeleech") arr.push({ "value": 9, "name": q });
-            else if (q === "Freeleech") arr.push({ "value": 10, "name": q });
-            else if (q === "Repoorted") arr.push({ "value": 11, "name": q });
+            else if (q === "Copper") arr.push({ "value": 8, "name": q });
+            else if (q === "50% Freeleech") arr.push({ "value": 9, "name": q });
+            else if (q === "Bronze") arr.push({ "value": 10, "name": q });
+            else if (q === "75% Freeleech") arr.push({ "value": 11, "name": q });
+            else if (q === "Silver") arr.push({ "value": 12, "name": q });
+            else if (q === "Freeleech") arr.push({ "value": 13, "name": q });
+            else if (q === "Golden") arr.push({ "value": 14, "name": q });
+            else if (q === "Reported") arr.push({ "value": 15, "name": q });
         });
 
         return arr.sort((a, b) => (a.value < b.value) ? 1 : -1).map(e => e.name);
