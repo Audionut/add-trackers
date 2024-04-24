@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut
-// @version      3.2.0-A
+// @version      3.2.1-A
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -42,7 +42,7 @@
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "25% Freeleech", "Copper", "Bronze", "Silver", "Golden", "Refundable", "Rewind", "Rescuable", "Seeding", "Pollination", "Reported", "DU", "None"];
+    let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "25% Freeleech", "Copper", "Bronze", "Silver", "Golden", "Refundable", "Rewind", "Rescuable", "Seeding", "Pollination", "Reported", "DU", "Featured", "Platinum", "Personal Release", "None"];
     let qualities = ["SD", "480p", "576p", "720p", "1080p", "2160p"];
     let filters = {
         "trackers": trackers.map((e) => {
@@ -853,6 +853,10 @@
         return !!internal; // Convert internal to boolean directly
     };
 
+    const get_api_personal_release = (personal_release) => {
+        return !!personal_release; // Convert internal to boolean directly
+    };
+
     const get_api_double_upload = (double_upload) => {
         if (double_upload === true) return "DU";
         else return false;
@@ -861,6 +865,16 @@
     const get_api_refundable = (refundable) => {
         if (refundable === true) return "Refundable";
         else return false;
+    };
+
+    const get_api_featured = (featured, tracker) => {
+        if (tracker === "TIK" && featured === true) {
+            return "Platinum";
+        } else if (featured === true) {
+            return "Featured";
+        } else {
+            return false;
+        }
     };
 
     const get_api_torrent_objects = (tracker, json) => {
@@ -895,9 +909,11 @@
                             element.attributes.freeleech
                         ) :
                         element.attributes.freeleech,
+                    featured: (tracker === "TIK" && element.attributes.featured === true) ? "Platinum" : element.attributes.featured,
                     internal: element.attributes.internal,
                     double_upload: element.attributes.double_upload,
-                    refundable: element.attributes.refundable
+                    refundable: element.attributes.refundable,
+                    personal_release: element.attributes.personal_release,
                 };
 
                 return torrentObj;
@@ -905,7 +921,7 @@
 
             // Mapping additional properties and logging the final torrent objects
             torrent_objs = torrent_objs.map(e => {
-                const mappedObj = { ...e, "quality": get_torrent_quality(e), "discount": get_api_discount(e.discount, e.refundable), "internal": get_api_internal(e.internal), "Refundable": get_api_refundable(e.refundable)};
+                const mappedObj = { ...e, "quality": get_torrent_quality(e), "discount": get_api_discount(e.discount, e.refundable), "internal": get_api_internal(e.internal), "Refundable": get_api_refundable(e.refundable), "Featured": get_api_featured(e.featured, tracker)};
                 return mappedObj;
             });
 
@@ -1151,10 +1167,14 @@
             if (torrent.site === "BLU" || torrent.site ==="Aither" || torrent.site ===  "RFX" || torrent.site ===  "OE" || torrent.site ===  "HUNO") {
                 get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #baaf92'>Internal</span>") : false;
                 get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #279d29'>DU</span>") : false;
+                get_api_featured(torrent.featured) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #997799'>Featured</span>") : false;
+                get_api_personal_release(torrent.personal_release) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #865BE9'>Personal Release</span>") : false;
             }
             if (torrent.site === "TIK") {
                 get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #baaf92'>Internal</span>") : false;
                 get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #3FB618'>Emerald</span>") : false;
+                get_api_featured(torrent.featured, torrent.site) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #26A69A'>Platinum</span>") : false;
+                get_api_personal_release(torrent.personal_release) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #865BE9'>Personal Release</span>") : false;
             }
             torrent.discount != "None" ? cln.querySelector(".torrent-info-link").innerHTML += ` / <span style='font-weight: bold;color:${get_discount_color(torrent.discount)};'>` + torrent.discount + "!</span>" : false;
 
@@ -1774,16 +1794,19 @@
             else if (q === "Pollination") arr.push({ "value": 3, "name": q });
             else if (q === "Rescuable") arr.push({ "value": 4, "name": q });
             else if (q === "Rewind") arr.push({ "value": 5, "name": q });
-            else if (q === "Refundable") arr.push({ "value": 6, "name": q });
-            else if (q === "25% Freeleech") arr.push({ "value": 7, "name": q });
-            else if (q === "Copper") arr.push({ "value": 8, "name": q });
-            else if (q === "50% Freeleech") arr.push({ "value": 9, "name": q });
-            else if (q === "Bronze") arr.push({ "value": 10, "name": q });
-            else if (q === "75% Freeleech") arr.push({ "value": 11, "name": q });
-            else if (q === "Silver") arr.push({ "value": 12, "name": q });
-            else if (q === "Freeleech") arr.push({ "value": 13, "name": q });
-            else if (q === "Golden") arr.push({ "value": 14, "name": q });
-            else if (q === "Reported") arr.push({ "value": 15, "name": q });
+            else if (q === "Personal Release") arr.push({ "value": 6, "name": q });
+            else if (q === "Featured") arr.push({ "value": 7, "name": q });
+            else if (q === "Platinum") arr.push({ "value": 8, "name": q });
+            else if (q === "Refundable") arr.push({ "value": 9, "name": q });
+            else if (q === "25% Freeleech") arr.push({ "value": 10, "name": q });
+            else if (q === "Copper") arr.push({ "value": 11, "name": q });
+            else if (q === "50% Freeleech") arr.push({ "value": 12, "name": q });
+            else if (q === "Bronze") arr.push({ "value": 13, "name": q });
+            else if (q === "75% Freeleech") arr.push({ "value": 14, "name": q });
+            else if (q === "Silver") arr.push({ "value": 15, "name": q });
+            else if (q === "Freeleech") arr.push({ "value": 16, "name": q });
+            else if (q === "Golden") arr.push({ "value": 17, "name": q });
+            else if (q === "Reported") arr.push({ "value": 18, "name": q });
         });
 
         return arr.sort((a, b) => (a.value < b.value) ? 1 : -1).map(e => e.name);
