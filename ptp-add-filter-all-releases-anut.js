@@ -98,14 +98,6 @@
 
     get_default_doms();
 
-    const is_it_miniseries = () => {
-        if ([...document.querySelectorAll("span.basic-movie-list__torrent-edition__main")].some(d => d.textContent.includes("Miniseries"))) {
-                return "Miniseries";
-            } else {
-                return "Not included";
-            }
-    };
-
     function insertAfter(newNode, referenceNode) {
         referenceNode.parentNode.insertBefore(newNode, referenceNode.nextSibling);
     }
@@ -785,6 +777,7 @@
                             }
                             else {
                                 console.log(`Data fetched successfully from ${tracker}`);
+                                console.log("Fetched data:", result); // Log the fetched data
                                 resolve(get_torrent_objs(tracker, result));
                             }
                         })
@@ -803,6 +796,7 @@
                         })
                         .then(data => {
                             console.log(`Data fetched successfully from ${tracker}`);
+                            console.log("Fetched data:", data); // Log the fetched data
                             resolve(get_api_torrent_objects(tracker, data));
                         })
                         .catch(error => {
@@ -929,7 +923,6 @@
             return torrent_objs;
         }
     };
-
 
     const get_filtered_torrents = (quality) => {
         let all_trs = [...document.querySelectorAll("tr.group_torrent")];
