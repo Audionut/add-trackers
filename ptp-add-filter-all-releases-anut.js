@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut
-// @version      3.2.2-A
+// @version      3.2.3-A
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -16,12 +16,12 @@
     /////////////////////////                                   USER OPTIONS                     ////////////////////////////////////
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    //  available trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "MTV", "ANT", "BLU"*, "HUNO"*, TIK"*, "Aither"*, "RFX"*, "OE"*, "AvistaZ"**, "CinemaZ"**, "PHD"**
+    //  available trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "MTV", "ANT", "BTN", "BLU"*, "HUNO"*, TIK"*, "Aither"*, "RFX"*, "OE"*, "AvistaZ"**, "CinemaZ"**, "PHD"**
     //  if you don't need the results from some of these trackers, do not add them. the fewer you add, the faster the code execution.
     //  remove tracker that you do not have access too.
     //  *requires API key     **performs two requests
     //  requires each tracker to be logged in with the same browser session (and container type if using multi-account containers).
-   const trackers = ["BHD", "CG", "FL", "HDB", "KG", "PTP", "MTV", "ANT", "BLU", "HUNO", "TIK", "Aither", "RFX", "OE", "AvistaZ", "CinemaZ", "PHD"];
+   const trackers = ["BHD", "CG", "FL", "HDB", "KG", "PTP", "MTV", "ANT", "BTN", "BLU", "HUNO", "TIK", "Aither", "RFX", "OE", "AvistaZ", "CinemaZ", "PHD"];
 
     const BLU_API_TOKEN = ""; // if you want to use BLU - find your api key here: https://blutopia.cc/users/YOUR_USERNAME_HERE/apikeys
     const TIK_API_TOKEN = ""; // if you want to use TIK - find your api key here: https://cinematik.net/users/YOUR_USERNAME_HERE/apikeys
@@ -137,6 +137,20 @@
         else if (tracker === "FL") {
             if ([...div.querySelectorAll("img")].find(e => e.alt === "FreeLeech") != undefined) return "Freeleech";
         }
+        else if (tracker === "BTN") {
+                let discount = [...div.querySelectorAll("i.fa-star")].find(i => {
+                    return (
+                        i.getAttribute("title") != null &&
+                        i.getAttribute("title").includes("Free")
+                    );
+                });
+                if (discount === undefined) return "None";
+                else {
+                    let discount_value = discount.getAttribute("title").split(" ")[0]; // This does nothing except removed 'undefined' from the displayed results.
+                    if (discount_value === "100%") return "Freeleech";
+                    else return discount_value + " Freeleech";
+                }
+        }
         else if (tracker === "MTV") {
             const reportedLabel = div.querySelector(".reported");
             const infoTextParts = [];
@@ -155,7 +169,7 @@
             if (discount === undefined) {
                 infoTextParts.push("None");
             } else {
-                let discount_value = discount.getAttribute("title").split(" ")[0]; // returns 50%
+                let discount_value = discount.getAttribute("title").split(" ")[0]; // This does nothing except removed 'undefined' from the displayed results.
                 if (discount_value === "100%") {
                     infoTextParts.push("Freeleech");
                 } else {
@@ -249,6 +263,7 @@
         else if (tracker === "MTV") return "https://www.morethantv.me/favicon.ico";
         else if (tracker === "ANT") return "https://anthelion.me/favicon.ico";
         else if (tracker === "HUNO") return "https://hawke.uno/favicon.ico";
+        else if (tracker === "BTN") return "https://broadcasthe.net/favicon.ico";
     };
 
 
@@ -292,6 +307,74 @@
                 torrent_obj.internal = d.querySelector(".tag.internal") ? true : false;
                 torrent_obj.exclusive = d.querySelector(".tag.exclusive") ? true : false;
                 torrent_objs.push(torrent_obj);
+            });
+        }
+        else if (tracker === "BTN") {
+            html.querySelector(".torrent_table > tbody:nth-child(2)").querySelectorAll("tr[style='border-top: none;']").forEach((d) => {
+
+                // BTN has differing layouts for the top torrent compared to the other torrents. This is the top torrent.
+                if (d.querySelectorAll("td")[2].textContent.includes("GB")) {
+                  let torrent_obj = {};
+                    let size = d.querySelectorAll("td")[2].textContent;
+
+                    if (size.includes("GB")) {
+                        size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // MB
+                    }
+                    else if (size.includes("MB")) size = parseInt(parseFloat(size.split("MB")[0]));
+
+                    torrent_obj.size = size;
+                    torrent_obj.info_text = Array.from(d.querySelector("td:nth-child(2)").querySelectorAll("span"))
+                        .map(span => span.textContent.trim())
+                        .filter(text => !text.includes("Internal"))
+                        .filter(text => !text.includes("["))
+                        .filter(text => !text.includes("DL") || text.includes("WEB-DL"))
+                        .filter(text => !text.includes("]"))
+                        .join(" ");
+                    torrent_obj.site = "BTN";
+                    torrent_obj.download_link = d.querySelector("a[title='Download']").href.replace("passthepopcorn.me", "broadcasthe.net");
+                    torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(3)").textContent);
+                    torrent_obj.seed = parseInt(d.querySelector("td:nth-child(4)").textContent);
+                    torrent_obj.leech = parseInt(d.querySelector("td:nth-child(5)").textContent);
+                    torrent_obj.torrent_page = [...d.querySelectorAll("a")].find(a => a.href.includes("torrentid=")).href.replace("passthepopcorn.me", "broadcasthe.net");
+                    torrent_obj.status = d.querySelectorAll("span.internal").length > 0 ? "seeding" : "default";
+                    torrent_obj.discount = get_discount_text(d, tracker);
+                    torrent_obj.internal = Array.from(d.querySelector("td:nth-child(2)").querySelectorAll("span"))
+                                          .map(span => span.textContent.trim())
+                                          .some(text => text.includes("Internal"));
+                    torrent_objs.push(torrent_obj);
+                }
+
+                // Layout for other torrents
+                if (d.querySelectorAll("td")[1].textContent.includes("GB")) {
+                  let torrent_obj = {};
+                    let size = d.querySelectorAll("td")[1].textContent;
+
+                    if (size.includes("GB")) {
+                        size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // MB
+                    }
+                    else if (size.includes("MB")) size = parseInt(parseFloat(size.split("MB")[0]));
+
+                    torrent_obj.size = size;
+                    torrent_obj.info_text = Array.from(d.querySelector("td:nth-child(1)").querySelectorAll("span"))
+                        .map(span => span.textContent.trim())
+                        .filter(text => !text.includes("Internal"))
+                        .filter(text => !text.includes("["))
+                        .filter(text => !text.includes("DL") || text.includes("WEB-DL"))
+                        .filter(text => !text.includes("]"))
+                        .join(" ");
+                    torrent_obj.site = "BTN";
+                    torrent_obj.download_link = d.querySelector("a[title='Download']").href.replace("passthepopcorn.me", "broadcasthe.net");
+                    torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(2)").textContent);
+                    torrent_obj.seed = parseInt(d.querySelector("td:nth-child(3)").textContent);
+                    torrent_obj.leech = parseInt(d.querySelector("td:nth-child(4)").textContent);
+                    torrent_obj.torrent_page = [...d.querySelectorAll("a")].find(a => a.href.includes("torrentid=")).href.replace("passthepopcorn.me", "broadcasthe.net");
+                    torrent_obj.status = d.querySelectorAll("span.internal").length > 0 ? "seeding" : "default";
+                    torrent_obj.discount = get_discount_text(d, tracker);
+                    torrent_obj.internal = Array.from(d.querySelector("td:nth-child(1)").querySelectorAll("span"))
+                                          .map(span => span.textContent.trim())
+                                          .some(text => text.includes("Internal"));
+                    torrent_objs.push(torrent_obj);
+                }
             });
         }
         else if (tracker === "MTV") {
@@ -343,9 +426,6 @@
 
                                 // Only push to torrent_objs if it passes the "SxxExx" check
                                 torrent_objs.push(torrent_obj);
-                            } else {
-                                // If the inner text contains the pattern, skip further processing
-                                console.log("Skipping torrent due to 'SxxExx' pattern:", infoText);
                             }
                         } else {
                             console.log("Skipping torrent due to missing info text");
@@ -493,9 +573,6 @@
 
                             // Push the fully processed torrent object
                             torrent_objs.push(torrent_obj);
-                        } else {
-                            // If the info text contains the pattern, skip processing
-                            console.log("Skipping torrent due to 'SxxExx' pattern:", infoText);
                         }
                     } catch (error) {
                         console.error("An error occurred while extracting info text:", error);
@@ -695,6 +772,10 @@
             if (html.querySelector("#resultsarea").textContent.includes("Nothing here!")) return false;
             else return true;
         }
+        else if (tracker === "BTN") {
+            if (html.querySelector(".thin").textContent.includes("Error 404")) return false;
+            else return true;
+        }
         else if (tracker === "MTV") {
             if (html.querySelector(".numsearchresults").textContent.includes("0 results")) return false;
             else return true;
@@ -773,6 +854,9 @@
             else if (tracker === "HDB") {
                 //query_url = "https://hdbits.org/browse.php?c3=1&c1=1&c2=1&tagsearchtype=or&imdb=" + mov.imdb_id + "&sort=size&h=8&d=DESC"
                 query_url = "https://hdbits.org/browse.php?c3=1&c8=1&c1=1&c4=1&c5=1&c2=1&c7=1&descriptions=0&season_packs=0&from=&to=&imdbgt=0&imdblt=10&imdb=" + imdb_id + "&sort=size&h=8&d=DESC";
+            }
+            else if (tracker === "BTN") {
+                query_url = "https://broadcasthe.net/torrents.php?action=advanced&imdb=" + imdb_id;
             }
             else if (tracker === "MTV") {
                 query_url = "https://www.morethantv.me/torrents/browse?page=1&order_by=time&order_way=desc&=Search&=Reset&=Search&searchtext=" + imdb_id + "&action=advanced&title=&sizeall=&sizetype=kb&sizerange=0.01&filelist=&autocomplete_toggle=on";
@@ -1001,7 +1085,6 @@
                     return mappedObj;
                 } else {
                     // If the info text contains the pattern, skip further processing
-                    console.log("Skipping torrent due to 'SxxExx' pattern:", infoText);
                     return null; // Return null to filter out this torrent object
                 }
             }).filter(obj => obj !== null); // Filter out the null objects (skipped torrents)
@@ -1240,6 +1323,9 @@
             if (torrent.site === "HDB") {
                 torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
                 torrent.exclusive ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #a14989'>Exclusive</span>" : false;
+            }
+            if (torrent.site === "BTN") {
+                torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #00FF00'>Internal</span>" : false;
             }
             if (torrent.site === "MTV") {
                 torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
