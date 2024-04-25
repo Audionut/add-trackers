@@ -716,7 +716,7 @@
                 api_query_url =
                     "https://blutopia.cc/api/torrents/filter?imdbId=" +
                     imdb_id.split("tt")[1] +
-                    "&categories[0]=1&api_token=" +
+                    "&categories[0]=1&categories[1]=2&categories[2]=3&api_token=" +
                     BLU_API_TOKEN;
             }
             else if (tracker === "TIK") {
@@ -730,7 +730,7 @@
                 api_query_url =
                     "https://aither.cc/api/torrents/filter?imdbId=" +
                     imdb_id.split("tt")[1] +
-                    "&categories[0]=1&api_token=" +
+                    "&categories[0]=1&categories[1]=2&api_token=" +
                     AITHER_API_TOKEN;
             }
             else if (tracker === "RFX") {
@@ -751,7 +751,7 @@
                 api_query_url =
                     "https://hawke.uno/api/torrents/filter?imdbId=" +
                     imdb_id.split("tt")[1] +
-                    "&categories[0]=1&api_token=" +
+                    "&categories[0]=2&categories[1]=1&api_token=" +
                     HUNO_API_TOKEN;
             }
             else if (tracker === "AvistaZ") {
