@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut
-// @version      3.2.1-A
+// @version      3.2.2-A
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -295,47 +295,92 @@
             });
         }
         else if (tracker === "MTV") {
-            html.querySelector("#torrent_table > tbody").querySelectorAll("tr:not(.colhead)").forEach((d) => {
-                let torrent_obj = {};
-                let size = d.querySelectorAll("td")[4].textContent;
+            try {
+                html.querySelector("#torrent_table > tbody").querySelectorAll("tr:not(.colhead)").forEach((d) => {
+                    let torrent_obj = {};
 
-                if (size.includes("GiB")) {
-                    size = parseInt(parseFloat(size.split("GiB")[0]) * 1024); // MB
-                }
-                else if (size.includes("MiB")) size = parseInt(parseFloat(size.split("MiB")[0]));
-                // Extracting data
-                torrent_obj.size = size;
-                const overlayTorrentLink = d.querySelector("a.overlay_torrent");
-                let infoText = overlayTorrentLink.innerText;
-                const spanElements = overlayTorrentLink.querySelectorAll('span');
+                    try {
+                        let sizeElement = d.querySelectorAll("td")[4];
+                        let size = null;
+                        if (sizeElement) {
+                            size = sizeElement.textContent;
+                            if (size.includes("GiB")) {
+                                size = parseInt(parseFloat(size.split("GiB")[0]) * 1024); // MB
+                            } else if (size.includes("MiB")) {
+                                size = parseInt(parseFloat(size.split("MiB")[0]));
+                            }
+                        }
+                        torrent_obj.size = size;
+                    } catch (error) {
+                        console.error("An error occurred while extracting size:", error);
+                        torrent_obj.size = null;
+                    }
 
-                // Remove forward slashes
-                infoText = infoText.replace(/\//g, '');
+                    try {
+                        const overlayTorrentLink = d.querySelector("a.overlay_torrent");
+                        let infoText = overlayTorrentLink ? overlayTorrentLink.innerText : "";
+                        if (infoText) {
+                            // Check if the inner text contains "SxxExx" where "xx" is not known beforehand
+                            if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
+                                // If the inner text does not contain the pattern, proceed with further processing
+                                // Remove forward slashes
+                                infoText = infoText.replace(/\//g, '');
 
-                spanElements.forEach(span => {
-                    const spanText = span.innerText || span.textContent;
-                    infoText = infoText.replace(spanText, '');
+                                const spanElements = overlayTorrentLink.querySelectorAll('span');
+
+                                spanElements.forEach(span => {
+                                    const spanText = span.innerText || span.textContent;
+                                    infoText = infoText.replace(spanText, '');
+                                });
+
+                                // Remove extra whitespaces
+                                infoText = infoText.replace(/\s+/g, ' ').trim();
+
+                                const modifiedInfoText = infoText.replace(/\./g, ' ');
+                                const isInternal = infoText.includes("-hallowed") || infoText.includes("-TEPES") || infoText.includes("-E.N.D") || infoText.includes("-WDYM");
+                                torrent_obj.info_text = modifiedInfoText;
+                                torrent_obj.internal = isInternal ? true : false;
+
+                                // Only push to torrent_objs if it passes the "SxxExx" check
+                                torrent_objs.push(torrent_obj);
+                            } else {
+                                // If the inner text contains the pattern, skip further processing
+                                console.log("Skipping torrent due to 'SxxExx' pattern:", infoText);
+                            }
+                        } else {
+                            console.log("Skipping torrent due to missing info text");
+                        }
+                    } catch (error) {
+                        console.error("An error occurred while extracting info text:", error);
+                    }
+
+                    try {
+                        torrent_obj.site = "MTV";
+                        torrent_obj.download_link = [...d.querySelectorAll("a")].find(a => a.href.includes("torrents.php?action=")).href.replace("passthepopcorn.me", "morethantv.me");
+                        torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(6)").textContent);
+                        torrent_obj.seed = parseInt(d.querySelector("td:nth-child(7)").textContent);
+                        torrent_obj.leech = parseInt(d.querySelector("td:nth-child(8)").textContent);
+                        torrent_obj.torrent_page = [...d.querySelectorAll("a.overlay_torrent")].find(a => a.href.includes("/torrents.php?id=")).href.replace("passthepopcorn.me", "morethantv.me");
+                        // Select all elements with the title attribute "Currently Seeding Torrent" - Not currently working for some reason.
+                        const titleElements = document.querySelectorAll('a[title="Currently Seeding Torrent"]');
+                        torrent_obj.status = titleElements.length > 0 ? 'seeding' : 'default';
+                        torrent_obj.discount = get_discount_text(d, tracker);
+                    } catch (error) {
+                        console.error("An error occurred while extracting other properties:", error);
+                        // Assign default or null values for these properties if needed
+                        torrent_obj.site = "MTV";
+                        torrent_obj.download_link = "";
+                        torrent_obj.snatch = 0;
+                        torrent_obj.seed = 0;
+                        torrent_obj.leech = 0;
+                        torrent_obj.torrent_page = "";
+                        torrent_obj.status = "default";
+                        torrent_obj.discount = "";
+                    }
                 });
-
-                // Remove extra whitespaces
-                infoText = infoText.replace(/\s+/g, ' ').trim();
-
-                const modifiedInfoText = infoText.replace(/\./g, ' ');
-                const isInternal = infoText.includes("-hallowed") || infoText.includes("-TEPES") || infoText.includes("-E.N.D") || infoText.includes("-WDYM");
-                torrent_obj.info_text = modifiedInfoText;
-                torrent_obj.site = "MTV";
-                torrent_obj.download_link = [...d.querySelectorAll("a")].find(a => a.href.includes("torrents.php?action=")).href.replace("passthepopcorn.me", "morethantv.me");
-                torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(6)").textContent);
-                torrent_obj.seed = parseInt(d.querySelector("td:nth-child(7)").textContent);
-                torrent_obj.leech = parseInt(d.querySelector("td:nth-child(8)").textContent);
-                torrent_obj.torrent_page = [...d.querySelectorAll("a.overlay_torrent")].find(a => a.href.includes("/torrents.php?id=")).href.replace("passthepopcorn.me", "morethantv.me");
-                // Select all elements with the title attribute "Currently Seeding Torrent" - Not currently working for some reason.
-                const titleElements = document.querySelectorAll('a[title="Currently Seeding Torrent"]');
-                torrent_obj.status = titleElements.length > 0 ? 'seeding' : 'default';
-                torrent_obj.discount = get_discount_text(d, tracker);
-                torrent_obj.internal = isInternal ? true : false;
-                torrent_objs.push(torrent_obj);
-            });
+            } catch (error) {
+                console.error("An error occurred while processing MTV tracker:", error);
+            }
         }
         else if (tracker === "ANT") {
             const rows = html.querySelector(".torrent_table#torrent_details > tbody").querySelectorAll("tr:not(.colhead_dark):not(.sortGroup)");
@@ -401,30 +446,64 @@
             });
         }
         else if (tracker === "BHD") {
-            [...html.querySelector(".table-new").querySelectorAll("tr.bhd-sub-header-compact")].filter(e => !["Extras", "Specials"].includes(e.textContent.trim())).forEach((d) => {
-                let torrent_obj = {};
-                let size = [...d.querySelectorAll("td")].find(e => e.textContent.includes(" GiB") || e.textContent.includes(" MiB")).textContent.trim();
+            try {
+                [...html.querySelector(".table-new").querySelectorAll("tr.bhd-sub-header-compact")].forEach((d) => {
+                    let torrent_obj = {};
 
-                if (size.includes("GiB")) {
-                    size = parseInt(parseFloat(size.split(" ")[0]) * 1024); // MB
-                }
-                else if (size.includes("MiB")) size = parseInt(parseFloat(size.split(" ")[0]));
+                    try {
+                        let sizeElement = [...d.querySelectorAll("td")].find(e => e.textContent.includes(" GiB") || e.textContent.includes(" MiB"));
+                        let size = null;
+                        if (sizeElement) {
+                            size = sizeElement.textContent.trim();
+                            if (size.includes("GiB")) {
+                                size = parseInt(parseFloat(size.split(" ")[0]) * 1024); // MB
+                            } else if (size.includes("MiB")) {
+                                size = parseInt(parseFloat(size.split(" ")[0]));
+                            }
+                        }
+                        torrent_obj.size = size;
+                    } catch (error) {
+                        console.error("An error occurred while extracting size:", error);
+                        torrent_obj.size = null;
+                    }
 
-                torrent_obj.size = size;
-                torrent_obj.info_text = d.querySelector("a.text-compact").textContent.trim();
-                torrent_obj.site = "BHD";
-                torrent_obj.snatch = d.querySelector("a.torrent-completes").textContent.trim();
-                torrent_obj.seed = d.querySelector("a.torrent-seeders").textContent.trim();
-                torrent_obj.leech = d.querySelector("a.torrent-leechers").textContent.trim();
-                torrent_obj.download_link = [...d.querySelectorAll("a")].find(a => {
-                    return a.title === "Download Torrent";
-                }).href;
-                torrent_obj.torrent_page = d.querySelector("a").href;
-                torrent_obj.status = d.querySelectorAll("i.fa-seedling").length > 0 ? "seeding" : "default";
-                torrent_obj.discount = get_discount_text(d, tracker);
+                    try {
+                        let infoTextElement = d.querySelector("a.text-compact");
+                        const infoText = infoTextElement ? infoTextElement.textContent.trim() : "";
 
-                torrent_objs.push(torrent_obj);
-            });
+                        // Check if the info text contains "SxxExx" where "xx" is not known beforehand
+                        if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
+                            // If the info text does not contain the pattern, proceed with further processing
+                            torrent_obj.info_text = infoText;
+
+                            // Proceed with other property extractions
+                            torrent_obj.site = "BHD";
+                            let snatchElement = d.querySelector("a.torrent-completes");
+                            torrent_obj.snatch = snatchElement ? snatchElement.textContent.trim() : "";
+                            let seedElement = d.querySelector("a.torrent-seeders");
+                            torrent_obj.seed = seedElement ? seedElement.textContent.trim() : "";
+                            let leechElement = d.querySelector("a.torrent-leechers");
+                            torrent_obj.leech = leechElement ? leechElement.textContent.trim() : "";
+                            let downloadLinkElement = [...d.querySelectorAll("a")].find(a => a.title === "Download Torrent");
+                            torrent_obj.download_link = downloadLinkElement ? downloadLinkElement.href : "";
+                            let torrentPageElement = d.querySelector("a");
+                            torrent_obj.torrent_page = torrentPageElement ? torrentPageElement.href : "";
+                            torrent_obj.status = d.querySelectorAll("i.fa-seedling").length > 0 ? "seeding" : "default";
+                            torrent_obj.discount = get_discount_text(d, tracker);
+
+                            // Push the fully processed torrent object
+                            torrent_objs.push(torrent_obj);
+                        } else {
+                            // If the info text contains the pattern, skip processing
+                            console.log("Skipping torrent due to 'SxxExx' pattern:", infoText);
+                        }
+                    } catch (error) {
+                        console.error("An error occurred while extracting info text:", error);
+                    }
+                });
+            } catch (error) {
+                console.error("An error occurred while processing BHD tracker:", error);
+            }
         }
         else if (tracker === "FL") {
             html.querySelectorAll(".torrentrow").forEach((d) => {
@@ -702,7 +781,7 @@
                 query_url = "https://anthelion.me/torrents.php?searchstr=" + imdb_id +"&order_by=time&order_way=desc&group_results=1&action=basic&searchsubmit=1";
             }
             else if (tracker === "BHD") {
-                query_url = "https://beyond-hd.me/library/movies?activity=&q=" + imdb_id;
+                query_url = "https://beyond-hd.me/library?activity=&q=" + imdb_id;
             }
             else if (tracker === "BLU") {
                 api_query_url =
@@ -884,40 +963,48 @@
         ) {
             torrent_objs = json.data.map((element) => {
                 // Mapping element attributes to a torrent object
-                const torrentObj = {
-                    size: parseInt(element.attributes.size / (1024 * 1024)),
-                    info_text: tracker === "HUNO" ? element.attributes.name.replace(/[()]/g, "") : element.attributes.name,
-                    tracker: tracker,
-                    site: tracker,
-                    snatch: element.attributes.times_completed,
-                    seed: element.attributes.seeders,
-                    leech: element.attributes.leechers,
-                    download_link: element.attributes.download_link,
-                    torrent_page: element.attributes.details_link,
-                    discount: (tracker === "TIK") ?
-                        (
-                            (element.attributes.freeleech === "75%") ? "Silver" :
-                            (element.attributes.freeleech === "50%") ? "Bronze" :
-                            (element.attributes.freeleech === "100%") ? "Golden" :
-                            (element.attributes.freeleech === "25%") ? "Copper" :
-                            element.attributes.freeleech
-                        ) :
-                        element.attributes.freeleech,
-                    featured: (tracker === "TIK" && element.attributes.featured === true) ? "Platinum" : element.attributes.featured,
-                    internal: element.attributes.internal,
-                    double_upload: element.attributes.double_upload,
-                    refundable: element.attributes.refundable,
-                    personal_release: element.attributes.personal_release,
-                };
+                const infoText = tracker === "HUNO" ? element.attributes.name.replace(/[()]/g, "") : element.attributes.name;
 
-                return torrentObj;
-            });
+                // Check if the info text contains "SxxExx" where "xx" is not known beforehand
+                if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
+                    // If the info text does not contain the pattern, proceed with further processing
+                    const torrentObj = {
+                        size: parseInt(element.attributes.size / (1024 * 1024)),
+                        info_text: infoText,
+                        tracker: tracker,
+                        site: tracker,
+                        snatch: element.attributes.times_completed,
+                        seed: element.attributes.seeders,
+                        leech: element.attributes.leechers,
+                        download_link: element.attributes.download_link,
+                        torrent_page: element.attributes.details_link,
+                        discount: (tracker === "TIK") ?
+                            (
+                                (element.attributes.freeleech === "75%") ? "Silver" :
+                                (element.attributes.freeleech === "50%") ? "Bronze" :
+                                (element.attributes.freeleech === "100%") ? "Golden" :
+                                (element.attributes.freeleech === "25%") ? "Copper" :
+                                element.attributes.freeleech
+                            ) :
+                            element.attributes.freeleech,
+                        featured: (tracker === "TIK" && element.attributes.featured === true) ? "Platinum" : element.attributes.featured,
+                        internal: element.attributes.internal,
+                        double_upload: element.attributes.double_upload,
+                        refundable: element.attributes.refundable,
+                        personal_release: element.attributes.personal_release,
+                    };
 
-            // Mapping additional properties and logging the final torrent objects
-            torrent_objs = torrent_objs.map(e => {
-                const mappedObj = { ...e, "quality": get_torrent_quality(e), "discount": get_api_discount(e.discount, e.refundable), "internal": get_api_internal(e.internal), "Refundable": get_api_refundable(e.refundable), "Featured": get_api_featured(e.featured, tracker)};
-                return mappedObj;
-            });
+                    // Mapping additional properties and logging the final torrent objects
+                    const mappedObj = { ...torrentObj, "quality": get_torrent_quality(torrentObj), "discount": get_api_discount(torrentObj.discount, torrentObj.refundable), "internal": get_api_internal(torrentObj.internal), "Refundable": get_api_refundable(torrentObj.refundable), "Featured": get_api_featured(torrentObj.featured, tracker)};
+
+                    // Returning the final torrent object if it passes the "SxxExx" check
+                    return mappedObj;
+                } else {
+                    // If the info text contains the pattern, skip further processing
+                    console.log("Skipping torrent due to 'SxxExx' pattern:", infoText);
+                    return null; // Return null to filter out this torrent object
+                }
+            }).filter(obj => obj !== null); // Filter out the null objects (skipped torrents)
 
             // Returning the final torrent objects
             return torrent_objs;
