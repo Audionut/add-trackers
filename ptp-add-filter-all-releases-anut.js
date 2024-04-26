@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut
-// @version      3.2.3-A
+// @version      3.2.4-A
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -16,12 +16,12 @@
     /////////////////////////                                   USER OPTIONS                     ////////////////////////////////////
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    //  available trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "MTV", "ANT", "BTN", "BLU"*, "HUNO"*, TIK"*, "Aither"*, "RFX"*, "OE"*, "AvistaZ"**, "CinemaZ"**, "PHD"**
+    //  available trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "MTV", "ANT", "BTN", "BLU"*, "HUNO"*, TIK"*, "Aither"*, "FNP"*, "RFX"*, "OE"*, "AvistaZ"**, "CinemaZ"**, "PHD"**
     //  if you don't need the results from some of these trackers, do not add them. the fewer you add, the faster the code execution.
     //  remove tracker that you do not have access too.
     //  *requires API key     **performs two requests
     //  requires each tracker to be logged in with the same browser session (and container type if using multi-account containers).
-   const trackers = ["BHD", "CG", "FL", "HDB", "KG", "PTP", "MTV", "ANT", "BTN", "BLU", "HUNO", "TIK", "Aither", "RFX", "OE", "AvistaZ", "CinemaZ", "PHD"];
+   const trackers = ["BHD", "CG", "FL", "HDB", "KG", "PTP", "MTV", "ANT", "BTN", "BLU", "HUNO", "TIK", "Aither", "FNP", "RFX", "OE", "AvistaZ", "CinemaZ", "PHD"];
 
     const BLU_API_TOKEN = ""; // if you want to use BLU - find your api key here: https://blutopia.cc/users/YOUR_USERNAME_HERE/apikeys
     const TIK_API_TOKEN = ""; // if you want to use TIK - find your api key here: https://cinematik.net/users/YOUR_USERNAME_HERE/apikeys
@@ -29,6 +29,7 @@
     const HUNO_API_TOKEN = ""; // if you want to use HUNO - find your api key here: https://hawke.uno/users/YOUR_USERNAME_HERE/settings/security#api
     const RFX_API_TOKEN = ""; // if you want to use RFX - find your api key here: https:/reelflix.xyz/users/YOUR_USERNAME_HERE/apikeys
     const OE_API_TOKEN = ""; /// if you want to use OE - find your api key here: https:/onlyencodes.cc/users/YOUR_USERNAME_HERE/apikeys
+    const FNP_API_TOKEN = ""; // if you want to use FNP - find your api key here: https:/https://fearnopeer.com/users/YOUR_USERNAME_HERE/apikeys
 
     const hide_blank_links = true; // false = will also create blank [PL] [RP] links ||| true = will only show [DL] link
     const show_tracker_icon = true; // false = will show default green checked icon ||| true = will show tracker logo instead of checked icon
@@ -131,7 +132,7 @@
                 }
             }
         }
-        else if (["BLU", "Aither", "RFX", "OE", "TIK", "HUNO"].includes(tracker)) {
+        else if (["BLU", "Aither", "RFX", "OE", "TIK", "HUNO", "FNP"].includes(tracker)) {
             return true;
         }
         else if (tracker === "FL") {
@@ -264,6 +265,7 @@
         else if (tracker === "ANT") return "https://anthelion.me/favicon.ico";
         else if (tracker === "HUNO") return "https://hawke.uno/favicon.ico";
         else if (tracker === "BTN") return "https://broadcasthe.net/favicon.ico";
+        else if (tracker === "FNP") return "https://fearnopeer.com/favicon.ico";
     };
 
 
@@ -274,7 +276,8 @@
             (tracker === "RFX") ||
             (tracker === "OE") ||
             (tracker === "HUNO") ||
-            (tracker === "TIK")
+            (tracker === "TIK") ||
+            (tracker === "FNP")
         )
             return true;
         else return false;
@@ -787,7 +790,7 @@
         else if (tracker === "BHD") {
             if (html.querySelectorAll(".bhd-meta-box").length === 0) return false;
             else return true;
-        } else if (tracker === "BLU" || tracker === "Aither" || tracker === "RFX" || tracker === "OE" || tracker === "HUNO" || tracker === "TIK") {
+        } else if (tracker === "BLU" || tracker === "Aither" || tracker === "RFX" || tracker === "OE" || tracker === "HUNO" || tracker === "TIK" || trackr === "FNP") {
             if (html.querySelector(".torrent-search--list__no-result") === null) return true;
             else return false;
         }
@@ -908,6 +911,13 @@
                     imdb_id.split("tt")[1] +
                     "&categories[0]=2&categories[1]=1&api_token=" +
                     HUNO_API_TOKEN;
+            }
+            else if (tracker === "FNP") {
+                api_query_url =
+                    "https://fearnopeer.com/api/torrents/filter?imdbId=" +
+                    imdb_id.split("tt")[1] +
+                    "&categories[0]=1&categories[1]=2&categories[2]=6&api_token=" +
+                    FNP_API_TOKEN;
             }
             else if (tracker === "AvistaZ") {
                 query_url = "https://avistaz.to/movies?search=&imdb=" + imdb_id + "&view=lists";
@@ -1043,7 +1053,8 @@
             tracker === "RFX" ||
             tracker === "OE" ||
             tracker === "HUNO" ||
-            tracker === "TIK"
+            tracker === "TIK" ||
+            tracker === "FNP"
         ) {
             torrent_objs = json.data.map((element) => {
                 // Mapping element attributes to a torrent object
@@ -1330,7 +1341,7 @@
             if (torrent.site === "MTV") {
                 torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
             }
-            if (torrent.site === "BLU" || torrent.site ==="Aither" || torrent.site ===  "RFX" || torrent.site ===  "OE" || torrent.site ===  "HUNO") {
+            if (torrent.site === "BLU" || torrent.site ==="Aither" || torrent.site ===  "RFX" || torrent.site ===  "OE" || torrent.site ===  "HUNO" || torrent.site === "FNP") {
                 get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #baaf92'>Internal</span>") : false;
                 get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #279d29'>DU</span>") : false;
                 get_api_featured(torrent.featured) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #997799'>Featured</span>") : false;
