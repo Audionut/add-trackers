@@ -790,7 +790,7 @@
         else if (tracker === "BHD") {
             if (html.querySelectorAll(".bhd-meta-box").length === 0) return false;
             else return true;
-        } else if (tracker === "BLU" || tracker === "Aither" || tracker === "RFX" || tracker === "OE" || tracker === "HUNO" || tracker === "TIK" || trackr === "FNP") {
+        } else if (tracker === "BLU" || tracker === "Aither" || tracker === "RFX" || tracker === "OE" || tracker === "HUNO" || tracker === "TIK" || tracker === "FNP") {
             if (html.querySelector(".torrent-search--list__no-result") === null) return true;
             else return false;
         }
@@ -1082,7 +1082,7 @@
                                 element.attributes.freeleech
                             ) :
                             element.attributes.freeleech,
-                        featured: (tracker === "TIK" && element.attributes.featured === true) ? "Platinum" : element.attributes.featured,
+                        featured: element.attributes.featured,
                         internal: element.attributes.internal,
                         double_upload: element.attributes.double_upload,
                         refundable: element.attributes.refundable,
