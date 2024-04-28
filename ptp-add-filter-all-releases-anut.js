@@ -31,7 +31,7 @@
     const OE_API_TOKEN = ""; /// if you want to use OE - find your api key here: https:/onlyencodes.cc/users/YOUR_USERNAME_HERE/apikeys
     const FNP_API_TOKEN = ""; // if you want to use FNP - find your api key here: https:/https://fearnopeer.com/users/YOUR_USERNAME_HERE/apikeys
 
-    // Define how the DL like is displayed. Useful to clean the displayed output depending on stylsheet.
+    // Define how the DL link is displayed. Useful to clean the displayed output depending on stylsheet.
     let hideBlankLinks = "DL"; // Options are "DL" which only displays the "DL" link (like the old code). "Download" which displays "DOWNLOAD". "Spaced" which adds "DL" but spaced to fit left aligned style sheets.
 
     const show_tracker_icon = true; // false = will show default green checked icon ||| true = will show tracker logo instead of checked icon
@@ -928,6 +928,7 @@
 
                             if (movie_exist === false) {
                                 console.log(`No data found on ${tracker}`);
+                                console.log("Site reached successfully");
                                 resolve([]);
                             }
                             else {
@@ -950,8 +951,14 @@
                             return res.json();
                         })
                         .then(data => {
-                            console.log(`Data fetched successfully from ${tracker}`);
-                            console.log("Fetched data:", data); // Log the fetched data
+                            if (data.data.length === 0) {
+                                console.log(`Site reached successfully`);
+                                console.log(`No data found on ${tracker}`);
+                            }
+                            else {
+                                console.log(`Data fetched successfully from ${tracker}`);
+                                console.log("Fetched data:", data); // Log the fetched data
+                            }
                             resolve(get_api_torrent_objects(tracker, data));
                         })
                         .catch(error => {
