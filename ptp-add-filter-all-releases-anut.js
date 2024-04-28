@@ -31,7 +31,9 @@
     const OE_API_TOKEN = ""; /// if you want to use OE - find your api key here: https:/onlyencodes.cc/users/YOUR_USERNAME_HERE/apikeys
     const FNP_API_TOKEN = ""; // if you want to use FNP - find your api key here: https:/https://fearnopeer.com/users/YOUR_USERNAME_HERE/apikeys
 
-    const hide_blank_links = true; // false = will also create blank [PL] [RP] links ||| true = will only show [DL] link
+    // Define how the DL like is displayed. Useful to clean the displayed output depending on stylsheet.
+    let hideBlankLinks = "Spaced"; // Options are "DL" which only displays the "DL" link (like the old code). "Download" which displays "DOWNLOAD". "Spaced" which adds "DL" but spaced to fit left aligned style sheets.
+
     const show_tracker_icon = true; // false = will show default green checked icon ||| true = will show tracker logo instead of checked icon
     const show_tracker_name = true; // false = will hide tracker name ||| true = will show tracker name
     const hide_if_torrent_with_same_size_exists = false; // true = will hide torrents with the same file size as existing PTP ones
@@ -1342,8 +1344,29 @@
             if (torrent.status === "seeding") cln.querySelector(".torrent-info-link").className += " torrent-info-link--user-seeding";
 
             //cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] ` + get_simplified_title(torrent.info_text);
+            let elements = cln.querySelector(".basic-movie-list__torrent__action").querySelectorAll("a");
 
-            [...cln.querySelector(".basic-movie-list__torrent__action").querySelectorAll("a")].find(a => a.textContent === "DL").href = torrent.download_link;
+            if (elements.length > 0) {
+                if (hideBlankLinks === "DL") {
+                    let element = [...elements].find(a => a.textContent === " DL ");
+                    if (element) {
+                        element.href = torrent.download_link;
+                    }
+                } else if (hideBlankLinks === "Download") {
+                    let element = [...elements].find(a => a.textContent === " DOWNLOAD ");
+                    if (element) {
+                        element.href = torrent.download_link;
+                    }
+                } else if (hideBlankLinks === "Spaced") {
+                    let element = [...elements].find(a => a.textContent.trim() === " DL ");
+                    if (element) {
+                        element.style.paddingLeft = "49px";
+                        element.href = torrent.download_link;
+                    }
+                }
+            } else {
+                console.log("No elements found matching the criteria.");
+            }
 
             const ptp_format_size = get_ptp_format_size(torrent.size);
             if (hide_if_torrent_with_same_size_exists && existing_torrent_sizes.includes(ptp_format_size)) {
@@ -1840,14 +1863,35 @@
         span.style.marginLeft = "12px";
         span.textContent = "[";
 
-        let a = document.createElement("a");
-        a.href = "#";
-        a.className = "link_1";
-        a.textContent = "DL";
-        a.title = "Download";
+        if (hideBlankLinks === "DL") {
+          let a = document.createElement("a");
+          a.href = "#";
+          a.className = "link_1";
+          a.textContent = " DL ";
+          a.title = "Download";
+          span.appendChild(a); // Append the <a> element to the <span> element
+        } else if (hideBlankLinks === "Download") {
+          let aDownload = document.createElement("a"); // Create a new <a> element for "Download"
+          aDownload.href = "#";
+          aDownload.className = "link_1";
+          aDownload.textContent = " DOWNLOAD ";
+          aDownload.title = "Download";
+          span.appendChild(aDownload); // Append the <a> element to the <span> element
+        }
+          else if (hideBlankLinks === "Spaced") {
+            let aSpaced = document.createElement("a"); // Create a new <a> element for "Spaced"
+            aSpaced.href = "#";
+            aSpaced.className = "link_1";
+            aSpaced.title = "Download";
+            aSpaced.style.paddingLeft = "49px";
 
-        span.appendChild(a);
-        span.innerHTML += "]"; //////////// kekwait
+            let textNode = document.createTextNode("DL "); // Create a text node with "DL"
+            aSpaced.appendChild(textNode); // Append the text node to the <a> element
+
+            span.appendChild(aSpaced); // Append the <a> element to the <span> element
+          }
+
+        span.innerHTML += "]"; // Append closing bracket to the span element
 
         let a2 = document.createElement("a");
         a2.href = "#";
