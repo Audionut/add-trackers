@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.2.7-A
+// @version      3.2.8-A
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -43,8 +43,7 @@
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "40% Bonus", "30% Bonus", "25% Freeleech", "Copper", "Bronze", "Silver", "Golden", "Refundable", "Rewind", "Rescuable", "Seeding", "Pollination", "Reported", "DU", "Featured", "Platinum", "Personal Release", "bumpy bonus", "None"];
-    let bumpyBonusDiscount = null; // Initialize a separate variable for bumpy bonus discount
+    let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "40% Bonus", "30% Bonus", "25% Freeleech", "Copper", "Bronze", "Silver", "Golden", "Refundable", "Rewind", "Rescuable", "DU", "None"];
     let qualities = ["SD", "480p", "576p", "720p", "1080p", "2160p"];
     let filters = {
         "trackers": trackers.map((e) => {
@@ -156,40 +155,26 @@
                 }
         }
         else if (tracker === "MTV") {
-            const reportedLabel = div.querySelector(".reported");
-            const infoTextParts = [];
-
-            if (reportedLabel !== null) {
-                infoTextParts.push(`<span style="color: #FF0000;">Reported</span>`);
-            }
-
-            let discount = [...div.querySelectorAll("i.fa-star")].find(i => {
-                return (
-                    i.getAttribute("title") != null &&
-                    i.getAttribute("title").includes("Free")
-                );
-            });
-
-            if (discount === undefined || discounts === null) {
-                infoTextParts.push("None");
-            } else {
-                let discount_value = discount.getAttribute("title").split(" ")[0]; // This does nothing except removed 'undefined' from the displayed results.
-                if (discount_value === "100%") {
-                    infoTextParts.push("Freeleech");
-                } else {
-                    infoTextParts.push(discount_value + " Freeleech");
+                let discount = [...div.querySelectorAll("i.fa-star")].find(i => {
+                    return (
+                        i.getAttribute("title") != null &&
+                        i.getAttribute("title").includes("Free")
+                    );
+                });
+                if (discount === undefined || discount === null) {
+                    return "None";
                 }
-            }
-
-            return infoTextParts.join('');
+                else {
+                    let discount_value = discount.getAttribute("title").split(" ")[0]; // This does nothing except removed 'undefined' from the displayed results.
+                    if (discount_value === "100%") return "Freeleech";
+                    else return discount_value + " Freeleech";
+                }
         }
         else if (tracker === "ANT") {
             const pollenLabel = div.querySelector(".torrent_table#torrent_details .torrent_label.tooltip.tl_pollen");
             const freeLabel = div.querySelector(".torrent_table#torrent_details .torrent_label.tooltip.tl_free");
-            const reportedLabel = div.querySelector(".torrent_table#torrent_details .torrent_label.tl_reported.tooltip");
-            const trumpableLabel = div.querySelector(".torrent_table#torrent_details .torrent_label.tl_trumpable.tooltip");
 
-            const labels = [];
+            let label;
 
             if (pollenLabel !== null) {
                 const labelText = pollenLabel.textContent.trim();
@@ -202,41 +187,20 @@
                 const pollenTime = pollenText.match(/\(([^)]+)\)/)[1];
                 // Remove brackets from pollenText
                 pollenText = pollenText.replace(/\(([^)]+)\)/, "").trim();
-                labels.push(`<span style="color: #FFFF00;">Pollination ${pollenText} (${pollenTime})</span>`);
-            }
-
-            if (freeLabel !== null) {
+                label = "Pollination";
+            } else if (freeLabel !== null) {
                 const labelText = freeLabel.textContent.trim();
                 const freeTime = labelText.match(/\(([^)]+)\)/)[1];
                 const freeText = labelText.replace(/\(([^)]+)\)/, "").trim();
-                labels.push(`<span style="color: #32CD32;">Freeleech (${freeTime})</span>`);
+                label = "Freeleech";
             }
 
-            if (reportedLabel !== null) {
-                labels.push(`<span style="color: #FF0000;">Reported</span>`);
-            }
-
-            if (trumpableLabel !== null) {
-                labels.push(`<span style="color: #FF0000;">Trumpable</span>`);
-            }
-
-            // Return concatenated labels or a default value if no labels are found
-            return labels.length > 0 ? labels.join(' / ') : "None";
+            return label !== undefined ? label : "None";
         }
         else if (tracker === "CG") {
-            const discounts = [];
-
-            const match = [...div.querySelectorAll("img")].find(e => e.title && /^(\d+)% bumpy bonus$/.test(e.title));
-            if (match) {
-                const percentage = match.title.match(/^(\d+)% bumpy bonus$/)[1];
-                discounts.push(percentage + "% Bumpy Bonus");
-            }
-
-            if ([...div.querySelectorAll("img")].find(e => e.alt === "100% bonus") !== undefined) discounts.push("Freeleech");
-            if ([...div.querySelectorAll("img")].find(e => e.alt === "30% bonus") !== undefined) discounts.push("30% Bonus");
-            if ([...div.querySelectorAll("img")].find(e => e.alt === "40% bonus") !== undefined) discounts.push("40% Bonus");
-
-            return discounts.length > 0 ? discounts.join(" / ") : "None";
+            if ([...div.querySelectorAll("img")].find(e => e.alt === "100% bonus")) return "Freeleech";
+            else if ([...div.querySelectorAll("img")].find(e => e.alt === "30% bonus")) return "30% Bonus";
+            else if ([...div.querySelectorAll("img")].find(e => e.alt === "40% bonus")) return "40% Bonus";
         }
         else if (["AvistaZ", "CinemaZ", "PHD"].includes(tracker)) {
             const icons = div.querySelectorAll(".torrent-file > div > i");
@@ -459,10 +423,9 @@
                         torrent_obj.seed = parseInt(d.querySelector("td:nth-child(7)").textContent);
                         torrent_obj.leech = parseInt(d.querySelector("td:nth-child(8)").textContent);
                         torrent_obj.torrent_page = [...d.querySelectorAll("a.overlay_torrent")].find(a => a.href.includes("/torrents.php?id=")).href.replace("passthepopcorn.me", "morethantv.me");
-                        // Select all elements with the title attribute "Currently Seeding Torrent" - Not currently working for some reason.
-                        const titleElements = document.querySelectorAll('a[title="Currently Seeding Torrent"]');
-                        torrent_obj.status = titleElements.length > 0 ? 'seeding' : 'default';
+                        torrent_obj.status = d.querySelectorAll('a[title="Currently Seeding Torrent"]').length > 0 ? 'seeding' : 'default' ;
                         torrent_obj.discount = get_discount_text(d, tracker);
+                        torrent_obj.reported = d.querySelector(".reported") ? true : false;
                     } catch (error) {
                         console.error("An error occurred while extracting other properties:", error);
                         // Assign default or null values for these properties if needed
@@ -1359,6 +1322,7 @@
             }
             if (torrent.site === "MTV") {
                 torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
+                torrent.reported ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #FF0000'>Reported</span>" : false;
             }
             if (torrent.site === "BLU" || torrent.site ==="Aither" || torrent.site ===  "RFX" || torrent.site ===  "OE" || torrent.site ===  "HUNO" || torrent.site === "FNP") {
                 get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #baaf92'>Internal</span>") : false;
@@ -1983,30 +1947,22 @@
 
         discounts.forEach(q => {
             if (q === "None") arr.push({ "value": 0, "name": q });
-            else if (q === "Seeding") arr.push({ "value": 1, "name": q });
-            else if (q === "double_upload") arr.push({ "value": 2, "name": q });
-            else if (q === "Pollination") arr.push({ "value": 3, "name": q });
-            else if (q === "Rescuable") arr.push({ "value": 4, "name": q });
-            else if (q === "Rewind") arr.push({ "value": 5, "name": q });
-            else if (q === "Personal Release") arr.push({ "value": 6, "name": q });
-            else if (q === "Featured") arr.push({ "value": 7, "name": q });
-            else if (q === "Platinum") arr.push({ "value": 8, "name": q });
-            else if (q === "Refundable") arr.push({ "value": 9, "name": q });
-            else if (q === "25% Freeleech") arr.push({ "value": 10, "name": q });
-            else if (q === "Copper") arr.push({ "value": 11, "name": q });
-            else if (q === "30% Bonus") arr.push({ "value": 12, "name": q });
-            else if (q === "50% Freeleech") arr.push({ "value": 13, "name": q });
-            else if (q === "Bronze") arr.push({ "value": 14, "name": q });
-            else if (q === "75% Freeleech") arr.push({ "value": 15, "name": q });
-            else if (q === "Silver") arr.push({ "value": 16, "name": q });
-            else if (q === "Freeleech") arr.push({ "value": 17, "name": q });
-            else if (q === "Golden") arr.push({ "value": 18, "name": q });
-            else if (q === "Reported") arr.push({ "value": 19, "name": q });
-            else if (q.endsWith("Bumpy Bonus")) arr.push({ "value": 20, "name": q }); // Add a higher value for "Bumpy Bonus"
+            else if (q === "double_upload") arr.push({ "value": 1, "name": q });
+            else if (q === "Rescuable") arr.push({ "value": 2, "name": q });
+            else if (q === "Rewind") arr.push({ "value": 3, "name": q });
+            else if (q === "Refundable") arr.push({ "value": 4, "name": q });
+            else if (q === "25% Freeleech") arr.push({ "value": 5, "name": q });
+            else if (q === "Copper") arr.push({ "value": 6, "name": q });
+            else if (q === "30% Bonus") arr.push({ "value": 7, "name": q });
+            else if (q === "40% Bonus") arr.push({ "value": 8, "name": q });
+            else if (q === "50% Freeleech") arr.push({ "value": 9, "name": q });
+            else if (q === "Bronze") arr.push({ "value": 10, "name": q });
+            else if (q === "75% Freeleech") arr.push({ "value": 11, "name": q });
+            else if (q === "Silver") arr.push({ "value": 12, "name": q });
+            else if (q === "Freeleech") arr.push({ "value": 13, "name": q });
+            else if (q === "Golden") arr.push({ "value": 14, "name": q });
+            else if (q === "Pollination") arr.push({ "value": 15, "name": q });
         });
-
-        // Push bumpy bonus discount separately if it exists
-        if (bumpyBonusDiscount) arr.push({ "value": 21, "name": bumpyBonusDiscount });
 
         return arr.sort((a, b) => (a.value < b.value) ? 1 : -1).map(e => e.name);
     };
