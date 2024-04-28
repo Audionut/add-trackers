@@ -1,5 +1,9 @@
 TODO:
 
-Protect user variables from update;
-Clean MTV/ANT/UNO
-Determine if we're on a miniseries page and then run TV trackers.
+Protect user variables and run autoupdates:
+Fix the filter box:
+Fully gracious error handling with status pushed to page:
+Explore other API's:
+More sites:
+Cleaner BTN handling:
+Maybe a wiki to direct users for adding other sites:

@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
-// @namespace    https://github.com/Audionut
+// @namespace    https://github.com/Audionut/add-trackers
 // @version      3.2.6-A
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
