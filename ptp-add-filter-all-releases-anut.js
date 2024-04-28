@@ -43,7 +43,7 @@
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", , "40% Bonus", "30% Bonus", "25% Freeleech", "Copper", "Bronze", "Silver", "Golden", "Refundable", "Rewind", "Rescuable", "Seeding", "Pollination", "Reported", "DU", "Featured", "Platinum", "Personal Release", "bumpy bonus", "None"];
+    let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "40% Bonus", "30% Bonus", "25% Freeleech", "Copper", "Bronze", "Silver", "Golden", "Refundable", "Rewind", "Rescuable", "Seeding", "Pollination", "Reported", "DU", "Featured", "Platinum", "Personal Release", "bumpy bonus", "None"];
     let bumpyBonusDiscount = null; // Initialize a separate variable for bumpy bonus discount
     let qualities = ["SD", "480p", "576p", "720p", "1080p", "2160p"];
     let filters = {
@@ -146,7 +146,9 @@
                         i.getAttribute("title").includes("Free")
                     );
                 });
-                if (discount === undefined) return "None";
+                if (discount === undefined || discount === null) {
+                    return "None";
+                }
                 else {
                     let discount_value = discount.getAttribute("title").split(" ")[0]; // This does nothing except removed 'undefined' from the displayed results.
                     if (discount_value === "100%") return "Freeleech";
@@ -168,7 +170,7 @@
                 );
             });
 
-            if (discount === undefined) {
+            if (discount === undefined || discounts === null) {
                 infoTextParts.push("None");
             } else {
                 let discount_value = discount.getAttribute("title").split(" ")[0]; // This does nothing except removed 'undefined' from the displayed results.
@@ -234,7 +236,7 @@
             if ([...div.querySelectorAll("img")].find(e => e.alt === "30% bonus") !== undefined) discounts.push("30% Bonus");
             if ([...div.querySelectorAll("img")].find(e => e.alt === "40% bonus") !== undefined) discounts.push("40% Bonus");
 
-            return discounts.length > 0 ? [discounts.join(" / ")] : ["None"];
+            return discounts.length > 0 ? discounts.join(" / ") : "None";
         }
         else if (["AvistaZ", "CinemaZ", "PHD"].includes(tracker)) {
             const icons = div.querySelectorAll(".torrent-file > div > i");
@@ -1195,11 +1197,13 @@
 
 
     const get_ptp_format_size = (size) => {
+        if (size === null || size === undefined) {
+            return "N/A"; // or any default value you prefer
+        }
         if (size > 1024) { // GiB format
             return (size / 1024).toFixed(2) + " GiB";
-        }
-        else { // MiB format
-            return (size).toFixed(2) + " MiB";
+        } else { // MiB format
+            return size.toFixed(2) + " MiB";
         }
     };
 
