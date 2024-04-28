@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut
-// @version      3.2.5-A
+// @version      3.2.6-A
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -43,7 +43,8 @@
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "25% Freeleech", "Copper", "Bronze", "Silver", "Golden", "Refundable", "Rewind", "Rescuable", "Seeding", "Pollination", "Reported", "DU", "Featured", "Platinum", "Personal Release", "None"];
+    let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", , "40% Bonus", "30% Bonus", "25% Freeleech", "Copper", "Bronze", "Silver", "Golden", "Refundable", "Rewind", "Rescuable", "Seeding", "Pollination", "Reported", "DU", "Featured", "Platinum", "Personal Release", "bumpy bonus", "None"];
+    let bumpyBonusDiscount = null; // Initialize a separate variable for bumpy bonus discount
     let qualities = ["SD", "480p", "576p", "720p", "1080p", "2160p"];
     let filters = {
         "trackers": trackers.map((e) => {
@@ -221,7 +222,19 @@
             return labels.length > 0 ? labels.join(' / ') : "None";
         }
         else if (tracker === "CG") {
-            if ([...div.querySelectorAll("img")].find(e => e.alt === "100% bonus") != undefined) return "Freeleech";
+            const discounts = [];
+
+            const match = [...div.querySelectorAll("img")].find(e => e.title && /^(\d+)% bumpy bonus$/.test(e.title));
+            if (match) {
+                const percentage = match.title.match(/^(\d+)% bumpy bonus$/)[1];
+                discounts.push(percentage + "% Bumpy Bonus");
+            }
+
+            if ([...div.querySelectorAll("img")].find(e => e.alt === "100% bonus") !== undefined) discounts.push("Freeleech");
+            if ([...div.querySelectorAll("img")].find(e => e.alt === "30% bonus") !== undefined) discounts.push("30% Bonus");
+            if ([...div.querySelectorAll("img")].find(e => e.alt === "40% bonus") !== undefined) discounts.push("40% Bonus");
+
+            return discounts.length > 0 ? [discounts.join(" / ")] : ["None"];
         }
         else if (["AvistaZ", "CinemaZ", "PHD"].includes(tracker)) {
             const icons = div.querySelectorAll(".torrent-file > div > i");
@@ -614,8 +627,9 @@
             let ar1 = [...html.querySelectorAll("tr.prim")];
             let ar2 = [...html.querySelectorAll("tr.sec")];
             let ar3 = [...html.querySelectorAll("tr.torrenttable_usersnatched")];
+            let ar4 = [...html.querySelectorAll("tr.torrenttable_bumped")];
 
-            let combined_arr = ar1.concat(ar2).concat(ar3);
+            let combined_arr = ar1.concat(ar2).concat(ar3).concat(ar4);
 
             combined_arr.forEach((d) => {
                 let torrent_obj = {};
@@ -806,8 +820,9 @@
             let ar1 = [...html.querySelectorAll("tr.prim")];
             let ar2 = [...html.querySelectorAll("tr.even")];
             let ar3 = [...html.querySelectorAll("tr.torrenttable_usersnatched")];
+            let ar4 = [...html.querySelectorAll("tr.torrenttable_bumped")];
 
-            let combined_arr = ar1.concat(ar2).concat(ar3);
+            let combined_arr = ar1.concat(ar2).concat(ar3).concat(ar4);
 
             if (combined_arr.length > 0) return true; // it's different, pay attention !
             else return false;
@@ -1959,9 +1974,7 @@
         return arr.sort((a, b) => (a.value > b.value) ? 1 : -1).map(e => e.name);
     };
 
-
     const get_sorted_discounts = (discounts) => {
-        // let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "25% Freeleech", "Refundable", "Rewind", "Rescuable", "Seeding", Pollination", "Reported", "Double_Upload", "None"]
         let arr = [];
 
         discounts.forEach(q => {
@@ -1977,18 +1990,22 @@
             else if (q === "Refundable") arr.push({ "value": 9, "name": q });
             else if (q === "25% Freeleech") arr.push({ "value": 10, "name": q });
             else if (q === "Copper") arr.push({ "value": 11, "name": q });
-            else if (q === "50% Freeleech") arr.push({ "value": 12, "name": q });
-            else if (q === "Bronze") arr.push({ "value": 13, "name": q });
-            else if (q === "75% Freeleech") arr.push({ "value": 14, "name": q });
-            else if (q === "Silver") arr.push({ "value": 15, "name": q });
-            else if (q === "Freeleech") arr.push({ "value": 16, "name": q });
-            else if (q === "Golden") arr.push({ "value": 17, "name": q });
-            else if (q === "Reported") arr.push({ "value": 18, "name": q });
+            else if (q === "30% Bonus") arr.push({ "value": 12, "name": q });
+            else if (q === "50% Freeleech") arr.push({ "value": 13, "name": q });
+            else if (q === "Bronze") arr.push({ "value": 14, "name": q });
+            else if (q === "75% Freeleech") arr.push({ "value": 15, "name": q });
+            else if (q === "Silver") arr.push({ "value": 16, "name": q });
+            else if (q === "Freeleech") arr.push({ "value": 17, "name": q });
+            else if (q === "Golden") arr.push({ "value": 18, "name": q });
+            else if (q === "Reported") arr.push({ "value": 19, "name": q });
+            else if (q.endsWith("Bumpy Bonus")) arr.push({ "value": 20, "name": q }); // Add a higher value for "Bumpy Bonus"
         });
+
+        // Push bumpy bonus discount separately if it exists
+        if (bumpyBonusDiscount) arr.push({ "value": 21, "name": bumpyBonusDiscount });
 
         return arr.sort((a, b) => (a.value < b.value) ? 1 : -1).map(e => e.name);
     };
-
 
     const get_reduced_trackers = (doms) => {
         let lst = []; // default
