@@ -45,7 +45,7 @@
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "40% Bonus", "30% Bonus", "25% Freeleech", "Copper", "Bronze", "Silver", "Golden", "Refundable", "Rewind", "Rescuable", "DU", "None"];
+    let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "40% Bonus", "30% Bonus", "25% Freeleech", "Copper", "Bronze", "Silver", "Golden", "Refundable", "Rewind", "Rescuable", "None"];
     let qualities = ["SD", "480p", "576p", "720p", "1080p", "2160p"];
     let filters = {
         "trackers": trackers.map((e) => {
@@ -130,7 +130,7 @@
                 else {
                     let discount_value = discount.getAttribute("title").split(" ")[0]; // returns 50%
                     if (discount_value === "100%") return "Freeleech";
-                    else return discount_value + " Freeleech";
+                    else return discount_value + "Freeleech";
                 }
             }
         }
@@ -153,7 +153,7 @@
                 else {
                     let discount_value = discount.getAttribute("title").split(" ")[0]; // This does nothing except removed 'undefined' from the displayed results.
                     if (discount_value === "100%") return "Freeleech";
-                    else return discount_value + " Freeleech";
+                    else return discount_value + "Freeleech";
                 }
         }
         else if (tracker === "MTV") {
@@ -169,7 +169,7 @@
                 else {
                     let discount_value = discount.getAttribute("title").split(" ")[0]; // This does nothing except removed 'undefined' from the displayed results.
                     if (discount_value === "100%") return "Freeleech";
-                    else return discount_value + " Freeleech";
+                    else return discount_value + "Freeleech";
                 }
         }
         else if (tracker === "ANT") {
@@ -502,6 +502,7 @@
                     torrent_obj.leech = parseInt(d.querySelector("td:nth-child(5)").textContent);
                     torrent_obj.torrent_page = torrentPageUrl;
                     torrent_obj.discount = get_discount_text(d, tracker);
+                    torrent_obj.reported = d.querySelector(".torrent_table#torrent_details .torrent_label.tl_reported.tooltip") ? true : false;
                     const elements = d.querySelectorAll('strong.torrent_label.tl_seeding.tooltip');
                     torrent_obj.status = elements.length > 0 ? 'seeding' : 'default';
                     torrent_objs.push(torrent_obj);
@@ -928,7 +929,7 @@
 
                             if (movie_exist === false) {
                                 console.log(`No data found on ${tracker}`);
-                                console.log("Site reached successfully");
+                                console.log(`${tracker} reached successfully`);
                                 resolve([]);
                             }
                             else {
@@ -952,7 +953,7 @@
                         })
                         .then(data => {
                             if (data.data.length === 0) {
-                                console.log(`Site reached successfully`);
+                                console.log(`${tracker} reached successfully`);
                                 console.log(`No data found on ${tracker}`);
                             }
                             else {
@@ -1013,14 +1014,12 @@
         return !!personal_release; // Convert internal to boolean directly
     };
 
-    const get_api_double_upload = (double_upload) => {
-        if (double_upload === true) return "DU";
-        else return false;
-    };
-
-    const get_api_refundable = (refundable) => {
-        if (refundable === true) return "Refundable";
-        else return false;
+    const get_api_double_upload = (double_upload, tracker) => {
+        if (tracker === "TIK" && double_upload === true) {
+            return "Emerald";
+        } else if (double_upload === true) {
+            return "DU";
+        } else return false;
     };
 
     const get_api_featured = (featured, tracker) => {
@@ -1079,7 +1078,7 @@
                     };
 
                     // Mapping additional properties and logging the final torrent objects
-                    const mappedObj = { ...torrentObj, "quality": get_torrent_quality(torrentObj), "discount": get_api_discount(torrentObj.discount, torrentObj.refundable), "internal": get_api_internal(torrentObj.internal), "Refundable": get_api_refundable(torrentObj.refundable), "Featured": get_api_featured(torrentObj.featured, tracker)};
+                    const mappedObj = { ...torrentObj, "quality": get_torrent_quality(torrentObj), "discount": get_api_discount(torrentObj.discount, torrentObj.refundable, tracker), "internal": get_api_internal(torrentObj.internal), "Featured": get_api_featured(torrentObj.featured)};
 
                     // Returning the final torrent object if it passes the "SxxExx" check
                     return mappedObj;
@@ -1328,6 +1327,9 @@
             }
             if (torrent.site === "BTN") {
                 torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #00FF00'>Internal</span>" : false;
+            }
+            if (torrent.site === "ANT") {
+                torrent.reported ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #FF0000'>Reported</span>" : false;
             }
             if (torrent.site === "MTV") {
                 torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
@@ -1998,21 +2000,20 @@
 
         discounts.forEach(q => {
             if (q === "None") arr.push({ "value": 0, "name": q });
-            else if (q === "double_upload") arr.push({ "value": 1, "name": q });
-            else if (q === "Rescuable") arr.push({ "value": 2, "name": q });
-            else if (q === "Rewind") arr.push({ "value": 3, "name": q });
-            else if (q === "Refundable") arr.push({ "value": 4, "name": q });
-            else if (q === "25% Freeleech") arr.push({ "value": 5, "name": q });
-            else if (q === "Copper") arr.push({ "value": 6, "name": q });
-            else if (q === "30% Bonus") arr.push({ "value": 7, "name": q });
-            else if (q === "40% Bonus") arr.push({ "value": 8, "name": q });
-            else if (q === "50% Freeleech") arr.push({ "value": 9, "name": q });
-            else if (q === "Bronze") arr.push({ "value": 10, "name": q });
-            else if (q === "75% Freeleech") arr.push({ "value": 11, "name": q });
-            else if (q === "Silver") arr.push({ "value": 12, "name": q });
-            else if (q === "Freeleech") arr.push({ "value": 13, "name": q });
-            else if (q === "Golden") arr.push({ "value": 14, "name": q });
-            else if (q === "Pollination") arr.push({ "value": 15, "name": q });
+            else if (q === "Rescuable") arr.push({ "value": 1, "name": q });
+            else if (q === "Rewind") arr.push({ "value": 2, "name": q });
+            else if (q === "Refundable") arr.push({ "value": 3, "name": q });
+            else if (q === "25% Freeleech") arr.push({ "value": 4, "name": q });
+            else if (q === "Copper") arr.push({ "value": 5, "name": q });
+            else if (q === "30% Bonus") arr.push({ "value": 6, "name": q });
+            else if (q === "40% Bonus") arr.push({ "value": 7, "name": q });
+            else if (q === "50% Freeleech") arr.push({ "value": 8, "name": q });
+            else if (q === "Bronze") arr.push({ "value": 9, "name": q });
+            else if (q === "75% Freeleech") arr.push({ "value": 10, "name": q });
+            else if (q === "Silver") arr.push({ "value": 11, "name": q });
+            else if (q === "Freeleech") arr.push({ "value": 12, "name": q });
+            else if (q === "Golden") arr.push({ "value": 13, "name": q });
+            else if (q === "Pollination") arr.push({ "value": 14, "name": q });
         });
 
         return arr.sort((a, b) => (a.value < b.value) ? 1 : -1).map(e => e.name);
