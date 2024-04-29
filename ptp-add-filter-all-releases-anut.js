@@ -16,12 +16,12 @@
     /////////////////////////                                   USER OPTIONS                     ////////////////////////////////////
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    //  available trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "MTV", "ANT", "BTN", "BLU"*, "HUNO"*, TIK"*, "Aither"*, "FNP"*, "RFX"*, "OE"*, "AvistaZ"**, "CinemaZ"**, "PHD"**
+    //  available trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "ANT", "BTN", "BLU"*, "HUNO"*, TIK"*, "Aither"*, "FNP"*, "RFX"*, "OE"*, "AvistaZ"**, "CinemaZ"**, "PHD"**
     //  if you don't need the results from some of these trackers, do not add them. the fewer you add, the faster the code execution.
     //  remove tracker that you do not have access too.
     //  *requires API key     **performs two requests
     //  requires each tracker to be logged in with the same browser session (and container type if using multi-account containers).
-   const trackers = ["BHD", "CG", "FL", "HDB", "KG", "PTP", "MTV", "ANT", "BTN", "BLU", "HUNO", "TIK", "Aither", "FNP", "RFX", "OE", "AvistaZ", "CinemaZ", "PHD"];
+   const trackers = ["BHD", "CG", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "ANT", "BTN", "BLU", "HUNO", "TIK", "Aither", "FNP", "RFX", "OE", "AvistaZ", "CinemaZ", "PHD"];
 
     const BLU_API_TOKEN = ""; // if you want to use BLU - find your api key here: https://blutopia.cc/users/YOUR_USERNAME_HERE/apikeys
     const TIK_API_TOKEN = ""; // if you want to use TIK - find your api key here: https://cinematik.net/users/YOUR_USERNAME_HERE/apikeys
@@ -240,6 +240,7 @@
         else if (tracker === "PHD") return "https://privatehd.to/images/privatehd-favicon.png";
         else if (tracker === "CinemaZ") return "https://cinemaz.to/images/cinemaz-favicon.png";
         else if (tracker === "HDB") return "https://hdbits.org/pic/favicon/favicon.ico";
+        else if (tracker === "PxHD") return "https://pixelhd.me/favicon.ico";
         else if (tracker === "KG") return "https://karagarga.in/favicon.ico";
         else if (tracker === "TIK") return "https://cinematik.net/favicon.ico";
         else if (tracker === "MTV") return "https://www.morethantv.me/favicon.ico";
@@ -267,6 +268,47 @@
 
     const get_torrent_objs = async (tracker, html) => {
         let torrent_objs = [];
+
+        if (tracker === "PxHD") {
+              let currentEdition = null;
+
+              html.querySelectorAll("tr.group_torrent").forEach((item) => {
+                  // Get the edition info for the current item
+                  let editionInfoElement = item.querySelector('.edition_info');
+                  let edition = editionInfoElement ? editionInfoElement.textContent.replace(/\n/g, "") : null;
+
+                  // If edition is not found, use the current edition
+                  if (!edition) {
+                      edition = currentEdition;
+
+                      let size = item.querySelector("td:nth-child(4)").textContent;
+
+                      if (size.includes("GB")) {
+                          size = parseInt(parseFloat(size.split("GB")[0]) * 1000000 / 1024); // GiB
+                      } else if (size.includes("MB")) size = parseInt(parseFloat(size.split("MB")[0]) * 1000 / 1024); // MiB;
+
+                      let torrent_obj = {
+                          edition: currentEdition,
+                          size: size,
+                          info_text: item.querySelector("td:nth-child(1) > a").textContent.replace(/\n/g, "") + ' / ' + edition,
+                          site: "PxHD",
+                          download_link: item.querySelector("td:nth-child(1) > span > a").href.replace("passthepopcorn.me", "pixelhd.me"),
+                          snatch: parseInt(item.querySelector("td:nth-child(6)").textContent),
+                          seed: parseInt(item.querySelector("td:nth-child(7)").textContent),
+                          leech: parseInt(item.querySelector("td:nth-child(8)").textContent),
+                          torrent_page: item.querySelector("td:nth-child(1) > a").href.replace("passthepopcorn.me", "pixelhd.me"),
+                          status: item.querySelectorAll("span.tag_seeding").length > 0 ? "seeding" : "default",
+                          discount: "None",
+                          internal: false,
+                          exclusive: false,
+                      };
+                      torrent_objs.push(torrent_obj);
+                  } else {
+                      // Update the current edition
+                      currentEdition = edition;
+                  }
+              });
+          }
 
         if (tracker === "HDB") {
             html.querySelector("#torrent-list > tbody").querySelectorAll("tr").forEach((d) => {
@@ -767,6 +809,20 @@
             if (html.querySelector("#resultsarea").textContent.includes("Nothing here!")) return false;
             else return true;
         }
+        else if (tracker === "PxHD") {
+            const element = html.querySelector("div.box.pad > h2");
+
+            // Check if element exists
+            if (element) {
+                if (element.textContent.includes("did not match anything")) {
+                    return false; // Text did not match anything
+                } else {
+                    return true; // Text matched something
+                }
+            } else {
+                return true; // Element not found
+            }
+        }
         else if (tracker === "BTN") {
             if (html.querySelector(".thin").textContent.includes("Error 404")) return false;
             else return true;
@@ -850,6 +906,9 @@
             else if (tracker === "HDB") {
                 //query_url = "https://hdbits.org/browse.php?c3=1&c1=1&c2=1&tagsearchtype=or&imdb=" + mov.imdb_id + "&sort=size&h=8&d=DESC"
                 query_url = "https://hdbits.org/browse.php?c3=1&c8=1&c1=1&c4=1&c5=1&c2=1&c7=1&descriptions=0&season_packs=0&from=&to=&imdbgt=0&imdblt=10&imdb=" + imdb_id + "&sort=size&h=8&d=DESC";
+            }
+            else if (tracker === "PxHD") {
+                query_url = "https://pixelhd.me/torrents.php?groupname=&year=&tmdbover=&tmdbunder=&tmdbid=&imdbover=&imdbunder=&imdbid=" + imdb_id + "&order_by=time&order_way=desc&taglist=&tags_type=1&filter_cat%5B1%5D=1&filterTorrentsButton=Filter+Torrents";
             }
             else if (tracker === "BTN") {
                 query_url = "https://broadcasthe.net/torrents.php?action=advanced&imdb=" + imdb_id;
