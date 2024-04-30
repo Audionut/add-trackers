@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.3.0-A
+// @version      3.3.1-A
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -480,25 +480,15 @@
                     const torrentPageUrl = `${baseUrl}torrentid=${torrentId}`;
                     torrent_obj.size = size;
 
-                const titleElement = d.querySelector("td:nth-child(1) > a");
-                if (titleElement) {
-                    let infoTextParts = [];
-                    const titleText = Array.from(titleElement.childNodes)
-                        .filter(node => node.nodeType === Node.TEXT_NODE)
-                        .map(node => node.textContent.trim().replace(/\//g, ''))
-                        .join(' / ');
-                    if (titleText) {
-                        infoTextParts.push(titleText);
+                    // Accessing next row's data
+                    const nextRow = rows[index + 1];
+                    if (nextRow) {
+                        let antname = nextRow.querySelector('.row > td').textContent.trim();
+                        // Remove text after the last period
+                        antname = antname.replace(/\.[^.]*$/, "").replace(/\./g, " ");
+                        torrent_obj.info_text = antname;
                     }
-                    const strongElements = titleElement.querySelectorAll("strong.torrent_label");
-                    strongElements.forEach(strong => {
-                        const text = strong.textContent.trim();
-                        if (strong.classList.contains("tl_notice")) {
-                            infoTextParts.push(text);
-                        }
-                    });
-                    torrent_obj.info_text = infoTextParts.join(' / ').replace(/\/\s*\/\s*/g, ' / ');
-                }
+
                     torrent_obj.site = "ANT";
                     torrent_obj.download_link = [...d.querySelectorAll("a")].find(a => a.href.includes("torrents.php?action=") && !a.href.includes("&usetoken=1")).href.replace("passthepopcorn.me", "anthelion.me");
                     torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(3)").textContent);
