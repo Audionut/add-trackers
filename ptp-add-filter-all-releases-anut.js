@@ -16,12 +16,12 @@
     /////////////////////////                                   USER OPTIONS                     ////////////////////////////////////
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    //  available trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "MTV", "ANT", "BTN", "BLU"*, "HUNO"*, TIK"*, "Aither"*, "FNP"*, "RFX"*, "OE"*, "AvistaZ"**, "CinemaZ"**, "PHD"**
+    //  available trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "ANT", "BTN", "BLU"*, "HUNO"*, TIK"*, "Aither"*, "FNP"*, "RFX"*, "OE"*, "AvistaZ"**, "CinemaZ"**, "PHD"**
     //  if you don't need the results from some of these trackers, do not add them. the fewer you add, the faster the code execution.
     //  remove tracker that you do not have access too.
     //  *requires API key     **performs two requests
     //  requires each tracker to be logged in with the same browser session (and container type if using multi-account containers).
-   const trackers = ["BHD", "CG", "FL", "HDB", "KG", "PTP", "MTV", "ANT", "BTN", "BLU", "HUNO", "TIK", "Aither", "FNP", "RFX", "OE", "AvistaZ", "CinemaZ", "PHD"];
+   const trackers = ["BHD", "CG", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "ANT", "BTN", "BLU", "HUNO", "TIK", "Aither", "FNP", "RFX", "OE", "AvistaZ", "CinemaZ", "PHD"];
 
     const BLU_API_TOKEN = ""; // if you want to use BLU - find your api key here: https://blutopia.cc/users/YOUR_USERNAME_HERE/apikeys
     const TIK_API_TOKEN = ""; // if you want to use TIK - find your api key here: https://cinematik.net/users/YOUR_USERNAME_HERE/apikeys
@@ -63,7 +63,6 @@
     let doms = [];
     const TIMEOUT_DURATION = 10000;
 
-
     const dom_get_quality = (text) => {
         if (text.includes("720p")) return "720p";
         else if (text.includes("1080p")) return "1080p";
@@ -72,7 +71,6 @@
         else if (text.includes("480p")) return "480p";
         else return "SD";
     };
-
 
     const get_default_doms = () => {
         [...document.querySelectorAll("tr.group_torrent_header")].forEach((d, i) => {
@@ -98,13 +96,11 @@
         });
     };
 
-
     get_default_doms();
 
     function insertAfter(newNode, referenceNode) {
         referenceNode.parentNode.insertBefore(newNode, referenceNode.nextSibling);
     }
-
 
     const get_discount_text = (div, tracker) => {
         if (tracker === "HDB") {
@@ -227,7 +223,6 @@
         return "None";
     };
 
-
     const get_tracker_icon = (tracker) => {
         if (tracker === "BHD") return "https://beyond-hd.me/favicon.ico";
         else if (tracker === "BLU") return "https://blutopia.cc/favicon.ico";
@@ -240,6 +235,7 @@
         else if (tracker === "PHD") return "https://privatehd.to/images/privatehd-favicon.png";
         else if (tracker === "CinemaZ") return "https://cinemaz.to/images/cinemaz-favicon.png";
         else if (tracker === "HDB") return "https://hdbits.org/pic/favicon/favicon.ico";
+        else if (tracker === "PxHD") return "https://pixelhd.me/favicon.ico";
         else if (tracker === "KG") return "https://karagarga.in/favicon.ico";
         else if (tracker === "TIK") return "https://cinematik.net/favicon.ico";
         else if (tracker === "MTV") return "https://www.morethantv.me/favicon.ico";
@@ -248,7 +244,6 @@
         else if (tracker === "BTN") return "https://broadcasthe.net/favicon.ico";
         else if (tracker === "FNP") return "https://fearnopeer.com/favicon.ico";
     };
-
 
     const use_api_instead = (tracker) => {
         if (
@@ -263,7 +258,6 @@
             return true;
         else return false;
     };
-
 
     const get_torrent_objs = async (tracker, html) => {
         let torrent_objs = [];
@@ -750,13 +744,52 @@
                 torrent_objs.push(torrent_obj);
             });
         }
+        else if (tracker === "PxHD") {
+            let currentEdition = null;
+
+            html.querySelectorAll("tr.group_torrent").forEach((item) => {
+                // Get the edition info for the current item
+                let editionInfoElement = item.querySelector('.edition_info');
+                let edition = editionInfoElement ? editionInfoElement.textContent.replace(/\n/g, "") : null;
+
+                // If edition is not found, use the current edition
+                if (!edition) {
+                    edition = currentEdition;
+
+                    let size = item.querySelector("td:nth-child(4)").textContent;
+
+                    if (size.includes("GB")) {
+                        size = parseInt(parseFloat(size.split("GB")[0]) * 1000000 / 1024); // GiB
+                    } else if (size.includes("MB")) size = parseInt(parseFloat(size.split("MB")[0]) * 1000 / 1024); // MiB;
+
+                    let torrent_obj = {
+                        edition: currentEdition,
+                        size: size,
+                        info_text: item.querySelector("td:nth-child(1) > a").textContent.replace(/\n/g, "") + ' / ' + edition,
+                        site: "PxHD",
+                        download_link: item.querySelector("td:nth-child(1) > span > a").href.replace("passthepopcorn.me", "pixelhd.me"),
+                        snatch: parseInt(item.querySelector("td:nth-child(6)").textContent),
+                        seed: parseInt(item.querySelector("td:nth-child(7)").textContent),
+                        leech: parseInt(item.querySelector("td:nth-child(8)").textContent),
+                        torrent_page: item.querySelector("td:nth-child(1) > a").href.replace("passthepopcorn.me", "pixelhd.me"),
+                        status: item.querySelectorAll("span.tag_seeding").length > 0 ? "seeding" : "default",
+                        discount: "None",
+                        internal: false,
+                        exclusive: false,
+                    };
+                    torrent_objs.push(torrent_obj);
+                } else {
+                    // Update the current edition
+                    currentEdition = edition;
+                }
+            });
+        }
         torrent_objs = torrent_objs.map(e => {
             return { ...e, "quality": get_torrent_quality(e) };
         });
 
         return torrent_objs;
     };
-
 
     const is_movie_exist = (tracker, html) => { // true or false
         if (tracker === "PTP") {
@@ -808,6 +841,20 @@
         else if (tracker === "KG") {
             if (html.querySelector("tr.oddrow") === null) return false; // it's different, pay attention !
             else return true;
+        }
+        else if (tracker === "PxHD") {
+            const element = html.querySelector("div.box.pad > h2");
+
+            // Check if element exists
+            if (element) {
+                if (element.textContent.includes("did not match anything")) {
+                    return false; // Text did not match anything
+                } else {
+                    return true; // Text matched something
+                }
+            } else {
+                return true; // Element not found
+            }
         }
     };
 
@@ -929,6 +976,9 @@
             }
             else if (tracker === "KG") {
                 query_url = "https://karagarga.in/browse.php?sort=size&search=" + imdb_id + "&search_type=imdb&d=DESC";
+            }
+            else if (tracker === "PxHD") {
+                query_url = "https://pixelhd.me/torrents.php?groupname=&year=&tmdbover=&tmdbunder=&tmdbid=&imdbover=&imdbunder=&imdbid=" + imdb_id + "&order_by=time&order_way=desc&taglist=&tags_type=1&filter_cat%5B1%5D=1&filterTorrentsButton=Filter+Torrents";
             }
 
             try {
@@ -1151,7 +1201,6 @@
         return group_torrent_objs;
     };
 
-
     const get_torrent_quality = (torrent) => {
         if (torrent.quality) return torrent.quality;
 
@@ -1161,7 +1210,6 @@
         else if (text.includes("1080p") || text.includes("720p") || text.includes("1080i") || text.includes("720i")) return "HD";
         else return "SD";
     };
-
 
     const get_ref_div = (torrent, ptp_torrent_group) => {
         let my_size = torrent.size;
@@ -1176,7 +1224,6 @@
         }
     };
 
-
     const get_ptp_format_size = (size) => {
         if (size === null || size === undefined) {
             return "N/A"; // or any default value you prefer
@@ -1187,7 +1234,6 @@
             return size.toFixed(2) + " MiB";
         }
     };
-
 
     const add_as_first = (div, quality) => { // puts 2gb 1080p at the top of the pack.
         let all_trs = [...document.querySelectorAll("tr.group_torrent")];
@@ -1205,7 +1251,6 @@
 
         insertAfter(div, all_trs[first_idx]);
     };
-
 
     const get_codec = (lower, torrent) => {
         if (lower.includes("x264") || lower.includes("x.264")) return "x264 / ";
@@ -1225,7 +1270,6 @@
         return ""; // skip this info
     };
 
-
     const get_container = (lower, torrent) => {
         if (lower.includes("avi")) return "AVI / ";
         else if (lower.includes("mpg")) return "MPG / ";
@@ -1237,7 +1281,6 @@
 
         return ""; // skip this info
     };
-
 
     const get_source = (lower, torrent) => {
         if (lower.includes("/cam")) return "CAM / ";
@@ -1253,7 +1296,6 @@
 
         return ""; // skip this info
     };
-
 
     const get_res = (lower, torrent) => {
         if (lower.includes("ntsc")) return "NTSC / ";
@@ -1283,14 +1325,12 @@
         else return combined_text;
     };
 
-
     const get_discount_color = (discount) => {
         if (discount === "Freeleech") return "inherit";
         else if (discount === "50% Freeleech") return "inherit";
         else if (discount === "25% Freeleech") return "inherit";
         else return "inherit";
     };
-
 
     const add_external_torrents = (external_torrents) => {
         const existing_torrent_sizes = Array.from(document.querySelectorAll("span[style='float: left;']")).map(x => x.textContent);
@@ -1441,7 +1481,6 @@
         }
     };
 
-
     const insert_group = (quality, header_div) => {
         let all_trs = [...document.querySelector("#torrent-table > tbody").querySelectorAll("tr.group_torrent")];
         let tbody = document.querySelector("#torrent-table > tbody");
@@ -1479,7 +1518,6 @@
         }
     };
 
-
     const create_needed_groups = (torrents) => {
         let all_trs = [...document.querySelector("#torrent-table > tbody").querySelectorAll("tr.group_torrent")];
         let tbody = document.querySelector("#torrent-table > tbody");
@@ -1499,14 +1537,12 @@
         }
     };
 
-
     const fix_doms = () => {
         doms.forEach((d) => {
             d.dom_path = [...document.querySelectorAll(".group_torrent")].find(e => e.className.split(" ").find(c => c === d.dom_id) != undefined);
         });
 
     };
-
 
     const filter_torrents = () => {
         doms.forEach((e, i) => {
@@ -1598,7 +1634,6 @@
         });
     };
 
-
     function show_only_ptp() {
         const dom_path = document.querySelector("#filter-ptp");
         filters.trackers.find(e => e.name === "PTP").status = "include";
@@ -1607,7 +1642,6 @@
 
         filter_torrents();
     }
-
 
     const update_filter_box_status = (object_key, value, dom_path) => { // object_key = tracker/quality/discount || value = BHD, HDB, 50% Freeleech, 720p etc...
         // let all_values = ["default", "include", "exclude"];
@@ -1667,7 +1701,6 @@
         filter_torrents(); // big update
     };
 
-
     const fix_ptp_names = () => {
         document.querySelectorAll("tr.group_torrent").forEach(d => {
             if (d.className != "group_torrent") {
@@ -1676,7 +1709,6 @@
             }
         });
     };
-
 
     const add_filters_div = (trackers, discounts, qualities) => {
         let addBeforeThis = document.querySelector("#movieinfo");
@@ -1868,7 +1900,6 @@
         // done.
     };
 
-
     const get_example_div = () => {
         let tr = document.createElement("tr");
         tr.className = "group_torrent group_torrent_header";
@@ -1963,7 +1994,6 @@
         return tr;
     };
 
-
     const disable_highlight = () => {
         document.querySelector(".filter-container").addEventListener("mousedown", function (event) {
             if (event.detail > 1) {
@@ -1974,7 +2004,6 @@
             }
         }, false);
 
-
         document.querySelector("table.torrent_table > thead").addEventListener("mousedown", function (event) {
             if (event.detail > 1) {
                 event.preventDefault();
@@ -1983,9 +2012,6 @@
                 // to not prevent something useful.
             }
         }, false);
-
-
-
     };
 
     const get_sorted_qualities = (qualities) => {
@@ -2037,9 +2063,7 @@
         });
 
         return lst.sort((a, b) => a > b ? 1 : -1);
-
     };
-
 
     const get_reduced_discounts = (doms) => {
         let lst = [];
@@ -2049,9 +2073,7 @@
         });
 
         return get_sorted_discounts(lst);
-
     };
-
 
     const get_reduced_qualities = (doms) => {
         let lst = [];
@@ -2068,12 +2090,10 @@
         return get_sorted_qualities(lst.concat(["SD"]));
     };
 
-
     let seed_desc = true;
     let leech_desc = true;
     let snatch_desc = true;
     let size_desc = true;
-
 
     const add_sort_listeners = () => {
         let seed_th = [...document.querySelector("table.torrent_table").querySelectorAll("th")].filter(e => e.querySelector("img") != null).find(t => t.querySelector("img").src.includes("seeders.png"));
@@ -2137,11 +2157,9 @@
         });
     };
 
-
     let line_example = get_example_div();
     let group_header_example = document.querySelector("tr.group_torrent").cloneNode(true);
     let original_table;
-
 
     const mainFunc = async () => {
         if (show_tracker_name) {
@@ -2177,7 +2195,6 @@
                 localStorage.setItem("play_now_flag", "true"); // yy
             });
     };
-
 
     mainFunc();
 })();
