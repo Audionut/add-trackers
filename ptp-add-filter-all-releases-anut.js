@@ -1464,7 +1464,7 @@
                         element.href = torrent.download_link;
                     }
                 } else if (hideBlankLinks === "Spaced") {
-                    let element = [...elements].find(a => a.textContent.trim() === " DL ");
+                    let element = [...elements].find(a => a.textContent.trim() === "DL");
                     if (element) {
                         element.style.paddingRight = "51px";
                         element.href = torrent.download_link;
@@ -1980,9 +1980,9 @@
             aSpaced.href = "#";
             aSpaced.className = "link_1";
             aSpaced.title = "Download";
+            aSpaced.style.paddingLeft = "3px";
             aSpaced.style.paddingRight = "51px";
-
-            let textNode = document.createTextNode(" DL"); // Create a text node with "DL"
+            let textNode = document.createTextNode("DL"); // Create a text node with "DL"
             aSpaced.appendChild(textNode); // Append the text node to the <a> element
 
             span.appendChild(aSpaced); // Append the <a> element to the <span> element
