@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.3.1-A
+// @version      3.3.2-A
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -549,11 +549,13 @@
                         torrent_obj.torrent_page = torrentPageUrl;
                         // set the discounts based on the discount code defined towards the top of the script.
                         torrent_obj.discount = get_discount_text(d, tracker);
-                        // ANT displays reported torrent information in the html, lets use that.
-                        torrent_obj.reported = d.querySelector(".torrent_table#torrent_details .torrent_label.tl_reported.tooltip") ? true : false;
                         // the html element we are using to determine whether or not the torrent is currently being seeded.
                         const elements = d.querySelectorAll('strong.torrent_label.tl_seeding.tooltip');
                         torrent_obj.status = elements.length > 0 ? 'seeding' : 'default';
+                        // the html elements we are using to determine whether or not the torrents are Internal, Trumpable or Reported.
+                        torrent_obj.internal = d.querySelector('strong.torrent_label.tooltip.internal') ? true : false;
+                        torrent_obj.trumpable = d.querySelector(".torrent_table#torrent_details .torrent_label.tl_trumpable.tooltip") ? true : false;
+                        torrent_obj.reported = d.querySelector(".torrent_table#torrent_details .torrent_label.tl_reported.tooltip") ? true : false;
                         // push everything to a torrent_obj for later use.
                         torrent_objs.push(torrent_obj);
                     }
@@ -1417,7 +1419,7 @@
                 cln.querySelector(".torrent-info-link").textContent = torrent.info_text;
             }
 
-            // HDB only
+            // Colorize some tags, site specific.
             if (torrent.site === "HDB") {
                 torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
                 torrent.exclusive ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #a14989'>Exclusive</span>" : false;
@@ -1426,7 +1428,9 @@
                 torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #00FF00'>Internal</span>" : false;
             }
             if (torrent.site === "ANT") {
+                torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2CB430'>Internal</span>" : false;
                 torrent.reported ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #FF0000'>Reported</span>" : false;
+                torrent.trumpable ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #FF8C00'>Trumpable</span>" : false;
             }
             if (torrent.site === "MTV") {
                 torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
