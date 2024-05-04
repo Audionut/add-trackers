@@ -16,12 +16,12 @@
     /////////////////////////                                   USER OPTIONS                     ////////////////////////////////////
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    //  available trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "ANT", "BTN", "BLU"*, "HUNO"*, TIK"*, "Aither"*, "FNP"*, "RFX"*, "OE"*, "AvistaZ"**, "CinemaZ"**, "PHD"**
+    //  available trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "ANT", "BTN", "PxHD", "BLU"*, "HUNO"*, TIK"*, "Aither"*, "FNP"*, "RFX"*, "OE"*, "AvistaZ"**, "CinemaZ"**, "PHD"**, "TVV"***
     //  if you don't need the results from some of these trackers, do not add them. the fewer you add, the faster the code execution.
     //  remove tracker that you do not have access too.
-    //  *requires API key     **performs two requests
+    //  *requires API key     **performs two requests     *** XML output that needs authkey and torrent_pass from a download link
     //  requires each tracker to be logged in with the same browser session (and container type if using multi-account containers).
-   const trackers = ["BHD", "CG", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "ANT", "BTN", "BLU", "HUNO", "TIK", "Aither", "FNP", "RFX", "OE", "AvistaZ", "CinemaZ", "PHD"];
+   const trackers = ["BHD", "CG", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "ANT", "BTN", "BLU", "HUNO", "TIK", "Aither", "FNP", "RFX", "OE", "AvistaZ", "CinemaZ", "PHD", "PxHD", "TVV"];
 
     const BLU_API_TOKEN = ""; // if you want to use BLU - find your api key here: https://blutopia.cc/users/YOUR_USERNAME_HERE/apikeys
     const TIK_API_TOKEN = ""; // if you want to use TIK - find your api key here: https://cinematik.net/users/YOUR_USERNAME_HERE/apikeys
@@ -134,7 +134,7 @@
                 }
             }
         }
-        else if (["BLU", "Aither", "RFX", "OE", "TIK", "HUNO", "FNP", "TVV"].includes(tracker)) {
+        else if (["BLU", "Aither", "RFX", "OE", "TIK", "HUNO", "FNP"].includes(tracker)) {
             return true;
         }
         else if (tracker === "FL") {
@@ -302,7 +302,9 @@
                     // Check for the existence of each element before accessing its textContent
                     const combinedInfo = torrent.querySelector('torrentinfo[type="combined"]');
                     if (combinedInfo) {
-                        torrent_obj.info_text = combinedInfo.textContent;
+                        // Remove "Freeleech" and any surrounding forward slashes
+                        let infoText = combinedInfo.textContent.replace(/\/?Freeleech\/?/g, "").replace(/\//g, " / ");
+                        torrent_obj.info_text = infoText;
                     } else {
                         console.error("Missing combined torrent info.");
                         return; // Skip this torrent if critical information is missing
@@ -340,7 +342,12 @@
                     }
 
                     torrent_obj.site = "TVV";
-                    torrent_obj.discount = "None"; // Default value if none provided
+                    const discountTVVFind = torrent.querySelector('torrentinfo[type="freeleech"]');
+                    if (discountTVVFind) {
+                        torrent_obj.discount = discountTVVFind.textContent.includes("Freeleech") ? "Freeleech" : "None";
+                    } else {
+                        torrent_obj.discount = "None";
+                    }
 
                     torrent_objs.push(torrent_obj);
                 });
