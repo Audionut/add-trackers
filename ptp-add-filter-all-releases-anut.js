@@ -31,6 +31,10 @@
     const OE_API_TOKEN = ""; /// if you want to use OE - find your api key here: https:/onlyencodes.cc/users/YOUR_USERNAME_HERE/apikeys
     const FNP_API_TOKEN = ""; // if you want to use FNP - find your api key here: https:/https://fearnopeer.com/users/YOUR_USERNAME_HERE/apikeys
 
+    // We need to use XML resposne with TVV and have to define some parameters for it to work correctly.
+    const TVV_AUTH_KEY = ""; // If you want to use TVV - find your authkey from a torrent download link
+    const TVV_TORR_PASS = ""; // We need to torrent pass to create a download link - find your torrent_pass from a torrent download link
+
     // Define how the DL link is displayed. Useful to clean the displayed output depending on stylsheet.
     let hideBlankLinks = "DL"; // Options are "DL" which only displays the "DL" link (like the old code). "Download" which displays "DOWNLOAD". "Spaced" which adds "DL" but spaced to fit left aligned style sheets.
 
@@ -130,7 +134,7 @@
                 }
             }
         }
-        else if (["BLU", "Aither", "RFX", "OE", "TIK", "HUNO", "FNP"].includes(tracker)) {
+        else if (["BLU", "Aither", "RFX", "OE", "TIK", "HUNO", "FNP", "TVV"].includes(tracker)) {
             return true;
         }
         else if (tracker === "FL") {
@@ -243,6 +247,7 @@
         else if (tracker === "HUNO") return "https://hawke.uno/favicon.ico";
         else if (tracker === "BTN") return "https://broadcasthe.net/favicon.ico";
         else if (tracker === "FNP") return "https://fearnopeer.com/favicon.ico";
+        else if (tracker === "TVV") return "https://tv-vault.me/favicon.ico";
     };
 
     const use_api_instead = (tracker) => {
@@ -286,6 +291,62 @@
                 torrent_obj.exclusive = d.querySelector(".tag.exclusive") ? true : false;
                 torrent_objs.push(torrent_obj);
             });
+        }
+        else if (tracker === "TVV") {
+            try {
+                // Process the XML document
+                const torrents = html.querySelectorAll('torrent');
+                torrents.forEach(torrent => {
+                    let torrent_obj = {};
+
+                    // Check for the existence of each element before accessing its textContent
+                    const combinedInfo = torrent.querySelector('torrentinfo[type="combined"]');
+                    if (combinedInfo) {
+                        torrent_obj.info_text = combinedInfo.textContent;
+                    } else {
+                        console.error("Missing combined torrent info.");
+                        return; // Skip this torrent if critical information is missing
+                    }
+
+                    const base_url = "https://tv-vault.me/torrents.php?action=download&id=";
+                    let id = torrent.getAttribute('id'); // Extract the id attribute
+                    if (id) {
+                        const downloadUrl = `${base_url}${id}&authkey=${TVV_AUTH_KEY}&torrent_pass=${TVV_TORR_PASS}`;
+                        torrent_obj.download_link = downloadUrl;
+                    } else {
+                        console.error("Missing torrent ID.");
+                        return; // Skip this torrent if ID is missing
+                    }
+
+                    const sizeElement = torrent.querySelector('size[type="formatted"]');
+                    if (sizeElement) {
+                        torrent_obj.size = parseFloat(sizeElement.textContent.split(" GB")[0]) * 1024; // Convert GB to MiB
+                    } else {
+                        console.error("Missing size information.");
+                        return; // Skip this torrent if size information is missing
+                    }
+
+                    // Extract numerical values with fallbacks
+                    torrent_obj.snatch = parseInt(torrent.querySelector('snatches')?.textContent || "0");
+                    torrent_obj.seed = parseInt(torrent.querySelector('seeders')?.textContent || "0");
+                    torrent_obj.leech = parseInt(torrent.querySelector('leechers')?.textContent || "0");
+
+                    const linkElement = torrent.querySelector('link');
+                    if (linkElement) {
+                        torrent_obj.torrent_page = linkElement.textContent;
+                    } else {
+                        console.error("Missing link information.");
+                        return; // Skip this torrent if link is missing
+                    }
+
+                    torrent_obj.site = "TVV";
+                    torrent_obj.discount = "None"; // Default value if none provided
+
+                    torrent_objs.push(torrent_obj);
+                });
+            } catch (error) {
+                console.error("Error processing XML from TVV:", error);
+            }
         }
         else if (tracker === "BTN") {
             html.querySelector(".torrent_table > tbody:nth-child(2)").querySelectorAll("tr[style='border-top: none;']").forEach((d) => {
@@ -849,6 +910,9 @@
             if (html.querySelector("#resultsarea").textContent.includes("Nothing here!")) return false;
             else return true;
         }
+        else if (tracker === "TVV") {
+            return true;
+        }
         else if (tracker === "BTN") {
             if (html.querySelector(".thin").textContent.includes("Error 404")) return false;
             else return true;
@@ -922,16 +986,28 @@
             });
 
             if (response.status === 200) {
+                // Extract content type and convert to lowercase for case-insensitive comparison
+                const contentType = response.responseHeaders.match(/content-type: ([^;]+)/i)[1].toLowerCase();
                 const parser = new DOMParser();
-                const result = parser.parseFromString(response.responseText, "text/html").body;
+                let result;
+
+                // Determine how to parse the response based on the content type
+                if (contentType.includes("xml")) {
+                    // Parse as XML
+                    result = parser.parseFromString(response.responseText, "text/xml");
+                } else {
+                    // Default to parsing as HTML
+                    result = parser.parseFromString(response.responseText, "text/html").body;
+                }
+
                 return result;
             } else {
                 console.error(`Error: HTTP ${response.status} Error.`);
                 throw new Error(`HTTP ${response.status} Error`);
             }
         } catch (error) {
-            console.error(`Error: ${error.message}`);
-            throw error;
+            console.error(`Error fetching URL: ${error.message}`);
+            throw error;  // Re-throw the error after logging it
         }
     };
 
@@ -1007,6 +1083,9 @@
                     imdb_id.split("tt")[1] +
                     "&categories[0]=1&categories[1]=2&categories[2]=6&api_token=" +
                     FNP_API_TOKEN;
+            }
+            else if (tracker === "TVV") {
+                query_url = "https://tv-vault.me/xmlsearch.php?query=get&authkey=" + TVV_AUTH_KEY + "&imdbid=" + imdb_id;
             }
             else if (tracker === "AvistaZ") {
                 query_url = "https://avistaz.to/movies?search=&imdb=" + imdb_id + "&view=lists";
