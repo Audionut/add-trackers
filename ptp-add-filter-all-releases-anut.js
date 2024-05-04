@@ -524,7 +524,7 @@
             // querySelector is the html element from the search result that contains the table rows <tr> with the torrent information.
             // querySelectorALL is the actual table rows with the torrent information.
             const rows = html.querySelector(".torrent_table#torrent_details > tbody").querySelectorAll("tr:not(.colhead_dark):not(.sortGroup)");
-            // interate through each table row so that we can pull the data from each torrent.
+            // iterate through each table row so that we can pull the data from each torrent.
             rows.forEach((d, index) => {
                 let torrent_obj = {};
                 let size = null;
@@ -569,7 +569,7 @@
 
                         // Check if antname contains ".mkv", ".mpg", ".avi" or ".mp4"
                         if (!(antname.includes(".mkv") || antname.includes(".mpg") || antname.includes(".avi") || antname.includes(".mp4"))) {
-                            // if antname doesn't include the above, lets process info_text the old way
+                            // if antname doesn't include the above, lets process info_text the old way since
                             // disc/folder content basically always has filenames that are not useful at all.
                             const titleElement = d.querySelector("td:nth-child(1) > a");
                             if (titleElement) {
@@ -996,24 +996,23 @@
             });
 
             if (response.status === 200) {
-                // Extract content type and convert to lowercase for case-insensitive comparison
                 const contentType = response.responseHeaders.match(/content-type: ([^;]+)/i)[1].toLowerCase();
                 const parser = new DOMParser();
                 let result;
 
-                // Determine how to parse the response based on the content type
                 if (contentType.includes("xml")) {
-                    // Parse as XML
                     result = parser.parseFromString(response.responseText, "text/xml");
                 } else {
-                    // Default to parsing as HTML
                     result = parser.parseFromString(response.responseText, "text/html").body;
                 }
 
                 return result;
+            } else if (response.status === 100) {
+                console.log(`Notice: HTTP ${response.status} Too soon after last search.`);
+                return null;  // Return null to indicate that the data shouldn't be processed further but doesn't halt other processing
             } else {
                 console.error(`Error: HTTP ${response.status} Error.`);
-                throw new Error(`HTTP ${response.status} Error`);
+                return null;  // Similar to the 100 case, allow other processing to continue by returning null
             }
         } catch (error) {
             console.error(`Error fetching URL: ${error.message}`);
