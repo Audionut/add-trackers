@@ -76,6 +76,9 @@
         else return "SD";
     };
 
+    const isMiniSeries = Array.from(document.querySelectorAll("span.basic-movie-list__torrent-edition__main"))
+                              .some(el => el.textContent.trim() === "Miniseries");
+
     const get_default_doms = () => {
         [...document.querySelectorAll("tr.group_torrent_header")].forEach((d, i) => {
             let tracker = "PTP";
@@ -1031,7 +1034,12 @@
                 query_url = "https://hdbits.org/browse.php?c3=1&c8=1&c1=1&c4=1&c5=1&c2=1&c7=1&descriptions=0&season_packs=0&from=&to=&imdbgt=0&imdblt=10&imdb=" + imdb_id + "&sort=size&h=8&d=DESC";
             }
             else if (tracker === "BTN") {
+                if (!isMiniSeries) {
+                    console.log("Skipping BTN processing as the item is not a Miniseries.");
+                } else {
+                    // Only set the query URL if it is a Miniseries
                 query_url = "https://broadcasthe.net/torrents.php?action=advanced&imdb=" + imdb_id;
+                }
             }
             else if (tracker === "MTV") {
                 query_url = "https://www.morethantv.me/torrents/browse?page=1&order_by=time&order_way=desc&=Search&=Reset&=Search&searchtext=" + imdb_id + "&action=advanced&title=&sizeall=&sizetype=kb&sizerange=0.01&filelist=&autocomplete_toggle=on";
@@ -1092,7 +1100,12 @@
                     FNP_API_TOKEN;
             }
             else if (tracker === "TVV") {
-                query_url = "https://tv-vault.me/xmlsearch.php?query=get&authkey=" + TVV_AUTH_KEY + "&imdbid=" + imdb_id;
+                if (!isMiniSeries) {
+                    console.log("Skipping TVV processing as the item is not a Miniseries.");
+                } else {
+                    // Only set the query URL if it is a Miniseries
+                    query_url = "https://tv-vault.me/xmlsearch.php?query=get&authkey=" + TVV_AUTH_KEY + "&imdbid=" + imdb_id;
+                }
             }
             else if (tracker === "AvistaZ") {
                 query_url = "https://avistaz.to/movies?search=&imdb=" + imdb_id + "&view=lists";
