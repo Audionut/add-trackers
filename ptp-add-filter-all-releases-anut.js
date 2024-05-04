@@ -359,7 +359,19 @@
             }
         }
         else if (tracker === "BTN") {
+            let skipFollowingRows = false; // Flag to determine whether to skip subsequent rows
             html.querySelector(".main_column").querySelectorAll(".torrent_table > tbody:nth-child(2) > tr").forEach((d) => {
+
+                  // Check if previous rows indicated to skip or if the current row is an episode link
+                  const episodeLink = d.querySelector('td > div > strong > a.episode');
+                  if (skipFollowingRows || episodeLink) {
+                      if (episodeLink) {
+                          console.log("Found episode link, skipping all subsequent rows. Link text:", episodeLink.textContent.trim());
+                          skipFollowingRows = true; // Set the flag to skip all following rows
+                      }
+                      console.log("Skipping row due to prior episode link or current episode link.");
+                      return; // Skip this iteration
+                  }
 
                 // BTN has differing layouts for the top torrent compared to the other torrents. This is the top torrent.
                 if (d.querySelectorAll("td")[2].textContent.includes("GB")) {
