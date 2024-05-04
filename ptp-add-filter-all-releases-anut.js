@@ -311,9 +311,19 @@
 
                     // Check for the existence of each element before accessing its textContent
                     const combinedInfo = torrent.querySelector('torrentinfo[type="combined"]');
+                    const documentTitle = torrent.querySelector('title').textContent; // Access the document's title content
+
                     if (combinedInfo) {
                         // Remove "Freeleech" and any surrounding forward slashes
                         let infoText = combinedInfo.textContent.replace(/\/?Freeleech\/?/g, "").replace(/\//g, " / ");
+
+                        // Check if document title contains '720p' or '1080p' and append if necessary
+                        if (documentTitle.includes("(720p)")) {
+                            infoText += " (720p)";
+                        } else if (documentTitle.includes("(1080p)")) {
+                            infoText += " (1080p)";
+                        }
+
                         torrent_obj.info_text = infoText;
                     } else {
                         console.error("Missing combined torrent info.");
@@ -2409,11 +2419,6 @@
 
         // Remove any colons from the first word by replacing them with an empty string
         let show_name = firstWord.replace(/:/g, '');
-
-        // Log the cleaned first word of the show name to the console for verification
-        console.log("First word of show name, without colons:", firstWord);
-
-        console.log("First word of show name:", firstWord);
 
         let promises = [];
 
