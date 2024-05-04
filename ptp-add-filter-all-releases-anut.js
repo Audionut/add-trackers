@@ -378,9 +378,9 @@
                         .join(" ");
                     torrent_obj.site = "BTN";
                     torrent_obj.download_link = d.querySelector("a[title='Download']").href.replace("passthepopcorn.me", "broadcasthe.net");
-                    torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(3)").textContent);
-                    torrent_obj.seed = parseInt(d.querySelector("td:nth-child(4)").textContent);
-                    torrent_obj.leech = parseInt(d.querySelector("td:nth-child(5)").textContent);
+                    torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(4)").textContent);
+                    torrent_obj.seed = parseInt(d.querySelector("td:nth-child(5)").textContent);
+                    torrent_obj.leech = parseInt(d.querySelector("td:nth-child(6)").textContent);
                     torrent_obj.torrent_page = [...d.querySelectorAll("a")].find(a => a.href.includes("torrentid=")).href.replace("passthepopcorn.me", "broadcasthe.net");
                     torrent_obj.status = d.querySelectorAll("span.internal").length > 0 ? "seeding" : "default";
                     torrent_obj.discount = get_discount_text(d, tracker);
@@ -410,9 +410,9 @@
                         .join(" ");
                     torrent_obj.site = "BTN";
                     torrent_obj.download_link = d.querySelector("a[title='Download']").href.replace("passthepopcorn.me", "broadcasthe.net");
-                    torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(2)").textContent);
-                    torrent_obj.seed = parseInt(d.querySelector("td:nth-child(3)").textContent);
-                    torrent_obj.leech = parseInt(d.querySelector("td:nth-child(4)").textContent);
+                    torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(3)").textContent);
+                    torrent_obj.seed = parseInt(d.querySelector("td:nth-child(4)").textContent);
+                    torrent_obj.leech = parseInt(d.querySelector("td:nth-child(5)").textContent);
                     torrent_obj.torrent_page = [...d.querySelectorAll("a")].find(a => a.href.includes("torrentid=")).href.replace("passthepopcorn.me", "broadcasthe.net");
                     torrent_obj.status = d.querySelectorAll("span.internal").length > 0 ? "seeding" : "default";
                     torrent_obj.discount = get_discount_text(d, tracker);
