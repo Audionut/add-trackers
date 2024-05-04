@@ -24,12 +24,31 @@
     //  requires each tracker to be logged in with the same browser session (and container type if using multi-account containers).
     const movie_trackers = ["BHD", "CG", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "ANT", "BLU", "HUNO", "TIK", "Aither", "FNP", "RFX", "OE", "AvistaZ", "CinemaZ", "PHD", "PxHD"];
     const tv_trackers = ["BTN", "TVV", "NBL"];
+    const old_trackers = ["TVV"];  // Add trackers here that do not allow recent content. You can adjust what is considered recent in the year inclusion a few lines below.
+
     const isMiniSeries = Array.from(document.querySelectorAll("span.basic-movie-list__torrent-edition__main"))
                               .some(el => el.textContent.trim() === "Miniseries");
-    // Conditionally combine the arrays based on isMiniSeries
+
+    const pageTitleElement = document.querySelector(".page__title");
+    const pageTitleText = pageTitleElement ? pageTitleElement.textContent : "";
+    const matches = pageTitleText.match(/\[(\d{4})\]/);
+    const year = matches ? parseInt(matches[1], 10) : null;
+
     let trackers = isMiniSeries ? movie_trackers.concat(tv_trackers) : movie_trackers;
 
-    // Now, you can use the 'trackers' array for your processing
+    // Adjusting inclusion based on the year
+    if (year && (year < 2014 || year > 2024)) {
+        // Include old trackers if the year is out of the specified range
+        old_trackers.forEach(tracker => {
+            if (!trackers.includes(tracker)) {
+                trackers.push(tracker);
+            }
+        });
+    } else {
+        // Ensure old trackers are not included if year is within the specified range
+        trackers = trackers.filter(tracker => !old_trackers.includes(tracker));
+    }
+
     console.log("Active trackers:", trackers);
 
     const BLU_API_TOKEN = ""; // if you want to use BLU - find your api key here: https://blutopia.cc/users/YOUR_USERNAME_HERE/apikeys
