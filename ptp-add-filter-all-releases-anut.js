@@ -949,6 +949,9 @@
                     // Remove all periods from the dataSource string
                     let cleanedDataSource = dataSource.replace(/\./g, ' ');
                     torrent_obj.info_text = cleanedDataSource;
+                    if (/S\d+E\d+/i.test(torrent_obj.info_text)) {
+                        return; // Skip this entry
+                    }
                 }
                 torrent_obj.site = "NBL";
                 torrent_obj.download_link = [...d.querySelectorAll("a")].find(a => a.href.includes("action=download")).href.replace("passthepopcorn.me", "nebulance.io");
