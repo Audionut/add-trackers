@@ -309,19 +309,36 @@
                 torrents.forEach(torrent => {
                     let torrent_obj = {};
 
+                    // Access the document's title content
+                    const documentTitle = torrent.querySelector('title').textContent;
+
+                    // Skip torrents that include "Extras" in the title
+                    if (documentTitle.includes("Extras")) {
+                        console.log("Skipping torrent with 'Extras' in title:", documentTitle);
+                        return; // Skip further processing for this torrent
+                    }
+
                     // Check for the existence of each element before accessing its textContent
                     const combinedInfo = torrent.querySelector('torrentinfo[type="combined"]');
-                    const documentTitle = torrent.querySelector('title').textContent; // Access the document's title content
 
                     if (combinedInfo) {
                         // Remove "Freeleech" and any surrounding forward slashes
                         let infoText = combinedInfo.textContent.replace(/\/?Freeleech\/?/g, "").replace(/\//g, " / ");
 
-                        // Check if document title contains '720p' or '1080p' and append if necessary
+                        // Append resolution tags if necessary
                         if (documentTitle.includes("(720p)")) {
-                            infoText += " (720p)";
-                        } else if (documentTitle.includes("(1080p)")) {
-                            infoText += " (1080p)";
+                            infoText += " / (720p)";
+                        }
+                        if (documentTitle.includes("(1080p)")) {
+                            infoText += " / (1080p)";
+                        }
+                        if (documentTitle.includes("(2160p)")) {
+                            infoText += " / (2160p)";
+                        }
+
+                        // Always append "Special Edition" if present
+                        if (documentTitle.includes("(Special Edition)")) {
+                            infoText += " / (Special Edition)";
                         }
 
                         torrent_obj.info_text = infoText;
