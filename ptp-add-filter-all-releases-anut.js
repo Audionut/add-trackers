@@ -632,7 +632,7 @@
         }
         else if (tracker === "BHD") {
             try {
-                [...html.querySelector(".table-new").querySelectorAll("tr.bhd-sub-header-compact")].forEach((d) => {
+                [...html.querySelector(".table-new").querySelectorAll("tr.bhd-sub-header-compact.bg-alt1, tr.bhd-sub-header-compact.bg-alt2")].forEach((d) => {
                     let torrent_obj = {};
 
                     try {
