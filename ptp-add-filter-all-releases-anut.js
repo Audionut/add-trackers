@@ -359,7 +359,7 @@
             }
         }
         else if (tracker === "BTN") {
-            html.querySelector(".torrent_table > tbody:nth-child(2)").querySelectorAll("tr[style='border-top: none;']").forEach((d) => {
+            html.querySelector(".main_column").querySelectorAll(".torrent_table > tbody:nth-child(2) > tr").forEach((d) => {
 
                 // BTN has differing layouts for the top torrent compared to the other torrents. This is the top torrent.
                 if (d.querySelectorAll("td")[2].textContent.includes("GB")) {
