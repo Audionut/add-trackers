@@ -359,85 +359,99 @@
             }
         }
         else if (tracker === "BTN") {
-            let skipFollowingRows = false; // Flag to determine whether to skip subsequent rows
+            let skipFollowingRows = false; // Flag to skip rows after detecting an episode
+            let withinSeason2 = false; // Flag to track if we are within "Season 2" rows
+
             html.querySelector(".main_column").querySelectorAll(".torrent_table > tbody:nth-child(2) > tr").forEach((d) => {
+                // Check for episode and handle skipping logic
+                const episodeLink = d.querySelector('td > div > strong > a.episode');
+                if (skipFollowingRows || episodeLink) {
+                    if (episodeLink) {
+                        console.log("Found episode link, skipping all subsequent rows. Link text:", episodeLink.textContent.trim());
+                        skipFollowingRows = true; // Start skipping all following rows
+                    }
+                    console.log("Skipping row due to prior episode link or current episode link.");
+                    return; // Skip this iteration
+                }
 
-                  // Check if previous rows indicated to skip or if the current row is an episode link
-                  const episodeLink = d.querySelector('td > div > strong > a.episode');
-                  if (skipFollowingRows || episodeLink) {
-                      if (episodeLink) {
-                          console.log("Found episode link, skipping all subsequent rows. Link text:", episodeLink.textContent.trim());
-                          skipFollowingRows = true; // Set the flag to skip all following rows
-                      }
-                      console.log("Skipping row due to prior episode link or current episode link.");
-                      return; // Skip this iteration
-                  }
+                // Check and update the season flags based on content
+                const seasonLink = d.querySelector('td > div > strong > a[title="View Torrent"]');
+                if (seasonLink) {
+                    let seasonText = seasonLink.textContent.trim();
+                    if (seasonText.includes("Season 2")) {
+                        withinSeason2 = true;
+                    } else if (seasonText.includes("Season 1")) {
+                        withinSeason2 = false;
+                    }
+                }
 
-                // BTN has differing layouts for the top torrent compared to the other torrents. This is the top torrent.
+                // BTN has differing layouts for the torrents, this will process torrents with this html layout.
                 if (d.querySelectorAll("td")[2].textContent.includes("GB")) {
-                  let torrent_obj = {};
-                    let size = d.querySelectorAll("td")[2].textContent;
+                let torrent_obj = {};
+                  let size = d.querySelectorAll("td")[2].textContent;
 
-                    if (size.includes("GB")) {
-                        size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // MB
-                    }
-                    else if (size.includes("MB")) size = parseInt(parseFloat(size.split("MB")[0]));
+                  if (size.includes("GB")) {
+                      size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // MB
+                  }
+                  else if (size.includes("MB")) size = parseInt(parseFloat(size.split("MB")[0]));
 
-                    torrent_obj.size = size;
-                    torrent_obj.info_text = Array.from(d.querySelector("td:nth-child(2)").querySelectorAll("span"))
-                        .map(span => span.textContent.trim())
-                        .filter(text => !text.includes("Internal"))
-                        .filter(text => !text.includes("["))
-                        .filter(text => !text.includes("DL") || text.includes("WEB-DL"))
-                        .filter(text => !text.includes("]"))
-                        .join(" ");
-                    torrent_obj.site = "BTN";
-                    torrent_obj.download_link = d.querySelector("a[title='Download']").href.replace("passthepopcorn.me", "broadcasthe.net");
-                    torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(4)").textContent);
-                    torrent_obj.seed = parseInt(d.querySelector("td:nth-child(5)").textContent);
-                    torrent_obj.leech = parseInt(d.querySelector("td:nth-child(6)").textContent);
-                    torrent_obj.torrent_page = [...d.querySelectorAll("a")].find(a => a.href.includes("torrentid=")).href.replace("passthepopcorn.me", "broadcasthe.net");
-                    torrent_obj.status = d.querySelectorAll("span.internal").length > 0 ? "seeding" : "default";
-                    torrent_obj.discount = get_discount_text(d, tracker);
-                    torrent_obj.internal = Array.from(d.querySelector("td:nth-child(2)").querySelectorAll("span"))
-                                          .map(span => span.textContent.trim())
-                                          .some(text => text.includes("Internal"));
-                    torrent_objs.push(torrent_obj);
-                }
+                  torrent_obj.size = size;
+                  torrent_obj.info_text = Array.from(d.querySelector("td:nth-child(2)").querySelectorAll("span"))
+                      .map(span => span.textContent.trim())
+                      .filter(text => !text.includes("Internal"))
+                      .filter(text => !text.includes("["))
+                      .filter(text => !text.includes("DL") || text.includes("WEB-DL"))
+                      .filter(text => !text.includes("]"))
+                      .join(" ");
+                  torrent_obj.site = "BTN";
+                  torrent_obj.download_link = d.querySelector("a[title='Download']").href.replace("passthepopcorn.me", "broadcasthe.net");
+                  torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(4)").textContent);
+                  torrent_obj.seed = parseInt(d.querySelector("td:nth-child(5)").textContent);
+                  torrent_obj.leech = parseInt(d.querySelector("td:nth-child(6)").textContent);
+                  torrent_obj.torrent_page = [...d.querySelectorAll("a")].find(a => a.href.includes("torrentid=")).href.replace("passthepopcorn.me", "broadcasthe.net");
+                  torrent_obj.status = d.querySelectorAll("span.internal").length > 0 ? "seeding" : "default";
+                  torrent_obj.discount = get_discount_text(d, tracker);
+                  torrent_obj.internal = Array.from(d.querySelector("td:nth-child(2)").querySelectorAll("span"))
+                                        .map(span => span.textContent.trim())
+                                        .some(text => text.includes("Internal"));
+                  torrent_obj.season2 = withinSeason2, // Direct assignment using flag
+                  torrent_objs.push(torrent_obj);
+              }
 
-                // Layout for other torrents
+                // Layout for other torrents.
                 if (d.querySelectorAll("td")[1].textContent.includes("GB")) {
-                  let torrent_obj = {};
-                    let size = d.querySelectorAll("td")[1].textContent;
+                let torrent_obj = {};
+                  let size = d.querySelectorAll("td")[1].textContent;
 
-                    if (size.includes("GB")) {
-                        size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // MB
-                    }
-                    else if (size.includes("MB")) size = parseInt(parseFloat(size.split("MB")[0]));
+                  if (size.includes("GB")) {
+                      size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // MB
+                  }
+                  else if (size.includes("MB")) size = parseInt(parseFloat(size.split("MB")[0]));
 
-                    torrent_obj.size = size;
-                    torrent_obj.info_text = Array.from(d.querySelector("td:nth-child(1)").querySelectorAll("span"))
-                        .map(span => span.textContent.trim())
-                        .filter(text => !text.includes("Internal"))
-                        .filter(text => !text.includes("["))
-                        .filter(text => !text.includes("DL") || text.includes("WEB-DL"))
-                        .filter(text => !text.includes("]"))
-                        .join(" ");
-                    torrent_obj.site = "BTN";
-                    torrent_obj.download_link = d.querySelector("a[title='Download']").href.replace("passthepopcorn.me", "broadcasthe.net");
-                    torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(3)").textContent);
-                    torrent_obj.seed = parseInt(d.querySelector("td:nth-child(4)").textContent);
-                    torrent_obj.leech = parseInt(d.querySelector("td:nth-child(5)").textContent);
-                    torrent_obj.torrent_page = [...d.querySelectorAll("a")].find(a => a.href.includes("torrentid=")).href.replace("passthepopcorn.me", "broadcasthe.net");
-                    torrent_obj.status = d.querySelectorAll("span.internal").length > 0 ? "seeding" : "default";
-                    torrent_obj.discount = get_discount_text(d, tracker);
-                    torrent_obj.internal = Array.from(d.querySelector("td:nth-child(1)").querySelectorAll("span"))
-                                          .map(span => span.textContent.trim())
-                                          .some(text => text.includes("Internal"));
-                    torrent_objs.push(torrent_obj);
-                }
-            });
-        }
+                  torrent_obj.size = size;
+                  torrent_obj.info_text = Array.from(d.querySelector("td:nth-child(1)").querySelectorAll("span"))
+                      .map(span => span.textContent.trim())
+                      .filter(text => !text.includes("Internal"))
+                      .filter(text => !text.includes("["))
+                      .filter(text => !text.includes("DL") || text.includes("WEB-DL"))
+                      .filter(text => !text.includes("]"))
+                      .join(" ");
+                  torrent_obj.site = "BTN";
+                  torrent_obj.download_link = d.querySelector("a[title='Download']").href.replace("passthepopcorn.me", "broadcasthe.net");
+                  torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(3)").textContent);
+                  torrent_obj.seed = parseInt(d.querySelector("td:nth-child(4)").textContent);
+                  torrent_obj.leech = parseInt(d.querySelector("td:nth-child(5)").textContent);
+                  torrent_obj.torrent_page = [...d.querySelectorAll("a")].find(a => a.href.includes("torrentid=")).href.replace("passthepopcorn.me", "broadcasthe.net");
+                  torrent_obj.status = d.querySelectorAll("span.internal").length > 0 ? "seeding" : "default";
+                  torrent_obj.discount = get_discount_text(d, tracker);
+                  torrent_obj.internal = Array.from(d.querySelector("td:nth-child(1)").querySelectorAll("span"))
+                                        .map(span => span.textContent.trim())
+                                        .some(text => text.includes("Internal"));
+                  torrent_obj.season2 = withinSeason2, // Direct assignment using flag
+                  torrent_objs.push(torrent_obj);
+              }
+          });
+      }
         else if (tracker === "MTV") {
             try {
                 html.querySelector("#torrent_table > tbody").querySelectorAll("tr:not(.colhead)").forEach((d) => {
@@ -1536,6 +1550,7 @@
             }
             if (torrent.site === "BTN") {
                 torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #00FF00'>Internal</span>" : false;
+                torrent.season2 ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #FF0000'>Season 2</span>" : false;
             }
             if (torrent.site === "ANT") {
                 torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2CB430'>Internal</span>" : false;
