@@ -16,12 +16,21 @@
     /////////////////////////                                   USER OPTIONS                     ////////////////////////////////////
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    //  available trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "ANT", "BTN", "PxHD", "NBL", "BLU"*, "HUNO"*, TIK"*, "Aither"*, "FNP"*, "RFX"*, "OE"*, "AvistaZ"**, "CinemaZ"**, "PHD"**, "TVV"***
+    //  available movie trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "ANT", "PxHD", "BLU"*, "HUNO"*, TIK"*, "Aither"*, "FNP"*, "RFX"*, "OE"*, "AvistaZ"**, "CinemaZ"**, "PHD"**
+    //  available movie trackers: "BTN", "NBL", "TVV"***
     //  if you don't need the results from some of these trackers, do not add them. the fewer you add, the faster the code execution.
-    //  remove tracker that you do not have access too.
+    //  remove trackers that you do not have access too and don't add trackers to the wrong const. 
     //  *requires API key     **performs two requests     *** XML output that needs authkey and torrent_pass from a download link
     //  requires each tracker to be logged in with the same browser session (and container type if using multi-account containers).
-   const trackers = ["BHD", "CG", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "ANT", "BTN", "BLU", "HUNO", "TIK", "Aither", "FNP", "RFX", "OE", "AvistaZ", "CinemaZ", "PHD", "PxHD", "TVV", "NBL"];
+    const movie_trackers = ["BHD", "CG", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "ANT", "BLU", "HUNO", "TIK", "Aither", "FNP", "RFX", "OE", "AvistaZ", "CinemaZ", "PHD", "PxHD"];
+    const tv_trackers = ["BTN", "TVV", "NBL"];
+    const isMiniSeries = Array.from(document.querySelectorAll("span.basic-movie-list__torrent-edition__main"))
+                              .some(el => el.textContent.trim() === "Miniseries");
+    // Conditionally combine the arrays based on isMiniSeries
+    let trackers = isMiniSeries ? movie_trackers.concat(tv_trackers) : movie_trackers;
+
+    // Now, you can use the 'trackers' array for your processing
+    console.log("Active trackers:", trackers);
 
     const BLU_API_TOKEN = ""; // if you want to use BLU - find your api key here: https://blutopia.cc/users/YOUR_USERNAME_HERE/apikeys
     const TIK_API_TOKEN = ""; // if you want to use TIK - find your api key here: https://cinematik.net/users/YOUR_USERNAME_HERE/apikeys
@@ -75,9 +84,6 @@
         else if (text.includes("480p")) return "480p";
         else return "SD";
     };
-
-    const isMiniSeries = Array.from(document.querySelectorAll("span.basic-movie-list__torrent-edition__main"))
-                              .some(el => el.textContent.trim() === "Miniseries");
 
     const get_default_doms = () => {
         [...document.querySelectorAll("tr.group_torrent_header")].forEach((d, i) => {
@@ -949,6 +955,7 @@
                     // Remove all periods from the dataSource string
                     let cleanedDataSource = dataSource.replace(/\./g, ' ');
                     torrent_obj.info_text = cleanedDataSource;
+                    // Regular expression to detect SxxExx pattern
                     if (/S\d+E\d+/i.test(torrent_obj.info_text)) {
                         return; // Skip this entry
                     }
@@ -995,8 +1002,13 @@
             }
         }
         else if (tracker === "BTN") {
-            if (html.querySelector(".thin").textContent.includes("Error 404")) return false;
-            else return true;
+            const headers = html.querySelectorAll(".thin > h2, .thin > h3");  // Fetch all H2 and H3 under .thin
+            const errorHeader = Array.from(headers).find(h => h.textContent.includes("Error 404"));  // Find any header that includes "Error 404"
+            if (errorHeader) {
+                return false;
+            } else {
+                return true;
+            }
         }
         else if (tracker === "MTV") {
             if (html.querySelector(".numsearchresults").textContent.includes("0 results")) return false;
@@ -1104,12 +1116,7 @@
                 query_url = "https://hdbits.org/browse.php?c3=1&c8=1&c1=1&c4=1&c5=1&c2=1&c7=1&descriptions=0&season_packs=0&from=&to=&imdbgt=0&imdblt=10&imdb=" + imdb_id + "&sort=size&h=8&d=DESC";
             }
             else if (tracker === "BTN") {
-                if (!isMiniSeries) {
-                    console.log("Skipping BTN processing as the item is not a Miniseries.");
-                } else {
-                    // Only set the query URL if it is a Miniseries
                 query_url = "https://broadcasthe.net/torrents.php?action=advanced&imdb=" + imdb_id;
-                }
             }
             else if (tracker === "MTV") {
                 query_url = "https://www.morethantv.me/torrents/browse?page=1&order_by=time&order_way=desc&=Search&=Reset&=Search&searchtext=" + imdb_id + "&action=advanced&title=&sizeall=&sizetype=kb&sizerange=0.01&filelist=&autocomplete_toggle=on";
@@ -1170,19 +1177,10 @@
                     FNP_API_TOKEN;
             }
             else if (tracker === "TVV") {
-                if (!isMiniSeries) {
-                    console.log("Skipping TVV processing as the item is not a Miniseries.");
-                } else {
-                    // Only set the query URL if it is a Miniseries
                     query_url = "https://tv-vault.me/xmlsearch.php?query=get&authkey=" + TVV_AUTH_KEY + "&imdbid=" + imdb_id;
-                }
             }
             else if (tracker === "NBL") {
-                if (!isMiniSeries) {
-                    console.log("Skipping NBL processing as the item is not a Miniseries.");
-                } else {
                 query_url = "https://nebulance.io/torrents.php?order_by=time&order_way=desc&title=" + show_name;
-                }
             }
             else if (tracker === "AvistaZ") {
                 query_url = "https://avistaz.to/movies?search=&imdb=" + imdb_id + "&view=lists";
