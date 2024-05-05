@@ -64,12 +64,14 @@
 
     // Adjusting inclusion based on the year
     if (year && (year < 2015 || year > 2100)) {
-        // Include old trackers if the year is out of the specified range
-        old_trackers.forEach(tracker => {
-            if (!trackers.includes(tracker)) {
-                trackers.push(tracker);
-            }
-        });
+        // Include old trackers if the year is out of the specified range AND it's a miniseries
+        if (isMiniSeries) {
+            old_trackers.forEach(tracker => {
+                if (!trackers.includes(tracker)) {
+                    trackers.push(tracker);
+                }
+            });
+        }
     } else {
         // Ensure old trackers are not included if year is within the specified range
         trackers = trackers.filter(tracker => !old_trackers.includes(tracker));
