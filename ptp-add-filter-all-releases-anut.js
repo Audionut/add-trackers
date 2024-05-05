@@ -2447,15 +2447,33 @@
             imdb_id = "tt" + [...document.querySelectorAll(".rating")].find(a => a.href.includes("imdb.com")).href.split("/tt")[1].split("/")[0];
         }
 
-        let name_url;
         // Fetch the text content from the h2.page__title element, ensuring it is trimmed of any leading or trailing whitespace
-        name_url = document.querySelector("h2.page__title").textContent.trim();
+        let name_url = document.querySelector("h2.page__title").textContent.trim();
 
-        // Split the string on spaces to get the first word or section before the first space
-        let firstWord = name_url.split(' ')[0];
+        // Initialize show_name variable
+        let show_name;
 
-        // Remove any colons from the first word by replacing them with an empty string
-        let show_name = firstWord.replace(/:/g, '');
+        // Check if 'AKA' is present in the title
+        const akaIndex = name_url.indexOf(" AKA ");
+        if (akaIndex !== -1) {
+            // Extract everything before 'AKA'
+            show_name = name_url.substring(0, akaIndex);
+        } else {
+            // If 'AKA' is not present, find the position of the year bracket and extract everything before it
+            const yearMatch = name_url.match(/\[\d{4}\]/);
+            if (yearMatch) {
+                show_name = name_url.substring(0, yearMatch.index).trim();
+            }
+        }
+
+        // Remove any portion of the string following a colon, including the colon
+        const colonIndex = show_name.indexOf(":");
+        if (colonIndex !== -1) {
+            show_name = show_name.substring(0, colonIndex);
+        }
+
+        // Finally, trim the resulting show_name to ensure no trailing spaces or punctuation
+        show_name = show_name.trim().replace(/[\s:]+$/, '');
 
         let promises = [];
 
