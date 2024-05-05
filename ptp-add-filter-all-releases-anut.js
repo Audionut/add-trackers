@@ -86,7 +86,7 @@
     console.log("Active trackers:", trackers);
 
     let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "40% Bonus", "30% Bonus", "25% Freeleech", "Copper", "Bronze", "Silver", "Golden", "Refundable", "Rewind", "Rescuable", "Pollination", "None"];
-    let qualities = ["SD", "480p", "576p", "720p", "1080p", "2160p"];
+    let qualities = ["SD", "480p", "576p", "720p", "1080p", "2160p", "Other"];
     let filters = {
         "trackers": trackers.map((e) => {
             return ({ "name": e, "status": "default" });
@@ -107,6 +107,7 @@
         if (text.includes("720p")) return "720p";
         else if (text.includes("1080p")) return "1080p";
         else if (text.includes("2160p")) return "2160p";
+        else if (text.includes("Other")) return "Other";
         else if (text.includes("576p")) return "576p";
         else if (text.includes("480p")) return "480p";
         else return "SD";
@@ -822,7 +823,7 @@
                 else size = 1; // must be kiloBytes, so lets assume 1mb.
 
                 torrent_obj.size = size;
-                torrent_obj.info_text = d.querySelectorAll("td")[1].querySelector("b").textContent.trim();
+                torrent_obj.info_text = d.querySelectorAll("td")[1].querySelector("a").title.trim();
                 torrent_obj.site = "CG";
                 torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(6)").textContent);
                 torrent_obj.seed = parseInt(d.querySelector("td:nth-child(7)").textContent);
@@ -1459,6 +1460,14 @@
             if (last_idx === -1) last_idx = all_trs.length;
             filtered_torrents = sliced.slice(0, last_idx);
         }
+        else if (quality === "Other") {
+            let first_idx = all_trs.findIndex((a) => a.textContent.includes("Other"));
+            let sliced = all_trs.slice(first_idx + 1, all_trs.length);
+
+            let last_idx = sliced.findIndex((a) => a.className === "group_torrent");
+            if (last_idx === -1) last_idx = all_trs.length;
+            filtered_torrents = sliced.slice(0, last_idx);
+        }
 
         // part 2 !
         let group_torrent_objs = [];
@@ -1484,7 +1493,8 @@
 
         let text = torrent.info_text.toLowerCase();
 
-        if (text.includes("2160p")) return "UHD";
+        if (text.includes("Extras") || text.includes("PDF") || text.includes("ebook") || text.includes("epub") || text.includes("pdf")) return "Other";
+        else if (text.includes("2160p")) return "UHD";
         else if (text.includes("1080p") || text.includes("720p") || text.includes("1080i") || text.includes("720i")) return "HD";
         else return "SD";
     };
@@ -1525,6 +1535,9 @@
         }
         else if (quality === "UHD") {
             first_idx = all_trs.findIndex((a) => a.textContent.includes("Ultra High Definition"));
+        }
+        else if (quality === "Other") {
+            first_idx = all_trs.findIndex((a) => a.textContent.includes("Other"));
         }
 
         insertAfter(div, all_trs[first_idx]);
@@ -1617,6 +1630,7 @@
         let sd_ptp_torrents = get_filtered_torrents("SD").sort((a, b) => a.size < b.size ? 1 : -1);
         let hd_ptp_torrents = get_filtered_torrents("HD").sort((a, b) => a.size < b.size ? 1 : -1);
         let uhd_ptp_torrents = get_filtered_torrents("UHD").sort((a, b) => a.size < b.size ? 1 : -1);
+        let other_ptp_torrents = get_filtered_torrents("Other").sort((a, b) => a.size < b.size ? 1 : -1);
 
         create_needed_groups(external_torrents);
 
@@ -1629,7 +1643,10 @@
             let tracker = torrent.site;
             let dom_id = tracker + "_" + i;
 
-            if (torrent.quality === "UHD") {
+            if (torrent.quality === "Other") {
+                ref_div = get_ref_div(torrent, other_ptp_torrents);
+                group_torrents = other_ptp_torrents; // needed just in case ref returns false/if its smallest
+            } else if (torrent.quality === "UHD") {
                 ref_div = get_ref_div(torrent, uhd_ptp_torrents);
                 group_torrents = uhd_ptp_torrents; // needed just in case ref returns false/if its smallest
             } else if (torrent.quality === "HD") {
@@ -1815,6 +1832,10 @@
         if (torrents.find(e => e.quality === "UHD") != undefined && all_trs.find(d => d.textContent.includes("Ultra High Definition")) === undefined) {
             group_header_example.querySelector(".basic-movie-list__torrent-edition__sub").textContent = "Ultra High Definition";
             insert_group("UHD", group_header_example);
+        }
+        if (torrents.find(e => e.quality === "Other") != undefined && all_trs.find(d => d.textContent.includes("Other")) === undefined) {
+            group_header_example.querySelector(".basic-movie-list__torrent-edition__sub").textContent = "Other";
+            insert_group("Other", group_header_example);
         }
     };
 
@@ -2306,6 +2327,7 @@
             else if (q === "720p") arr.push({ "value": 3, "name": q });
             else if (q === "1080p") arr.push({ "value": 4, "name": q });
             else if (q === "2160p") arr.push({ "value": 5, "name": q });
+            else if (q === "Other") arr.push({ "value": 6, "name": q });
 
         });
 
