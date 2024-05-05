@@ -24,32 +24,7 @@
     //  requires each tracker to be logged in with the same browser session (and container type if using multi-account containers).
     const movie_trackers = ["BHD", "CG", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "ANT", "BLU", "HUNO", "TIK", "Aither", "FNP", "RFX", "OE", "AvistaZ", "CinemaZ", "PHD", "PxHD"];
     const tv_trackers = ["BTN", "TVV", "NBL"];
-    const old_trackers = ["TVV"];  // Add trackers here that do not allow recent content. You can adjust what is considered recent in the year inclusion a few lines below.
-
-    const isMiniSeries = Array.from(document.querySelectorAll("span.basic-movie-list__torrent-edition__main"))
-                              .some(el => el.textContent.trim() === "Miniseries");
-
-    const pageTitleElement = document.querySelector(".page__title");
-    const pageTitleText = pageTitleElement ? pageTitleElement.textContent : "";
-    const matches = pageTitleText.match(/\[(\d{4})\]/);
-    const year = matches ? parseInt(matches[1], 10) : null;
-
-    let trackers = isMiniSeries ? movie_trackers.concat(tv_trackers) : movie_trackers;
-
-    // Adjusting inclusion based on the year
-    if (year && (year < 2014 || year > 2024)) {
-        // Include old trackers if the year is out of the specified range
-        old_trackers.forEach(tracker => {
-            if (!trackers.includes(tracker)) {
-                trackers.push(tracker);
-            }
-        });
-    } else {
-        // Ensure old trackers are not included if year is within the specified range
-        trackers = trackers.filter(tracker => !old_trackers.includes(tracker));
-    }
-
-    console.log("Active trackers:", trackers);
+    const old_trackers = ["TVV"];  // Add trackers here that do not allow recent content.
 
     const BLU_API_TOKEN = ""; // if you want to use BLU - find your api key here: https://blutopia.cc/users/YOUR_USERNAME_HERE/apikeys
     const TIK_API_TOKEN = ""; // if you want to use TIK - find your api key here: https://cinematik.net/users/YOUR_USERNAME_HERE/apikeys
@@ -61,7 +36,7 @@
 
     // We need to use XML resposne with TVV and have to define some parameters for it to work correctly.
     const TVV_AUTH_KEY = ""; // If you want to use TVV - find your authkey from a torrent download link
-    const TVV_TORR_PASS = ""; // We need to torrent pass to create a download link - find your torrent_pass from a torrent download link
+    const TVV_TORR_PASS = ""; // We need the torrent pass to create a download link - find your torrent_pass from a torrent download link
 
     // Define how the DL link is displayed. Useful to clean the displayed output depending on stylsheet.
     let hideBlankLinks = "DL"; // Options are "DL" which only displays the "DL" link (like the old code). "Download" which displays "DOWNLOAD". "Spaced" which adds "DL" but spaced to fit left aligned style sheets.
@@ -76,6 +51,31 @@
     const open_in_new_tab = true; // false : when you click external torrent, it will open the page in new tab. ||| true : it will replace current tab.
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    const isMiniSeries = Array.from(document.querySelectorAll("span.basic-movie-list__torrent-edition__main"))
+                              .some(el => el.textContent.trim() === "Miniseries");
+
+    const pageTitleElement = document.querySelector(".page__title");
+    const pageTitleText = pageTitleElement ? pageTitleElement.textContent : "";
+    const matches = pageTitleText.match(/\[(\d{4})\]/);
+    const year = matches ? parseInt(matches[1], 10) : null;
+
+    let trackers = isMiniSeries ? movie_trackers.concat(tv_trackers) : movie_trackers;
+
+    // Adjusting inclusion based on the year
+    if (year && (year < 2015 || year > 2100)) {
+        // Include old trackers if the year is out of the specified range
+        old_trackers.forEach(tracker => {
+            if (!trackers.includes(tracker)) {
+                trackers.push(tracker);
+            }
+        });
+    } else {
+        // Ensure old trackers are not included if year is within the specified range
+        trackers = trackers.filter(tracker => !old_trackers.includes(tracker));
+    }
+
+    console.log("Active trackers:", trackers);
 
     let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "40% Bonus", "30% Bonus", "25% Freeleech", "Copper", "Bronze", "Silver", "Golden", "Refundable", "Rewind", "Rescuable", "Pollination", "None"];
     let qualities = ["SD", "480p", "576p", "720p", "1080p", "2160p"];
@@ -1036,7 +1036,8 @@
             else return true;
         }
         else if (tracker === "TVV") {
-            return true;
+            if (html.querySelector('results[type="shows"]').textContent.includes("0")) return false;
+            else return true;
         }
         else if (tracker === "NBL") {
             // Ensure that the selector targets the specific h2 within the context of the parent divs correctly.
