@@ -56,8 +56,13 @@
                                       .some(el => el.textContent.trim() === "Miniseries");
 
     const listItems = document.querySelectorAll("ul.list--unstyled li");
-    const isMiniSeriesFromList = Array.from(listItems).some(li => li.textContent.toLowerCase().includes("miniseries"));
-
+    const isMiniSeriesFromList = Array.from(listItems).some(li => {
+        const text = li.textContent.toLowerCase();
+        const hasMiniseries = text.includes("miniseries");
+        const hasTV = text.includes("tv");
+        const hasTelevision = text.includes("television");
+        return hasMiniseries || hasTV || hasTelevision;
+    });
     // Combine both checks to determine if it's considered a miniseries
     const isMiniSeries = isMiniSeriesFromSpan || isMiniSeriesFromList;
 
@@ -1493,7 +1498,7 @@
 
         let text = torrent.info_text.toLowerCase();
 
-        if (text.includes("Extras") || text.includes("PDF") || text.includes("ebook") || text.includes("epub") || text.includes("pdf")) return "Other";
+        if (text.includes("Extras") || text.includes("PDF") || text.includes("ebook") || text.includes("epub") || text.includes("pdf") || text.includes("mp3") || text.includes("flac") || text.includes("vinyl")) return "Other";
         else if (text.includes("2160p")) return "UHD";
         else if (text.includes("1080p") || text.includes("720p") || text.includes("1080i") || text.includes("720i")) return "HD";
         else return "SD";
