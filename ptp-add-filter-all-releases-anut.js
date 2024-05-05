@@ -52,11 +52,14 @@
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    // Selecting all li elements within the specific ul with class 'list--unstyled'
-    const listItems = document.querySelectorAll(".list--unstyled li");
+    const isMiniSeriesFromSpan = Array.from(document.querySelectorAll("span.basic-movie-list__torrent-edition__main"))
+                                      .some(el => el.textContent.trim() === "Miniseries");
 
-    // Checking if any li contains the text "miniseries"
-    const isMiniSeries = Array.from(listItems).some(li => li.textContent.toLowerCase().includes("miniseries"));
+    const listItems = document.querySelectorAll("ul.list--unstyled li");
+    const isMiniSeriesFromList = Array.from(listItems).some(li => li.textContent.toLowerCase().includes("miniseries"));
+
+    // Combine both checks to determine if it's considered a miniseries
+    const isMiniSeries = isMiniSeriesFromSpan || isMiniSeriesFromList;
 
     const pageTitleElement = document.querySelector(".page__title");
     const pageTitleText = pageTitleElement ? pageTitleElement.textContent : "";
