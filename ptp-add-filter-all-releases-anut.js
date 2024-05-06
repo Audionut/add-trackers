@@ -63,7 +63,7 @@
         const hasTelevision = text.includes("television");
         return hasMiniseries || hasTV || hasTelevision;
     });
-    // Combine both checks to determine if it's considered a miniseries
+
     const isMiniSeries = isMiniSeriesFromSpan || isMiniSeriesFromList;
 
     const pageTitleElement = document.querySelector(".page__title");
@@ -71,11 +71,18 @@
     const matches = pageTitleText.match(/\[(\d{4})\]/);
     const year = matches ? parseInt(matches[1], 10) : null;
 
-    let trackers = isMiniSeries ? movie_trackers.concat(tv_trackers) : movie_trackers;
+    let trackers = movie_trackers.slice(); // Start with movie trackers
+    let excludedTrackers = [];
 
-    // Adjusting inclusion based on the year
-    if (year && (year < 2015 || year > 2100)) {
-        // Include old trackers if the year is out of the specified range AND it's a miniseries
+    if (isMiniSeries) {
+        trackers = trackers.concat(tv_trackers);
+    } else {
+        tv_trackers.forEach(tracker => {
+            excludedTrackers.push({ tracker: tracker, reason: 'Not classified as a Miniseries' });
+        });
+    }
+
+    if (year && (year < 2019 || year > 2100)) {
         if (isMiniSeries) {
             old_trackers.forEach(tracker => {
                 if (!trackers.includes(tracker)) {
@@ -84,11 +91,17 @@
             });
         }
     } else {
-        // Ensure old trackers are not included if year is within the specified range
+        const initialTrackers = trackers.slice(); // Make a copy to compare later
         trackers = trackers.filter(tracker => !old_trackers.includes(tracker));
+        initialTrackers.forEach(tracker => {
+            if (!trackers.includes(tracker)) {
+                excludedTrackers.push({ tracker: tracker, reason: `Excluded by year range check (Year: ${year})` });
+            }
+        });
     }
 
     console.log("Active trackers:", trackers);
+    console.log("Excluded trackers:", excludedTrackers.map(e => `${e.tracker} - ${e.reason}`));
 
     let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "40% Bonus", "30% Bonus", "25% Freeleech", "Copper", "Bronze", "Silver", "Golden", "Refundable", "Rewind", "Rescuable", "Pollination", "None"];
     let qualities = ["SD", "480p", "576p", "720p", "1080p", "2160p", "Other"];
@@ -1278,7 +1291,6 @@
                             }
                             else {
                                 console.log(`Data fetched successfully from ${tracker}`);
-                                console.log("Fetched data:", result); // Log the fetched data
                                 resolve(get_torrent_objs(tracker, result));
                             }
                         })
@@ -1302,7 +1314,6 @@
                             }
                             else {
                                 console.log(`Data fetched successfully from ${tracker}`);
-                                console.log("Fetched data:", data); // Log the fetched data
                             }
                             resolve(get_api_torrent_objects(tracker, data));
                         })
