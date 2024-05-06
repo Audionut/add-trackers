@@ -1067,12 +1067,17 @@
             else return true;
         }
         else if (tracker === "NBL") {
-            // Ensure that the selector targets the specific h2 within the context of the parent divs correctly.
-            const messageElement = html.querySelector("#div.box.pad > h2");
-            if (messageElement && messageElement.textContent.includes("If there are Cylons aboard this ship, we'll find them")) {
-                return false;
+            const element = html.querySelector("div.box.pad > h2");
+
+            // Check if element exists
+            if (element) {
+                if (element.textContent.includes("If there are Cylons aboard this ship")) {
+                    return false; // Text did not match anything
+                } else {
+                    return true; // Text matched something
+                }
             } else {
-                return true;
+                return true; // Element not found
             }
         }
         else if (tracker === "BTN") {
