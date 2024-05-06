@@ -359,7 +359,6 @@
 
                     // Skip torrents that include "Extras" in the title
                     if (documentTitle.includes("Extras")) {
-                        console.log("Skipping torrent with 'Extras' in title:", documentTitle);
                         return; // Skip further processing for this torrent
                     }
 
@@ -446,10 +445,8 @@
                   const episodeLink = d.querySelector('td > div > strong > a.episode');
                   if (skipFollowingRows || episodeLink) {
                       if (episodeLink) {
-                          console.log("Found episode link, skipping all subsequent rows. Link text:", episodeLink.textContent.trim());
                           skipFollowingRows = true; // Start skipping all following rows
                       }
-                      console.log("Skipping row due to prior episode link or current episode link.");
                       return; // Skip this iteration
                   }
 
@@ -1289,7 +1286,6 @@
                             let movie_exist = is_movie_exist(tracker, result);
 
                             if (movie_exist === false) {
-                                console.log(`No data found on ${tracker}`);
                                 console.log(`${tracker} reached successfully`);
                                 resolve([]);
                             }
@@ -1314,7 +1310,6 @@
                         .then(data => {
                             if (data.data.length === 0) {
                                 console.log(`${tracker} reached successfully`);
-                                console.log(`No data found on ${tracker}`);
                             }
                             else {
                                 console.log(`Data fetched successfully from ${tracker}`);
