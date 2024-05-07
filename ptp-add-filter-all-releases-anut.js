@@ -16,13 +16,13 @@
     /////////////////////////                                   USER OPTIONS                     ////////////////////////////////////
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    //  available movie trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "ANT", "PxHD", "BLU"*, "HUNO"*, TIK"*, "Aither"*, "FNP"*, "RFX"*, "OE"*, "AvistaZ"**, "CinemaZ"**, "PHD"**
+    //  available movie trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "ANT", "PxHD", "BLU"*, "HUNO"*, TIK"*, "Aither"*, "RFX"*, "OE"*, "AvistaZ"**, "CinemaZ"**, "PHD"**
     //  available movie trackers: "BTN", "NBL", "TVV"***
     //  if you don't need the results from some of these trackers, do not add them. the fewer you add, the faster the code execution.
     //  remove trackers that you do not have access too and don't add trackers to the wrong const. 
     //  *requires API key     **performs two requests     *** XML output that needs authkey and torrent_pass from a download link
     //  requires each tracker to be logged in with the same browser session (and container type if using multi-account containers).
-    const movie_trackers = ["BHD", "CG", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "ANT", "BLU", "HUNO", "TIK", "Aither", "FNP", "RFX", "OE", "AvistaZ", "CinemaZ", "PHD", "PxHD"];
+    const movie_trackers = ["BHD", "CG", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "ANT", "BLU", "HUNO", "TIK", "Aither", "RFX", "OE", "AvistaZ", "CinemaZ", "PHD", "PxHD"];
     const tv_trackers = ["BTN", "TVV", "NBL"];
     const old_trackers = ["TVV"];  // Add trackers here that do not allow recent content. Do not remove the torrents here from either movie_trackers or tv_trackers. It needs to be defined in both applicable areas.
 
@@ -188,7 +188,7 @@
                 }
             }
         }
-        else if (["BLU", "Aither", "RFX", "OE", "TIK", "HUNO", "FNP"].includes(tracker)) {
+        else if (["BLU", "Aither", "RFX", "OE", "TIK", "HUNO"].includes(tracker)) {
             return true;
         }
         else if (tracker === "FL") {
@@ -300,7 +300,6 @@
         else if (tracker === "ANT") return "https://anthelion.me/favicon.ico";
         else if (tracker === "HUNO") return "https://hawke.uno/favicon.ico";
         else if (tracker === "BTN") return "https://broadcasthe.net/favicon.ico";
-        else if (tracker === "FNP") return "https://fearnopeer.com/favicon.ico";
         else if (tracker === "TVV") return "https://tv-vault.me/favicon.ico";
         else if (tracker === "NBL") return "https://nebulance.io/favicon.ico";
     };
@@ -312,8 +311,7 @@
             (tracker === "RFX") ||
             (tracker === "OE") ||
             (tracker === "HUNO") ||
-            (tracker === "TIK") ||
-            (tracker === "FNP")
+            (tracker === "TIK")
         )
             return true;
         else return false;
@@ -1118,7 +1116,7 @@
         else if (tracker === "BHD") {
             if (html.querySelectorAll(".bhd-meta-box").length === 0) return false;
             else return true;
-        } else if (tracker === "BLU" || tracker === "Aither" || tracker === "RFX" || tracker === "OE" || tracker === "HUNO" || tracker === "TIK" || tracker === "FNP") {
+        } else if (tracker === "BLU" || tracker === "Aither" || tracker === "RFX" || tracker === "OE" || tracker === "HUNO" || tracker === "TIK") {
             if (html.querySelector(".torrent-search--list__no-result") === null) return true;
             else return false;
         }
@@ -1266,13 +1264,6 @@
                     "&categories[0]=2&categories[1]=1&api_token=" +
                     HUNO_API_TOKEN;
             }
-            else if (tracker === "FNP") {
-                api_query_url =
-                    "https://fearnopeer.com/api/torrents/filter?imdbId=" +
-                    imdb_id.split("tt")[1] +
-                    "&categories[0]=1&categories[1]=2&categories[2]=6&api_token=" +
-                    FNP_API_TOKEN;
-            }
             else if (tracker === "TVV") {
                     query_url = "https://tv-vault.me/xmlsearch.php?query=get&authkey=" + TVV_AUTH_KEY + "&imdbid=" + imdb_id;
             }
@@ -1417,8 +1408,7 @@
             tracker === "RFX" ||
             tracker === "OE" ||
             tracker === "HUNO" ||
-            tracker === "TIK" ||
-            tracker === "FNP"
+            tracker === "TIK"
         ) {
             torrent_objs = json.data.map((element) => {
                 // Mapping element attributes to a torrent object
@@ -1704,7 +1694,7 @@
                 torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
                 torrent.reported ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #FF0000'>Reported</span>" : false;
             }
-            if (torrent.site === "BLU" || torrent.site ==="Aither" || torrent.site ===  "RFX" || torrent.site ===  "OE" || torrent.site ===  "HUNO" || torrent.site === "FNP") {
+            if (torrent.site === "BLU" || torrent.site ==="Aither" || torrent.site ===  "RFX" || torrent.site ===  "OE" || torrent.site ===  "HUNO") {
                 get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #baaf92'>Internal</span>") : false;
                 get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #279d29'>DU</span>") : false;
                 get_api_featured(torrent.featured) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #997799'>Featured</span>") : false;
