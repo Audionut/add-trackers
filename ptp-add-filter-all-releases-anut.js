@@ -16,7 +16,7 @@
     /////////////////////////                                   USER OPTIONS                     ////////////////////////////////////
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    //  available movie trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "ANT", "BLU"*, "HUNO"*, TIK"*, "Aither"*, "RFX"*, "OE"*, "AvistaZ"**, "CinemaZ"**, "PHD"**
+    //  available movie trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "ANT", "BLU"*, "HUNO"*, "TIK"*, "Aither"*, "RFX"*, "OE"*, "AvistaZ"**, "CinemaZ"**, "PHD"**
     //  available tv trackers: "BTN", "NBL", "TVV"***
     //  if you don't need the results from some of these trackers, do not add them. the fewer you add, the faster the code execution.
     //  remove trackers that you do not have access too and don't add trackers to the wrong const. 
@@ -184,7 +184,7 @@
                 else {
                     let discount_value = discount.getAttribute("title").split(" ")[0]; // returns 50%
                     if (discount_value === "100%") return "Freeleech";
-                    else return discount_value + "Freeleech";
+                    else return discount_value + " Freeleech";
                 }
             }
         }
@@ -193,38 +193,6 @@
         }
         else if (tracker === "FL") {
             if ([...div.querySelectorAll("img")].find(e => e.alt === "FreeLeech") != undefined) return "Freeleech";
-        }
-        else if (tracker === "BTN") {
-                let discount = [...div.querySelectorAll("i.fa-star")].find(i => {
-                    return (
-                        i.getAttribute("title") != null &&
-                        i.getAttribute("title").includes("Free")
-                    );
-                });
-                if (discount === undefined || discount === null) {
-                    return "None";
-                }
-                else {
-                    let discount_value = discount.getAttribute("title").split(" ")[0]; // This does nothing except removed 'undefined' from the displayed results.
-                    if (discount_value === "100%") return "Freeleech";
-                    else return discount_value + "Freeleech";
-                }
-        }
-        else if (tracker === "MTV") {
-                let discount = [...div.querySelectorAll("i.fa-star")].find(i => {
-                    return (
-                        i.getAttribute("title") != null &&
-                        i.getAttribute("title").includes("Free")
-                    );
-                });
-                if (discount === undefined || discount === null) {
-                    return "None";
-                }
-                else {
-                    let discount_value = discount.getAttribute("title").split(" ")[0]; // This does nothing except removed 'undefined' from the displayed results.
-                    if (discount_value === "100%") return "Freeleech";
-                    else return discount_value + "Freeleech";
-                }
         }
         else if (tracker === "ANT") {
             const pollenLabel = div.querySelector(".torrent_table#torrent_details .torrent_label.tooltip.tl_pollen");
@@ -484,7 +452,7 @@
                     torrent_obj.leech = parseInt(d.querySelector("td:nth-child(6)").textContent);
                     torrent_obj.torrent_page = [...d.querySelectorAll("a")].find(a => a.href.includes("torrentid=")).href.replace("passthepopcorn.me", "broadcasthe.net");
                     torrent_obj.status = d.querySelectorAll("span.internal").length > 0 ? "seeding" : "default";
-                    torrent_obj.discount = get_discount_text(d, tracker);
+                    torrent_obj.discount = "None";
                     torrent_obj.internal = Array.from(d.querySelector("td:nth-child(2)").querySelectorAll("span"))
                                           .map(span => span.textContent.trim())
                                           .some(text => text.includes("Internal"));
@@ -517,7 +485,7 @@
                     torrent_obj.leech = parseInt(d.querySelector("td:nth-child(5)").textContent);
                     torrent_obj.torrent_page = [...d.querySelectorAll("a")].find(a => a.href.includes("torrentid=")).href.replace("passthepopcorn.me", "broadcasthe.net");
                     torrent_obj.status = d.querySelectorAll("span.internal").length > 0 ? "seeding" : "default";
-                    torrent_obj.discount = get_discount_text(d, tracker);
+                    torrent_obj.discount = "None";
                     torrent_obj.internal = Array.from(d.querySelector("td:nth-child(1)").querySelectorAll("span"))
                                           .map(span => span.textContent.trim())
                                           .some(text => text.includes("Internal"));
@@ -613,7 +581,7 @@
                             else {
                                 torrent_obj.status = 'default';
                             }
-                            torrent_obj.discount = get_discount_text(d, tracker);
+                            torrent_obj.discount = "None";
                             torrent_obj.reported = d.querySelector(".reported") ? true : false;
                         } catch (error) {
                             console.error("An error occurred while extracting other properties:", error);
@@ -750,7 +718,7 @@
         }
         else if (tracker === "BHD") {
             try {
-                [...html.querySelector(".table-new").querySelectorAll("tr.bhd-sub-header-compact.bg-alt1, tr.bhd-sub-header-compact.bg-alt2")].forEach((d) => {
+                [...html.querySelector(".table-new").querySelectorAll("tr.bhd-sub-header-compact")].forEach((d) => {
                     let torrent_obj = {};
 
                     try {
