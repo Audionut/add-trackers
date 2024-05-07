@@ -599,7 +599,22 @@
                             torrent_obj.seed = parseInt(d.querySelector("td:nth-child(7)").textContent);
                             torrent_obj.leech = parseInt(d.querySelector("td:nth-child(8)").textContent);
                             torrent_obj.torrent_page = [...d.querySelectorAll("a.overlay_torrent")].find(a => a.href.includes("/torrents.php?id=")).href.replace("passthepopcorn.me", "morethantv.me");
-                            torrent_obj.status = d.querySelectorAll('a[title="Currently Seeding Torrent"]').length > 0 ? 'seeding' : 'default' ;
+                            //MTVs seeding indicator is not accurate, often requiring a page visit to change the seeding status. Lets add a grabbed indicator so we know if the file has at least been touched.
+                            let seedingSelector = 'a[title="Currently Seeding Torrent"]';
+                            let grabbedSelector = 'a[title="Previously Grabbed Torrent File"]';
+
+                            // Check for "Currently Seeding Torrent"
+                            if (d.querySelectorAll(seedingSelector).length > 0) {
+                                torrent_obj.status = 'seeding';
+                            }
+                            // Check for "Previously Grabbed Torrent File" if not seeding
+                            else if (d.querySelectorAll(grabbedSelector).length > 0) {
+                                torrent_obj.status = 'grabbed';
+                            }
+                            // Default status
+                            else {
+                                torrent_obj.status = 'default';
+                            }
                             torrent_obj.discount = get_discount_text(d, tracker);
                             torrent_obj.reported = d.querySelector(".reported") ? true : false;
                         } catch (error) {
@@ -1698,6 +1713,7 @@
 
             //cln.querySelector(".torrent-info-link").textContent = torrent.info_text;
             if (torrent.status === "seeding") cln.querySelector(".torrent-info-link").className += " torrent-info-link--user-seeding";
+            if (torrent.status === "grabbed") cln.querySelector(".torrent-info-link").className += " torrent-info-link--user-downloaded";
 
             //cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] ` + get_simplified_title(torrent.info_text);
             let elements = cln.querySelector(".basic-movie-list__torrent__action").querySelectorAll("a");
