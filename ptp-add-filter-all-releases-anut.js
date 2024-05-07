@@ -24,7 +24,7 @@
     //  requires each tracker to be logged in with the same browser session (and container type if using multi-account containers).
     const movie_trackers = ["BHD", "CG", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "ANT", "BLU", "HUNO", "TIK", "Aither", "FNP", "RFX", "OE", "AvistaZ", "CinemaZ", "PHD", "PxHD"];
     const tv_trackers = ["BTN", "TVV", "NBL"];
-    const old_trackers = ["TVV"];  // Add trackers here that do not allow recent content.
+    const old_trackers = ["TVV"];  // Add trackers here that do not allow recent content. Do not remove the torrents here from either movie_trackers or tv_trackers. It needs to be defined in both applicable areas.
 
     const BLU_API_TOKEN = ""; // if you want to use BLU - find your api key here: https://blutopia.cc/users/YOUR_USERNAME_HERE/apikeys
     const TIK_API_TOKEN = ""; // if you want to use TIK - find your api key here: https://cinematik.net/users/YOUR_USERNAME_HERE/apikeys
@@ -1038,10 +1038,17 @@
                     let dataSource = infoLink.getAttribute("data-src");
                     // Remove all periods from the dataSource string
                     let cleanedDataSource = dataSource.replace(/\./g, ' ');
+
                     torrent_obj.info_text = cleanedDataSource;
+
                     // Regular expression to detect SxxExx pattern
                     if (/S\d+E\d+/i.test(torrent_obj.info_text)) {
                         return; // Skip this entry
+                    }
+
+                    // Further check if it is not a mini-series and the title contains "Sxx" where "xx" is unknown beforehand
+                    if (!isMiniSeriesFromSpan && /S\d+/i.test(torrent_obj.info_text)) {
+                        return; // Skip this entry if it is not a mini-series and has "Sxx" in the title
                     }
                 }
                 torrent_obj.site = "NBL";
