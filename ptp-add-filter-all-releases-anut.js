@@ -16,7 +16,7 @@
     /////////////////////////                                   USER OPTIONS                     ////////////////////////////////////
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    //  available movie trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "ANT", "PxHD", "BLU"*, "HUNO"*, TIK"*, "Aither"*, "RFX"*, "OE"*, "AvistaZ"**, "CinemaZ"**, "PHD"**
+    //  available movie trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "ANT", "BLU"*, "HUNO"*, TIK"*, "Aither"*, "RFX"*, "OE"*, "AvistaZ"**, "CinemaZ"**, "PHD"**
     //  available tv trackers: "BTN", "NBL", "TVV"***
     //  if you don't need the results from some of these trackers, do not add them. the fewer you add, the faster the code execution.
     //  remove trackers that you do not have access too and don't add trackers to the wrong const. 
