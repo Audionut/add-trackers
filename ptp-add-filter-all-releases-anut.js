@@ -142,9 +142,15 @@
             let snatchers = parseInt(d.querySelector("td:nth-child(3)").textContent.replace(",", ""));
             let size = d.querySelector("td:nth-child(2)").textContent.trim();
 
-            if (size.includes("GiB")) size = (parseFloat(size.split(" ")[0]) * 1024).toFixed(2);
-            else if (size.includes("MiB")) size = (parseFloat(size.split(" ")[0])).toFixed(2);
-            else size = 1;
+            if (size.includes("TiB")) {
+                size = (parseFloat(size.split(" ")[0]) * 1048576).toFixed(2); // Convert TiB to MiB
+            } else if (size.includes("GiB")) {
+                size = (parseFloat(size.split(" ")[0]) * 1024).toFixed(2); // Convert GiB to MiB
+            } else if (size.includes("MiB")) {
+                size = parseFloat(size.split(" ")[0]).toFixed(2); // Directly use the MiB value
+            } else {
+                size = 1; // Default case when no size unit is provided
+            }
 
             let dom_id = "ptp_" + i;
 
@@ -293,10 +299,13 @@
                 let torrent_obj = {};
                 let size = d.querySelectorAll("td")[5].textContent;
 
-                if (size.includes("GiB")) {
-                    size = parseInt(parseFloat(size.split("GiB")[0]) * 1024); // MB
+                if (size.includes("TiB")) {
+                    size = parseInt(parseFloat(size.split("TiB")[0]) * 1024 * 1024); // Convert TiB to MiB
+                } else if (size.includes("GiB")) {
+                    size = parseInt(parseFloat(size.split("GiB")[0]) * 1024); // Convert GiB to MiB
+                } else if (size.includes("MiB")) {
+                    size = parseInt(parseFloat(size.split("MiB")[0]));
                 }
-                else if (size.includes("MiB")) size = parseInt(parseFloat(size.split("MiB")[0]));
 
                 torrent_obj.size = size;
                 torrent_obj.info_text = d.querySelector("td:nth-child(3) > b > a").textContent;
@@ -432,10 +441,13 @@
                   let torrent_obj = {};
                     let size = d.querySelectorAll("td")[2].textContent;
 
-                    if (size.includes("GB")) {
-                        size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // MB
-                    }
-                    else if (size.includes("MB")) size = parseInt(parseFloat(size.split("MB")[0]));
+                  if (size.includes("TB")) {
+                      size = parseInt(parseFloat(size.split("TB")[0]) * 1024 * 1024); // Convert TiB to MiB
+                  } else if (size.includes("GB")) {
+                      size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // Convert GB to MiB
+                  } else if (size.includes("MB")) {
+                      size = parseInt(parseFloat(size.split("MB")[0]));
+                  }
 
                     torrent_obj.size = size;
                     torrent_obj.info_text = Array.from(d.querySelector("td:nth-child(2)").querySelectorAll("span"))
@@ -465,10 +477,13 @@
                   let torrent_obj = {};
                     let size = d.querySelectorAll("td")[1].textContent;
 
-                    if (size.includes("GB")) {
-                        size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // MB
-                    }
-                    else if (size.includes("MB")) size = parseInt(parseFloat(size.split("MB")[0]));
+                  if (size.includes("TB")) {
+                      size = parseInt(parseFloat(size.split("TB")[0]) * 1024 * 1024); // Convert TiB to MiB
+                  } else if (size.includes("GB")) {
+                      size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // Convert GB to MiB
+                  } else if (size.includes("MB")) {
+                      size = parseInt(parseFloat(size.split("MB")[0]));
+                  }
 
                     torrent_obj.size = size;
                     torrent_obj.info_text = Array.from(d.querySelector("td:nth-child(1)").querySelectorAll("span"))
@@ -506,8 +521,10 @@
                             let size = null;
                             if (sizeElement) {
                                 size = sizeElement.textContent;
-                                if (size.includes("GiB")) {
-                                    size = parseInt(parseFloat(size.split("GiB")[0]) * 1024); // MB
+                                if (size.includes("TiB")) {
+                                    size = parseInt(parseFloat(size.split("TiB")[0]) * 1024 * 1024); // Convert TiB to MiB
+                                } else if (size.includes("GiB")) {
+                                    size = parseInt(parseFloat(size.split("GiB")[0]) * 1024); // Convert GiB to MiB
                                 } else if (size.includes("MiB")) {
                                     size = parseInt(parseFloat(size.split("MiB")[0]));
                                 }
@@ -613,9 +630,13 @@
                 let size = null;
                 const tdElements = d.querySelectorAll("td");
                 if (tdElements.length >= 2) {
-                    size = tdElements[1].textContent;
-                    if (size.includes("GiB")) {
-                        size = parseInt(parseFloat(size.split("GiB")[0]) * 1024); // MB
+                    size = tdElements[1].textContent.trim();
+                    if (size.includes("TiB")) {
+                        // 1 TiB = 1024 GiB = 1024 * 1024 MiB
+                        size = parseInt(parseFloat(size.split("TiB")[0]) * 1024 * 1024);
+                    } else if (size.includes("GiB")) {
+                        // 1 GiB = 1024 MiB
+                        size = parseInt(parseFloat(size.split("GiB")[0]) * 1024);
                     } else if (size.includes("MiB")) {
                         size = parseInt(parseFloat(size.split("MiB")[0]));
                     }
@@ -722,14 +743,18 @@
                     let torrent_obj = {};
 
                     try {
-                        let sizeElement = [...d.querySelectorAll("td")].find(e => e.textContent.includes(" GiB") || e.textContent.includes(" MiB"));
+                        let sizeElement = [...d.querySelectorAll("td")].find(e => e.textContent.includes(" TiB") || e.textContent.includes(" GiB") || e.textContent.includes(" MiB"));
                         let size = null;
                         if (sizeElement) {
                             size = sizeElement.textContent.trim();
-                            if (size.includes("GiB")) {
-                                size = parseInt(parseFloat(size.split(" ")[0]) * 1024); // MB
+                            if (size.includes("TiB")) {
+                                // 1 TiB = 1024 GiB = 1024 * 1024 MiB
+                                size = parseInt(parseFloat(size.split(" ")[0]) * 1024 * 1024); // Convert TiB to MiB
+                            } else if (size.includes("GiB")) {
+                                // 1 GiB = 1024 MiB
+                                size = parseInt(parseFloat(size.split(" ")[0]) * 1024); // Convert GiB to MiB
                             } else if (size.includes("MiB")) {
-                                size = parseInt(parseFloat(size.split(" ")[0]));
+                                size = parseInt(parseFloat(size.split(" ")[0])); // Direct MiB
                             }
                         }
                         torrent_obj.size = size;
@@ -777,13 +802,16 @@
             html.querySelectorAll(".torrentrow").forEach((d) => {
                 let torrent_obj = {};
                 let size = [...d.querySelectorAll("font")].find((d) => {
-                    return (d.textContent.includes("[") === false) && (d.textContent.includes("GB") || d.textContent.includes("MB"));
+                    return (d.textContent.includes("[") === false) && (d.textContent.includes("TB") ||d.textContent.includes("GB") || d.textContent.includes("MB"));
                 }).textContent;
 
-                if (size.includes("GB")) {
-                    size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // MB
-                }
-                else if (size.includes("MB")) size = parseInt(parseFloat(size.split("MB")[0]));
+                  if (size.includes("TB")) {
+                      size = parseInt(parseFloat(size.split("TB")[0]) * 1024 * 1024); // Convert TiB to MiB
+                  } else if (size.includes("GB")) {
+                      size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // Convert GB to MiB
+                  } else if (size.includes("MB")) {
+                      size = parseInt(parseFloat(size.split("MB")[0]));
+                  }
 
                 torrent_obj.size = size;
                 torrent_obj.info_text = [...d.querySelectorAll("a")].find(a => a.href.includes("details.php?id=")).title.replace(/\./g, " ");
@@ -811,11 +839,14 @@
 
                 let size = d.querySelector("td:nth-child(5)").textContent;
 
-                if (size.includes("GB")) {
-                    size = parseInt(parseFloat(size.split(" ")[0]) * 1024); // MB
-                }
-                else if (size.includes("MB")) size = parseInt(parseFloat(size.split(" ")[0]));
-                else size = 1; // must be kiloBytes, so lets assume 1mb.
+                  if (size.includes("TB")) {
+                      size = parseInt(parseFloat(size.split("TB")[0]) * 1024 * 1024); // Convert TiB to MiB
+                  } else if (size.includes("GB")) {
+                      size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // Convert GB to MiB
+                  } else if (size.includes("MB")) {
+                      size = parseInt(parseFloat(size.split("MB")[0]));
+                  }
+                  else size = 1; // must be kiloBytes, so lets assume 1mb.
 
                 torrent_obj.size = size;
                 torrent_obj.info_text = d.querySelectorAll("td")[1].querySelector("b").textContent.trim();
@@ -836,10 +867,13 @@
                     let torrent_obj = {};
                     let size = d.querySelector("td:nth-child(11)").textContent.replace(",", "");
 
-                    if (size.includes("GB")) {
-                        size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // MB
+                    if (size.includes("TB")) {
+                        size = parseInt(parseFloat(size.split("TB")[0]) * 1024 * 1024); // Convert TiB to MiB
+                    } else if (size.includes("GB")) {
+                        size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // Convert GB to MiB
+                    } else if (size.includes("MB")) {
+                        size = parseInt(parseFloat(size.split("MB")[0]));
                     }
-                    else if (size.includes("MB")) size = parseInt(parseFloat(size.split("MB")[0]));
                     else size = 1; // must be kiloBytes, so lets assume 1mb.
 
                     const images = d.querySelectorAll("[style='position:absolute;top:0px; left:0px'] > img");
@@ -871,9 +905,14 @@
                 let torrent_obj = {};
                 let size = d.querySelector("td:nth-child(5)").textContent.trim().replace(",", "");
 
-                if (size.includes("GB")) size = parseInt(parseFloat(size.split(" ")[0]) * 1024); // MB
-                else if (size.includes("MB")) size = parseInt(parseFloat(size.split(" ")[0]));
-                else size = 1;
+                  if (size.includes("TB")) {
+                      size = parseInt(parseFloat(size.split("TB")[0]) * 1024 * 1024); // Convert TiB to MiB
+                  } else if (size.includes("GB")) {
+                      size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // Convert GB to MiB
+                  } else if (size.includes("MB")) {
+                      size = parseInt(parseFloat(size.split("MB")[0]));
+                  }
+                  else size = 1;
 
                 const torrentLink = d.querySelector(".torrent-file > div > a");
                 torrent_obj.size = size;
@@ -900,9 +939,14 @@
                 let torrent_obj = {};
                 let size = d.querySelector("td:nth-child(5)").textContent.trim().replace(",", "");
 
-                if (size.includes("GB")) size = parseInt(parseFloat(size.split(" ")[0]) * 1024); // MB
-                else if (size.includes("MB")) size = parseInt(parseFloat(size.split(" ")[0]));
-                else size = 1;
+                  if (size.includes("TB")) {
+                      size = parseInt(parseFloat(size.split("TB")[0]) * 1024 * 1024); // Convert TiB to MiB
+                  } else if (size.includes("GB")) {
+                      size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // Convert GB to MiB
+                  } else if (size.includes("MB")) {
+                      size = parseInt(parseFloat(size.split("MB")[0]));
+                  }
+                  else size = 1;
 
                 const torrentLink = d.querySelector(".torrent-file > div > a");
                 torrent_obj.size = size;
@@ -929,9 +973,14 @@
                 let torrent_obj = {};
                 let size = d.querySelector("td:nth-child(5)").textContent.trim().replace(",", "");
 
-                if (size.includes("GB")) size = parseInt(parseFloat(size.split(" ")[0]) * 1024); // MB
-                else if (size.includes("MB")) size = parseInt(parseFloat(size.split(" ")[0]));
-                else size = 1;
+                  if (size.includes("TB")) {
+                      size = parseInt(parseFloat(size.split("TB")[0]) * 1024 * 1024); // Convert TiB to MiB
+                  } else if (size.includes("GB")) {
+                      size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // Convert GB to MiB
+                  } else if (size.includes("MB")) {
+                      size = parseInt(parseFloat(size.split("MB")[0]));
+                  }
+                  else size = 1;
 
                 const torrentLink = d.querySelector(".torrent-file > div > a");
                 torrent_obj.size = size;
@@ -961,9 +1010,13 @@
 
                     let size = item.querySelector("td:nth-child(4)").textContent;
 
-                    if (size.includes("GB")) {
-                        size = parseInt(parseFloat(size.split("GB")[0]) * 1000000 / 1024); // GiB
-                    } else if (size.includes("MB")) size = parseInt(parseFloat(size.split("MB")[0]) * 1000 / 1024); // MiB;
+                    if (size.includes("TB")) {
+                        size = parseInt(parseFloat(size.split("TB")[0]) * 1024 * 1024); // Convert TiB to MiB
+                    } else if (size.includes("GB")) {
+                        size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // Convert GB to MiB
+                    } else if (size.includes("MB")) {
+                        size = parseInt(parseFloat(size.split("MB")[0]));
+                    }
 
                     let torrent_obj = {
                         edition: currentEdition,
@@ -992,10 +1045,13 @@
                 let torrent_obj = {};
                 let size = d.querySelector("td:nth-child(3) > div").textContent;
 
-                if (size.includes("GB")) {
-                    size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // MB
-                }
-                else if (size.includes("MB")) size = parseInt(parseFloat(size.split("MB")[0]));
+                  if (size.includes("TB")) {
+                      size = parseInt(parseFloat(size.split("TB")[0]) * 1024 * 1024); // Convert TiB to MiB
+                  } else if (size.includes("GB")) {
+                      size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // Convert GB to MiB
+                  } else if (size.includes("MB")) {
+                      size = parseInt(parseFloat(size.split("MB")[0]));
+                  }
 
                 torrent_obj.size = size;
 
@@ -1074,7 +1130,7 @@
             }
         }
         else if (tracker === "MTV") {
-            if (html.querySelector(".numsearchresults").textContent.includes("0 results")) return false;
+            if (html.querySelector(".numsearchresults > span").textContent.includes("0 Results")) return false;
             else return true;
         }
         else if (tracker === "ANT") {
@@ -1461,14 +1517,32 @@
 
         filtered_torrents.forEach((t) => {
             try {
-                let size_text = [...t.querySelectorAll("span")].find(s => s.title.includes(" bytes")).title;
-                let size = Math.floor(parseInt(size_text.split(" bytes")[0].replace(/,/g, "")) / 1024 / 1024);
-                let dom_path = t;
+                // Find the first span with a title that includes " bytes" and extract its title
+                let sizeSpan = [...t.querySelectorAll("span")].find(s => s.title && s.title.includes(" bytes"));
+                if (!sizeSpan) {
+                    console.log("No size information found for torrent.");
+                    return; // Skip this iteration if no relevant span is found
+                }
+                let sizeText = sizeSpan.title;
 
-                group_torrent_objs.push({ dom_path, size });
+                // Remove commas for conversion and split by " bytes" then convert to integer
+                let sizeInBytes = parseInt(sizeText.replace(/,/g, '').split(" bytes")[0]);
+                if (isNaN(sizeInBytes)) {
+                    console.error("Failed to parse size from text: ", sizeText);
+                    return; // Skip this iteration if parsing fails
+                }
+
+                // Convert from bytes to MiB
+                let sizeInMiB = Math.floor(sizeInBytes / 1024 / 1024);
+
+                // Add the torrent info to the array
+                group_torrent_objs.push({
+                    dom_path: t,
+                    size: sizeInMiB
+                });
 
             } catch (e) {
-                console.error("An error has occurred: ", e);
+                console.error("An error has occurred during processing a torrent: ", e);
             }
         });
 
@@ -1499,10 +1573,20 @@
     };
 
     const get_ptp_format_size = (size) => {
-        if (size === null || size === undefined) {
+        // Ensure 'size' is a number. If it's a string, try converting it to a number.
+        if (typeof size === 'string') {
+            size = parseFloat(size);
+        }
+
+        // Check if 'size' is a number after potential conversion. If not, return "N/A".
+        if (isNaN(size) || size === null || size === undefined) {
             return "N/A"; // or any default value you prefer
         }
-        if (size > 1024) { // GiB format
+
+        // Format size based on its magnitude.
+        if (size >= 1048576) { // TiB format, where 1 TiB = 1024 GiB = 1048576 MiB
+            return (size / 1048576).toFixed(2) + " TiB";
+        } else if (size >= 1024) { // GiB format
             return (size / 1024).toFixed(2) + " GiB";
         } else { // MiB format
             return size.toFixed(2) + " MiB";
