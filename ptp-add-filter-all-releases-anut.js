@@ -48,6 +48,7 @@
     const show_only_ptp_by_default = false; // false = will show all torrents by default, including external ones ||| true = will only show PTP torrents by default
     const hide_dead_external_torrents = false; // true = won't display dead external torrents
     const open_in_new_tab = true; // false : when you click external torrent, it will open the page in new tab. ||| true : it will replace current tab.
+    let hide_tags = false; // true = will hide all of the tags. Featured, DU, reported, etc.
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -1727,24 +1728,26 @@
                 cln.querySelector(".torrent-info-link").textContent = torrent.info_text;
             }
 
-            // Colorize some tags, site specific.
-            if (torrent.site === "HDB") {
-                torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
-                torrent.exclusive ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #a14989'>Exclusive</span>" : false;
-            }
-            if (torrent.site === "BTN") {
-                torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #00FF00'>Internal</span>" : false;
-                torrent.season2 ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #FF0000'>Season 2</span>" : false;
-            }
-            if (torrent.site === "ANT") {
-                torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2CB430'>Internal</span>" : false;
-                torrent.reported ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #FF0000'>Reported</span>" : false;
-                torrent.trumpable ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #FF8C00'>Trumpable</span>" : false;
-            }
-            if (torrent.site === "MTV") {
-                torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
-                torrent.reported ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #FF0000'>Reported</span>" : false;
-            }
+            if (!hide_tags) {
+                    // Colorize some tags, site specific.
+                    if (torrent.site === "HDB") {
+                        torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
+                        torrent.exclusive ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #a14989'>Exclusive</span>" : false;
+                    }
+                    if (torrent.site === "BTN") {
+                        torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #00FF00'>Internal</span>" : false;
+                        torrent.season2 ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #FF0000'>Season 2</span>" : false;
+                    }
+                    if (torrent.site === "ANT") {
+                        torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2CB430'>Internal</span>" : false;
+                        torrent.reported ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #FF0000'>Reported</span>" : false;
+                        torrent.trumpable ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #FF8C00'>Trumpable</span>" : false;
+                    }
+                    if (torrent.site === "MTV") {
+                        torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
+                        torrent.reported ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #FF0000'>Reported</span>" : false;
+                    }
+                }
             if (torrent.site === "BLU" || torrent.site ==="Aither" || torrent.site ===  "RFX" || torrent.site ===  "OE" || torrent.site ===  "HUNO") {
                 get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #baaf92'>Internal</span>") : false;
                 get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #279d29'>DU</span>") : false;
