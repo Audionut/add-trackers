@@ -1257,7 +1257,7 @@
                 api_query_url =
                     "https://cinematik.net/api/torrents/filter?imdbId=" +
                     imdb_id.split("tt")[1] +
-                    "&categories[0]=1&categories[1]=3&categories[2]=5&categories[3]=6&api_token=" +
+                    "&categories[0]=1&categories[1]=2&categories[2]=3&categories[3]=4&categories[4]=5&categories[5]=6&api_token=" +
                     TIK_API_TOKEN;
             }
             else if (tracker === "Aither") {
