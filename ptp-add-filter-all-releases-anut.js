@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.3.2-A
+// @version      3.3.3-A
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -32,8 +32,7 @@
     const HUNO_API_TOKEN = ""; // if you want to use HUNO - find your api key here: https://hawke.uno/users/YOUR_USERNAME_HERE/settings/security#api
     const RFX_API_TOKEN = ""; // if you want to use RFX - find your api key here: https:/reelflix.xyz/users/YOUR_USERNAME_HERE/apikeys
     const OE_API_TOKEN = ""; /// if you want to use OE - find your api key here: https:/onlyencodes.cc/users/YOUR_USERNAME_HERE/apikeys
-    const FNP_API_TOKEN = ""; // if you want to use FNP - find your api key here: https:/https://fearnopeer.com/users/YOUR_USERNAME_HERE/apikeys
-
+ 
     // We need to use XML resposne with TVV and have to define some parameters for it to work correctly.
     const TVV_AUTH_KEY = ""; // If you want to use TVV - find your authkey from a torrent download link
     const TVV_TORR_PASS = ""; // We need the torrent pass to create a download link - find your torrent_pass from a torrent download link
@@ -1103,7 +1102,7 @@
             else return true;
         }
         else if (tracker === "TVV") {
-            if (html.querySelector('results[type="shows"]').textContent.includes("0")) return false;
+            if (html.querySelector("results").textContent.includes("0")) return false;
             else return true;
         }
         else if (tracker === "NBL") {
@@ -1289,8 +1288,8 @@
                     HUNO_API_TOKEN;
             }
             else if (tracker === "TVV") {
-                    query_url = "https://tv-vault.me/xmlsearch.php?query=get&authkey=" + TVV_AUTH_KEY + "&imdbid=" + imdb_id;
-            }
+                query_url = "https://tv-vault.me/xmlsearch.php?query=get&torrent_pass=" + TVV_TORR_PASS + "&imdbid=" + imdb_id;
+        }
             else if (tracker === "NBL") {
                 query_url = "https://nebulance.io/torrents.php?order_by=time&order_way=desc&title=" + show_name;
             }
