@@ -36,7 +36,7 @@
  
     // We need to use XML resposne with TVV and have to define some parameters for it to work correctly.
     const TVV_AUTH_KEY = ""; // If you want to use TVV - find your authkey from a torrent download link
-    const TVV_TORR_PASS = ""; // We need the torrent pass to create a download link - find your torrent_pass from a torrent download link
+    const TVV_TORR_PASS = ""; // We also need the torrent pass - find your torrent_pass from a torrent download link
 
     // Define how the DL link is displayed. Useful to clean the displayed output depending on stylsheet.
     let hideBlankLinks = "DL"; // Options are "DL" which only displays the "DL" link (like the old code). "Download" which displays "DOWNLOAD". "Spaced" which adds "DL" but spaced to fit left aligned style sheets.
@@ -2569,9 +2569,19 @@
         let imdb_id;
 
         try {
+            // Attempt to fetch the IMDb ID from a specific link
             imdb_id = "tt" + document.getElementById("imdb-title-link").href.split("/tt")[1].split("/")[0];
         } catch (e) {
-            imdb_id = "tt" + [...document.querySelectorAll(".rating")].find(a => a.href.includes("imdb.com")).href.split("/tt")[1].split("/")[0];
+            console.log("Failed to extract IMDb ID using imdb-title-link, attempting fallback method:", e);
+            // Fallback to fetching the IMDb ID from any link within a `.rating` element that includes an IMDb URL
+            try {
+                imdb_id = "tt" + [...document.querySelectorAll(".rating")]
+                                  .find(a => a.href.includes("imdb.com"))
+                                  .href.split("/tt")[1]
+                                  .split("/")[0];
+            } catch (fallbackError) {
+                console.log("Failed to extract IMDb ID using fallback method:", fallbackError);
+            }
         }
 
         let name_url = document.querySelector("h2.page__title").textContent.trim();
