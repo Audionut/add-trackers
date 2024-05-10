@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.3.5-A
+// @version      3.3.6-A
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -26,6 +26,7 @@
     const movie_only_trackers = ["ANT", "CG"]; // these trackers only have movies, not anything tv including miniseries.
     const tv_trackers = ["BTN", "TVV", "NBL"];
     const old_trackers = ["TVV"];  // Add trackers here that do not allow recent content. Do not remove the torrents here from either movie_trackers or tv_trackers. It needs to be defined in both applicable areas.
+    const show_only_by_default = [];  // Use this to only show these trackers by default. Same input style as above.
 
     const BLU_API_TOKEN = ""; // if you want to use BLU - find your api key here: https://blutopia.cc/users/YOUR_USERNAME_HERE/apikeys
     const TIK_API_TOKEN = ""; // if you want to use TIK - find your api key here: https://cinematik.net/users/YOUR_USERNAME_HERE/apikeys
@@ -46,7 +47,6 @@
     const hide_if_torrent_with_same_size_exists = false; // true = will hide torrents with the same file size as existing PTP ones
     const log_torrents_with_same_size = false; // true = will log torrents with the same file size as existing PTP ones in console (F12)
     const hide_filters_div = false; // false = will show filters box ||| true = will hide filters box
-    const show_only_ptp_by_default = false; // false = will show all torrents by default, including external ones ||| true = will only show PTP torrents by default
     const hide_dead_external_torrents = false; // true = won't display dead external torrents
     const open_in_new_tab = true; // false : when you click external torrent, it will open the page in new tab. ||| true : it will replace current tab.
     let hide_tags = false; // true = will hide all of the tags. Featured, DU, reported, etc.
@@ -2034,13 +2034,20 @@
         });
     };
 
-    function show_only_ptp() {
-        const dom_path = document.querySelector("#filter-ptp");
-        filters.trackers.find(e => e.name === "PTP").status = "include";
-        dom_path.style.background = "#40E0D0";
-        dom_path.style.color = "#111";
+    function apply_default_filters() {
+        show_only_by_default.forEach(tracker => {
+            const trackerID = `#filter-${tracker.toLowerCase()}`; // Converts tracker name to lowercase and constructs the DOM id
+            const dom_path = document.querySelector(trackerID);
+            if (dom_path) {
+                filters.trackers.find(e => e.name === tracker).status = "include";
+                dom_path.style.background = "#40E0D0";
+                dom_path.style.color = "#111";
+            } else {
+                console.log(`No data for ${tracker}, can't filter by default.`);
+            }
+        });
 
-        filter_torrents();
+        filter_torrents(); // Applies the filters to the page
     }
 
     const update_filter_box_status = (object_key, value, dom_path) => { // object_key = tracker/quality/discount || value = BHD, HDB, 50% Freeleech, 720p etc...
@@ -2610,9 +2617,12 @@
                 add_external_torrents(all_torrents);
                 document.querySelectorAll(".basic-movie-list__torrent__action").forEach(d => { d.style.marginLeft = "12px"; });
                 original_table = document.querySelector("table.torrent_table").cloneNode(true);
-                if (show_only_ptp_by_default) {
-                    show_only_ptp();
+
+                // Only apply default filters if there are any specified
+                if (show_only_by_default.length > 0) {
+                    apply_default_filters();
                 }
+
                 localStorage.setItem("play_now_flag", "true");
             });
     };
