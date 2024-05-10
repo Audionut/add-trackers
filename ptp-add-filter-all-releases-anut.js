@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.3.3-A
+// @version      3.3.4-A
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -49,6 +49,7 @@
     const hide_dead_external_torrents = false; // true = won't display dead external torrents
     const open_in_new_tab = true; // false : when you click external torrent, it will open the page in new tab. ||| true : it will replace current tab.
     let hide_tags = false; // true = will hide all of the tags. Featured, DU, reported, etc.
+    const run_by_default = true; // false = won't run the script by default, but will add an "Other Trackers" link under the page title, which when clicked will run the script.
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -2534,59 +2535,64 @@
 
         try {
             imdb_id = "tt" + document.getElementById("imdb-title-link").href.split("/tt")[1].split("/")[0];
-        } catch (e) { // replaced by ratings box script...
+        } catch (e) {
             imdb_id = "tt" + [...document.querySelectorAll(".rating")].find(a => a.href.includes("imdb.com")).href.split("/tt")[1].split("/")[0];
         }
 
-        // Fetch the text content from the h2.page__title element, ensuring it is trimmed of any leading or trailing whitespace
         let name_url = document.querySelector("h2.page__title").textContent.trim();
-
-        // Initialize show_name variable
         let show_name;
-
-        // Check if 'AKA' is present in the title
         const akaIndex = name_url.indexOf(" AKA ");
         if (akaIndex !== -1) {
-            // Extract everything before 'AKA'
             show_name = name_url.substring(0, akaIndex);
         } else {
-            // If 'AKA' is not present, find the position of the year bracket and extract everything before it
             const yearMatch = name_url.match(/\[\d{4}\]/);
-            if (yearMatch) {
-                show_name = name_url.substring(0, yearMatch.index).trim();
-            }
+            show_name = yearMatch ? name_url.substring(0, yearMatch.index).trim() : name_url;
         }
 
-        // Remove any portion of the string following a colon, including the colon
         const colonIndex = show_name.indexOf(":");
         if (colonIndex !== -1) {
             show_name = show_name.substring(0, colonIndex);
         }
 
-        // Finally, trim the resulting show_name to ensure no trailing spaces or punctuation
         show_name = show_name.trim().replace(/[\s:]+$/, '');
 
         let promises = [];
-
         trackers.forEach(t => promises.push(fetch_tracker(t, imdb_id, show_name)));
 
         Promise.all(promises)
             .then(torrents_lists => {
                 var all_torrents = [].concat.apply([], torrents_lists).sort((a, b) => a.size < b.size ? 1 : -1);
-
                 add_external_torrents(all_torrents);
-
-                document.querySelectorAll(".basic-movie-list__torrent__action").forEach(d => { d.style.marginLeft = "12px"; }); // style fix
-
+                document.querySelectorAll(".basic-movie-list__torrent__action").forEach(d => { d.style.marginLeft = "12px"; });
                 original_table = document.querySelector("table.torrent_table").cloneNode(true);
-
                 if (show_only_ptp_by_default) {
                     show_only_ptp();
                 }
-
-                localStorage.setItem("play_now_flag", "true"); // yy
+                localStorage.setItem("play_now_flag", "true");
             });
     };
 
-    mainFunc();
+    const addLink = function() {
+        var menu = document.querySelector("#content > div > div.linkbox");
+        if (menu) {
+            var newLink = document.createElement("a");
+            newLink.id = "other-trackers";
+            newLink.textContent = "[Other Trackers]";
+            newLink.href = "#";
+            newLink.className = "linkbox_link";
+            const clickHandler = function(e) {
+                e.preventDefault();
+                mainFunc();
+                newLink.removeEventListener('click', clickHandler); // Ensure the function only runs once by removing the event listener after the first click
+            };
+            newLink.addEventListener('click', clickHandler);
+            menu.appendChild(newLink);
+        }
+    };
+
+    if (!run_by_default) {
+        addLink();
+    } else {
+        mainFunc();
+    }
 })();
