@@ -22,7 +22,8 @@
     //  remove trackers that you do not have access too and don't add trackers to the wrong const. 
     //  *requires API key     **performs two requests     *** XML output that needs authkey and torrent_pass from a download link
     //  requires each tracker to be logged in with the same browser session (and container type if using multi-account containers).
-    const movie_trackers = ["BHD", "CG", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "ANT", "BLU", "HUNO", "TIK", "Aither", "RFX", "OE", "AvistaZ", "CinemaZ", "PHD", "PxHD"];
+    const movie_trackers = ["BHD", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "BLU", "HUNO", "TIK", "Aither", "RFX", "OE", "AvistaZ", "CinemaZ", "PHD", "PxHD"];
+    const movie_only_trackers = ["ANT", "CG"]; // these trackers only have movies, not anything tv including miniseries.
     const tv_trackers = ["BTN", "TVV", "NBL"];
     const old_trackers = ["TVV"];  // Add trackers here that do not allow recent content. Do not remove the torrents here from either movie_trackers or tv_trackers. It needs to be defined in both applicable areas.
 
@@ -74,6 +75,14 @@
 
     let trackers = movie_trackers.slice(); // Start with movie trackers
     let excludedTrackers = [];
+
+    if (!isMiniSeriesFromSpan) { // Only add movie-only trackers if not a miniseries
+        trackers = trackers.concat(movie_only_trackers);
+    }  else {
+        movie_only_trackers.forEach(tracker => {
+            excludedTrackers.push({ tracker: tracker, reason: 'Not classified as a Feature Film' });
+        });
+    }
 
     if (isMiniSeries) {
         trackers = trackers.concat(tv_trackers);
