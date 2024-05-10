@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.3.4-A
+// @version      3.3.5-A
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -740,19 +740,18 @@
         }
         else if (tracker === "BHD") {
             try {
-                [...html.querySelector(".table-new").querySelectorAll("tr.bhd-sub-header-compact")].forEach((d) => {
+                [...html.querySelector("div.table-torrents > table > tbody").querySelectorAll("tr:not(.comment-hidden")].forEach((d) => {
                     let torrent_obj = {};
 
                     try {
-                        let sizeElement = [...d.querySelectorAll("td")].find(e => e.textContent.includes(" TiB") || e.textContent.includes(" GiB") || e.textContent.includes(" MiB"));
+                        let sizeElements = Array.from(d.querySelectorAll("td:nth-child(6) > span")); // Convert NodeList to array
+                        let sizeElement = sizeElements.find(e => e.textContent.includes(" TiB") || e.textContent.includes(" GiB") || e.textContent.includes(" MiB"));
                         let size = null;
                         if (sizeElement) {
                             size = sizeElement.textContent.trim();
                             if (size.includes("TiB")) {
-                                // 1 TiB = 1024 GiB = 1024 * 1024 MiB
                                 size = parseInt(parseFloat(size.split(" ")[0]) * 1024 * 1024); // Convert TiB to MiB
                             } else if (size.includes("GiB")) {
-                                // 1 GiB = 1024 MiB
                                 size = parseInt(parseFloat(size.split(" ")[0]) * 1024); // Convert GiB to MiB
                             } else if (size.includes("MiB")) {
                                 size = parseInt(parseFloat(size.split(" ")[0])); // Direct MiB
@@ -765,30 +764,48 @@
                     }
 
                     try {
-                        let infoTextElement = d.querySelector("a.text-compact");
+                        let infoTextElement = d.querySelector("a.torrent-name");
                         const infoText = infoTextElement ? infoTextElement.textContent.trim() : "";
 
-                        // Check if the info text contains "SxxExx" where "xx" is not known beforehand
                         if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
-                            // If the info text does not contain the pattern, proceed with further processing
                             torrent_obj.info_text = infoText;
-
-                            // Proceed with other property extractions
                             torrent_obj.site = "BHD";
-                            let snatchElement = d.querySelector("a.torrent-completes");
-                            torrent_obj.snatch = snatchElement ? snatchElement.textContent.trim() : "";
-                            let seedElement = d.querySelector("a.torrent-seeders");
-                            torrent_obj.seed = seedElement ? seedElement.textContent.trim() : "";
-                            let leechElement = d.querySelector("a.torrent-leechers");
-                            torrent_obj.leech = leechElement ? leechElement.textContent.trim() : "";
+
+                            let snatchElements = d.querySelectorAll("td:nth-child(9) span[title='Times Completed']");
+                            let snatchElement = snatchElements.length > 0 ? snatchElements[0] : null; // Use the first span if available
+                            torrent_obj.snatch = snatchElement ? parseInt(snatchElement.textContent.trim()) : 0;
+
+                            let seedElements = d.querySelectorAll("td:nth-child(7) span[title='Seeders']");
+                            let seedElement = seedElements.length > 0 ? seedElements[0] : null; // Use the first span if available
+                            torrent_obj.seed = seedElement ? parseInt(seedElement.textContent.trim()) : 0;
+
+                            let leechElements = d.querySelectorAll("td:nth-child(8) span[title='Leechers']");
+                            let leechElement = leechElements.length > 0 ? leechElements[0] : null; // Use the first span if available
+                            torrent_obj.leech = leechElement ? parseInt(leechElement.textContent.trim()) : 0;
+
                             let downloadLinkElement = [...d.querySelectorAll("a")].find(a => a.title === "Download Torrent");
                             torrent_obj.download_link = downloadLinkElement ? downloadLinkElement.href : "";
-                            let torrentPageElement = d.querySelector("a");
-                            torrent_obj.torrent_page = torrentPageElement ? torrentPageElement.href : "";
-                            torrent_obj.status = d.querySelectorAll("i.fa-seedling").length > 0 ? "seeding" : "default";
-                            torrent_obj.discount = get_discount_text(d, tracker);
 
-                            // Push the fully processed torrent object
+                            let torrentPageElement = d.querySelector("a.torrent-name");
+                            torrent_obj.torrent_page = torrentPageElement ? torrentPageElement.href : "";
+
+                            // Check if "snatched" condition is met
+                            if (d.querySelectorAll("i.fa-check").length > 0) {
+                                torrent_obj.status = "snatched";
+                            }
+                            // Check if "seeding" condition is met
+                            else if (d.querySelectorAll("i.fa-seedling").length > 0) {
+                                torrent_obj.status = "seeding";
+                            }
+                            // Default case if none of the above conditions are met
+                            else {
+                                torrent_obj.status = "default";
+                            }
+                            torrent_obj.discount = get_discount_text(d, tracker);
+                            torrent_obj.internal = Array.from(d.querySelectorAll("i")).some(element => {
+                                const title = element.getAttribute('title');
+                                return title ? title.includes('Quality Seal') : false;
+                            });
                             torrent_objs.push(torrent_obj);
                         }
                     } catch (error) {
@@ -1139,9 +1156,14 @@
             else return true;
         }
         else if (tracker === "BHD") {
-            if (html.querySelectorAll(".bhd-meta-box").length === 0) return false;
-            else return true;
-        } else if (tracker === "BLU" || tracker === "Aither" || tracker === "RFX" || tracker === "OE" || tracker === "HUNO" || tracker === "TIK") {
+            const headerElement = html.querySelector("div.text-center > h5");
+            if (headerElement && headerElement.textContent.includes("N/A")) {
+                return false; // Returns false only if the element exists and contains "N/A"
+            } else {
+                return true; // Returns true if the element does not contain "N/A" or if the element is null
+            }
+        }
+        else if (tracker === "BLU" || tracker === "Aither" || tracker === "RFX" || tracker === "OE" || tracker === "HUNO" || tracker === "TIK") {
             if (html.querySelector(".torrent-search--list__no-result") === null) return true;
             else return false;
         }
@@ -1245,7 +1267,7 @@
                 query_url = "https://anthelion.me/torrents.php?searchstr=" + imdb_id +"&order_by=time&order_way=desc&group_results=1&action=basic&searchsubmit=1";
             }
             else if (tracker === "BHD") {
-                query_url = "https://beyond-hd.me/library?activity=&q=" + imdb_id;
+                query_url = "https://beyond-hd.me/torrents?search=&doSearch=Search&imdb=" + imdb_id;
             }
             else if (tracker === "BLU") {
                 api_query_url =
@@ -1735,6 +1757,9 @@
                         torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
                         torrent.exclusive ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #a14989'>Exclusive</span>" : false;
                     }
+                    if (torrent.site === "BHD") {
+                        torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
+                    }
                     if (torrent.site === "BTN") {
                         torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #00FF00'>Internal</span>" : false;
                         torrent.season2 ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #FF0000'>Season 2</span>" : false;
@@ -1766,6 +1791,7 @@
             //cln.querySelector(".torrent-info-link").textContent = torrent.info_text;
             if (torrent.status === "seeding") cln.querySelector(".torrent-info-link").className += " torrent-info-link--user-seeding";
             if (torrent.status === "grabbed") cln.querySelector(".torrent-info-link").className += " torrent-info-link--user-downloaded";
+            if (torrent.status === "snatched") cln.querySelector(".torrent-info-link").className += " torrent-info-link--user-snatched";
 
             //cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] ` + get_simplified_title(torrent.info_text);
             let elements = cln.querySelector(".basic-movie-list__torrent__action").querySelectorAll("a");
