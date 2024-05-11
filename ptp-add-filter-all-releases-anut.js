@@ -54,9 +54,10 @@
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+    // This handles Miniseries pages.
     const isMiniSeriesFromSpan = Array.from(document.querySelectorAll("span.basic-movie-list__torrent-edition__main"))
                                       .some(el => el.textContent.trim() === "Miniseries");
-
+    // This handles text parsing of Collections to capture some more content we can latter use.
     const listItems = document.querySelector("#detailsCollections").querySelectorAll("ul.list--unstyled li");
     const isMiniSeriesFromList = Array.from(listItems).some(li => {
         const text = li.textContent.toLowerCase().trim(); // Trim to remove any leading/trailing whitespace
@@ -64,48 +65,40 @@
         const hasMiniseries = /\bminiseries\b/.test(text);
         const hasTV = /\btv\b/.test(text);
         const hasTelevision = /\btelevision\b/.test(text);
-        // Regex to match the string starting with "films based on television programs" followed by anything else
+        // Regex to match the string starting with "films based on television programs" followed by anything else.
+        // This collection is highly likely to be actual movies, not TV movies and the like.
         const skip1 = /^films based on television programs\b.*/i.test(text);
-
-        console.log("Text checked:", text);
-        console.log("Skip condition met (films based on TV):", skip1);
-        console.log("Has miniseries:", hasMiniseries);
-        console.log("Has TV:", hasTV);
-        console.log("Has television:", hasTelevision);
 
         // Return false to skip adding if the exact skip text is found
         if (skip1) {
-            console.log("Skipping due to match with skip condition.");
             return false;
         }
 
         let result = hasMiniseries || hasTV || hasTelevision;
-        console.log("Result for this item:", result);
         return result;
     });
-
-    console.log("Final result from list:", isMiniSeriesFromList);
-
+    // Combine both handle methods above.
     const isMiniSeries = isMiniSeriesFromSpan || isMiniSeriesFromList;
-
+    // Find the year of the content.
     const pageTitleElement = document.querySelector(".page__title");
     const pageTitleText = pageTitleElement ? pageTitleElement.textContent : "";
     const matches = pageTitleText.match(/\[(\d{4})\]/);
     const year = matches ? parseInt(matches[1], 10) : null;
-
-    let trackers = movie_trackers.slice(); // Start with movie trackers
+    // Start the array with the list of movie trackers.
+    let trackers = movie_trackers.slice();
     let excludedTrackers = [];
 
-    // Conditionally add movie-only trackers when not at a PTP miniseries page.
+    // Add movie-only trackers when not at a PTP miniseries page.
     if (!isMiniSeriesFromSpan) {
         trackers = trackers.concat(movie_only_trackers);
     } else {
         movie_only_trackers.forEach(tracker => {
+    // else exclude the movie only trackers from the array with reason.
             excludedTrackers.push({ tracker: tracker, reason: 'Not classified as a Feature Film' });
         });
     }
-    const selectedTVTrackers = ["TVV"];
-    // Add TV trackers if it is a PTP miniseries page, but skip selected TV Trackers for now
+    const selectedTVTrackers = ["TVV"]; // Trackers defined here also contain TV movies and the like.
+    // Add TV trackers if it is a PTP miniseries page, but skip selected TV Trackers handling for now.
     if (isMiniSeriesFromSpan) {
         trackers = trackers.concat(tv_trackers.filter(tracker => selectedTVTrackers.includes(tracker)));
     } else {
