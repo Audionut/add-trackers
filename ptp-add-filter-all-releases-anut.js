@@ -25,7 +25,7 @@
     const movie_trackers = ["BHD", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "BLU", "HUNO", "TIK", "Aither", "RFX", "OE", "AvistaZ", "CinemaZ", "PHD", "PxHD"];
     const movie_only_trackers = ["ANT", "CG"]; // these trackers only have movies, not anything tv including miniseries.
     const tv_trackers = ["BTN", "TVV", "NBL"];
-    const old_trackers = ["TVV"];  // Add trackers here that do not allow recent content. Do not remove the torrents here from either movie_trackers or tv_trackers. It needs to be defined in both applicable areas.
+    const old_trackers = ["TVV"];  // Add trackers here that do not allow recent content. Do not remove the trackers added here from any other tracker defintion. Trackers added here need to be defined in both applicable areas.
     const show_only_by_default = [];  // Use this to only show these trackers by default. Same input style as above.
 
     const BLU_API_TOKEN = ""; // if you want to use BLU - find your api key here: https://blutopia.cc/users/YOUR_USERNAME_HERE/apikeys
@@ -57,14 +57,34 @@
     const isMiniSeriesFromSpan = Array.from(document.querySelectorAll("span.basic-movie-list__torrent-edition__main"))
                                       .some(el => el.textContent.trim() === "Miniseries");
 
-    const listItems = document.querySelectorAll("ul.list--unstyled li");
+    const listItems = document.querySelector("#detailsCollections").querySelectorAll("ul.list--unstyled li");
     const isMiniSeriesFromList = Array.from(listItems).some(li => {
-        const text = li.textContent.toLowerCase();
-        const hasMiniseries = text.includes("miniseries");
-        const hasTV = text.includes("tv");
-        const hasTelevision = text.includes("television");
-        return hasMiniseries || hasTV || hasTelevision;
+        const text = li.textContent.toLowerCase().trim(); // Trim to remove any leading/trailing whitespace
+        // Use regular expressions with word boundaries to ensure whole word matching
+        const hasMiniseries = /\bminiseries\b/.test(text);
+        const hasTV = /\btv\b/.test(text);
+        const hasTelevision = /\btelevision\b/.test(text);
+        // Regex to match the string starting with "films based on television programs" followed by anything else
+        const skip1 = /^films based on television programs\b.*/i.test(text);
+
+        console.log("Text checked:", text);
+        console.log("Skip condition met (films based on TV):", skip1);
+        console.log("Has miniseries:", hasMiniseries);
+        console.log("Has TV:", hasTV);
+        console.log("Has television:", hasTelevision);
+
+        // Return false to skip adding if the exact skip text is found
+        if (skip1) {
+            console.log("Skipping due to match with skip condition.");
+            return false;
+        }
+
+        let result = hasMiniseries || hasTV || hasTelevision;
+        console.log("Result for this item:", result);
+        return result;
     });
+
+    console.log("Final result from list:", isMiniSeriesFromList);
 
     const isMiniSeries = isMiniSeriesFromSpan || isMiniSeriesFromList;
 
@@ -76,14 +96,16 @@
     let trackers = movie_trackers.slice(); // Start with movie trackers
     let excludedTrackers = [];
 
-    if (!isMiniSeriesFromSpan) { // Only add movie-only trackers if not a miniseries
+    // Conditionally add movie-only trackers when not a miniseries
+    if (!isMiniSeriesFromSpan) {
         trackers = trackers.concat(movie_only_trackers);
-    }  else {
+    } else {
         movie_only_trackers.forEach(tracker => {
             excludedTrackers.push({ tracker: tracker, reason: 'Not classified as a Feature Film' });
         });
     }
 
+    // Add TV trackers if it is a miniseries
     if (isMiniSeries) {
         trackers = trackers.concat(tv_trackers);
     } else {
@@ -92,6 +114,7 @@
         });
     }
 
+    // Handle old trackers based on the year
     if (year && (year < 2019 || year > 2100)) {
         if (isMiniSeries) {
             old_trackers.forEach(tracker => {
