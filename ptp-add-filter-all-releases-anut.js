@@ -57,26 +57,24 @@
     // This handles Miniseries pages.
     const isMiniSeriesFromSpan = Array.from(document.querySelectorAll("span.basic-movie-list__torrent-edition__main"))
                                       .some(el => el.textContent.trim() === "Miniseries");
-    // This handles text parsing of Collections to capture some more content we can later use.
-    const listItems = document.querySelector("#detailsCollections").querySelectorAll("ul.list--unstyled li");
-    const isMiniSeriesFromList = Array.from(listItems).some(li => {
-        const text = li.textContent.toLowerCase().trim(); // Trim to remove any leading/trailing whitespace
-        // Use regular expressions with word boundaries to ensure whole word matching
-        const hasMiniseries = /\bminiseries\b/.test(text);
-        const hasTV = /\btv\b/.test(text);
-        const hasTelevision = /\btelevision\b/.test(text);
-        // Regex to match the string starting with "films based on television programs" followed by anything else.
-        // This collection is highly likely to be actual movies, not TV movies and the like.
-        const skip1 = /^films based on television programs\b.*/i.test(text);
+        // This handles text parsing of Collections to capture some more content we can later use.
+        const detailsCollections = document.querySelector("#detailsCollections");
+        const listItems = detailsCollections ? detailsCollections.querySelectorAll("ul.list--unstyled li") : null;
+        const isMiniSeriesFromList = listItems ? Array.from(listItems).some(li => {
+            const text = li.textContent.toLowerCase().trim(); // Trim to remove any leading/trailing whitespace
+            // Use regular expressions with word boundaries to ensure whole word matching
+            const hasMiniseries = /\bminiseries\b/.test(text);
+            const hasTV = /\btv\b/.test(text);
+            const hasTelevision = /\btelevision\b/.test(text);
+            // Regex to match the string starting with "films based on television programs" followed by anything else.
+            const skip1 = /^films based on television programs\b.*/i.test(text);
 
-        // Return false to skip adding if the exact skip text is found
-        if (skip1) {
-            return false;
-        }
+            if (skip1) {
+                return false; // Return false to skip adding if the exact skip text is found
+            }
 
-        let result = hasMiniseries || hasTV || hasTelevision;
-        return result;
-    });
+            return hasMiniseries || hasTV || hasTelevision;
+        }) : false;
     // Combine both handle methods above.
     const isMiniSeries = isMiniSeriesFromSpan || isMiniSeriesFromList;
     // Find the year of the content.
