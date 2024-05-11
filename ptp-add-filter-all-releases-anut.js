@@ -96,7 +96,7 @@
     let trackers = movie_trackers.slice(); // Start with movie trackers
     let excludedTrackers = [];
 
-    // Conditionally add movie-only trackers when not a miniseries
+    // Conditionally add movie-only trackers when not at a PTP miniseries page.
     if (!isMiniSeriesFromSpan) {
         trackers = trackers.concat(movie_only_trackers);
     } else {
@@ -104,17 +104,27 @@
             excludedTrackers.push({ tracker: tracker, reason: 'Not classified as a Feature Film' });
         });
     }
-
-    // Add TV trackers if it is a miniseries
-    if (isMiniSeries) {
-        trackers = trackers.concat(tv_trackers);
+    const selectedTVTrackers = ["TVV"];
+    // Add TV trackers if it is a PTP miniseries page, but skip selected TV Trackers for now
+    if (isMiniSeriesFromSpan) {
+        trackers = trackers.concat(tv_trackers.filter(tracker => selectedTVTrackers.includes(tracker)));
     } else {
         tv_trackers.forEach(tracker => {
+          if (!selectedTVTrackers.includes(tracker)) {
+            excludedTrackers.push({ tracker: tracker, reason: 'Not classified as a Miniseries' });
+          }
+        });
+    }
+    // This also captures TV movies and the like from Collections. Add selected TV Trackers.
+    if (isMiniSeries) {
+        trackers = trackers.concat(selectedTVTrackers);
+    } else {
+        movie_only_trackers.forEach(tracker => {
             excludedTrackers.push({ tracker: tracker, reason: 'Not classified as a Miniseries' });
         });
     }
 
-    // Handle old trackers based on the year
+    // Remove old trackers from the included trackers array if the content matches the year range.
     if (year && (year < 2019 || year > 2100)) {
         if (isMiniSeries) {
             old_trackers.forEach(tracker => {
