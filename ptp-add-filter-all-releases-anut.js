@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.3.6-A
+// @version      3.3.7-A
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -100,17 +100,22 @@
     const selectedTVTrackers = ["TVV"]; // Trackers defined here also contain TV movies and the like.
     // Add TV trackers if it is a PTP miniseries page, but skip selected TV Trackers handling for now.
     if (isMiniSeriesFromSpan) {
-        trackers = trackers.concat(tv_trackers.filter(tracker => selectedTVTrackers.includes(tracker)));
+        trackers = trackers.concat(tv_trackers.filter(tracker => !selectedTVTrackers.includes(tracker)));
     } else {
         tv_trackers.forEach(tracker => {
-          if (!selectedTVTrackers.includes(tracker)) {
-            excludedTrackers.push({ tracker: tracker, reason: 'Not classified as a Miniseries' });
-          }
+            if (!selectedTVTrackers.includes(tracker)) {
+                excludedTrackers.push({ tracker: tracker, reason: 'Not classified as a Miniseries' });
+            }
         });
     }
     // This also captures TV movies and the like from Collections. Add selected TV Trackers.
     if (isMiniSeries) {
-        trackers = trackers.concat(selectedTVTrackers);
+        // Only add trackers from selectedTVTrackers if they are not already in the trackers array
+        selectedTVTrackers.forEach(tracker => {
+            if (!trackers.includes(tracker)) {
+                trackers.push(tracker);
+            }
+        });
     } else {
         selectedTVTrackers.forEach(tracker => {
             excludedTrackers.push({ tracker: tracker, reason: 'Not classified as a Miniseries' });
