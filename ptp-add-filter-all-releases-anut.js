@@ -112,7 +112,7 @@
     if (isMiniSeries) {
         trackers = trackers.concat(selectedTVTrackers);
     } else {
-        movie_only_trackers.forEach(tracker => {
+        selectedTVTrackers.forEach(tracker => {
             excludedTrackers.push({ tracker: tracker, reason: 'Not classified as a Miniseries' });
         });
     }
@@ -1156,7 +1156,7 @@
             else return true;
         }
         else if (tracker === "TVV") {
-            if (html.querySelector("results").textContent.includes("0")) return false;
+            if (html.querySelectorAll('NoResults')) return false;
             else return true;
         }
         else if (tracker === "NBL") {
