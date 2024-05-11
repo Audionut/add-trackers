@@ -57,7 +57,7 @@
     // This handles Miniseries pages.
     const isMiniSeriesFromSpan = Array.from(document.querySelectorAll("span.basic-movie-list__torrent-edition__main"))
                                       .some(el => el.textContent.trim() === "Miniseries");
-    // This handles text parsing of Collections to capture some more content we can latter use.
+    // This handles text parsing of Collections to capture some more content we can later use.
     const listItems = document.querySelector("#detailsCollections").querySelectorAll("ul.list--unstyled li");
     const isMiniSeriesFromList = Array.from(listItems).some(li => {
         const text = li.textContent.toLowerCase().trim(); // Trim to remove any leading/trailing whitespace
@@ -1156,7 +1156,7 @@
             else return true;
         }
         else if (tracker === "TVV") {
-            if (html.querySelectorAll('NoResults')) return false;
+            if (html.querySelector('NoResults') !== null) return false;
             else return true;
         }
         else if (tracker === "NBL") {
