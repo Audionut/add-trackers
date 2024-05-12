@@ -52,6 +52,7 @@
     let hide_tags = false; // true = will hide all of the tags. Featured, DU, reported, etc.
     const run_by_default = true; // false = won't run the script by default, but will add an "Other Trackers" link under the page title, which when clicked will run the script.
     const timer = 3000; // set the timer here to timeout slow/non-responsive tracker calls. 3 seconds seems like a safe default.
+    const timerDuration = 2000; // set the length of time the error message should be displayed on page.
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -1271,17 +1272,35 @@
         }
     };
 
-    const fetch_url = async (query_url) => {
+    const fetch_url = async (query_url, tracker, timeout = timer) => {
+        let timer;
         try {
             const response = await new Promise((resolve, reject) => {
+                timer = setTimeout(() => {
+                    console.error(`Request timed out for ${tracker} at URL: ${query_url}`);
+                    displayAlert(`Request timed out for ${tracker}`);
+                    reject(new Error('Request timed out'));
+                }, timeout);
+
                 GM_xmlhttpRequest({
                     url: query_url,
                     method: "GET",
-                    timeout: TIMEOUT_DURATION,
-                    onload: resolve,
-                    onerror: reject,
-                    onabort: reject,
-                    ontimeout: reject,
+                    onload: (res) => {
+                        clearTimeout(timer);
+                        resolve(res);
+                    },
+                    onerror: (err) => {
+                        clearTimeout(timer);
+                        reject(err);
+                    },
+                    onabort: (err) => {
+                        clearTimeout(timer);
+                        reject(err);
+                    },
+                    ontimeout: (err) => {
+                        clearTimeout(timer);
+                        reject(err);
+                    },
                 });
             });
 
@@ -1305,8 +1324,8 @@
                 return null;  // Similar to the 100 case, allow other processing to continue by returning null
             }
         } catch (error) {
-            console.error(`Error fetching URL: ${error.message}`);
-            throw error;  // Re-throw the error after logging it
+            console.error(`Error fetching URL from ${tracker}: ${error.message}`);
+            return null;  // Return null to allow continuation of other operations
         }
     };
 
@@ -2624,6 +2643,21 @@
     let line_example = get_example_div();
     let group_header_example = document.querySelector("tr.group_torrent").cloneNode(true);
     let original_table;
+
+    function displayAlert(text, backgroundColor = "red") {
+        const alert = document.createElement("div");
+        alert.className = "alert text--center alert-fade";
+        alert.textContent = text;
+        alert.style = `background-color: ${backgroundColor}; color: white`;
+        document.querySelector("#content").prepend(alert);
+  
+        setTimeout(() => {
+          alert.classList.add("alert-fade-out");
+          setTimeout(() => {
+            alert.remove();
+          }, 1000);
+        }, timerDuration);
+      }
 
     const mainFunc = async () => {
         if (show_tracker_name) {
