@@ -51,6 +51,7 @@
     const open_in_new_tab = true; // false : when you click external torrent, it will open the page in new tab. ||| true : it will replace current tab.
     let hide_tags = false; // true = will hide all of the tags. Featured, DU, reported, etc.
     const run_by_default = true; // false = won't run the script by default, but will add an "Other Trackers" link under the page title, which when clicked will run the script.
+    const timer = 3000; // set the timer here to timeout slow/non-responsive tracker calls. 3 seconds seems like a safe default.
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -303,7 +304,6 @@
         if (cachedData) {
             const { iconURL, timestamp } = JSON.parse(cachedData);
             if (currentTime - timestamp < oneWeekInMilliseconds) {
-                console.log("Using cached icon for:", tracker);
                 return iconURL; // Use cached data if less than a week old
             }
         }
@@ -1310,8 +1310,13 @@
         }
     };
 
-    const fetch_tracker = async (tracker, imdb_id, show_name) => {
+    const fetch_tracker = async (tracker, imdb_id, show_name, timeout = timer) => {
         return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            console.error(`Request timed out for ${tracker}`);
+            displayAlert(`Request timed out for ${tracker}`);
+            resolve([]);
+        }, timeout);
             let query_url = "";
             let api_query_url = "";
 
@@ -1403,53 +1408,49 @@
             else if (tracker === "PxHD") {
                 query_url = "https://pixelhd.me/torrents.php?groupname=&year=&tmdbover=&tmdbunder=&tmdbid=&imdbover=&imdbunder=&imdbid=" + imdb_id + "&order_by=time&order_way=desc&taglist=&tags_type=1&filter_cat%5B1%5D=1&filterTorrentsButton=Filter+Torrents";
             }
-
-            try {
+            const performRequest = () => {
                 if (use_api_instead(tracker) === false) {
                     fetch_url(query_url)
                         .then(result => {
+                            clearTimeout(timer); // Clear the timer on successful fetch
                             let movie_exist = is_movie_exist(tracker, result);
-
                             if (movie_exist === false) {
                                 console.log(`${tracker} reached successfully`);
                                 resolve([]);
-                            }
-                            else {
+                            } else {
                                 console.log(`Data fetched successfully from ${tracker}`);
                                 resolve(get_torrent_objs(tracker, result));
                             }
                         })
                         .catch(error => {
                             console.error(`Error fetching data from ${tracker}:`, error);
-                            resolve([]); // Resolve with empty array if there's an error
+                            displayAlert(`Error fetching data from ${tracker}`);
+                            resolve([]); // Resolve with an empty array if there's an error
                         });
-                }
-                else {
+                } else {
                     fetch(api_query_url)
-                        .then(res => {
-                            if (!res.ok) {
-                                throw new Error(`Failed to fetch data from ${tracker}`);
-                            }
-                            return res.json();
+                        .then(response => {
+                            clearTimeout(timer); // Clear the timer on successful fetch
+                            if (!response.ok) throw new Error('Failed to fetch data');
+                            return response.json();
                         })
                         .then(data => {
                             if (data.data.length === 0) {
                                 console.log(`${tracker} reached successfully`);
-                            }
-                            else {
+                            } else {
                                 console.log(`Data fetched successfully from ${tracker}`);
                             }
                             resolve(get_api_torrent_objects(tracker, data));
                         })
                         .catch(error => {
                             console.error(`Error fetching data from ${tracker}:`, error);
-                            resolve([]); // Resolve with empty array if there's an error
+                            displayAlert(`Error fetching data from ${tracker}`);
+                            resolve([]);
                         });
                 }
-            } catch (error) {
-                console.error(`Error fetching data from ${tracker}:`, error);
-                resolve([]); // Resolve with empty array if there's an error
-            }
+            };
+
+            performRequest();
         });
     };
 
