@@ -51,7 +51,7 @@
     const open_in_new_tab = true; // false : when you click external torrent, it will open the page in new tab. ||| true : it will replace current tab.
     let hide_tags = false; // true = will hide all of the tags. Featured, DU, reported, etc.
     const run_by_default = true; // false = won't run the script by default, but will add an "Other Trackers" link under the page title, which when clicked will run the script.
-    const timer = 3500; // set the timer here to timeout slow/non-responsive tracker calls. 3.5 seconds seems like a safe default.
+    const timer = 4000; // set the timer here to timeout slow/non-responsive tracker calls. 3.5 seconds seems like a safe default.
     const timerDuration = 2000; // set the length of time the error message should be displayed on page.
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -244,6 +244,7 @@
         else if (tracker === "ANT") {
             const pollenLabel = div.querySelector(".torrent_table#torrent_details .torrent_label.tooltip.tl_pollen");
             const freeLabel = div.querySelector(".torrent_table#torrent_details .torrent_label.tooltip.tl_free");
+            const personalFree = div.querySelector(".torrent_table#torrent_details .torrent_label.tooltip.tl_free.tl_personal");
 
             let label;
 
@@ -259,6 +260,8 @@
                 // Remove brackets from pollenText
                 pollenText = pollenText.replace(/\(([^)]+)\)/, "").trim();
                 label = "Pollination";
+            } else if (personalFree !== null) {
+                label = "Personal Freeleech";
             } else if (freeLabel !== null) {
                 const labelText = freeLabel.textContent.trim();
                 const freeTime = labelText.match(/\(([^)]+)\)/)[1];
