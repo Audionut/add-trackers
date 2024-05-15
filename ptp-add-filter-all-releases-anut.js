@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.3.9-A
+// @version      3.4.0-A
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -53,6 +53,8 @@
     const run_by_default = true; // false = won't run the script by default, but will add an "Other Trackers" link under the page title, which when clicked will run the script.
     const timer = 4000; // set the timer here to timeout slow/non-responsive tracker calls. 3.5 seconds seems like a safe default.
     const timerDuration = 2000; // set the length of time the error message should be displayed on page.
+    let ptp_release_name = true; // true = show release name - false = original PTP release style.
+    let remove_group = true; // true = remove the group name to work with PTP Improved Tags.
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -177,7 +179,8 @@
             let dom_path = d;
             let quality = dom_get_quality(d.textContent);
             let discount = "None";
-            let info_text = d.textContent;
+            let releaseName = d.closest('tr.group_torrent_header');
+            let info_text = releaseName.dataset.releasename;
             let seeders = parseInt(d.querySelector("td:nth-child(4)").textContent.replace(",", ""));
             let leechers = parseInt(d.querySelector("td:nth-child(5)").textContent.replace(",", ""));
             let snatchers = parseInt(d.querySelector("td:nth-child(3)").textContent.replace(",", ""));
@@ -2188,13 +2191,81 @@
     };
 
     const fix_ptp_names = () => {
-        document.querySelectorAll("tr.group_torrent").forEach(d => {
-            if (d.className != "group_torrent") {
-                const torrent = d.querySelector("a.torrent-info-link");
-                torrent.innerHTML = "[PTP] " + torrent.innerHTML;
-            }
-        });
-    };
+        if (ptp_release_name) {
+          document.querySelectorAll("tr.group_torrent").forEach(d => {
+              // Find the closest header element with a matching dom_id class
+              const matchingDom = doms.find(dom => d.classList.contains(dom.dom_id));
+              if (matchingDom) {
+                  const torrent = d.querySelector("a.torrent-info-link");
+                  if (torrent) {
+                      // Define patterns to keep full stops
+                      const keepPatterns = [
+                          /\bDD\d\.\d\b/g,
+                          /\bDDP\d\.\d\b/g,
+                          /\bDD\+\d\.\d\b/g,
+                          /\bDTS\d\.\d\b/g,
+                          /\bAC3\d\.\d\b/g,
+                          /\bAAC\d\.\d\b/g,
+                          /\bOPUS\d\.\d\b/g,
+                          /\bMP3\d\.\d\b/g,
+                          /\bFLAC\d\.\d\b/g,
+                          /\bLPCM\d\.\d\b/g,
+                          /\bH\.264\b/g,
+                          /\bH\.265\b/g,
+                          /\bDTS-HD MA \d\.\d\b/g,
+                          /\bDTS-HD MA \d\.\d\b/g // Ensuring variations
+                      ];
+  
+                      // Replace DPP with DD+ and replace group if set.
+                      let ptp_info_text = matchingDom.info_text.replace(/DPP/g, 'DD+');
+  
+                      if (remove_group) {
+                          ptp_info_text = ptp_info_text.replace(/-\w+/g, '');
+                      }
+  
+                      // Function to replace full stops outside of the patterns
+                      const replaceFullStops = (text) => {
+                          // Map to store original patterns and their placeholders
+                          const placeholders = new Map();
+                          let tempText = text;
+  
+                          // Temporarily replace patterns with placeholders
+                          keepPatterns.forEach((pattern, index) => {
+                              tempText = tempText.replace(pattern, (match) => {
+                                  const placeholder = `__PLACEHOLDER${index}__`;
+                                  placeholders.set(placeholder, match);
+                                  return placeholder;
+                              });
+                          });
+  
+                          // Replace remaining full stops
+                          tempText = tempText.replace(/\.(?!(\d))/g, ' '); // Replace full stops not followed by a digit
+                          tempText = tempText.replace(/(?<!\d)\./g, ' '); // Replace full stops not preceded by a digit
+  
+                          // Restore the original patterns from the placeholders
+                          placeholders.forEach((original, placeholder) => {
+                              tempText = tempText.replace(placeholder, original);
+                          });
+  
+                          return tempText;
+                      };
+  
+                      // Clean ptp_info_text by replacing full stops according to the rules
+                      const cleanedPtpInfoText = replaceFullStops(ptp_info_text);
+  
+                      torrent.innerHTML = `[PTP] ${cleanedPtpInfoText}`;
+                  }
+              }
+          });
+      } else {
+                document.querySelectorAll("tr.group_torrent").forEach(d => {
+              if (d.className != "group_torrent") {
+                  const torrent = d.querySelector("a.torrent-info-link");
+                  torrent.innerHTML = "[PTP] " + torrent.innerHTML;
+              }
+          });
+      }
+      };
 
     const add_filters_div = (trackers, discounts, qualities) => {
         let addBeforeThis = document.querySelector("#movieinfo");
