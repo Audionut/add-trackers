@@ -2216,9 +2216,12 @@
                           /\bDTS-HD MA \d\.\d\b/g // Ensuring variations
                       ];
   
-                      // Replace DPP with DD+ and replace group if set.
-                      let ptp_info_text = matchingDom.info_text.replace(/DPP/g, 'DD+');
+                      let ptp_info_text = matchingDom.info_text;
+
+                      // Replace DDP with DD+
+                      ptp_info_text = ptp_info_text.replace(/DDP/g, 'DD+ ');
   
+                      // Conditionally remove group names
                       if (remove_group) {
                           ptp_info_text = ptp_info_text.replace(/-\w+/g, '');
                       }
