@@ -1839,17 +1839,19 @@
         let hdr = get_hdr(lower, torrent);
         let audio = get_audio(lower, torrent);
         if (remove_group) {
-          let combined_text = codec + container + source + res + audio + hdr;
-          if (combined_text === "") return info_text;
-          else return combined_text;
-        }
-        else {
-            let group = get_group(normal, torrent);
-            let combined_text = codec + container + source + res + audio + hdr + group;
+            let combined_text = `${codec} ${container} ${source} ${res} ${audio} ${hdr}`;
+            combined_text = combined_text.replace(/ \/ $/, '');
             if (combined_text === "") return info_text;
             else return combined_text;
-        }
-    };
+          }
+          else {
+              let group = get_group(normal, torrent);
+              let combined_text = `${codec} ${container} ${source} ${res} ${audio} ${hdr} ${group}`;
+              combined_text = combined_text.replace(/ \/ $/, '');
+              if (combined_text === "") return info_text;
+              else return combined_text;
+          }
+      };
 
     const get_discount_color = (discount) => {
         if (discount === "Freeleech") return "inherit";
