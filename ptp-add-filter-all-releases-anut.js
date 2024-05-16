@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.4.0-A
+// @version      3.4.1-A
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -381,7 +381,19 @@
                 }
 
                 torrent_obj.size = size;
-                torrent_obj.info_text = d.querySelector("td:nth-child(3) > b > a").textContent;
+                let releaseName = d.querySelector("td:nth-child(3) > b > a").textContent.trim();
+                let groupText = "";
+                if (remove_group) {
+                    const match = releaseName.match(/-[A-Z0-9]+$/i); // Updated regex to match group patterns
+                    if (match) {
+                        groupText = match[0];
+                        releaseName = releaseName.replace(groupText, '');
+                    }
+                }
+                releaseName = releaseName.replace(/:/g, ' ');
+                releaseName = releaseName.replace(/\bDoVi\b/g, 'DV');
+                releaseName = releaseName.replace(/DD\+/g, 'DD+ ');
+                torrent_obj.info_text = releaseName;
                 torrent_obj.site = "HDB";
                 torrent_obj.download_link = d.querySelector(".js-download").href.replace("passthepopcorn.me", "hdbits.org");
                 torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(7)").textContent);
@@ -2251,6 +2263,7 @@
                             tempText = tempText.replace(/\b\w/g, char => char.toUpperCase());
                             tempText = tempText.replace(/\bX264\b/g, 'x264');
                             tempText = tempText.replace(/\bX265\b/g, 'x265');
+                            tempText = tempText.replace(/\b - \b/g, ' ');
   
                             return tempText;
                         };
