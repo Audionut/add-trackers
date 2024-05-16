@@ -53,7 +53,7 @@
     const run_by_default = true; // false = won't run the script by default, but will add an "Other Trackers" link under the page title, which when clicked will run the script.
     const timer = 4000; // set the timer here to timeout slow/non-responsive tracker calls. 3.5 seconds seems like a safe default.
     const timerDuration = 2000; // set the length of time the error message should be displayed on page.
-    let ptp_release_name = true; // true = show release name - false = original PTP release style.
+    let ptp_release_name = false; // true = show release name - false = original PTP release style.
     let remove_group = true; // true = remove the group name to work with PTP Improved Tags.
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -61,24 +61,24 @@
     // This handles Miniseries pages.
     const isMiniSeriesFromSpan = Array.from(document.querySelectorAll("span.basic-movie-list__torrent-edition__main"))
                                       .some(el => el.textContent.trim() === "Miniseries");
-        // This handles text parsing of Collections to capture some more content we can later use.
-        const detailsCollections = document.querySelector("#detailsCollections");
-        const listItems = detailsCollections ? detailsCollections.querySelectorAll("ul.list--unstyled li") : null;
-        const isMiniSeriesFromList = listItems ? Array.from(listItems).some(li => {
-            const text = li.textContent.toLowerCase().trim(); // Trim to remove any leading/trailing whitespace
-            // Use regular expressions with word boundaries to ensure whole word matching
-            const hasMiniseries = /\bminiseries\b/.test(text);
-            const hasTV = /\btv\b/.test(text);
-            const hasTelevision = /\btelevision\b/.test(text);
-            // Regex to match the string starting with "films based on television programs" followed by anything else.
-            const skip1 = /^films based on television programs\b.*/i.test(text);
+    // This handles text parsing of Collections to capture some more content we can later use.
+    const detailsCollections = document.querySelector("#detailsCollections");
+    const listItems = detailsCollections ? detailsCollections.querySelectorAll("ul.list--unstyled li") : null;
+    const isMiniSeriesFromList = listItems ? Array.from(listItems).some(li => {
+        const text = li.textContent.toLowerCase().trim(); // Trim to remove any leading/trailing whitespace
+        // Use regular expressions with word boundaries to ensure whole word matching
+        const hasMiniseries = /\bminiseries\b/.test(text);
+        const hasTV = /\btv\b/.test(text);
+        const hasTelevision = /\btelevision\b/.test(text);
+        // Regex to match the string starting with "films based on television programs" followed by anything else.
+        const skip1 = /^films based on television programs\b.*/i.test(text);
 
-            if (skip1) {
-                return false; // Return false to skip adding if the exact skip text is found
-            }
+        if (skip1) {
+            return false; // Return false to skip adding if the exact skip text is found
+        }
 
-            return hasMiniseries || hasTV || hasTelevision;
-        }) : false;
+        return hasMiniseries || hasTV || hasTelevision;
+    }) : false;
     // Combine both handle methods above.
     const isMiniSeries = isMiniSeriesFromSpan || isMiniSeriesFromList;
     // Find the year of the content.
@@ -180,7 +180,9 @@
             let quality = dom_get_quality(d.textContent);
             let discount = "None";
             let releaseName = d.closest('tr.group_torrent_header');
+            let groupName = d.closest('tr.group_torrent_header');
             let info_text = releaseName.dataset.releasename;
+            let group_id = groupName.dataset.releasegroup;
             let seeders = parseInt(d.querySelector("td:nth-child(4)").textContent.replace(",", ""));
             let leechers = parseInt(d.querySelector("td:nth-child(5)").textContent.replace(",", ""));
             let snatchers = parseInt(d.querySelector("td:nth-child(3)").textContent.replace(",", ""));
@@ -198,9 +200,9 @@
 
             let dom_id = "ptp_" + i;
 
-            d.className += " " + dom_id; // required for re-render, nice fix
+            d.className += " " + dom_id;
 
-            doms.push({ tracker, dom_path, quality, discount, info_text, seeders, leechers, snatchers, dom_id, size });
+            doms.push({ tracker, dom_path, quality, discount, group_id, info_text, seeders, leechers, snatchers, dom_id, size });
         });
     };
 
@@ -366,7 +368,6 @@
 
     const get_torrent_objs = async (tracker, html) => {
         let torrent_objs = [];
-
         if (tracker === "HDB") {
             html.querySelector("#torrent-list > tbody").querySelectorAll("tr").forEach((d) => {
                 let torrent_obj = {};
@@ -1143,6 +1144,7 @@
             });
         }
         else if (tracker === "NBL") {
+          try {
             html.querySelectorAll(".torrent_table.grouping > tbody > tr:not(.colhead)").forEach((d) => {
                 let torrent_obj = {};
                 let size = d.querySelector("td:nth-child(3) > div").textContent;
@@ -1187,11 +1189,13 @@
                 //torrent_obj.exclusive = d.querySelector(".tag.exclusive") ? true : false;
                 torrent_objs.push(torrent_obj);
             });
+            } catch (error) {
+              displayAlert(`Looks like NBL's HTML layout has changed, please report`);
+            }
         }
         torrent_objs = torrent_objs.map(e => {
             return { ...e, "quality": get_torrent_quality(e) };
         });
-
         return torrent_objs;
     };
 
@@ -1793,20 +1797,58 @@
 
         return ""; // skip this info
     };
+    const get_audio = (lower, torrent) => {
+        if (lower.includes("atmos")) return "Dolby Atmos / ";
+        else if (lower.includes("truehd")) return "True HD / ";
+
+        return "";
+    };
+    const get_hdr = (lower, torrent) =>{
+        if (lower.includes("dolby vision hdr10")) return "Dolby Vision HDR10 / ";
+        else if (lower.includes("dolby vision hdr10+")) return "Dolby Vision HDR10+ / ";
+        else if (lower.includes("dv hdr")) return "Dolby Vision HDR10 / ";
+        else if (lower.includes("dv hdr10")) return "Dolby Vision HDR10 / ";
+        else if (lower.includes("dv hdr10+")) return "Dolby Vision HDR10+ / ";
+        else if (lower.includes("dv")) return "Dolby Vision / ";
+        else if (lower.includes("dovi")) return "Dolby Vision / ";
+        else if (lower.includes("dolby vision")) return "Dolby Vision / ";
+        else if (lower.includes("hdr")) return "HDR / ";
+        else if (lower.includes("hdr10")) return "HDR10 / ";
+        else if (lower.includes("hdr10+")) return "HDR10+ / ";
+
+        return "";
+    };
+    const get_group = (normal, torrent) => {
+        let groupText = "";
+        const match = normal.match(/-[a-z0-9]+$/i); // Updated regex to match group patterns
+        if (match) {
+            groupText = match[0].substring(1); // Remove the leading hyphen
+        }
+        return groupText;
+    };
 
     const get_simplified_title = (info_text, torrent) => {
         let lower = info_text.toLowerCase();
+        let normal = info_text;
 
         // required infos : codec (x264 vs) / container (mkv,mp4) / source (dvd,web,bluray) / res (1080p,720,SD,1024x768 etc) / Bonus (with commentary,remux, XYZ edition)
         let codec = get_codec(lower, torrent);
         let container = get_container(lower, torrent);
         let source = get_source(lower, torrent);
         let res = get_res(lower, torrent);
-
-        let combined_text = codec + container + source + res;
-
-        if (combined_text === "") return info_text;
-        else return combined_text;
+        let hdr = get_hdr(lower, torrent);
+        let audio = get_audio(lower, torrent);
+        if (remove_group) {
+          let combined_text = codec + container + source + res + audio + hdr;
+          if (combined_text === "") return info_text;
+          else return combined_text;
+        }
+        else {
+            let group = get_group(normal, torrent);
+            let combined_text = codec + container + source + res + audio + hdr + group;
+            if (combined_text === "") return info_text;
+            else return combined_text;
+        }
     };
 
     const get_discount_color = (discount) => {
@@ -1834,6 +1876,7 @@
             let ref_div;
             let tracker = torrent.site;
             let dom_id = tracker + "_" + i;
+            const group_id = get_group(torrent.info_text);
 
             if (torrent.quality === "UHD") {
                 ref_div = get_ref_div(torrent, uhd_ptp_torrents);
@@ -1849,9 +1892,9 @@
             let cln = line_example.cloneNode(true);
 
             if (show_tracker_name) {
-                cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] ` + torrent.info_text;
+                cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] ` + get_simplified_title(torrent.info_text);
             } else {
-                cln.querySelector(".torrent-info-link").textContent = torrent.info_text;
+                cln.querySelector(".torrent-info-link").textContent = get_simplified_title(torrent.info_text);
             }
 
             if (!hide_tags) {
@@ -1896,7 +1939,11 @@
             if (torrent.status === "grabbed") cln.querySelector(".torrent-info-link").className += " torrent-info-link--user-downloaded";
             if (torrent.status === "snatched") cln.querySelector(".torrent-info-link").className += " torrent-info-link--user-snatched";
 
-            //cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] ` + get_simplified_title(torrent.info_text);
+            //if (show_tracker_name) {
+            //    cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] ` + get_simplified_title(torrent.info_text);
+            //} else {
+            //    cln.querySelector(".torrent-info-link").textContent = get_simplified_title(torrent.info_text);
+            //}
             let elements = cln.querySelector(".basic-movie-list__torrent__action").querySelectorAll("a");
 
             if (elements.length > 0) {
@@ -1940,6 +1987,11 @@
             cln.querySelector("td:nth-child(5)").textContent = torrent.leech; // leech
             cln.querySelector(".link_3").href = torrent.torrent_page;
             cln.className += " " + dom_id;
+            if (group_id && cln.dataset.releasegroup) {
+                cln.dataset.releasegroup += group_id;
+            } else if (group_id) {
+                cln.dataset.releasegroup = group_id;
+            }
 
             if (open_in_new_tab) cln.querySelector(".link_3").target = "_blank";
 
@@ -1961,7 +2013,7 @@
             let snatchers = parseInt(torrent.snatch);
             let size = torrent.size;
 
-            doms.push({ tracker, dom_path, quality, discount, info_text, seeders, leechers, snatchers, dom_id, size });
+            doms.push({ tracker, dom_path, quality, discount, info_text, group_id, seeders, leechers, snatchers, dom_id, size });
         });
 
         let reduced_trackers = get_reduced_trackers(doms);
@@ -2203,86 +2255,86 @@
     };
 
     const fix_ptp_names = () => {
-        if (ptp_release_name) {
-            document.querySelectorAll("tr.group_torrent").forEach(d => {
-                const matchingDom = doms.find(dom => d.classList.contains(dom.dom_id));
-                if (matchingDom) {
-                    const torrent = d.querySelector("a.torrent-info-link");
-                    if (torrent) {
-                        const keepPatterns = [
-                            /\b\d\.\d\b/g,
-                            /\bDD\d\.\d\b/g,
-                            /\bDDP\d\.\d\b/g,
-                            /\bDD\+\d\.\d\b/g,
-                            /\bTrueHD \d\.\d\b/g,
-                            /\bDTS\d\.\d\b/g,
-                            /\bAC3\d\.\d\b/g,
-                            /\bAAC\d\.\d\b/g,
-                            /\bOPUS\d\.\d\b/g,
-                            /\bMP3\d\.\d\b/g,
-                            /\bFLAC\d\.\d\b/g,
-                            /\bLPCM\d\.\d\b/g,
-                            /\bH\.264\b/g,
-                            /\bH\.265\b/g,
-                            /\bDTS-HD MA \d\.\d\b/g
-                        ];
-  
-                        let ptp_info_text = matchingDom.info_text;
-  
-                        if (remove_group) {
-                            ptp_info_text = ptp_info_text.replace(/-\w+/g, '');
-                        }
-  
-                        const replaceFullStops = (text) => {
-                            const placeholders = new Map();
-                            let tempText = text;
-  
-                            keepPatterns.forEach((pattern, index) => {
-                                let match;
-                                let i = 0;
-                                while ((match = pattern.exec(tempText)) !== null) {
-                                    const placeholder = `__PLACEHOLDER${index}_${i}__`;
-                                    placeholders.set(placeholder, match[0]);
-                                    tempText = tempText.replace(match[0], placeholder);
-                                    i++;
-                                }
-                            });
-  
-                            tempText = tempText.replace(/\./g, ' ');
-  
-                            placeholders.forEach((original, placeholder) => {
-                                tempText = tempText.replace(placeholder, original);
-                            });
-                            tempText = tempText.replace(/DD\+/g, 'DD+ ').replace(/DDP/g, 'DD+ ').replace(/DoVi/g, 'DV');
-                            tempText = tempText.replace(/\(/g, '').replace(/\)/g, '');
-                            tempText = tempText.replace(/\bhdr\b/g, 'HDR');
-                            tempText = tempText.replace(/\bweb\b/g, 'WEB');
-                            tempText = tempText.replace(/\bbluray\b/gi, 'BluRay');
-                            tempText = tempText.replace(/\bh254\b/g, 'H.264');
-                            tempText = tempText.replace(/\bh265\b/g, 'H.265');
-                            tempText = tempText.replace(/\b\w/g, char => char.toUpperCase());
-                            tempText = tempText.replace(/\bX264\b/g, 'x264');
-                            tempText = tempText.replace(/\bX265\b/g, 'x265');
-                            tempText = tempText.replace(/\b - \b/g, ' ');
-  
-                            return tempText;
-                        };
-  
-                        const cleanedPtpInfoText = replaceFullStops(ptp_info_text);
-  
-                        torrent.innerHTML = `[PTP] ${cleanedPtpInfoText}`;
-                    }
-                }
-            });
-        } else {
-                document.querySelectorAll("tr.group_torrent").forEach(d => {
-              if (d.className != "group_torrent") {
+      if (ptp_release_name) {
+          document.querySelectorAll("tr.group_torrent").forEach(d => {
+              const matchingDom = doms.find(dom => d.classList.contains(dom.dom_id));
+              if (matchingDom) {
                   const torrent = d.querySelector("a.torrent-info-link");
-                  torrent.innerHTML = "[PTP] " + torrent.innerHTML;
+                  if (torrent) {
+                      const keepPatterns = [
+                          /\b\d\.\d\b/g,
+                          /\bDD\d\.\d\b/g,
+                          /\bDDP\d\.\d\b/g,
+                          /\bDD\+\d\.\d\b/g,
+                          /\bTrueHD \d\.\d\b/g,
+                          /\bDTS\d\.\d\b/g,
+                          /\bAC3\d\.\d\b/g,
+                          /\bAAC\d\.\d\b/g,
+                          /\bOPUS\d\.\d\b/g,
+                          /\bMP3\d\.\d\b/g,
+                          /\bFLAC\d\.\d\b/g,
+                          /\bLPCM\d\.\d\b/g,
+                          /\bH\.264\b/g,
+                          /\bH\.265\b/g,
+                          /\bDTS-HD MA \d\.\d\b/g
+                      ];
+
+                      let ptp_info_text = matchingDom.info_text;
+
+                      if (remove_group) {
+                          ptp_info_text = ptp_info_text.replace(/-\w+/g, '');
+                      }
+
+                      const replaceFullStops = (text) => {
+                          const placeholders = new Map();
+                          let tempText = text;
+
+                          keepPatterns.forEach((pattern, index) => {
+                              let match;
+                              let i = 0;
+                              while ((match = pattern.exec(tempText)) !== null) {
+                                  const placeholder = `__PLACEHOLDER${index}_${i}__`;
+                                  placeholders.set(placeholder, match[0]);
+                                  tempText = tempText.replace(match[0], placeholder);
+                                  i++;
+                              }
+                          });
+
+                          tempText = tempText.replace(/\./g, ' ');
+
+                          placeholders.forEach((original, placeholder) => {
+                              tempText = tempText.replace(placeholder, original);
+                          });
+                          tempText = tempText.replace(/DD\+/g, 'DD+ ').replace(/DDP/g, 'DD+ ').replace(/DoVi/g, 'DV');
+                          tempText = tempText.replace(/\(/g, '').replace(/\)/g, '');
+                          tempText = tempText.replace(/\bhdr\b/g, 'HDR');
+                          tempText = tempText.replace(/\bweb\b/g, 'WEB');
+                          tempText = tempText.replace(/\bbluray\b/gi, 'BluRay');
+                          tempText = tempText.replace(/\bh254\b/g, 'H.264');
+                          tempText = tempText.replace(/\bh265\b/g, 'H.265');
+                          tempText = tempText.replace(/\b\w/g, char => char.toUpperCase());
+                          tempText = tempText.replace(/\bX264\b/g, 'x264');
+                          tempText = tempText.replace(/\bX265\b/g, 'x265');
+                          tempText = tempText.replace(/\b - \b/g, ' ');
+
+                          return tempText;
+                      };
+
+                      const cleanedPtpInfoText = replaceFullStops(ptp_info_text);
+
+                      torrent.innerHTML = `[PTP] ${cleanedPtpInfoText}`;
+                  }
               }
           });
-      }
-      };
+      } else {
+              document.querySelectorAll("tr.group_torrent").forEach(d => {
+            if (d.className != "group_torrent") {
+                const torrent = d.querySelector("a.torrent-info-link");
+                torrent.innerHTML = "[PTP] " + torrent.innerHTML;
+            }
+        });
+    }
+    };
 
     const add_filters_div = (trackers, discounts, qualities) => {
         let addBeforeThis = document.querySelector("#movieinfo");
@@ -2736,42 +2788,42 @@
     let original_table;
 
     function displayAlert(text, backgroundColor = "red") {
-        const alert = document.createElement("div");
-        alert.className = "alert text--center alert-fade";
-        alert.textContent = text;
-        alert.style = `background-color: ${backgroundColor}; color: white`;
-        document.querySelector("#content").prepend(alert);
-  
+      const alert = document.createElement("div");
+      alert.className = "alert text--center alert-fade";
+      alert.textContent = text;
+      alert.style = `background-color: ${backgroundColor}; color: white`;
+      document.querySelector("#content").prepend(alert);
+
+      setTimeout(() => {
+        alert.classList.add("alert-fade-out");
         setTimeout(() => {
-          alert.classList.add("alert-fade-out");
-          setTimeout(() => {
-            alert.remove();
-          }, 1000);
-        }, timerDuration);
-      }
+          alert.remove();
+        }, 1000);
+      }, timerDuration);
+    }
 
     const mainFunc = async () => {
         if (show_tracker_name) {
             fix_ptp_names();
         }
 
-        let imdb_id;
+    let imdb_id;
 
+    try {
+        // Attempt to fetch the IMDb ID from a specific link
+        imdb_id = "tt" + document.getElementById("imdb-title-link").href.split("/tt")[1].split("/")[0];
+    } catch (e) {
+        console.log("Failed to extract IMDb ID using imdb-title-link, attempting fallback method:", e);
+        // Fallback to fetching the IMDb ID from any link within a `.rating` element that includes an IMDb URL
         try {
-            // Attempt to fetch the IMDb ID from a specific link
-            imdb_id = "tt" + document.getElementById("imdb-title-link").href.split("/tt")[1].split("/")[0];
-        } catch (e) {
-            console.log("Failed to extract IMDb ID using imdb-title-link, attempting fallback method:", e);
-            // Fallback to fetching the IMDb ID from any link within a `.rating` element that includes an IMDb URL
-            try {
-                imdb_id = "tt" + [...document.querySelectorAll(".rating")]
-                                  .find(a => a.href.includes("imdb.com"))
-                                  .href.split("/tt")[1]
-                                  .split("/")[0];
-            } catch (fallbackError) {
-                console.log("Failed to extract IMDb ID using fallback method:", fallbackError);
-            }
+            imdb_id = "tt" + [...document.querySelectorAll(".rating")]
+                              .find(a => a.href.includes("imdb.com"))
+                              .href.split("/tt")[1]
+                              .split("/")[0];
+        } catch (fallbackError) {
+            console.log("Failed to extract IMDb ID using fallback method:", fallbackError);
         }
+    }
 
         let name_url = document.querySelector("h2.page__title").textContent.trim();
         let show_name;
