@@ -2198,9 +2198,11 @@
                     const torrent = d.querySelector("a.torrent-info-link");
                     if (torrent) {
                         const keepPatterns = [
+                            /\b\d\.\d\b/g,
                             /\bDD\d\.\d\b/g,
                             /\bDDP\d\.\d\b/g,
                             /\bDD\+\d\.\d\b/g,
+                            /\bTrueHD \d\.\d\b/g,
                             /\bDTS\d\.\d\b/g,
                             /\bAC3\d\.\d\b/g,
                             /\bAAC\d\.\d\b/g,
@@ -2238,13 +2240,14 @@
   
                             placeholders.forEach((original, placeholder) => {
                                 tempText = tempText.replace(placeholder, original);
+                            tempText = tempText.replace(/DD\+/g, 'DD+ ').replace(/DDP/g, 'DD+ ').replace(/DoVi/g, 'DV');
+                            tempText = tempText.replace(/\(/g, '').replace(/\)/g, '');
                             });
   
                             return tempText;
                         };
   
                         const cleanedPtpInfoText = replaceFullStops(ptp_info_text);
-                        console.log("output temptext", cleanedPtpInfoText);
   
                         torrent.innerHTML = `[PTP] ${cleanedPtpInfoText}`;
                     }
