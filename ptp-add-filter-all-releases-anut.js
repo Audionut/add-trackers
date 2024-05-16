@@ -1837,17 +1837,18 @@
         return "";
     };
     const get_hdr = (lower, torrent) =>{
-        if (lower.includes("dolby vision hdr10")) return "Dolby Vision HDR10 / ";
-        else if (lower.includes("dolby vision hdr10+")) return "Dolby Vision HDR10+ / ";
-        else if (lower.includes("dv hdr")) return "Dolby Vision HDR10 / ";
-        else if (lower.includes("dv hdr10")) return "Dolby Vision HDR10 / ";
+        if (lower.includes("dolby vision hdr10+")) return "Dolby Vision HDR10+ / ";
+        else if (lower.includes("dolby vision hdr10")) return "Dolby Vision HDR10 / ";
+        else if (lower.includes("dolby vision hdr")) return "Dolby Vision HDR / ";
         else if (lower.includes("dv hdr10+")) return "Dolby Vision HDR10+ / ";
+        else if (lower.includes("dv hdr10")) return "Dolby Vision HDR10 / ";
+        else if (lower.includes("dv hdr")) return "Dolby Vision HDR10 / ";
         else if (lower.includes("dv")) return "Dolby Vision / ";
         else if (lower.includes("dovi")) return "Dolby Vision / ";
         else if (lower.includes("dolby vision")) return "Dolby Vision / ";
-        else if (lower.includes("hdr")) return "HDR / ";
-        else if (lower.includes("hdr10")) return "HDR10 / ";
         else if (lower.includes("hdr10+")) return "HDR10+ / ";
+        else if (lower.includes("hdr10")) return "HDR10 / ";
+        else if (lower.includes("hdr")) return "HDR / ";
 
         return "";
     };
