@@ -792,7 +792,9 @@
                         } else {
                             // remove all of the periods in the filename.
                             // additionally, remove the file container info (eg: mkv) after the last period in the filename.
-                            antname = antname.replace(/\.[^.]*$/, "").replace(/\./g, " ");
+                            if (!remove_group) {
+                                antname = antname.replace(/\.[^.]*$/, "").replace(/\./g, " ");
+                                }
                             // torrent name to display if this code is used.
                             torrent_obj.info_text = antname;
                         }
