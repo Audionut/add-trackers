@@ -2192,75 +2192,65 @@
 
     const fix_ptp_names = () => {
         if (ptp_release_name) {
-          document.querySelectorAll("tr.group_torrent").forEach(d => {
-              // Find the closest header element with a matching dom_id class
-              const matchingDom = doms.find(dom => d.classList.contains(dom.dom_id));
-              if (matchingDom) {
-                  const torrent = d.querySelector("a.torrent-info-link");
-                  if (torrent) {
-                      // Define patterns to keep full stops
-                      const keepPatterns = [
-                          /\bDD\d\.\d\b/g,
-                          /\bDDP\d\.\d\b/g,
-                          /\bDD\+\d\.\d\b/g,
-                          /\bDTS\d\.\d\b/g,
-                          /\bAC3\d\.\d\b/g,
-                          /\bAAC\d\.\d\b/g,
-                          /\bOPUS\d\.\d\b/g,
-                          /\bMP3\d\.\d\b/g,
-                          /\bFLAC\d\.\d\b/g,
-                          /\bLPCM\d\.\d\b/g,
-                          /\bH\.264\b/g,
-                          /\bH\.265\b/g,
-                          /\bDTS-HD MA \d\.\d\b/g,
-                          /\bDTS-HD MA \d\.\d\b/g // Ensuring variations
-                      ];
+            document.querySelectorAll("tr.group_torrent").forEach(d => {
+                const matchingDom = doms.find(dom => d.classList.contains(dom.dom_id));
+                if (matchingDom) {
+                    const torrent = d.querySelector("a.torrent-info-link");
+                    if (torrent) {
+                        const keepPatterns = [
+                            /\bDD\d\.\d\b/g,
+                            /\bDDP\d\.\d\b/g,
+                            /\bDD\+\d\.\d\b/g,
+                            /\bDTS\d\.\d\b/g,
+                            /\bAC3\d\.\d\b/g,
+                            /\bAAC\d\.\d\b/g,
+                            /\bOPUS\d\.\d\b/g,
+                            /\bMP3\d\.\d\b/g,
+                            /\bFLAC\d\.\d\b/g,
+                            /\bLPCM\d\.\d\b/g,
+                            /\bH\.264\b/g,
+                            /\bH\.265\b/g,
+                            /\bDTS-HD MA \d\.\d\b/g
+                        ];
   
-                      let ptp_info_text = matchingDom.info_text;
-
-                      // Replace DDP with DD+
-                      ptp_info_text = ptp_info_text.replace(/DDP/g, 'DD+ ');
+                        let ptp_info_text = matchingDom.info_text;
   
-                      // Conditionally remove group names
-                      if (remove_group) {
-                          ptp_info_text = ptp_info_text.replace(/-\w+/g, '');
-                      }
+                        if (remove_group) {
+                            ptp_info_text = ptp_info_text.replace(/-\w+/g, '');
+                        }
   
-                      // Function to replace full stops outside of the patterns
-                      const replaceFullStops = (text) => {
-                          // Map to store original patterns and their placeholders
-                          const placeholders = new Map();
-                          let tempText = text;
+                        const replaceFullStops = (text) => {
+                            const placeholders = new Map();
+                            let tempText = text;
   
-                          // Temporarily replace patterns with placeholders
-                          keepPatterns.forEach((pattern, index) => {
-                              tempText = tempText.replace(pattern, (match) => {
-                                  const placeholder = `__PLACEHOLDER${index}__`;
-                                  placeholders.set(placeholder, match);
-                                  return placeholder;
-                              });
-                          });
+                            keepPatterns.forEach((pattern, index) => {
+                                let match;
+                                let i = 0;
+                                while ((match = pattern.exec(tempText)) !== null) {
+                                    const placeholder = `__PLACEHOLDER${index}_${i}__`;
+                                    placeholders.set(placeholder, match[0]);
+                                    tempText = tempText.replace(match[0], placeholder);
+                                    i++;
+                                }
+                            });
   
-                          // Replace remaining full stops
-                          tempText = tempText.replace(/\.(?!(\d))/g, ' '); // Replace full stops not followed by a digit
-                          tempText = tempText.replace(/(?<!\d)\./g, ' '); // Replace full stops not preceded by a digit
+                            tempText = tempText.replace(/\./g, ' ');
   
-                          // Restore the original patterns from the placeholders
-                          placeholders.forEach((original, placeholder) => {
-                              tempText = tempText.replace(placeholder, original);
-                          });
+                            placeholders.forEach((original, placeholder) => {
+                                tempText = tempText.replace(placeholder, original);
+                            });
   
-                          return tempText;
-                      };
+                            return tempText;
+                        };
   
-                      // Clean ptp_info_text by replacing full stops according to the rules
-                      const cleanedPtpInfoText = replaceFullStops(ptp_info_text);
+                        const cleanedPtpInfoText = replaceFullStops(ptp_info_text);
+                        console.log("output temptext", cleanedPtpInfoText);
   
-                      torrent.innerHTML = `[PTP] ${cleanedPtpInfoText}`;
-                  }
-              }
-          });
-      } else {
+                        torrent.innerHTML = `[PTP] ${cleanedPtpInfoText}`;
+                    }
+                }
+            });
+        } else {
                 document.querySelectorAll("tr.group_torrent").forEach(d => {
               if (d.className != "group_torrent") {
                   const torrent = d.querySelector("a.torrent-info-link");
