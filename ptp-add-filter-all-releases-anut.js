@@ -1553,6 +1553,26 @@
         }
     };
 
+    const get_api_files = (files) => {
+        const filesCount = files.length; // Get the number of files
+
+        if (filesCount > 1) {
+            return "m2ts";
+        } else if (filesCount === 1) {
+            const singleFileName = files[0].name;
+            const lastDotIndex = singleFileName.lastIndexOf('.');
+            if (lastDotIndex !== -1) {
+                return singleFileName.substring(lastDotIndex + 1);
+            } else {
+                // Handle case where there is no full stop in the name
+                return singleFileName;
+            }
+        } else {
+            // Handle case where there are no files, if necessary
+            return null;
+        }
+    };
+
     const get_api_torrent_objects = (tracker, json) => {
         let torrent_objs = [];
 
@@ -1567,13 +1587,23 @@
             torrent_objs = json.data.map((element) => {
                 // Mapping element attributes to a torrent object
                 const infoText = tracker === "HUNO" ? element.attributes.name.replace(/[()]/g, "") : element.attributes.name;
+                console.log("UNIT3D infoText", infoText)
 
                 // Check if the info text contains "SxxExx" where "xx" is not known beforehand
                 if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
                     // If the info text does not contain the pattern, proceed with further processing
+                const files = element.attributes.files || []; // Ensure files is defined
+                const container = get_api_files(files); // Call the function with files as argument
+                console.log("Container", container);
+
+                let updatedInfoText = infoText;
+                if (container) {
+                    updatedInfoText = `${container} ${updatedInfoText}`; // Append container to info_text
+                }
+                console.log("updated text", updatedInfoText);
                     const torrentObj = {
                         size: parseInt(element.attributes.size / (1024 * 1024)),
-                        info_text: infoText,
+                        info_text: updatedInfoText,
                         tracker: tracker,
                         site: tracker,
                         snatch: element.attributes.times_completed,
@@ -1595,6 +1625,7 @@
                         double_upload: element.attributes.double_upload,
                         refundable: element.attributes.refundable,
                         personal_release: element.attributes.personal_release,
+                        //files: element.attributes.files,
                     };
 
                     // Mapping additional properties and logging the final torrent objects
