@@ -1850,6 +1850,31 @@
 
         return null;
     };
+    const get_bonus = (lower, torrent) => {
+        if (lower.includes("remux")) return "Remux / "
+        const anthologyMatch = lower.match(/anthology/);
+        const yearMatch = lower.match(/\d{4}/);
+
+        if (anthologyMatch && yearMatch && anthologyMatch.index < yearMatch.index) {
+            return "Anthology / ";
+        }
+        else if (lower.includes("2in1")) return "2in1 / "
+
+        return null;
+    };
+    const get_country = (normal, torrent) => {
+        const exceptions = ["AVC", "DDP", "DTS", "DD+", "PAL", "VHS", "WEB", "DVD", "HDR"]; // Add any other exceptions as needed
+        const countryCodeMatch = normal.match(/\b[A-Z]{3}\b/g);
+
+        if (countryCodeMatch) {
+            const filteredCodes = countryCodeMatch.filter(code => !exceptions.includes(code));
+            if (filteredCodes.length > 0) {
+                return filteredCodes.join(' / ') + " / ";
+            }
+        }
+
+        return null; // skip this info
+    };
     const get_group = (normal, torrent) => {
         const match = normal.match(/-[a-z0-9]+$/i); // Updated regex to match group patterns
         if (match) {
@@ -1867,8 +1892,10 @@
         let container = get_container(lower, torrent);
         let source = get_source(lower, torrent);
         let res = get_res(lower, torrent);
-        let hdr = get_hdr(lower, torrent);
         let audio = get_audio(lower, torrent);
+        let hdr = get_hdr(lower, torrent);
+        let bonus = get_bonus(lower, torrent);
+        let country = get_country(normal, torrent);
 
         const parts = [];
 
@@ -1878,6 +1905,8 @@
         if (res) parts.push(res.trim());
         if (audio) parts.push(audio.trim());
         if (hdr) parts.push(hdr.trim());
+        if (bonus) parts.push(bonus.trim());
+        if (country) parts.push(country.trim());
 
         if (!remove_group) {
             let group = get_group(normal, torrent);
