@@ -381,7 +381,19 @@
                 }
 
                 torrent_obj.size = size;
-                torrent_obj.info_text = d.querySelector("td:nth-child(3) > b > a").textContent;
+                let releaseName = d.querySelector("td:nth-child(3) > b > a").textContent.trim();
+                let groupText = "";
+                if (remove_group) {
+                    const match = releaseName.match(/-[A-Z0-9]+$/i); // Updated regex to match group patterns
+                    if (match) {
+                        groupText = match[0];
+                        releaseName = releaseName.replace(groupText, '');
+                    }
+                }
+                releaseName = releaseName.replace(/:/g, ' ');
+                releaseName = releaseName.replace(/\bDoVi\b/g, 'DV');
+                releaseName = releaseName.replace(/DD\+/g, 'DD+ ');
+                torrent_obj.info_text = releaseName;
                 torrent_obj.site = "HDB";
                 torrent_obj.download_link = d.querySelector(".js-download").href.replace("passthepopcorn.me", "hdbits.org");
                 torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(7)").textContent);
@@ -2220,9 +2232,11 @@
 
                         // Define patterns to keep full stops
                         const keepPatterns = [
+                            /\b\d\.\d\b/g,
                             /\bDD\d\.\d\b/g,
                             /\bDDP\d\.\d\b/g,
                             /\bDD\+\d\.\d\b/g,
+                            /\bTrueHD \d\.\d\b/g,
                             /\bDTS\d\.\d\b/g,
                             /\bAC3\d\.\d\b/g,
                             /\bAAC\d\.\d\b/g,
@@ -2237,9 +2251,6 @@
                         ];
 
                         let ptp_info_text = matchingDom.info_text;
-
-                        // Replace DDP with DD+
-                        ptp_info_text = ptp_info_text.replace(/DDP/g, 'DD+ ');
 
                         // Conditionally remove group names
                         if (remove_group) {
@@ -2268,6 +2279,17 @@
                             // Restore the original patterns from the placeholders
                             placeholders.forEach((original, placeholder) => {
                                 tempText = tempText.replace(placeholder, original);
+                            tempText = tempText.replace(/DD\+/g, 'DD+ ').replace(/DDP/g, 'DD+ ').replace(/DoVi/g, 'DV');
+                            tempText = tempText.replace(/\(/g, '').replace(/\)/g, '');
+                            tempText = tempText.replace(/\bhdr\b/g, 'HDR');
+                            tempText = tempText.replace(/\bweb\b/g, 'WEB');
+                            tempText = tempText.replace(/\bbluray\b/gi, 'BluRay');
+                            tempText = tempText.replace(/\bh254\b/g, 'H.264');
+                            tempText = tempText.replace(/\bh265\b/g, 'H.265');
+                            tempText = tempText.replace(/\b\w/g, char => char.toUpperCase());
+                            tempText = tempText.replace(/\bX264\b/g, 'x264');
+                            tempText = tempText.replace(/\bX265\b/g, 'x265');
+                            tempText = tempText.replace(/\b - \b/g, ' ');
                             });
 
                             return tempText;
