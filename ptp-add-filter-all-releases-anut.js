@@ -1600,7 +1600,6 @@
                 if (container) {
                     updatedInfoText = `${container} ${updatedInfoText}`; // Append container to info_text
                 }
-                console.log("updated text", updatedInfoText);
                     const torrentObj = {
                         size: parseInt(element.attributes.size / (1024 * 1024)),
                         info_text: updatedInfoText,
@@ -1773,13 +1772,14 @@
 
     const get_codec = (lower, torrent) => {
         if (lower.includes("x264") || lower.includes("x.264")) return "x264 / ";
-        else if (lower.includes("h264") || lower.includes("h.264")) return "H.264 / ";
+        else if (lower.includes("h264") || lower.includes("h.264") || lower.includes("avc")) return "H.264 / ";
         else if (lower.includes("x265") || lower.includes("x.265")) return "x265 / ";
-        else if (lower.includes("h265") || lower.includes("h.265")) return "H.265 / ";
+        else if (lower.includes("h265") || lower.includes("h.265") || lower.includes("hevc")) return "H.265 / ";
         else if (lower.includes("xvid") || lower.includes("x.vid")) return "XviD / ";
         else if (lower.includes("divx") || lower.includes("div.x")) return "DivX / ";
         else if (lower.includes("dvd5") || lower.includes("dvd-5") || lower.includes("dvd 5")) return "DVD5 / ";
         else if (lower.includes("dvd9") || lower.includes("dvd-9") || lower.includes("dvd 9")) return "DVD9 / ";
+        else if (lower.includes("mpeg2")) return "MPEG2 / ";
 
         else if (lower.includes("bd25") || lower.includes("bd-25")) return "BD25 / ";
         else if (lower.includes("bd50") || lower.includes("bd-50")) return "BD50 / ";
@@ -1794,7 +1794,7 @@
         else if (lower.includes("mpg")) return "MPG / ";
         else if (lower.includes("mkv")) return "MKV / ";
         else if (lower.includes("mp4")) return "MP4 / ";
-        else if (lower.includes("vob")) return "VOB / ";
+        else if (lower.includes("vob")) return "VOB IFO / ";
         else if (lower.includes("iso")) return "ISO / ";
         else if (lower.includes("m2ts")) return "m2ts / ";
 
@@ -1841,7 +1841,7 @@
         else if (lower.includes("dv hdr10+")) return "Dolby Vision / HDR10+ / ";
         else if (lower.includes("dv hdr10")) return "Dolby Vision / HDR10 / ";
         else if (lower.includes("dv hdr")) return "Dolby Vision / HDR10 / ";
-        else if (lower.includes("dv")) return "Dolby Vision / ";
+        else if (lower.includes(" dv ")) return "Dolby Vision / "; // Need spaces or else DVD suddenly has Dolby Vision.
         else if (lower.includes("dovi")) return "Dolby Vision / ";
         else if (lower.includes("dolby vision")) return "Dolby Vision / ";
         else if (lower.includes("hdr10+")) return "HDR10+ / ";
@@ -1932,8 +1932,10 @@
 
             if (show_tracker_name) {
                 cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] ` + get_simplified_title(torrent.info_text);
-            } else {
+            } else if (remove_group) {
                 cln.querySelector(".torrent-info-link").textContent = get_simplified_title(torrent.info_text);
+            } else {
+                cln.querySelector(".torrent-info-link").textContent = torrent.info_text;
             }
 
             if (!hide_tags) {
