@@ -1589,14 +1589,12 @@
             torrent_objs = json.data.map((element) => {
                 // Mapping element attributes to a torrent object
                 const infoText = tracker === "HUNO" ? element.attributes.name.replace(/[()]/g, "") : element.attributes.name;
-                console.log("UNIT3D infoText", infoText)
 
                 // Check if the info text contains "SxxExx" where "xx" is not known beforehand
                 if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
                     // If the info text does not contain the pattern, proceed with further processing
                 const files = element.attributes.files || []; // Ensure files is defined
                 const container = get_api_files(files); // Call the function with files as argument
-                console.log("Container", container);
 
                 let updatedInfoText = infoText;
                 if (container) {
@@ -1788,7 +1786,7 @@
         else if (lower.includes("bd66") || lower.includes("bd-66")) return "BD66 / ";
         else if (lower.includes("bd100") || lower.includes("bd-100")) return "BD100 / ";
 
-        return ""; // skip this info
+        return null; // skip this info
     };
 
     const get_container = (lower, torrent) => {
@@ -1800,7 +1798,7 @@
         else if (lower.includes("iso")) return "ISO / ";
         else if (lower.includes("m2ts")) return "m2ts / ";
 
-        return ""; // skip this info
+        return null; // skip this info
     };
 
     const get_source = (lower, torrent) => {
@@ -1815,7 +1813,7 @@
         else if (lower.includes("hddvd") || lower.includes("hd-dvd")) return "HD-DVD / ";
         else if (lower.includes("bluray") || lower.includes("blu-ray") || lower.includes("blu.ray") || lower.includes("blu ray")) return "Blu-ray / ";
 
-        return ""; // skip this info
+        return null; // skip this info
     };
 
     const get_res = (lower, torrent) => {
@@ -1828,21 +1826,21 @@
         else if (lower.includes("1080p")) return "1080p / ";
         else if (lower.includes("2160p")) return "2160p / ";
 
-        return ""; // skip this info
+        return null; // skip this info
     };
     const get_audio = (lower, torrent) => {
         if (lower.includes("atmos")) return "Dolby Atmos / ";
-        else if (lower.includes("truehd")) return "True HD / ";
+        //else if (lower.includes("truehd")) return "True HD / ";
 
-        return "";
+        return null;
     };
     const get_hdr = (lower, torrent) =>{
-        if (lower.includes("dolby vision hdr10+")) return "Dolby Vision HDR10+ / ";
-        else if (lower.includes("dolby vision hdr10")) return "Dolby Vision HDR10 / ";
-        else if (lower.includes("dolby vision hdr")) return "Dolby Vision HDR / ";
-        else if (lower.includes("dv hdr10+")) return "Dolby Vision HDR10+ / ";
-        else if (lower.includes("dv hdr10")) return "Dolby Vision HDR10 / ";
-        else if (lower.includes("dv hdr")) return "Dolby Vision HDR10 / ";
+        if (lower.includes("dolby vision hdr10+")) return "Dolby Vision / HDR10+ / ";
+        else if (lower.includes("dolby vision hdr10")) return "Dolby Vision / HDR10 / ";
+        else if (lower.includes("dolby vision hdr")) return "Dolby Vision / HDR / ";
+        else if (lower.includes("dv hdr10+")) return "Dolby Vision / HDR10+ / ";
+        else if (lower.includes("dv hdr10")) return "Dolby Vision / HDR10 / ";
+        else if (lower.includes("dv hdr")) return "Dolby Vision / HDR10 / ";
         else if (lower.includes("dv")) return "Dolby Vision / ";
         else if (lower.includes("dovi")) return "Dolby Vision / ";
         else if (lower.includes("dolby vision")) return "Dolby Vision / ";
@@ -1850,42 +1848,47 @@
         else if (lower.includes("hdr10")) return "HDR10 / ";
         else if (lower.includes("hdr")) return "HDR / ";
 
-        return "";
+        return null;
     };
     const get_group = (normal, torrent) => {
-        let groupText = "";
         const match = normal.match(/-[a-z0-9]+$/i); // Updated regex to match group patterns
         if (match) {
-            groupText = match[0].substring(1); // Remove the leading hyphen
+            return match[0].substring(1); // Remove the leading hyphen and return the matched group
         }
-        return groupText;
+        return null; // Return null if no match is found
     };
 
     const get_simplified_title = (info_text, torrent) => {
         let lower = info_text.toLowerCase();
         let normal = info_text;
 
-        // required infos : codec (x264 vs) / container (mkv,mp4) / source (dvd,web,bluray) / res (1080p,720,SD,1024x768 etc) / Bonus (with commentary,remux, XYZ edition)
+        // required infos: codec (x264 vs) / container (mkv, mp4) / source (dvd, web, bluray) / res (1080p, 720, SD, 1024x768 etc) / Bonus (with commentary, remux, XYZ edition)
         let codec = get_codec(lower, torrent);
         let container = get_container(lower, torrent);
         let source = get_source(lower, torrent);
         let res = get_res(lower, torrent);
         let hdr = get_hdr(lower, torrent);
         let audio = get_audio(lower, torrent);
-        if (remove_group) {
-            let combined_text = `${codec} ${container} ${source} ${res} ${audio} ${hdr}`;
-            combined_text = combined_text.replace(/ \/ $/, '');
-            if (combined_text === "") return info_text;
-            else return combined_text;
-          }
-          else {
-              let group = get_group(normal, torrent);
-              let combined_text = `${codec} ${container} ${source} ${res} ${audio} ${hdr} ${group}`;
-              combined_text = combined_text.replace(/ \/ $/, '');
-              if (combined_text === "") return info_text;
-              else return combined_text;
-          }
-      };
+
+        const parts = [];
+
+        if (codec) parts.push(codec.trim());
+        if (container) parts.push(container.trim());
+        if (source) parts.push(source.trim());
+        if (res) parts.push(res.trim());
+        if (audio) parts.push(audio.trim());
+        if (hdr) parts.push(hdr.trim());
+
+        if (!remove_group) {
+            let group = get_group(normal, torrent);
+            if (group) parts.push(group.trim());
+        }
+
+        let combined_text = parts.join(' ').replace(/\s+\/$/, '').trim();
+
+        if (combined_text === "") return info_text;
+        else return combined_text;
+    };
 
     const get_discount_color = (discount) => {
         if (discount === "Freeleech") return "inherit";
