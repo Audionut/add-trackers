@@ -54,7 +54,8 @@
     const timer = 4000; // set the timer here to timeout slow/non-responsive tracker calls. 3.5 seconds seems like a safe default.
     const timerDuration = 2000; // set the length of time the error message should be displayed on page.
     let ptp_release_name = false; // true = show release name - false = original PTP release style.
-    let remove_group = true; // true = remove the group name to work with PTP Improved Tags.
+    let remove_group = true; // true = remove the group name to work better with PTP Improved Tags.
+    let improved_tags = true; // true = full refactor to work fully with PTP Improved Tags
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -384,13 +385,14 @@
                 torrent_obj.size = size;
                 let releaseName = d.querySelector("td:nth-child(3) > b > a").textContent.trim();
                 let groupText = "";
-                if (remove_group) {
+                if (remove_group || improved_tags) {
                     const match = releaseName.match(/-[A-Z0-9]+$/i); // Updated regex to match group patterns
                     if (match) {
-                        groupText = match[0];
+                        groupText = match[0].substring(1);
                         releaseName = releaseName.replace(groupText, '');
                     }
                 }
+                torrent_obj.groupId = groupText;
                 releaseName = releaseName.replace(/:/g, ' ');
                 releaseName = releaseName.replace(/\bDoVi\b/g, 'DV');
                 releaseName = releaseName.replace(/DD\+/g, 'DD+ ');
@@ -707,10 +709,7 @@
             }
         }
         else if (tracker === "ANT") {
-            // querySelector is the html element from the search result that contains the table rows <tr> with the torrent information.
-            // querySelectorALL is the actual table rows with the torrent information.
             const rows = html.querySelector(".torrent_table#torrent_details > tbody").querySelectorAll("tr:not(.colhead_dark):not(.sortGroup)");
-            // interate through each table row so that we can pull the data from each torrent.
             rows.forEach((d, index) => {
                 let torrent_obj = {};
                 let size = null;
@@ -745,26 +744,48 @@
                 if (torrentId !== null) {
                     // add the elements together to create the link.
                     const torrentPageUrl = `${baseUrl}torrentid=${torrentId}`;
-                    // the torrent size info - can't remember why it's set here.
                     torrent_obj.size = size;
 
-                    // under the table row that contains the torrent of interest, is a hidden table row.
-                    // the hidden table row contains the torrent info when the title is clicked at the source site.
-                    // this table row contains additional information such as the filename.
-                    // this next code adds a condition to pull the data from that hidden row instead.
                     const nextRow = rows[index + 1];
                     if (nextRow) {
-                        // pull the filename from that next (hidden) row.
                         let antname = nextRow.querySelector('.row > td').textContent.trim();
-
-                        // Check if antname contains ".mkv", ".mpg", ".avi" or ".mp4"
-                        if (!(antname.includes(".mkv") || antname.includes(".mpg") || antname.includes(".avi") || antname.includes(".mp4"))) {
-                            // if antname doesn't include the above, lets process info_text the old way
-                            // disc/folder content basically always has filenames that are not useful at all.
+                        let derivedContainer = antname.match(/\.[^.]*$/);
+                        if (improved_tags) {
                             const titleElement = d.querySelector("td:nth-child(1) > a");
                             if (titleElement) {
                                 let infoTextParts = [];
-                                // the information needed is also in child elements.
+                                const titleText = Array.from(titleElement.childNodes)
+                                    .filter(node => node.nodeType === Node.TEXT_NODE)
+                                    .map(node => node.textContent.trim())
+                                    .join('')
+                                    .replace(/\/+/g, '/') // Replace multiple slashes with a single slash
+                                    .replace(/\/$/, '');  // Remove the trailing slash if present
+                                if (titleText) {
+                                    infoTextParts.push(titleText);
+                                }
+                                let groupText = "";
+                                const match = titleText.match(/[^\/]+$/);
+                                    if (match) {
+                                        groupText = match[0].trim();
+                                    }
+                                torrent_obj.groupId = groupText;
+                                const strongElements = titleElement.querySelectorAll("strong.torrent_label");
+                                strongElements.forEach((strong, index) => {
+                                    const text = strong.textContent.trim();
+                                    if (strong.classList.contains("tl_notice")) {
+                                        infoTextParts.push(text);
+                                    }
+                                });
+                                let formattedText = infoTextParts.join(' / ')
+                                                                 .replace(/\/+/g, '/')
+                                                                 .replace(/\s*\/\s*/g, ' / ');
+                                torrent_obj.info_text = formattedText;
+                            }
+                        } else {
+                        if (!(antname.includes(".mkv") || antname.includes(".mpg") || antname.includes(".avi") || antname.includes(".mp4"))) {
+                            const titleElement = d.querySelector("td:nth-child(1) > a");
+                            if (titleElement) {
+                                let infoTextParts = [];
                                 const titleText = Array.from(titleElement.childNodes)
                                     .filter(node => node.nodeType === Node.TEXT_NODE)
                                     .map(node => node.textContent.trim())
@@ -772,7 +793,6 @@
                                 if (titleText) {
                                     infoTextParts.push(titleText);
                                 }
-                                // some of the information is also in <strong> elements.
                                 const strongElements = titleElement.querySelectorAll("strong.torrent_label");
                                 // more than 1 strong element.
                                 strongElements.forEach((strong, index) => {
@@ -782,44 +802,28 @@
                                         infoTextParts.push(text);
                                     }
                                 });
-                                // so many slashes, format the slashes so that the title displays correctly.
-                                let formattedText = infoTextParts.join(' / ')
-                                                                 .replace(/\/+/g, '/')  // Replace multiple slashes with single slash
-                                                                 .replace(/\s*\/\s*/g, ' / '); // Add space before and after slash if necessary
-                                // torrent name to display if this code is used.
-                                torrent_obj.info_text = formattedText;
+                                let otherText = infoTextParts.join(' / ')
+                                                                 .replace(/\/+/g, '/')
+                                                                 .replace(/\s*\/\s*/g, ' / ');
+                                torrent_obj.info_text = otherText;
                             }
                         } else {
-                            // remove all of the periods in the filename.
-                            // additionally, remove the file container info (eg: mkv) after the last period in the filename.
-                            if (!remove_group) {
-                                antname = antname.replace(/\.[^.]*$/, "").replace(/\./g, " ");
-                                }
-                            // torrent name to display if this code is used.
-                            torrent_obj.info_text = antname;
+                              antname = antname.replace(/\.[^.]*$/, "").replace(/\./g, " ");
+                              torrent_obj.info_text = antname;
+                            }
                         }
-                        // define the site.
                         torrent_obj.site = "ANT";
-                        // look at all of the href elements, and select the one that we know is the download link.
-                        // ANT has 2 download links that are basically identical.
-                        // && - don't use the href element that uses a token.
                         torrent_obj.download_link = [...d.querySelectorAll("a")].find(a => a.href.includes("torrents.php?action=") && !a.href.includes("&usetoken=1")).href.replace("passthepopcorn.me", "anthelion.me");
-                        // snatch/seed/leech counts from the <td> elements in the table row.
                         torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(3)").textContent);
                         torrent_obj.seed = parseInt(d.querySelector("td:nth-child(4)").textContent);
                         torrent_obj.leech = parseInt(d.querySelector("td:nth-child(5)").textContent);
-                        // set the torrent page.
                         torrent_obj.torrent_page = torrentPageUrl;
-                        // set the discounts based on the discount code defined towards the top of the script.
                         torrent_obj.discount = get_discount_text(d, tracker);
-                        // the html element we are using to determine whether or not the torrent is currently being seeded.
                         const elements = d.querySelectorAll('strong.torrent_label.tl_seeding.tooltip');
                         torrent_obj.status = elements.length > 0 ? 'seeding' : 'default';
-                        // the html elements we are using to determine whether or not the torrents are Internal, Trumpable or Reported.
                         torrent_obj.internal = d.querySelector('strong.torrent_label.tooltip.internal') ? true : false;
                         torrent_obj.trumpable = d.querySelector(".torrent_table#torrent_details .torrent_label.tl_trumpable.tooltip") ? true : false;
                         torrent_obj.reported = d.querySelector(".torrent_table#torrent_details .torrent_label.tl_reported.tooltip") ? true : false;
-                        // push everything to a torrent_obj for later use.
                         torrent_objs.push(torrent_obj);
                     }
                 }
@@ -1841,6 +1845,7 @@
         else if (lower.includes("dv hdr10+")) return "Dolby Vision / HDR10+ / ";
         else if (lower.includes("dv hdr10")) return "Dolby Vision / HDR10 / ";
         else if (lower.includes("dv hdr")) return "Dolby Vision / HDR10 / ";
+        else if (lower.includes("hdr10 / dv")) return "Dolby Vision / HDR10 / ";
         else if (lower.includes(" dv ")) return "Dolby Vision / "; // Need spaces or else DVD suddenly has Dolby Vision.
         else if (lower.includes("dovi")) return "Dolby Vision / ";
         else if (lower.includes("dolby vision")) return "Dolby Vision / ";
@@ -1851,19 +1856,22 @@
         return null;
     };
     const get_bonus = (lower, torrent) => {
-        if (lower.includes("remux")) return "Remux / "
+        const bonuses = [];
+
+        if (lower.includes("remux")) bonuses.push("Remux");
         const anthologyMatch = lower.match(/anthology/);
         const yearMatch = lower.match(/\d{4}/);
 
         if (anthologyMatch && yearMatch && anthologyMatch.index < yearMatch.index) {
-            return "Anthology / ";
+            bonuses.push("Anthology");
         }
-        else if (lower.includes("2in1")) return "2in1 / "
+        if (lower.includes("2in1")) bonuses.push("2in1");
+        if (lower.includes("commentary")) bonuses.push("Commentary");
 
-        return null;
+        return bonuses.length > 0 ? bonuses.join(" / ") + " / " : null;
     };
     const get_country = (normal, torrent) => {
-        const exceptions = ["AVC", "DDP", "DTS", "DD+", "PAL", "VHS", "WEB", "DVD", "HDR", "GLK", "UHD", "AKA", "TMT", "HDT", "ABC"]; // Add any other exceptions as needed
+        const exceptions = ["AVC", "DDP", "DTS", "DD+", "PAL", "VHS", "WEB", "DVD", "HDR", "GLK", "UHD", "AKA", "TMT", "HDT", "ABC", "MKV", "AVI", "MP4"]; // Add any other exceptions as needed
         const countryCodeMatch = normal.match(/\b[A-Z]{3}\b/g);
 
         if (countryCodeMatch) {
@@ -1944,7 +1952,7 @@
             let ref_div;
             let tracker = torrent.site;
             let dom_id = tracker + "_" + i;
-            const group_id = get_group(torrent.info_text);
+            const group_id = get_group(torrent.info_text) || torrent.groupId;
 
             if (torrent.quality === "UHD") {
                 ref_div = get_ref_div(torrent, uhd_ptp_torrents);
@@ -1961,7 +1969,7 @@
 
             if (show_tracker_name) {
                 cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] ` + get_simplified_title(torrent.info_text);
-            } else if (remove_group) {
+            } else if (improved_tags) {
                 cln.querySelector(".torrent-info-link").textContent = get_simplified_title(torrent.info_text);
             } else {
                 cln.querySelector(".torrent-info-link").textContent = torrent.info_text;
