@@ -765,7 +765,7 @@
                                     infoTextParts.push(titleText);
                                 }
                                 let groupText = "";
-                                const match = titleText.match(/-([^-]+)$/);
+                                const match = titleText.match(/[^\/]+$/);
                                     if (match) {
                                         groupText = match[0].trim();
                                         groupText = groupText.replace(/[^a-z0-9]/gi, '');
@@ -1592,6 +1592,20 @@
             return null;
         }
     };
+    const get_blu_ray_disc_type = (size) => {
+        const sizeInGB = size / (1024 * 1024 * 1024); // Convert size to GB
+        if (sizeInGB <= 25) {
+            return "BD25";
+        } else if (sizeInGB <= 50) {
+            return "BD50";
+        } else if (sizeInGB <= 66) {
+            return "BD66";
+        } else if (sizeInGB <= 100) {
+            return "BD100";
+        } else {
+            return "BDXL";
+        }
+    };
 
     const get_api_torrent_objects = (tracker, json) => {
         let torrent_objs = [];
@@ -1622,13 +1636,18 @@
                 }
 
                 let updatedInfoText = infoText;
-                  if (improved_tags) {
-                    if (container) {
-                        updatedInfoText = `${container} ${updatedInfoText}`; // Append container to info_text
+                    if (improved_tags) {
+                        if (container) {
+                            updatedInfoText = `${container} ${updatedInfoText}`; // Append container to info_text
+                            // Add BD type if container is m2ts or iso
+                            if (container === "m2ts" || container === "iso") {
+                                const bdType = get_blu_ray_disc_type(element.attributes.size);
+                                updatedInfoText = `${bdType} ${updatedInfoText}`;
+                            }
+                        }
+                    } else {
+                        updatedInfoText = updatedInfoText;
                     }
-                  } else {
-                    updatedInfoText = updatedInfoText;
-                  }
                     const torrentObj = {
                         size: parseInt(element.attributes.size / (1024 * 1024)),
                         info_text: updatedInfoText,
@@ -1804,16 +1823,20 @@
         else if (lower.includes("h265") || lower.includes("h.265") || lower.includes("hevc")) return "H.265 / ";
         else if (lower.includes("xvid") || lower.includes("x.vid")) return "XviD / ";
         else if (lower.includes("divx") || lower.includes("div.x")) return "DivX / ";
-        else if (lower.includes("dvd5") || lower.includes("dvd-5") || lower.includes("dvd 5")) return "DVD5 / ";
-        else if (lower.includes("dvd9") || lower.includes("dvd-9") || lower.includes("dvd 9")) return "DVD9 / ";
         else if (lower.includes("mpeg2")) return "MPEG2 / ";
 
+        return null; // skip this info
+    };
+
+    const get_disc = (lower, torrent) => {
+        if (lower.includes("dvd5") || lower.includes("dvd-5") || lower.includes("dvd 5")) return "DVD5 / ";
+        else if (lower.includes("dvd9") || lower.includes("dvd-9") || lower.includes("dvd 9")) return "DVD9 / ";
         else if (lower.includes("bd25") || lower.includes("bd-25")) return "BD25 / ";
         else if (lower.includes("bd50") || lower.includes("bd-50")) return "BD50 / ";
         else if (lower.includes("bd66") || lower.includes("bd-66")) return "BD66 / ";
         else if (lower.includes("bd100") || lower.includes("bd-100")) return "BD100 / ";
 
-        return null; // skip this info
+        return null;
     };
 
     const get_container = (lower, torrent) => {
@@ -1909,7 +1932,7 @@
         return null; // skip this info
     };
     const get_group = (normal, torrent) => {
-        const match = normal.match(/-([^-]+)$/); // Updated regex to match group patterns
+        const match = normal.match(/-[a-z0-9]+$/i); // Updated regex to match group patterns
         if (match) {
             let groupName = match[0].substring(1); // Remove the leading hyphen
             groupName = groupName.replace(/[^a-z0-9]/gi, ''); // Sanitize the group name
@@ -1931,6 +1954,7 @@
         let hdr = get_hdr(lower, torrent);
         let bonus = get_bonus(lower, torrent);
         let country = get_country(normal, torrent);
+        let disc = get_disc(lower, torrent);
 
         const parts = [];
 
@@ -1942,6 +1966,7 @@
         if (hdr) parts.push(hdr.trim());
         if (bonus) parts.push(bonus.trim());
         if (country) parts.push(country.trim());
+        if (disc) parts.push(disc.trim());
 
         if (!remove_group) {
             let group = get_group(normal, torrent);
@@ -2046,7 +2071,7 @@
                 }
             }
             if (improved_tags) {
-                cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info_tracker_name'>[${torrent.site}]</span>`;
+                cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__tracker-name'>[${torrent.site}]</span>`;
             }
 
             //cln.querySelector(".torrent-info-link").textContent = torrent.info_text;
