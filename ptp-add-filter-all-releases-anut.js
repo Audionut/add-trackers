@@ -2127,6 +2127,12 @@
             cln.querySelector("td:nth-child(5)").textContent = torrent.leech; // leech
             cln.querySelector(".link_3").href = torrent.torrent_page;
             cln.className += " " + dom_id;
+            cln.className += " " + dom_id;
+            if (torrent.info_text && cln.dataset.releasename) {
+                cln.datase.releasename += torrent.info_text;
+            } else if (torrent.info_text) {
+                cln.dataset.releasename = torrent.info_text;
+            }
             if (group_id && cln.dataset.releasegroup) {
                 cln.dataset.releasegroup += group_id;
             } else if (group_id) {
