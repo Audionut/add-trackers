@@ -53,9 +53,9 @@
     const run_by_default = true; // false = won't run the script by default, but will add an "Other Trackers" link under the page title, which when clicked will run the script.
     const timer = 4000; // set the timer here to timeout slow/non-responsive tracker calls. 3.5 seconds seems like a safe default.
     const timerDuration = 2000; // set the length of time the error message should be displayed on page.
-    let ptp_release_name = false; // true = show release name - false = original PTP release style.
-    let remove_group = true; // true = remove the group name to work better with PTP Improved Tags.
-    let improved_tags = true; // true = full refactor to work fully with PTP Improved Tags
+    let ptp_release_name = true; // true = show release name - false = original PTP release style.
+    let remove_group = false; // true = remove the group name to work better with PTP Improved Tags.
+    let improved_tags = false; // true = full refactor to work fully with PTP Improved Tags
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -1560,11 +1560,23 @@
     };
 
     const get_api_files = (files) => {
-        const filesCount = files.length; // Get the number of files
+        const containerExtensions = ["m2ts", "mkv", "vob", "iso", "mpg", "mp4"]; // List of possible containers you might be looking for
 
-        if (filesCount > 1) {
+        for (const file of files) {
+            const singleFileName = file.name;
+            const lastDotIndex = singleFileName.lastIndexOf('.');
+            if (lastDotIndex !== -1) {
+                const extension = singleFileName.substring(lastDotIndex + 1).toLowerCase();
+                if (containerExtensions.includes(extension)) {
+                    return extension; // Return the container if it's one of the specified extensions
+                }
+            }
+        }
+
+        // If no specific container found, return default behavior
+        if (files.length > 1) {
             return "m2ts";
-        } else if (filesCount === 1) {
+        } else if (files.length === 1) {
             const singleFileName = files[0].name;
             const lastDotIndex = singleFileName.lastIndexOf('.');
             if (lastDotIndex !== -1) {
