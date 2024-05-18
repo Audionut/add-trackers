@@ -368,6 +368,20 @@
     };
 
     const get_torrent_objs = async (tracker, html) => {
+    const get_bd_type = (size) => {
+        const sizeInGB = size / 1024; // Convert size from MiB to GB
+        if (sizeInGB <= 25) {
+            return "BD25";
+        } else if (sizeInGB <= 50) {
+            return "BD50";
+        } else if (sizeInGB <= 66) {
+            return "BD66";
+        } else if (sizeInGB <= 100) {
+            return "BD100";
+        } else {
+            return "BDXL";
+        }
+    };
         let torrent_objs = [];
         if (tracker === "HDB") {
             html.querySelector("#torrent-list > tbody").querySelectorAll("tr").forEach((d) => {
@@ -397,6 +411,12 @@
                 releaseName = releaseName.replace(/:/g, ' ');
                 releaseName = releaseName.replace(/\bDoVi\b/g, 'DV');
                 releaseName = releaseName.replace(/DD\+/g, 'DD+ ');
+                // Inject Blu-ray disc type into info_text if conditions are met
+                if (improved_tags && releaseName.includes("Blu-ray") && torrent_obj.size) {
+                    const bdType = get_bd_type(torrent_obj.size);
+                    releaseName = `${bdType} ${releaseName}`;
+                }
+
                 torrent_obj.info_text = releaseName;
                 torrent_obj.site = "HDB";
                 torrent_obj.download_link = d.querySelector(".js-download").href.replace("passthepopcorn.me", "hdbits.org");
@@ -833,7 +853,7 @@
         }
         else if (tracker === "BHD") {
             try {
-                [...html.querySelector("div.table-torrents > table > tbody").querySelectorAll("tr:not(.comment-hidden")].forEach((d) => {
+                [...html.querySelector("div.table-torrents > table > tbody").querySelectorAll("tr:not(.comment-hidden)")].forEach((d) => {
                     let torrent_obj = {};
 
                     try {
@@ -843,11 +863,11 @@
                         if (sizeElement) {
                             size = sizeElement.textContent.trim();
                             if (size.includes("TiB")) {
-                                size = parseInt(parseFloat(size.split(" ")[0]) * 1024 * 1024); // Convert TiB to MiB
+                                size = parseFloat(size.split(" ")[0]) * 1024 * 1024; // Convert TiB to MiB
                             } else if (size.includes("GiB")) {
-                                size = parseInt(parseFloat(size.split(" ")[0]) * 1024); // Convert GiB to MiB
+                                size = parseFloat(size.split(" ")[0]) * 1024; // Convert GiB to MiB
                             } else if (size.includes("MiB")) {
-                                size = parseInt(parseFloat(size.split(" ")[0])); // Direct MiB
+                                size = parseFloat(size.split(" ")[0]); // Direct MiB
                             }
                         }
                         torrent_obj.size = size;
@@ -858,7 +878,7 @@
 
                     try {
                         let infoTextElement = d.querySelector("a.torrent-name");
-                        const infoText = infoTextElement ? infoTextElement.textContent.trim() : "";
+                        let infoText = infoTextElement ? infoTextElement.textContent.trim() : "";
 
                         if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
                             torrent_obj.info_text = infoText;
@@ -894,6 +914,14 @@
                             else {
                                 torrent_obj.status = "default";
                             }
+
+                            // Inject Blu-ray disc type into info_text if conditions are met
+                            if (improved_tags && infoText.includes("Blu-ray") && torrent_obj.size) {
+                                const bdType = get_bd_type(torrent_obj.size);
+                                infoText = `${bdType} ${infoText}`;
+                                torrent_obj.info_text = infoText;
+                            }
+
                             torrent_obj.discount = get_discount_text(d, tracker);
                             torrent_obj.internal = Array.from(d.querySelectorAll("i")).some(element => {
                                 const title = element.getAttribute('title');
@@ -1954,7 +1982,7 @@
         return null; // Return null if no match is found
     };
 
-    const get_simplified_title = (info_text, torrent, tracker) => {
+    const get_simplified_title = (info_text, torrent) => {
         let lower = info_text.toLowerCase();
         let normal = info_text;
 
