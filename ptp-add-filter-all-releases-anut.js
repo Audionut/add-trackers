@@ -801,6 +801,11 @@
                                 let formattedText = infoTextParts.join(' / ')
                                                                  .replace(/\/+/g, '/')
                                                                  .replace(/\s*\/\s*/g, ' / ');
+                                if (formattedText.includes("Blu-ray") && torrent_obj.size) {
+                                    const bdType = get_bd_type(torrent_obj.size);
+                                    formattedText = `${bdType} ${formattedText}`;
+                                }
+
                                 torrent_obj.info_text = formattedText;
                             }
                         } else {
