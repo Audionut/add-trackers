@@ -386,9 +386,10 @@
                 let releaseName = d.querySelector("td:nth-child(3) > b > a").textContent.trim();
                 let groupText = "";
                 if (remove_group || improved_tags) {
-                    const match = releaseName.match(/-[A-Z0-9]+$/i); // Updated regex to match group patterns
+                    const match = releaseName.match(/-([^-]+)$/);
                     if (match) {
                         groupText = match[0].substring(1);
+                        groupText = groupText.replace(/[^a-z0-9]/gi, '');
                         releaseName = releaseName.replace(groupText, '');
                     }
                 }
@@ -764,9 +765,10 @@
                                     infoTextParts.push(titleText);
                                 }
                                 let groupText = "";
-                                const match = titleText.match(/[^\/]+$/);
+                                const match = titleText.match(/-([^-]+)$/);
                                     if (match) {
                                         groupText = match[0].trim();
+                                        groupText = groupText.replace(/[^a-z0-9]/gi, '');
                                     }
                                 torrent_obj.groupId = groupText;
                                 const strongElements = titleElement.querySelectorAll("strong.torrent_label");
@@ -1611,6 +1613,13 @@
                     // If the info text does not contain the pattern, proceed with further processing
                 const files = element.attributes.files || []; // Ensure files is defined
                 const container = get_api_files(files); // Call the function with files as argument
+                let groupText = "";
+                const match = infoText.match(/-([^-]+)$/);
+                if (match) {
+                    groupText = match[0].trim();
+                    // Sanitize the groupText to remove any non-alphanumeric characters
+                    groupText = groupText.replace(/[^a-z0-9]/gi, '')
+                }
 
                 let updatedInfoText = infoText;
                   if (improved_tags) {
@@ -1620,7 +1629,6 @@
                   } else {
                     updatedInfoText = updatedInfoText;
                   }
-                console.log("updated text", updatedInfoText);
                     const torrentObj = {
                         size: parseInt(element.attributes.size / (1024 * 1024)),
                         info_text: updatedInfoText,
@@ -1645,8 +1653,8 @@
                         double_upload: element.attributes.double_upload,
                         refundable: element.attributes.refundable,
                         personal_release: element.attributes.personal_release,
+                        groupId: groupText,
                     };
-
                     // Mapping additional properties and logging the final torrent objects
                     const mappedObj = { ...torrentObj, "quality": get_torrent_quality(torrentObj), "discount": get_api_discount(torrentObj.discount, torrentObj.refundable, tracker), "internal": get_api_internal(torrentObj.internal), "Featured": get_api_featured(torrentObj.featured)};
 
@@ -1657,7 +1665,6 @@
                     return null; // Return null to filter out this torrent object
                 }
             }).filter(obj => obj !== null); // Filter out the null objects (skipped torrents)
-
             // Returning the final torrent objects
             return torrent_objs;
         }
@@ -1902,9 +1909,11 @@
         return null; // skip this info
     };
     const get_group = (normal, torrent) => {
-        const match = normal.match(/-[a-z0-9]+$/i); // Updated regex to match group patterns
+        const match = normal.match(/-([^-]+)$/); // Updated regex to match group patterns
         if (match) {
-            return match[0].substring(1); // Remove the leading hyphen and return the matched group
+            let groupName = match[0].substring(1); // Remove the leading hyphen
+            groupName = groupName.replace(/[^a-z0-9]/gi, ''); // Sanitize the group name
+            return groupName;
         }
         return null; // Return null if no match is found
     };
