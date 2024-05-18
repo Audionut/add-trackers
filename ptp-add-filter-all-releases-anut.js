@@ -1673,6 +1673,8 @@
                         refundable: element.attributes.refundable,
                         personal_release: element.attributes.personal_release,
                         groupId: groupText,
+                        distributor: element.attributes.distributor,
+                        region: element.attributes.region,
                     };
                     // Mapping additional properties and logging the final torrent objects
                     const mappedObj = { ...torrentObj, "quality": get_torrent_quality(torrentObj), "discount": get_api_discount(torrentObj.discount, torrentObj.refundable, tracker), "internal": get_api_internal(torrentObj.internal), "Featured": get_api_featured(torrentObj.featured)};
@@ -1818,8 +1820,12 @@
 
     const get_codec = (lower, torrent) => {
         if (lower.includes("x264") || lower.includes("x.264") || lower.includes("x 264")) return "x264 / ";
-        else if (lower.includes("h264") || lower.includes("h.264") || lower.includes("avc") || lower.includes("h 264")) return "H.264 / ";
         else if (lower.includes("x265") || lower.includes("x.265") || lower.includes("x 265")) return "x265 / ";
+        else if (lower.includes("bd25") || lower.includes("bd-25")) return "BD25 / ";
+        else if (lower.includes("bd50") || lower.includes("bd-50")) return "BD50 / ";
+        else if (lower.includes("bd66") || lower.includes("bd-66")) return "BD66 / ";
+        else if (lower.includes("bd100") || lower.includes("bd-100")) return "BD100 / ";
+        else if (lower.includes("h264") || lower.includes("h.264") || lower.includes("avc") || lower.includes("h 264")) return "H.264 / ";
         else if (lower.includes("h265") || lower.includes("h.265") || lower.includes("hevc") || lower.includes("h 265")) return "H.265 / ";
         else if (lower.includes("xvid") || lower.includes("x.vid")) return "XviD / ";
         else if (lower.includes("divx") || lower.includes("div.x")) return "DivX / ";
@@ -1831,10 +1837,6 @@
     const get_disc = (lower, torrent) => {
         if (lower.includes("dvd5") || lower.includes("dvd-5") || lower.includes("dvd 5")) return "DVD5 / ";
         else if (lower.includes("dvd9") || lower.includes("dvd-9") || lower.includes("dvd 9")) return "DVD9 / ";
-        else if (lower.includes("bd25") || lower.includes("bd-25")) return "BD25 / ";
-        else if (lower.includes("bd50") || lower.includes("bd-50")) return "BD50 / ";
-        else if (lower.includes("bd66") || lower.includes("bd-66")) return "BD66 / ";
-        else if (lower.includes("bd100") || lower.includes("bd-100")) return "BD100 / ";
 
         return null;
     };
@@ -1941,7 +1943,7 @@
         return null; // Return null if no match is found
     };
 
-    const get_simplified_title = (info_text, torrent) => {
+    const get_simplified_title = (info_text, torrent, tracker) => {
         let lower = info_text.toLowerCase();
         let normal = info_text;
 
@@ -1953,7 +1955,6 @@
         let audio = get_audio(lower, torrent);
         let hdr = get_hdr(lower, torrent);
         let bonus = get_bonus(lower, torrent);
-        let country = get_country(normal, torrent);
         let disc = get_disc(lower, torrent);
 
         const parts = [];
@@ -1965,7 +1966,10 @@
         if (audio) parts.push(audio.trim());
         if (hdr) parts.push(hdr.trim());
         if (bonus) parts.push(bonus.trim());
-        if (country) parts.push(country.trim());
+        if (["ANT", "HDB", "BTN", "MTV", "NBL", "BHD", "FL", "KG", "PxHD", "AvistaZ", "CinemaZ", "PHD", "CG", "TVV"].includes(tracker)) {
+          let country = get_country(normal, torrent);
+          if (country) parts.push(country.trim());
+        }
         if (disc) parts.push(disc.trim());
 
         if (!remove_group) {
@@ -2030,7 +2034,12 @@
             }
 
             if (!hide_tags) {
-                    // Colorize some tags, site specific.
+                    if (torrent.distributor != null && torrent.distributor != false) {
+                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__distributor'>${torrent.distributor}</span>`;
+                    }
+                    if (torrent.region != null && torrent.region != false) {
+                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__region'>${torrent.region}</span>`;
+                    }
                     if (torrent.site === "HDB") {
                         torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
                         torrent.exclusive ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__exclusive' style='font-weight: bold; color: #a14989'>Exclusive</span>" : false;
