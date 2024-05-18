@@ -22,7 +22,7 @@
     //  remove trackers that you do not have access too and don't add trackers to the wrong const. 
     //  *requires API key     **performs two requests     *** XML output that needs authkey and torrent_pass from a download link
     //  requires each tracker to be logged in with the same browser session (and container type if using multi-account containers).
-    const movie_trackers = ["BHD", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "BLU", "HUNO", "TIK", "Aither", "RFX", "OE", "AvistaZ", "CinemaZ", "PHD", "PxHD"];
+    const movie_trackers = ["BHD", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "BLU", "HUNO", "TIK", "Aither", "RFX", "OE", "AvistaZ", "CinemaZ", "PHD"];
     const movie_only_trackers = ["ANT", "CG"]; // these trackers only have movies, not anything tv including miniseries.
     const tv_trackers = ["BTN", "TVV", "NBL"];
     const old_trackers = ["TVV"];  // Add trackers here that do not allow recent content. Do not remove the trackers added here from any other tracker defintion. Trackers added here need to be defined in both applicable areas.
@@ -1968,7 +1968,7 @@
             let cln = line_example.cloneNode(true);
 
             if (show_tracker_name) {
-                cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] ` + get_simplified_title(torrent.info_text);
+                cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}]` + get_simplified_title(torrent.info_text);
             } else if (improved_tags) {
                 cln.querySelector(".torrent-info-link").textContent = get_simplified_title(torrent.info_text);
             } else {
@@ -1990,12 +1990,12 @@
                     }
                     if (torrent.site === "ANT") {
                         torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2CB430'>Internal</span>" : false;
-                        torrent.reported ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #FF0000'>Reported</span>" : false;
-                        torrent.trumpable ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #FF8C00'>Trumpable</span>" : false;
+                        //torrent.reported ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #FF0000'>Reported</span>" : false;
+                        //torrent.trumpable ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #FF8C00'>Trumpable</span>" : false;
                     }
                     if (torrent.site === "MTV") {
                         torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
-                        torrent.reported ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #FF0000'>Reported</span>" : false;
+                        //torrent.reported ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #FF0000'>Reported</span>" : false;
                     }
                     if (torrent.site === "BLU" || torrent.site ==="Aither" || torrent.site ===  "RFX" || torrent.site ===  "OE" || torrent.site ===  "HUNO") {
                         get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #baaf92'>Internal</span>") : false;
@@ -2010,7 +2010,16 @@
                         get_api_personal_release(torrent.personal_release) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #865BE9'>Personal Release</span>") : false;
                     }
                 }
-            torrent.discount != "None" ? cln.querySelector(".torrent-info-link").innerHTML += ` / <span style='font-weight: bold;color:${get_discount_color(torrent.discount)};'>` + torrent.discount + "!</span>" : false;
+            torrent.discount != "None" ? cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__download-modifier torrent-info__download-modifier--free'>` + torrent.discount + "!</span>" : false;
+            if (torrent.reported != null && torrent.reported != false) {
+                cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__reported'>Reported</span>`;
+            }
+            if (torrent.trumpable != null && torrent.trumpable != false) {
+                cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__trumpable'>Trumpable</span>`;
+            }
+            if (improved_tags) {
+                cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info_tracker_name'>[${torrent.site}]</span>`;
+            }
 
             //cln.querySelector(".torrent-info-link").textContent = torrent.info_text;
             if (torrent.status === "seeding") cln.querySelector(".torrent-info-link").className += " torrent-info-link--user-seeding";
@@ -2070,6 +2079,7 @@
             } else if (group_id) {
                 cln.dataset.releasegroup = group_id;
             }
+
 
             if (open_in_new_tab) cln.querySelector(".link_3").target = "_blank";
 
@@ -2448,8 +2458,14 @@
             document.querySelectorAll("tr.group_torrent").forEach(d => {
                 if (d.className != "group_torrent") {
                     const torrent = d.querySelector("a.torrent-info-link");
-                    if (torrent) {
+                    if (improved_tags) {
+                      if (torrent) {
+                        torrent.innerHTML = "[PTP] / " + torrent.innerHTML;
+                        }
+                    } else {
+                      if (torrent) {
                         torrent.innerHTML = "[PTP] " + torrent.innerHTML;
+                        }
                     }
                 }
             });
@@ -2923,7 +2939,7 @@
     }
 
     const mainFunc = async () => {
-        if (show_tracker_name) {
+        if (show_tracker_name || improved_tags) {
             fix_ptp_names();
         }
 
