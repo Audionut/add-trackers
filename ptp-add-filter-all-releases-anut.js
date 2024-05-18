@@ -1620,7 +1620,8 @@
         ) {
             torrent_objs = json.data.map((element) => {
                 // Mapping element attributes to a torrent object
-                const infoText = tracker === "HUNO" ? element.attributes.name.replace(/[()]/g, "") : element.attributes.name;
+                const originalInfoText = tracker === "HUNO" ? element.attributes.name.replace(/[()]/g, "") : element.attributes.name;
+                let infoText = originalInfoText;
 
                 // Check if the info text contains "SxxExx" where "xx" is not known beforehand
                 if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
@@ -1634,20 +1635,29 @@
                     // Sanitize the groupText to remove any non-alphanumeric characters
                     groupText = groupText.replace(/[^a-z0-9]/gi, '')
                 }
+                if (improved_tags) {
+                    const region = element.attributes.region;
+                    if (region) {
+                        const regionRegex = new RegExp(`\\b${region}\\b`, 'gi');
+                        infoText = infoText.replace(regionRegex, '').trim();
+                    }
+                }
 
                 let updatedInfoText = infoText;
-                    if (improved_tags) {
-                        if (container) {
-                            updatedInfoText = `${container} ${updatedInfoText}`; // Append container to info_text
-                            // Add BD type if container is m2ts or iso
-                            if (container === "m2ts" || container === "iso") {
-                                const bdType = get_blu_ray_disc_type(element.attributes.size);
+                if (improved_tags) {
+                    if (container) {
+                        updatedInfoText = `${container} ${updatedInfoText}`; // Append container to info_text
+                        // Add BD type if container is m2ts or iso
+                        if (container === "m2ts" || container === "iso") {
+                            const bdType = get_blu_ray_disc_type(element.attributes.size);
+                            if (tracker === "TIK") {
+                                updatedInfoText = `${bdType} Blu-ray ${updatedInfoText}`;
+                            } else {
                                 updatedInfoText = `${bdType} ${updatedInfoText}`;
                             }
                         }
-                    } else {
-                        updatedInfoText = updatedInfoText;
                     }
+                }
                     const torrentObj = {
                         size: parseInt(element.attributes.size / (1024 * 1024)),
                         info_text: updatedInfoText,
@@ -1917,6 +1927,7 @@
         }
         if (lower.includes("2in1")) bonuses.push("2in1");
         if (lower.includes("commentary")) bonuses.push("Commentary");
+        if (lower.includes("special features")) bonuses.push("Special Features");
 
         return bonuses.length > 0 ? bonuses.join(" / ") + " / " : null;
     };
