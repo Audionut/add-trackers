@@ -828,7 +828,7 @@
                     let torrent_obj = {};
 
                     try {
-                        let sizeElements = Array.from(d.querySelectorAll("td:nth-child(6) > span")); // Convert NodeList to array
+                        let sizeElements = Array.from(d.querySelectorAll("span.text-size")); // Convert NodeList to array
                         let sizeElement = sizeElements.find(e => e.textContent.includes(" TiB") || e.textContent.includes(" GiB") || e.textContent.includes(" MiB"));
                         let size = null;
                         if (sizeElement) {
@@ -855,15 +855,15 @@
                             torrent_obj.info_text = infoText;
                             torrent_obj.site = "BHD";
 
-                            let snatchElements = d.querySelectorAll("td:nth-child(9) span[title='Times Completed']");
+                            let snatchElements = d.querySelectorAll("span[title='Times Completed']");
                             let snatchElement = snatchElements.length > 0 ? snatchElements[0] : null; // Use the first span if available
                             torrent_obj.snatch = snatchElement ? parseInt(snatchElement.textContent.trim()) : 0;
 
-                            let seedElements = d.querySelectorAll("td:nth-child(7) span[title='Seeders']");
+                            let seedElements = d.querySelectorAll("span[title='Seeders']");
                             let seedElement = seedElements.length > 0 ? seedElements[0] : null; // Use the first span if available
                             torrent_obj.seed = seedElement ? parseInt(seedElement.textContent.trim()) : 0;
 
-                            let leechElements = d.querySelectorAll("td:nth-child(8) span[title='Leechers']");
+                            let leechElements = d.querySelectorAll("span[title='Leechers']");
                             let leechElement = leechElements.length > 0 ? leechElements[0] : null; // Use the first span if available
                             torrent_obj.leech = leechElement ? parseInt(leechElement.textContent.trim()) : 0;
 
