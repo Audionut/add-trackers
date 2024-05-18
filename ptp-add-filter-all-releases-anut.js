@@ -1966,6 +1966,7 @@
         let audio = get_audio(lower, torrent);
         let hdr = get_hdr(lower, torrent);
         let bonus = get_bonus(lower, torrent);
+        let country = get_country(normal, torrent);
         let disc = get_disc(lower, torrent);
 
         const parts = [];
@@ -1977,18 +1978,17 @@
         if (audio) parts.push(audio.trim());
         if (hdr) parts.push(hdr.trim());
         if (bonus) parts.push(bonus.trim());
-        if (["ANT", "HDB", "BTN", "MTV", "NBL", "BHD", "FL", "KG", "PxHD", "AvistaZ", "CinemaZ", "PHD", "CG", "TVV"].includes(tracker)) {
-          let country = get_country(normal, torrent);
-          if (country) parts.push(country.trim());
-        }
+        if (country) parts.push(country.trim());
         if (disc) parts.push(disc.trim());
 
         if (!remove_group) {
             let group = get_group(normal, torrent);
             if (group) parts.push(group.trim());
         }
+        // Use a Set to filter out duplicates
+        const uniqueParts = [...new Set(parts)];
 
-        let combined_text = parts.join(' ').replace(/\s+\/$/, '').trim();
+        let combined_text = uniqueParts.join(' ').replace(/\s+\/$/, '').trim();
 
         if (combined_text === "") return info_text;
         else return combined_text;
@@ -2045,12 +2045,12 @@
             }
 
             if (!hide_tags) {
-                    if (torrent.distributor != null && torrent.distributor != false) {
-                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__distributor'>${torrent.distributor}</span>`;
-                    }
-                    if (torrent.region != null && torrent.region != false) {
-                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__region'>${torrent.region}</span>`;
-                    }
+                if (torrent.distributor != null && torrent.distributor != false) {
+                    cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__distributor'>${torrent.distributor}</span>`;
+                }
+                if (torrent.region != null && torrent.region != false) {
+                    cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__region'>${torrent.region}</span>`;
+                }
                     if (torrent.site === "HDB") {
                         torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
                         torrent.exclusive ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__exclusive' style='font-weight: bold; color: #a14989'>Exclusive</span>" : false;
