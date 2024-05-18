@@ -1817,10 +1817,10 @@
     };
 
     const get_codec = (lower, torrent) => {
-        if (lower.includes("x264") || lower.includes("x.264")) return "x264 / ";
-        else if (lower.includes("h264") || lower.includes("h.264") || lower.includes("avc")) return "H.264 / ";
-        else if (lower.includes("x265") || lower.includes("x.265")) return "x265 / ";
-        else if (lower.includes("h265") || lower.includes("h.265") || lower.includes("hevc")) return "H.265 / ";
+        if (lower.includes("x264") || lower.includes("x.264") || lower.includes("x 264")) return "x264 / ";
+        else if (lower.includes("h264") || lower.includes("h.264") || lower.includes("avc") || lower.includes("h 264")) return "H.264 / ";
+        else if (lower.includes("x265") || lower.includes("x.265") || lower.includes("x 265")) return "x265 / ";
+        else if (lower.includes("h265") || lower.includes("h.265") || lower.includes("hevc") || lower.includes("h 265")) return "H.265 / ";
         else if (lower.includes("xvid") || lower.includes("x.vid")) return "XviD / ";
         else if (lower.includes("divx") || lower.includes("div.x")) return "DivX / ";
         else if (lower.includes("mpeg2")) return "MPEG2 / ";
