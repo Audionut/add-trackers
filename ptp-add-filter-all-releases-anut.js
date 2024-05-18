@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.4.1-A
+// @version      3.4.2-A
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -54,7 +54,7 @@
     const timer = 4000; // set the timer here to timeout slow/non-responsive tracker calls. 3.5 seconds seems like a safe default.
     const timerDuration = 2000; // set the length of time the error message should be displayed on page.
     let ptp_release_name = true; // true = show release name - false = original PTP release style.
-    let remove_group = false; // true = remove the group name to work better with PTP Improved Tags.
+    let remove_group = false; // true = remove the group name to better work with PTP Improved Tags.
     let improved_tags = false; // true = full refactor to work fully with PTP Improved Tags
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1613,9 +1613,14 @@
                 const container = get_api_files(files); // Call the function with files as argument
 
                 let updatedInfoText = infoText;
-                if (container) {
-                    updatedInfoText = `${container} ${updatedInfoText}`; // Append container to info_text
-                }
+                  if (improved_tags) {
+                    if (container) {
+                        updatedInfoText = `${container} ${updatedInfoText}`; // Append container to info_text
+                    }
+                  } else {
+                    updatedInfoText = updatedInfoText;
+                  }
+                console.log("updated text", updatedInfoText);
                     const torrentObj = {
                         size: parseInt(element.attributes.size / (1024 * 1024)),
                         info_text: updatedInfoText,
@@ -1640,7 +1645,6 @@
                         double_upload: element.attributes.double_upload,
                         refundable: element.attributes.refundable,
                         personal_release: element.attributes.personal_release,
-                        //files: element.attributes.files,
                     };
 
                     // Mapping additional properties and logging the final torrent objects
@@ -1846,7 +1850,7 @@
     };
     const get_audio = (lower, torrent) => {
         if (lower.includes("atmos")) return "Dolby Atmos / ";
-        //else if (lower.includes("truehd")) return "True HD / ";
+        else if (lower.includes("dts:x")) return "DTS:X / ";
 
         return null;
     };
@@ -1857,7 +1861,9 @@
         else if (lower.includes("dv hdr10+")) return "Dolby Vision / HDR10+ / ";
         else if (lower.includes("dv hdr10")) return "Dolby Vision / HDR10 / ";
         else if (lower.includes("dv hdr")) return "Dolby Vision / HDR10 / ";
+        else if (lower.includes("hdr10+ / dv")) return "Dolby Vision / HDR10+ / ";
         else if (lower.includes("hdr10 / dv")) return "Dolby Vision / HDR10 / ";
+        else if (lower.includes("hdr / dv")) return "Dolby Vision / HDR10 / ";
         else if (lower.includes(" dv ")) return "Dolby Vision / "; // Need spaces or else DVD suddenly has Dolby Vision.
         else if (lower.includes("dovi")) return "Dolby Vision / ";
         else if (lower.includes("dolby vision")) return "Dolby Vision / ";
@@ -1883,7 +1889,7 @@
         return bonuses.length > 0 ? bonuses.join(" / ") + " / " : null;
     };
     const get_country = (normal, torrent) => {
-        const exceptions = ["AVC", "DDP", "DTS", "DD+", "PAL", "VHS", "WEB", "DVD", "HDR", "GLK", "UHD", "AKA", "TMT", "HDT", "ABC", "MKV", "AVI", "MP4"]; // Add any other exceptions as needed
+        const exceptions = ["AVC", "DDP", "DTS", "PAL", "VHS", "WEB", "DVD", "HDR", "GLK", "UHD", "AKA", "TMT", "HDT", "ABC", "MKV", "AVI", "MP4"]; // Add any other exceptions as needed
         const countryCodeMatch = normal.match(/\b[A-Z]{3}\b/g);
 
         if (countryCodeMatch) {
@@ -1979,58 +1985,60 @@
 
             let cln = line_example.cloneNode(true);
 
-            if (show_tracker_name) {
+            if (show_tracker_name && improved_tags) {
                 cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}]` + get_simplified_title(torrent.info_text);
             } else if (improved_tags) {
                 cln.querySelector(".torrent-info-link").textContent = get_simplified_title(torrent.info_text);
+            } else if (show_tracker_name) {
+                cln.querySelector(".torrent-info-link").textContent = `${torrent.site}` + torrent.info_text;
             } else {
                 cln.querySelector(".torrent-info-link").textContent = torrent.info_text;
             }
 
             if (!hide_tags) {
-                // Colorize some tags, site specific.
-                if (torrent.site === "HDB") {
-                    torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
-                    torrent.exclusive ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__exclusive' style='font-weight: bold; color: #a14989'>Exclusive</span>" : false;
+                    // Colorize some tags, site specific.
+                    if (torrent.site === "HDB") {
+                        torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
+                        torrent.exclusive ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__exclusive' style='font-weight: bold; color: #a14989'>Exclusive</span>" : false;
+                    }
+                    if (torrent.site === "BHD") {
+                        torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
+                    }
+                    if (torrent.site === "BTN") {
+                        torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #00FF00'>Internal</span>" : false;
+                        torrent.season2 ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__season2' style='font-weight: bold; color: #FF0000'>Season 2</span>" : false;
+                    }
+                    if (torrent.site === "ANT") {
+                        torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #2CB430'>Internal</span>" : false;
+                    }
+                    if (torrent.site === "MTV") {
+                        torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
+                    }
+                    if (torrent.site === "BLU" || torrent.site ==="Aither" || torrent.site ===  "RFX" || torrent.site ===  "OE" || torrent.site ===  "HUNO") {
+                        get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #baaf92'>Internal</span>") : false;
+                        get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__DU' style='font-weight: bold; color: #279d29'>DU</span>") : false;
+                        get_api_featured(torrent.featured) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__Featured' style='font-weight: bold; color: #997799'>Featured</span>") : false;
+                        get_api_personal_release(torrent.personal_release) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__Personal' style='font-weight: bold; color: #865BE9'>Personal Release</span>") : false;
+                    }
+                    if (torrent.site === "TIK") {
+                        get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #baaf92'>Internal</span>") : false;
+                        get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__Emerald' style='font-weight: bold; color: #3FB618'>Emerald</span>") : false;
+                        get_api_featured(torrent.featured, torrent.site) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__Platinum' style='font-weight: bold; color: #26A69A'>Platinum</span>") : false;
+                        get_api_personal_release(torrent.personal_release) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__Personal' style='font-weight: bold; color: #865BE9'>Personal Release</span>") : false;
+                    }
                 }
-                if (torrent.site === "BHD") {
-                    torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
+            torrent.discount != "None" ? cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__download-modifier torrent-info__download-modifier--free'>` + torrent.discount + "!</span>" : false;
+            if (!hide_tags) {
+                if (torrent.reported != null && torrent.reported != false) {
+                    cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__reported'>Reported</span>`;
                 }
-                if (torrent.site === "BTN") {
-                    torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #00FF00'>Internal</span>" : false;
-                    torrent.season2 ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__season2' style='font-weight: bold; color: #FF0000'>Season 2</span>" : false;
-                }
-                if (torrent.site === "ANT") {
-                    torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #2CB430'>Internal</span>" : false;
-                }
-                if (torrent.site === "MTV") {
-                    torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
-                }
-                if (torrent.site === "BLU" || torrent.site ==="Aither" || torrent.site ===  "RFX" || torrent.site ===  "OE" || torrent.site ===  "HUNO") {
-                    get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #baaf92'>Internal</span>") : false;
-                    get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__DU' style='font-weight: bold; color: #279d29'>DU</span>") : false;
-                    get_api_featured(torrent.featured) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__Featured' style='font-weight: bold; color: #997799'>Featured</span>") : false;
-                    get_api_personal_release(torrent.personal_release) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__Personal' style='font-weight: bold; color: #865BE9'>Personal Release</span>") : false;
-                }
-                if (torrent.site === "TIK") {
-                    get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #baaf92'>Internal</span>") : false;
-                    get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__Emerald' style='font-weight: bold; color: #3FB618'>Emerald</span>") : false;
-                    get_api_featured(torrent.featured, torrent.site) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__Platinum' style='font-weight: bold; color: #26A69A'>Platinum</span>") : false;
-                    get_api_personal_release(torrent.personal_release) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__Personal' style='font-weight: bold; color: #865BE9'>Personal Release</span>") : false;
+                if (torrent.trumpable != null && torrent.trumpable != false) {
+                    cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__trumpable'>Trumpable</span>`;
                 }
             }
-        torrent.discount != "None" ? cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__download-modifier torrent-info__download-modifier--free'>` + torrent.discount + "!</span>" : false;
-        if (!hide_tags) {
-            if (torrent.reported != null && torrent.reported != false) {
-                cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__reported'>Reported</span>`;
+            if (improved_tags) {
+                cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info_tracker_name'>[${torrent.site}]</span>`;
             }
-            if (torrent.trumpable != null && torrent.trumpable != false) {
-                cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__trumpable'>Trumpable</span>`;
-            }
-        }
-        if (improved_tags) {
-            cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info_tracker_name'>[${torrent.site}]</span>`;
-        }
 
             //cln.querySelector(".torrent-info-link").textContent = torrent.info_text;
             if (torrent.status === "seeding") cln.querySelector(".torrent-info-link").className += " torrent-info-link--user-seeding";
@@ -2090,7 +2098,6 @@
             } else if (group_id) {
                 cln.dataset.releasegroup = group_id;
             }
-
 
             if (open_in_new_tab) cln.querySelector(".link_3").target = "_blank";
 
