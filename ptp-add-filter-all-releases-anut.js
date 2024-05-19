@@ -1712,12 +1712,13 @@
 
                 // Step 3: Perform the match on the relevant text
                 let groupText = "";
-                const match = relevantText.match(/-([^-]+)$/);
+                const match = relevantText.match(/-(?!.*\([^()]*\))([^-]+)$/);
 
                 if (match) {
                     groupText = match[0].trim();
                     // Replace brackets with spaces
                     groupText = groupText.replace(/[()]/g, ' ');
+                    groupText = groupText.replace(/\[.*?\]/g, '').trim();
                     // Sanitize the groupText to remove any non-alphanumeric characters
                     groupText = groupText.replace(/[^a-z0-9]/gi, '');
                 }
@@ -1729,9 +1730,10 @@
                     }
                 }
 
-                let updatedInfoText = infoText;
+                let updatedInfoText = infoText.replace(/\[.*?\]/g, '').trim();
                 if (improved_tags) {
                     if (container) {
+                        //updatedInfoText = updatedInfoText.replace(/\[.*?\]/g, '').trim();
                         updatedInfoText = `${container} ${updatedInfoText}`; // Append container to info_text
                         // Add BD type if container is m2ts or iso
                         if (container === "m2ts" || container === "iso") {
@@ -2022,7 +2024,7 @@
         return bonuses.length > 0 ? bonuses.join(" / ") + " / " : null;
     };
     const get_country = (normal, torrent) => {
-        const exceptions = ["AVC", "DDP", "DTS", "PAL", "VHS", "WEB", "DVD", "HDR", "GLK", "UHD", "AKA", "TMT", "HDT", "ABC", "MKV", "AVI", "MP4", "VOB", "Set", "ray"]; // Add any other exceptions as needed
+        const exceptions = ["AVC", "DDP", "DTS", "PAL", "VHS", "WEB", "DVD", "HDR", "GLK", "UHD", "AKA", "TMT", "HDT", "ABC", "MKV", "AVI", "MP4", "VOB", "MAX"]; // Add any other exceptions as needed
         const countryCodeMatch = normal.match(/\b[A-Z]{3}\b/g);
         if (countryCodeMatch) {
             const filteredCodes = countryCodeMatch.filter(code => !exceptions.includes(code));
