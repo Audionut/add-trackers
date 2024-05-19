@@ -921,10 +921,16 @@
                             }
 
                             // Inject Blu-ray disc type into info_text if conditions are met
-                            if (improved_tags && infoText.includes("Blu-ray") && torrent_obj.size) {
-                                const bdType = get_bd_type(torrent_obj.size);
-                                infoText = `${bdType} ${infoText}`;
-                                torrent_obj.info_text = infoText;
+                            let bd_element = d.querySelector("a.beta-link-blend");
+                            if (bd_element) {
+                                let bd_text = bd_element.textContent.trim();
+
+                                // Check if bd_text includes the desired substrings
+                                if (bd_text.includes("UHD 100") || bd_text.includes("UHD 66") || bd_text.includes("UHD 50") || bd_text.includes("BD 50") || bd_text.includes("BD 25")) {
+                                    const bdType = bd_text;
+                                    infoText = `${bdType} ${infoText}`;
+                                    torrent_obj.info_text = infoText;
+                                }
                             }
 
                             torrent_obj.discount = get_discount_text(d, tracker);
@@ -1864,10 +1870,10 @@
     const get_codec = (lower, torrent) => {
         if (lower.includes("x264") || lower.includes("x.264") || lower.includes("x 264")) return "x264 / ";
         else if (lower.includes("x265") || lower.includes("x.265") || lower.includes("x 265")) return "x265 / ";
-        else if (lower.includes("bd25") || lower.includes("bd-25")) return "BD25 / ";
-        else if (lower.includes("bd50") || lower.includes("bd-50")) return "BD50 / ";
-        else if (lower.includes("bd66") || lower.includes("bd-66")) return "BD66 / ";
-        else if (lower.includes("bd100") || lower.includes("bd-100")) return "BD100 / ";
+        else if (lower.includes("bd25") || lower.includes("bd-25") || lower.includes("bd 25") || lower.includes("uhd 25") || lower.includes("uhd25") || lower.includes("uhd-25")) return "BD25 / ";
+        else if (lower.includes("bd50") || lower.includes("bd-50") || lower.includes("bd 50") || lower.includes("uhd 50") || lower.includes("uhd50") || lower.includes("uhd-50")) return "BD50 / ";
+        else if (lower.includes("bd66") || lower.includes("bd-66") || lower.includes("bd 66") || lower.includes("uhd 66") || lower.includes("uhd66") || lower.includes("uhd-66")) return "BD66 / ";
+        else if (lower.includes("bd100") || lower.includes("bd-100") || lower.includes("bd 100") || lower.includes("uhd 100") || lower.includes("uhd100") || lower.includes("uhd-100")) return "BD100 / ";
         else if (lower.includes("h264") || lower.includes("h.264") || lower.includes("avc") || lower.includes("h 264")) return "H.264 / ";
         else if (lower.includes("h265") || lower.includes("h.265") || lower.includes("hevc") || lower.includes("h 265")) return "H.265 / ";
         else if (lower.includes("xvid") || lower.includes("x.vid")) return "XviD / ";
