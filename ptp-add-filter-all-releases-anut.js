@@ -56,6 +56,7 @@
     let ptp_release_name = true; // true = show release name - false = original PTP release style.
     let remove_group = false; // true = remove the group name to better work with PTP Improved Tags.
     let improved_tags = false; // true = full refactor to work fully with PTP Improved Tags
+    let episodes = true; // true = return episodes to the "Other" PTP category. false = skip episodes.
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -452,11 +453,6 @@
                     // Access the document's title content
                     const documentTitle = torrent.querySelector('title').textContent;
 
-                    // Skip torrents that include "Extras" in the title
-                    if (documentTitle.includes("Extras") || documentTitle.includes("Episode")) {
-                        return; // Skip further processing for this torrent
-                    }
-
                     const sizeElement = torrent.querySelector('size[type="formatted"]');
                     if (sizeElement) {
                         torrent_obj.size = parseFloat(sizeElement.textContent.split(" GB")[0]) * 1024; // Convert GB to MiB
@@ -471,6 +467,9 @@
                         let infoText = combinedInfo.textContent.replace(/\/?Freeleech\/?/g, "").replace(/\//g, " ");
 
                         if (improved_tags) {
+                          if (documentTitle.includes("Extras") || documentTitle.includes("Episode")) {
+                              infoText += ` ${documentTitle}`;
+                          }
                             infoText = infoText.replace("VOB IFO", "VOB");
                             if (documentTitle.includes("(720p)")) {
                                 infoText += " 720p";
@@ -495,6 +494,9 @@
                         } else {
                             // Remove "Freeleech" and any surrounding forward slashes
                             infoText = combinedInfo.textContent.replace(/\/?Freeleech\/?/g, "").replace(/\//g, " / ");
+                            if (documentTitle.includes("Extras") || documentTitle.includes("Episode")) {
+                                infoText += ` ${documentTitle}`;
+                            }
                             // Append resolution tags if necessary
                             if (documentTitle.includes("(720p)")) {
                                 infoText += " / 720p";
@@ -554,42 +556,42 @@
             }
         }
         else if (tracker === "BTN") {
-              let skipFollowingRows = false; // Flag to skip rows after detecting an episode
-              let withinSeason2 = false; // Flag to track if we are within "Season 2" rows
+            let skipFollowingRows = false; // Flag to skip rows after detecting an episode
+            let withinSeason2 = false; // Flag to track if we are within "Season 2" rows
 
-              html.querySelector(".main_column").querySelectorAll(".torrent_table > tbody:nth-child(2) > tr").forEach((d) => {
-                  // Check for episode and handle skipping logic
-                  const episodeLink = d.querySelector('td > div > strong > a.episode');
-                  if (skipFollowingRows || episodeLink) {
-                      if (episodeLink) {
-                          skipFollowingRows = true; // Start skipping all following rows
-                      }
-                      return; // Skip this iteration
-                  }
+            html.querySelector(".main_column").querySelectorAll(".torrent_table > tbody:nth-child(2) > tr").forEach((d) => {
+                // Check for episode and handle skipping logic
+                const episodeLink = d.querySelector('td > div > strong > a.episode');
+                if (!episodes && (skipFollowingRows || episodeLink)) {
+                    if (episodeLink) {
+                        skipFollowingRows = true; // Start skipping all following rows
+                    }
+                    return; // Skip this iteration
+                }
 
-                  // Check and update the season flags based on content
-                  const seasonLink = d.querySelector('td > div > strong > a[title="View Torrent"]');
-                  if (seasonLink) {
-                      let seasonText = seasonLink.textContent.trim();
-                      if (seasonText.includes("Season 2")) {
-                          withinSeason2 = true;
-                      } else if (seasonText.includes("Season 1")) {
-                          withinSeason2 = false;
-                      }
-                  }
+                // Check and update the season flags based on content
+                const seasonLink = d.querySelector('td > div > strong > a[title="View Torrent"]');
+                if (seasonLink) {
+                    let seasonText = seasonLink.textContent.trim();
+                    if (seasonText.includes("Season 2")) {
+                        withinSeason2 = true;
+                    } else if (seasonText.includes("Season 1")) {
+                        withinSeason2 = false;
+                    }
+                }
 
-                  // BTN has differing layouts for the torrents, this will process torrents with this html layout.
-                  if (d.querySelectorAll("td")[2].textContent.includes("GB")) {
-                  let torrent_obj = {};
+                // BTN has differing layouts for the torrents, this will process torrents with this html layout.
+                if (d.querySelectorAll("td")[2].textContent.includes("GB")) {
+                    let torrent_obj = {};
                     let size = d.querySelectorAll("td")[2].textContent;
 
-                  if (size.includes("TB")) {
-                      size = parseInt(parseFloat(size.split("TB")[0]) * 1024 * 1024); // Convert TiB to MiB
-                  } else if (size.includes("GB")) {
-                      size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // Convert GB to MiB
-                  } else if (size.includes("MB")) {
-                      size = parseInt(parseFloat(size.split("MB")[0]));
-                  }
+                    if (size.includes("TB")) {
+                        size = parseInt(parseFloat(size.split("TB")[0]) * 1024 * 1024); // Convert TiB to MiB
+                    } else if (size.includes("GB")) {
+                        size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // Convert GB to MiB
+                    } else if (size.includes("MB")) {
+                        size = parseInt(parseFloat(size.split("MB")[0]));
+                    }
 
                     torrent_obj.size = size;
                     torrent_obj.info_text = Array.from(d.querySelector("td:nth-child(2)").querySelectorAll("span"))
@@ -608,24 +610,24 @@
                     torrent_obj.status = d.querySelectorAll("span.internal").length > 0 ? "seeding" : "default";
                     torrent_obj.discount = "None";
                     torrent_obj.internal = Array.from(d.querySelector("td:nth-child(2)").querySelectorAll("span"))
-                                          .map(span => span.textContent.trim())
-                                          .some(text => text.includes("Internal"));
-                    torrent_obj.season2 = withinSeason2, // Direct assignment using flag
+                                              .map(span => span.textContent.trim())
+                                              .some(text => text.includes("Internal"));
+                    torrent_obj.season2 = withinSeason2; // Direct assignment using flag
                     torrent_objs.push(torrent_obj);
                 }
 
-                  // Layout for other torrents.
-                  if (d.querySelectorAll("td")[1].textContent.includes("GB")) {
-                  let torrent_obj = {};
+                // Layout for other torrents.
+                if (d.querySelectorAll("td")[1].textContent.includes("GB")) {
+                    let torrent_obj = {};
                     let size = d.querySelectorAll("td")[1].textContent;
 
-                  if (size.includes("TB")) {
-                      size = parseInt(parseFloat(size.split("TB")[0]) * 1024 * 1024); // Convert TiB to MiB
-                  } else if (size.includes("GB")) {
-                      size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // Convert GB to MiB
-                  } else if (size.includes("MB")) {
-                      size = parseInt(parseFloat(size.split("MB")[0]));
-                  }
+                    if (size.includes("TB")) {
+                        size = parseInt(parseFloat(size.split("TB")[0]) * 1024 * 1024); // Convert TiB to MiB
+                    } else if (size.includes("GB")) {
+                        size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // Convert GB to MiB
+                    } else if (size.includes("MB")) {
+                        size = parseInt(parseFloat(size.split("MB")[0]));
+                    }
 
                     torrent_obj.size = size;
                     torrent_obj.info_text = Array.from(d.querySelector("td:nth-child(1)").querySelectorAll("span"))
@@ -644,9 +646,9 @@
                     torrent_obj.status = d.querySelectorAll("span.internal").length > 0 ? "seeding" : "default";
                     torrent_obj.discount = "None";
                     torrent_obj.internal = Array.from(d.querySelector("td:nth-child(1)").querySelectorAll("span"))
-                                          .map(span => span.textContent.trim())
-                                          .some(text => text.includes("Internal"));
-                    torrent_obj.season2 = withinSeason2, // Direct assignment using flag
+                                              .map(span => span.textContent.trim())
+                                              .some(text => text.includes("Internal"));
+                    torrent_obj.season2 = withinSeason2; // Direct assignment using flag
                     torrent_objs.push(torrent_obj);
                 }
             });
@@ -919,6 +921,16 @@
                         let infoText = infoTextElement ? infoTextElement.textContent.trim() : "";
 
                         if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
+                            let groupText = "";
+                            if (remove_group || improved_tags) {
+                                const match = infoText.match(/-([^-]+)$/);
+                                if (match) {
+                                    groupText = match[0].substring(1);
+                                    groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                    infoText = infoText.replace(groupText, '');
+                                }
+                            }
+                            torrent_obj.groupId = groupText;
                             torrent_obj.info_text = infoText;
                             torrent_obj.site = "BHD";
 
@@ -1675,7 +1687,7 @@
         } else if (sizeInGB <= 100) {
             return "BD100";
         } else {
-            return "BDXL";
+            return "BDSET";
         }
     };
 
@@ -1862,6 +1874,7 @@
 
         if (text.includes("2160p")) return "UHD";
         else if (text.includes("1080p") || text.includes("720p") || text.includes("1080i") || text.includes("720i")) return "HD";
+        else if (text.includes("other") || text.includes("extra") || text.includes("pdf") || text.includes("ebook") || text.includes("episode") || text.includes("cd audio") || /s\d{2}e\d{2}/.test(text)) return "EXTRA"; // Update for EXTRA quality
         else return "SD";
     };
 
@@ -1899,21 +1912,25 @@
         }
     };
 
-    const add_as_first = (div, quality) => { // puts 2gb 1080p at the top of the pack.
-        let all_trs = [...document.querySelectorAll("tr.group_torrent")];
+    const add_as_first = (div, quality) => { // puts 2GB 1080p at the top of the pack.
+        const all_trs = [...document.querySelectorAll("tr.group_torrent")];
         let first_idx;
 
         if (quality === "SD") {
             first_idx = all_trs.findIndex((a) => a.textContent.includes("Standard Definition"));
-        }
-        else if (quality === "HD") {
+        } else if (quality === "HD") {
             first_idx = all_trs.findIndex((a) => a.textContent.includes("High Definition") && !a.textContent.includes("Ultra High Definition"));
-        }
-        else if (quality === "UHD") {
+        } else if (quality === "UHD") {
             first_idx = all_trs.findIndex((a) => a.textContent.includes("Ultra High Definition"));
+        } else if (quality === "EXTRA") {
+            first_idx = all_trs.findIndex((a) => a.textContent.includes("Other"));
         }
 
-        insertAfter(div, all_trs[first_idx]);
+        if (first_idx !== -1) {
+            insertAfter(div, all_trs[first_idx]);
+        } else {
+            console.warn(`No appropriate row found for quality: ${quality}`);
+        }
     };
 
     const get_codec = (lower, torrent) => {
@@ -2051,6 +2068,7 @@
     };
 
     const get_simplified_title = (info_text, torrent) => {
+        console.log("simplified text", info_text);
         let lower = info_text.toLowerCase();
         let normal = info_text;
 
@@ -2104,6 +2122,7 @@
         let sd_ptp_torrents = get_filtered_torrents("SD").sort((a, b) => a.size < b.size ? 1 : -1);
         let hd_ptp_torrents = get_filtered_torrents("HD").sort((a, b) => a.size < b.size ? 1 : -1);
         let uhd_ptp_torrents = get_filtered_torrents("UHD").sort((a, b) => a.size < b.size ? 1 : -1);
+        let extra_ptp_torrents = get_filtered_torrents("EXTRA").sort((a, b) => a.size < b.size ? 1 : -1);
 
         create_needed_groups(external_torrents);
 
@@ -2119,10 +2138,13 @@
 
             if (torrent.quality === "UHD") {
                 ref_div = get_ref_div(torrent, uhd_ptp_torrents);
-                group_torrents = uhd_ptp_torrents; // needed just in case ref returns false/if its smallest
+                group_torrents = uhd_ptp_torrents; // needed just in case ref returns false/if it's smallest
             } else if (torrent.quality === "HD") {
                 ref_div = get_ref_div(torrent, hd_ptp_torrents);
                 group_torrents = hd_ptp_torrents;
+            } else if (torrent.quality === "EXTRA") {
+                ref_div = get_ref_div(torrent, extra_ptp_torrents);
+                group_torrents = extra_ptp_torrents; // Update for the EXTRA group
             } else {
                 ref_div = get_ref_div(torrent, sd_ptp_torrents);
                 group_torrents = sd_ptp_torrents;
@@ -2169,7 +2191,18 @@
                         get_api_personal_release(torrent.personal_release) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__Personal' style='font-weight: bold; color: #865BE9'>Personal Release</span>") : false;
                     }
                 }
-            torrent.discount != "None" ? cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__download-modifier torrent-info__download-modifier--free'>` + torrent.discount + "!</span>" : false;
+            if (improved_tags) {
+                if (torrent.discount === "Freeleech") {
+                    cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__download-modifier torrent-info__download-modifier--free'>Freeleech!</span>";
+                } else if (torrent.discount === "50% Freeleech" || torrent.discount === "Silver") {
+                    cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__download-modifier torrent-info__download-modifier--half'>Half-leech!</span>";
+                } else if (torrent.discount != "None") {
+                    cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__download-modifier torrent-info__download-modifier--special'>` + torrent.discount + `!</span>`;
+                }
+                //torrent.discount != "None" ? (cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__download-modifier torrent-info__download-modifier--special' style='font-weight: bold; color: #B8860B'>` + torrent.discount + `!</span>`) : false;
+            } else {
+                torrent.discount != "None" ? cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__download-modifier torrent-info__download-modifier--free'>` + torrent.discount + "!</span>" : false;
+            }
             if (!hide_tags) {
                 if (torrent.reported != null && torrent.reported != false) {
                     cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__reported'>Reported</span>`;
@@ -2243,6 +2276,7 @@
             cln.querySelector("td:nth-child(5)").textContent = torrent.leech; // leech
             cln.querySelector(".link_3").href = torrent.torrent_page;
             cln.className += " " + dom_id;
+            cln.id += " " + dom_id;
             if (torrent.info_text && cln.dataset.releasename) {
                 cln.datase.releasename += torrent.info_text;
             } else if (torrent.info_text) {
@@ -2261,8 +2295,17 @@
                 cln.querySelector("img").title = torrent.site;
             }
 
-            if (ref_div != false) insertAfter(cln, ref_div);
-            else {
+            // Ensure insertAfter is defined
+            if (typeof insertAfter !== 'function') {
+                function insertAfter(newNode, referenceNode) {
+                    referenceNode.parentNode.insertBefore(newNode, referenceNode.nextSibling);
+                }
+            }
+
+            // Your existing logic
+            if (ref_div != false) {
+                insertAfter(cln, ref_div);
+            } else {
                 add_as_first(cln, torrent.quality);
             }
 
@@ -2288,67 +2331,92 @@
         }
     };
 
+    // Updated insert_group function for completeness
     const insert_group = (quality, header_div) => {
-        let all_trs = [...document.querySelector("#torrent-table > tbody").querySelectorAll("tr.group_torrent")];
-        let tbody = document.querySelector("#torrent-table > tbody");
+        const tbody = document.querySelector("#torrent-table > tbody");
+        const all_trs = [...tbody.querySelectorAll("tr.group_torrent")];
+
+        let idx = -2; // Index to insert after
+        let targetText = [];
 
         if (quality === "HD") {
-            let idx = -2; // add_after_this_index
+            targetText = ["Other", "Ultra High Definition"];
+        } else if (quality === "UHD") {
+            targetText = ["Other"];
+        } else if (quality === "EXTRA") {
+            // For EXTRA, prioritize "Ultra High Definition", then "High Definition", then "Standard Definition"
+            targetText = ["Ultra High Definition", "High Definition", "Standard Definition"];
+        }
 
-            for (let i = 0; i < all_trs.length; i++) {
-                if (all_trs[i].textContent.includes("Other") || all_trs[i].textContent.includes("Ultra High Definition")) {
-                    idx = i - 1;
+        for (let i = 0; i < all_trs.length; i++) {
+            if (targetText.some(text => all_trs[i].textContent.includes(text))) {
+                idx = i;
+                // Break early for HD and UHD when target text is found
+                if (quality === "HD" || quality === "UHD") {
+                    idx -= 1;
                     break;
                 }
-            }
-            if (idx === -2) {
-                tbody.appendChild(header_div); // nothing to stop me
-            } else {
-                insertAfter(header_div, all_trs[idx]);
             }
         }
-        else if (quality === "UHD") {
-            let idx = -2; // add_after_this_index
 
-            for (let i = 0; i < all_trs.length; i++) {
-                if (all_trs[i].textContent.includes("Other")) {
-                    idx = i - 1;
-                    break;
-                }
-            }
-
-            if (idx === -2) {
-                tbody.appendChild(header_div); // nothing to stop me
-            } else {
-                insertAfter(header_div, all_trs[idx]);
-            }
+        if (idx === -2) {
+            tbody.appendChild(header_div); // Append at the end if no suitable position is found
+        } else {
+            insertAfterUnique(header_div, all_trs[idx]);
         }
     };
 
-    const create_needed_groups = (torrents) => {
-        let all_trs = [...document.querySelector("#torrent-table > tbody").querySelectorAll("tr.group_torrent")];
-        let tbody = document.querySelector("#torrent-table > tbody");
+    // Helper function to insert an element after a reference element
+    const insertAfterUnique = (newNode, referenceNode) => {
+        referenceNode.parentNode.insertBefore(newNode, referenceNode.nextSibling);
+    };
 
-        if (torrents.find(e => e.quality === "SD") != undefined && all_trs.find(d => d.textContent.includes("Standard Definition")) === undefined) {
-            group_header_example.querySelector(".basic-movie-list__torrent-edition__sub").textContent = "Standard Definition";
-            tbody.insertBefore(group_header_example, document.querySelector("#torrent-table > tbody").firstChild);
+    const create_needed_groups = (torrents) => {
+        const tbody = document.querySelector("#torrent-table > tbody");
+        const all_trs = [...tbody.querySelectorAll("tr.group_torrent")];
+
+        // Helper function to create a new group header element
+        const createGroupHeader = (text) => {
+            const newHeader = group_header_example.cloneNode(true);
+            newHeader.querySelector(".basic-movie-list__torrent-edition__sub").textContent = text;
+            return newHeader;
+        };
+
+        // Check and insert Standard Definition group
+        if (torrents.find(e => e.quality === "SD") && !all_trs.some(d => d.textContent.includes("Standard Definition"))) {
+            const sdHeader = createGroupHeader("Standard Definition");
+            tbody.insertBefore(sdHeader, tbody.firstChild);
         }
-        if (torrents.find(e => e.quality === "HD") != undefined &&
-            all_trs.find(d => d.textContent.includes("High Definition") && !d.textContent.includes("Ultra High Definition")) === undefined) {
-            group_header_example.querySelector(".basic-movie-list__torrent-edition__sub").textContent = "High Definition";
-            insert_group("HD", group_header_example);
+
+        // Check and insert High Definition group
+        if (torrents.find(e => e.quality === "HD") &&
+            !all_trs.some(d => d.textContent.includes("High Definition") && !d.textContent.includes("Ultra High Definition"))) {
+            const hdHeader = createGroupHeader("High Definition");
+            insert_group("HD", hdHeader);
         }
-        if (torrents.find(e => e.quality === "UHD") != undefined && all_trs.find(d => d.textContent.includes("Ultra High Definition")) === undefined) {
-            group_header_example.querySelector(".basic-movie-list__torrent-edition__sub").textContent = "Ultra High Definition";
-            insert_group("UHD", group_header_example);
+
+        // Check and insert Ultra High Definition group
+        if (torrents.find(e => e.quality === "UHD") && !all_trs.some(d => d.textContent.includes("Ultra High Definition"))) {
+            const uhdHeader = createGroupHeader("Ultra High Definition");
+            insert_group("UHD", uhdHeader);
+        }
+
+        // Check and insert Other group
+        if (torrents.find(e => e.quality === "EXTRA") && !all_trs.some(d => d.textContent.includes("Other"))) {
+            const extraHeader = createGroupHeader("Other");
+            insert_group("EXTRA", extraHeader);
         }
     };
 
     const fix_doms = () => {
         doms.forEach((d) => {
-            d.dom_path = [...document.querySelectorAll(".group_torrent")].find(e => e.className.split(" ").find(c => c === d.dom_id) != undefined);
+            // Find the element with class 'group_torrent' that also has a class matching d.dom_id
+            const targetElement = [...document.querySelectorAll(".group_torrent")].find(e =>
+                e.classList.contains(d.dom_id)
+            );
+            // Update the dom_path property
+            d.dom_path = targetElement;
         });
-
     };
 
     const filter_torrents = () => {
@@ -2525,12 +2593,18 @@
                     if (torrent) {
                         // Extract the HTML element with the specific class if present
                         const freeleechSpan = torrent.querySelector("span.torrent-info__download-modifier.torrent-info__download-modifier--free");
+                        const halfleechSpan = torrent.querySelector("span.torrent-info__download-modifier.torrent-info__download-modifier--half");
                         const trumpableSpan = torrent.querySelector("span.torrent-info__trumpable");
                         const reportedSpan = torrent.querySelector("span.torrent-info__reported");
                         let freeleechSpanHtml = '';
                         if (freeleechSpan) {
                             freeleechSpanHtml = freeleechSpan.outerHTML;
                             freeleechSpan.remove(); // Remove the element temporarily
+                        }
+                        let halfleechSpanHtml = '';
+                        if (halfleechSpan) {
+                            halfleechSpanHtml = halfleechSpan.outerHTML;
+                            halfleechSpan.remove(); // Remove the element temporarily
                         }
                         let trumpableSpanHtml = '';
                         if (trumpableSpan) {
@@ -2621,6 +2695,9 @@
 
                         if (freeleechSpanHtml) {
                             finalHtml += ` / ${freeleechSpanHtml}`;
+                        }
+                        if (halfleechSpanHtml) {
+                            finalHtml += ` / ${halfleechSpanHtml}`;
                         }
                         if (trumpableSpanHtml) {
                             finalHtml += ` / ${trumpableSpanHtml}`;
@@ -2848,7 +2925,9 @@
     const get_example_div = () => {
         let tr = document.createElement("tr");
         tr.className = "group_torrent group_torrent_header";
+        tr.id = "group_torrent_header";
         tr["data-releasename"] = "release_name_here";
+        tr["data-releasegroup"] = "group_name_here";
 
         let td = document.createElement("td");
         td.style.width = "596px";
