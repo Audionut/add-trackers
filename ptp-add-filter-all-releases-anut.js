@@ -2327,6 +2327,10 @@
             doms.push({ tracker, dom_path, quality, discount, info_text, group_id, seeders, leechers, snatchers, dom_id, size });
         });
 
+        console.log("Finished processing");
+        const event = new CustomEvent('scriptAFinished');
+        window.dispatchEvent(event);
+
         let reduced_trackers = get_reduced_trackers(doms);
         let reduced_discounts = get_reduced_discounts(doms);
         let reduced_qualities = get_reduced_qualities(doms);
