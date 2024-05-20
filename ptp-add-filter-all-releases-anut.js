@@ -1872,9 +1872,9 @@
 
         let text = torrent.info_text.toLowerCase();
 
-        if (text.includes("other") || text.includes("extra") || text.includes("pdf") || text.includes("ebook") || text.includes("episode") || text.includes("special features") || text.includes("cd audio") || text.includes("jpeg") || /s\d{2}e\d{2}/.test(text)) return "EXTRA"; // Update for EXTRA quality
-        else if (text.includes("2160p")) return "UHD";
+        if (text.includes("2160p")) return "UHD";
         else if (text.includes("1080p") || text.includes("720p") || text.includes("1080i") || text.includes("720i")) return "HD";
+        else if (text.includes("other") || text.includes("extra") || text.includes("pdf") || text.includes("ebook") || text.includes("episode") || text.includes("cd audio") || /s\d{2}e\d{2}/.test(text)) return "EXTRA"; // Update for EXTRA quality
         else return "SD";
     };
 
@@ -1910,16 +1910,6 @@
         } else { // MiB format
             return size.toFixed(2) + " MiB";
         }
-    };
-    const get_element_size = (size) => {
-        if (typeof size === 'string') {
-            size = parseFloat(size);
-        }
-        if (isNaN(size) || size === null || size === undefined) {
-            return "N/A"; // or any default value you prefer
-        }
-        const bytes = size * 1024 * 1024;
-        return bytes.toLocaleString() + " Bytes";
     };
 
     const add_as_first = (div, quality) => { // puts 2GB 1080p at the top of the pack.
@@ -2064,9 +2054,9 @@
     };
     const get_group = (normal, torrent) => {
         // Prefilter for Blu-ray and Blu-Ray and skip processing
-        //if (normal.includes("Blu-ray")) {
-        //    return "NoGrp"; // Skip further processing for this info
-        //} else {
+        if (normal.includes("Blu-ray")) {
+            return "NoGrp"; // Skip further processing for this info
+        } else {
         const match = normal.match(/-[a-z0-9]+$/i); // Updated regex to match group patterns
         if (match) {
             let groupName = match[0].substring(1); // Remove the leading hyphen
@@ -2074,10 +2064,11 @@
             return groupName;
         }
         return null; // Return null if no match is found
-        //}
+        }
     };
 
     const get_simplified_title = (info_text, torrent) => {
+        console.log("simplified text", info_text);
         let lower = info_text.toLowerCase();
         let normal = info_text;
 
@@ -2273,10 +2264,8 @@
                 }
                 return;
             }
-            const element_size = get_element_size(torrent.size);
 
             cln.querySelector(".size-span").textContent = ptp_format_size;
-            cln.querySelector(".size-span").setAttribute("title", element_size);
             cln.querySelector("td:nth-child(3)").textContent = torrent.snatch; // snatch
             cln.querySelector("td:nth-child(4)").textContent = torrent.seed; // seed
 
@@ -3004,10 +2993,10 @@
         let td2 = document.createElement("td");
         td2.className = "nobr";
         td2.style.width = "63px";
+
         let span2 = document.createElement("span");
         span2.className = "size-span";
         span2.style.float = "left";
-        span2.title = "SIZE_IN_BYTES_HERE";
         span2.textContent = "TORRENT_SIZE_HERE";
         td2.appendChild(span2);
 
