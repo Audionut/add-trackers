@@ -2190,27 +2190,38 @@
                         get_api_personal_release(torrent.personal_release) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__Personal' style='font-weight: bold; color: #865BE9'>Personal Release</span>") : false;
                     }
                 }
-            //torrent.discount != "None" ? cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__download-modifier torrent-info__download-modifier--free'>` + torrent.discount + "!</span>" : false;
-            torrent.discount != "None" ? cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__modifier torrent-info__modifier--spec'>` + torrent.discount + "!</span>" : false;
-            if (!hide_tags) {
-                if (torrent.reported != null && torrent.reported != false) {
-                    cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__reported'>Reported</span>`;
+                if (improved_tags) {
+                    if (torrent.discount === "Freeleech" || torrent.discount === "Golden") {
+                        cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__download-modifier torrent-info__download-modifier--free'>Freeleech!</span>";
+                    } else if (torrent.discount === "50% Freeleech" || torrent.discount === "Bronze") {
+                        cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__download-modifier torrent-info__download-modifier--half'>Half-leech!</span>";
+                    } else if (torrent.discount != "None") {
+                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__download-mod'>${torrent.discount}!</span>`;
+                    }
+                } else {
+                    if (torrent.discount != "None") {
+                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__download-modifier torrent-info__download-modifier--free'>${torrent.discount}!</span>`;
+                    }
                 }
-                if (torrent.trumpable != null && torrent.trumpable != false) {
-                    cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__trumpable'>Trumpable</span>`;
+                if (!hide_tags) {
+                    if (torrent.reported != null && torrent.reported != false) {
+                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__reported'>Reported</span>`;
+                    }
+                    if (torrent.trumpable != null && torrent.trumpable != false) {
+                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__trumpable'>Trumpable</span>`;
+                    }
                 }
-            }
-            if (improved_tags) {
-                if (torrent.distributor != null && torrent.distributor != false) {
-                    cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__distributor'>${torrent.distributor}</span>`;
+                if (improved_tags) {
+                    if (torrent.distributor != null && torrent.distributor != false) {
+                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__distributor'>${torrent.distributor}</span>`;
+                    }
+                    if (torrent.region != null && torrent.region != false) {
+                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__region'>${torrent.region}</span>`;
+                    }
+                    if (show_tracker_name) {
+                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__tracker-name'>[${torrent.site}]</span>`;
+                    }
                 }
-                if (torrent.region != null && torrent.region != false) {
-                    cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__region'>${torrent.region}</span>`;
-                }
-                if (show_tracker_name) {
-                    cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__tracker-name'>[${torrent.site}]</span>`;
-                }
-            }
 
             //cln.querySelector(".torrent-info-link").textContent = torrent.info_text;
             if (torrent.status === "seeding") cln.querySelector(".torrent-info-link").className += " torrent-info-link--user-seeding";
