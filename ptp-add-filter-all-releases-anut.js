@@ -2585,7 +2585,6 @@
                     ];
 
                     let ptp_info_text = matchingDom.info_text;
-                    console.log("info text", matchingDom.info_text);
 
                     // Conditionally remove group names
                     if (remove_group) {
@@ -2659,7 +2658,6 @@
 
                     // Clean ptp_info_text by replacing full stops according to the rules
                     const cleanedPtpInfoText = replaceFullStops(ptp_info_text);
-                    console.log("cleaned", cleanedPtpInfoText);
 
                     // Re-add the extracted HTML elements after making the modifications
                     // Construct the final innerHTML string
