@@ -695,9 +695,19 @@
 
                                     // Remove extra whitespaces
                                     infoText = infoText.replace(/\s+/g, ' ').trim();
-
-                                    const modifiedInfoText = infoText.replace(/\./g, ' ');
+                                    let modifiedInfoText;
+                                    modifiedInfoText = infoText.replace(/\./g, ' ');
                                     const isInternal = infoText.includes("-hallowed") || infoText.includes("-TEPES") || infoText.includes("-E.N.D") || infoText.includes("-WDYM");
+                                    let groupText = "";
+                                    if (improved_tags) {
+                                        const match = infoText.match(/-([^-]+)$/);
+                                        if (match) {
+                                            groupText = match[0].substring(1);
+                                            groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                            modifiedInfoText = modifiedInfoText.replace(groupText, '');
+                                        }
+                                    }
+                                    torrent_obj.groupId = groupText;
                                     torrent_obj.info_text = modifiedInfoText;
                                     torrent_obj.internal = isInternal ? true : false;
 
@@ -1736,11 +1746,18 @@
                     if (region) {
                         const regionRegex = new RegExp(`\\b${region}\\b`, 'gi');
                         infoText = infoText.replace(regionRegex, '').trim();
+                        infoText = infoText.replace(groupText, '').trim();
                     }
                 }
 
                 let updatedInfoText = infoText.replace(/\[.*?\]/g, '').trim();
                 if (improved_tags) {
+                    const region = element.attributes.region;
+                    if (region) {
+                        const regionRegex = new RegExp(`\\b${region}\\b`, 'gi');
+                        updatedInfoText = updatedInfoText.replace(regionRegex, '').trim();
+                    }
+                    updatedInfoText = updatedInfoText.replace(groupText, '').trim();
                     if (container) {
                         //updatedInfoText = updatedInfoText.replace(/\[.*?\]/g, '').trim();
                         updatedInfoText = `${container} ${updatedInfoText}`; // Append container to info_text
