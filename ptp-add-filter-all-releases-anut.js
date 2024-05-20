@@ -51,11 +51,10 @@
     const open_in_new_tab = true; // false : when you click external torrent, it will open the page in new tab. ||| true : it will replace current tab.
     let hide_tags = false; // true = will hide all of the tags. Featured, DU, reported, etc.
     const run_by_default = true; // false = won't run the script by default, but will add an "Other Trackers" link under the page title, which when clicked will run the script.
-    const timer = 4000; // set the timer here to timeout slow/non-responsive tracker calls. 3.5 seconds seems like a safe default.
+    const timer = 4000; // set the timer here to timeout slow/non-responsive tracker calls. 4 seconds seems like a safe default.
     const timerDuration = 2000; // set the length of time the error message should be displayed on page.
-    let ptp_release_name = true; // true = show release name - false = original PTP release style.
-    let remove_group = false; // true = remove the group name to better work with PTP Improved Tags.
-    let improved_tags = false; // true = full refactor to work fully with PTP Improved Tags
+    let ptp_release_name = true; // true = show release name - false = original PTP release style. Set false if Improved Tags.
+    let improved_tags = false; // true = Change display to work fully with PTP Improved Tags from jmxd.
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -410,7 +409,7 @@
                 torrent_obj.size = size;
                 let releaseName = d.querySelector("td:nth-child(3) > b > a").textContent.trim();
                 let groupText = "";
-                if (remove_group || improved_tags) {
+                if (improved_tags) {
                     const match = releaseName.match(/-([^-]+)$/);
                     if (match) {
                         groupText = match[0].substring(1);
@@ -920,7 +919,7 @@
 
                         if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
                             let groupText = "";
-                            if (remove_group || improved_tags) {
+                            if (improved_tags) {
                                 const match = infoText.match(/-([^-]+)$/);
                                 if (match) {
                                     groupText = match[0].substring(1);
@@ -2085,6 +2084,7 @@
         let bonus = get_bonus(lower, torrent);
         let country = get_country(normal, torrent);
         let disc = get_disc(lower, torrent);
+        let group = get_group(normal, torrent);
 
         const parts = [];
 
@@ -2097,11 +2097,8 @@
         if (bonus) parts.push(bonus.trim());
         if (country) parts.push(country.trim());
         if (disc) parts.push(disc.trim());
+        if (group) parts.push(group.trim());
 
-        if (!remove_group) {
-            let group = get_group(normal, torrent);
-            if (group) parts.push(group.trim());
-        }
         // Use a Set to filter out duplicates
         const uniqueParts = [...new Set(parts)];
 
@@ -2556,6 +2553,7 @@
 
     const fix_ptp_names = () => {
         document.querySelectorAll("tr.group_torrent").forEach(d => {
+          if (ptp_release_name) {
             // Find the closest header element with a matching dom_id class
             const matchingDom = doms.find(dom => d.classList.contains(dom.dom_id));
             if (matchingDom) {
@@ -2596,11 +2594,6 @@
                     ];
 
                     let ptp_info_text = matchingDom.info_text;
-
-                    // Conditionally remove group names
-                    if (remove_group) {
-                        ptp_info_text = ptp_info_text.replace(/-\w+/g, '');
-                    }
 
                     // Function to replace full stops outside of the patterns
                     const replaceFullStops = (text) => {
@@ -2682,6 +2675,7 @@
 
                     torrent.innerHTML = finalHtml;
                 }
+              }
             } else {
                 if (d.className !== "group_torrent") {
                     const torrent = d.querySelector("a.torrent-info-link");
