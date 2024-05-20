@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.4.1-A
+// @version      3.4.3-A
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -22,7 +22,7 @@
     //  remove trackers that you do not have access too and don't add trackers to the wrong const. 
     //  *requires API key     **performs two requests     *** XML output that needs authkey and torrent_pass from a download link
     //  requires each tracker to be logged in with the same browser session (and container type if using multi-account containers).
-    const movie_trackers = ["BHD", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "BLU", "HUNO", "TIK", "Aither", "RFX", "OE", "AvistaZ", "CinemaZ", "PHD", "PxHD"];
+    const movie_trackers = ["BHD", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "BLU", "HUNO", "TIK", "Aither", "RFX", "OE", "AvistaZ", "CinemaZ", "PHD"];
     const movie_only_trackers = ["ANT", "CG"]; // these trackers only have movies, not anything tv including miniseries.
     const tv_trackers = ["BTN", "TVV", "NBL"];
     const old_trackers = ["TVV"];  // Add trackers here that do not allow recent content. Do not remove the trackers added here from any other tracker defintion. Trackers added here need to be defined in both applicable areas.
@@ -51,34 +51,34 @@
     const open_in_new_tab = true; // false : when you click external torrent, it will open the page in new tab. ||| true : it will replace current tab.
     let hide_tags = false; // true = will hide all of the tags. Featured, DU, reported, etc.
     const run_by_default = true; // false = won't run the script by default, but will add an "Other Trackers" link under the page title, which when clicked will run the script.
-    const timer = 4000; // set the timer here to timeout slow/non-responsive tracker calls. 3.5 seconds seems like a safe default.
+    const timer = 4000; // set the timer here to timeout slow/non-responsive tracker calls. 4 seconds seems like a safe default.
     const timerDuration = 2000; // set the length of time the error message should be displayed on page.
-    let ptp_release_name = true; // true = show release name - false = original PTP release style.
-    let remove_group = false; // true = remove the group name to work with PTP Improved Tags.
+    let ptp_release_name = true; // true = show release name - false = original PTP release style. Set false if Improved Tags.
+    let improved_tags = false; // true = Change display to work fully with PTP Improved Tags from jmxd.
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     // This handles Miniseries pages.
     const isMiniSeriesFromSpan = Array.from(document.querySelectorAll("span.basic-movie-list__torrent-edition__main"))
                                       .some(el => el.textContent.trim() === "Miniseries");
-        // This handles text parsing of Collections to capture some more content we can later use.
-        const detailsCollections = document.querySelector("#detailsCollections");
-        const listItems = detailsCollections ? detailsCollections.querySelectorAll("ul.list--unstyled li") : null;
-        const isMiniSeriesFromList = listItems ? Array.from(listItems).some(li => {
-            const text = li.textContent.toLowerCase().trim(); // Trim to remove any leading/trailing whitespace
-            // Use regular expressions with word boundaries to ensure whole word matching
-            const hasMiniseries = /\bminiseries\b/.test(text);
-            const hasTV = /\btv\b/.test(text);
-            const hasTelevision = /\btelevision\b/.test(text);
-            // Regex to match the string starting with "films based on television programs" followed by anything else.
-            const skip1 = /^films based on television programs\b.*/i.test(text);
+    // This handles text parsing of Collections to capture some more content we can later use.
+    const detailsCollections = document.querySelector("#detailsCollections");
+    const listItems = detailsCollections ? detailsCollections.querySelectorAll("ul.list--unstyled li") : null;
+    const isMiniSeriesFromList = listItems ? Array.from(listItems).some(li => {
+        const text = li.textContent.toLowerCase().trim(); // Trim to remove any leading/trailing whitespace
+        // Use regular expressions with word boundaries to ensure whole word matching
+        const hasMiniseries = /\bminiseries\b/.test(text);
+        const hasTV = /\btv\b/.test(text);
+        const hasTelevision = /\btelevision\b/.test(text);
+        // Regex to match the string starting with "films based on television programs" followed by anything else.
+        const skip1 = /^films based on television programs\b.*/i.test(text);
 
-            if (skip1) {
-                return false; // Return false to skip adding if the exact skip text is found
-            }
+        if (skip1) {
+            return false; // Return false to skip adding if the exact skip text is found
+        }
 
-            return hasMiniseries || hasTV || hasTelevision;
-        }) : false;
+        return hasMiniseries || hasTV || hasTelevision;
+    }) : false;
     // Combine both handle methods above.
     const isMiniSeries = isMiniSeriesFromSpan || isMiniSeriesFromList;
     // Find the year of the content.
@@ -180,7 +180,9 @@
             let quality = dom_get_quality(d.textContent);
             let discount = "None";
             let releaseName = d.closest('tr.group_torrent_header');
+            let groupName = d.closest('tr.group_torrent_header');
             let info_text = releaseName.dataset.releasename;
+            let group_id = groupName.dataset.releasegroup;
             let seeders = parseInt(d.querySelector("td:nth-child(4)").textContent.replace(",", ""));
             let leechers = parseInt(d.querySelector("td:nth-child(5)").textContent.replace(",", ""));
             let snatchers = parseInt(d.querySelector("td:nth-child(3)").textContent.replace(",", ""));
@@ -198,9 +200,9 @@
 
             let dom_id = "ptp_" + i;
 
-            d.className += " " + dom_id; // required for re-render, nice fix
+            d.className += " " + dom_id;
 
-            doms.push({ tracker, dom_path, quality, discount, info_text, seeders, leechers, snatchers, dom_id, size });
+            doms.push({ tracker, dom_path, quality, discount, group_id, info_text, seeders, leechers, snatchers, dom_id, size });
         });
     };
 
@@ -365,8 +367,32 @@
     };
 
     const get_torrent_objs = async (tracker, html) => {
-        let torrent_objs = [];
+    const get_dvd_type = (size) => {
+        const sizeInGB = size / 1024; // Convert size from MiB to GB
+        if (sizeInGB <= 4.7) {
+            return "DVD5";
+        } else if (sizeInGB <= 8.5) {
+            return "DVD9";
+        } else {
+            return "DVDSET";
+        }
+    };
 
+    const get_bd_type = (size) => {
+        const sizeInGB = size / 1024; // Convert size from MiB to GB
+        if (sizeInGB <= 25) {
+            return "BD25";
+        } else if (sizeInGB <= 50) {
+            return "BD50";
+        } else if (sizeInGB <= 66) {
+            return "BD66";
+        } else if (sizeInGB <= 100) {
+            return "BD100";
+        } else {
+            return "BDSET";
+        }
+    };
+        let torrent_objs = [];
         if (tracker === "HDB") {
             html.querySelector("#torrent-list > tbody").querySelectorAll("tr").forEach((d) => {
                 let torrent_obj = {};
@@ -383,16 +409,24 @@
                 torrent_obj.size = size;
                 let releaseName = d.querySelector("td:nth-child(3) > b > a").textContent.trim();
                 let groupText = "";
-                if (remove_group) {
-                    const match = releaseName.match(/-[A-Z0-9]+$/i); // Updated regex to match group patterns
+                if (improved_tags) {
+                    const match = releaseName.match(/-([^-]+)$/);
                     if (match) {
-                        groupText = match[0];
+                        groupText = match[0].substring(1);
+                        groupText = groupText.replace(/[^a-z0-9]/gi, '');
                         releaseName = releaseName.replace(groupText, '');
                     }
                 }
+                torrent_obj.groupId = groupText;
                 releaseName = releaseName.replace(/:/g, ' ');
                 releaseName = releaseName.replace(/\bDoVi\b/g, 'DV');
                 releaseName = releaseName.replace(/DD\+/g, 'DD+ ');
+                // Inject Blu-ray disc type into info_text if conditions are met
+                if (improved_tags && releaseName.includes("Blu-ray") && torrent_obj.size) {
+                    const bdType = get_bd_type(torrent_obj.size);
+                    releaseName = `${bdType} ${releaseName}`;
+                }
+
                 torrent_obj.info_text = releaseName;
                 torrent_obj.site = "HDB";
                 torrent_obj.download_link = d.querySelector(".js-download").href.replace("passthepopcorn.me", "hdbits.org");
@@ -418,31 +452,61 @@
                     const documentTitle = torrent.querySelector('title').textContent;
 
                     // Skip torrents that include "Extras" in the title
-                    if (documentTitle.includes("Extras")) {
+                    if (documentTitle.includes("Extras") || documentTitle.includes("Episode")) {
                         return; // Skip further processing for this torrent
+                    }
+
+                    const sizeElement = torrent.querySelector('size[type="formatted"]');
+                    if (sizeElement) {
+                        torrent_obj.size = parseFloat(sizeElement.textContent.split(" GB")[0]) * 1024; // Convert GB to MiB
+                    } else {
+                        console.error("Missing size information.");
+                        return; // Skip this torrent if size information is missing
                     }
 
                     // Check for the existence of each element before accessing its textContent
                     const combinedInfo = torrent.querySelector('torrentinfo[type="combined"]');
-
                     if (combinedInfo) {
-                        // Remove "Freeleech" and any surrounding forward slashes
-                        let infoText = combinedInfo.textContent.replace(/\/?Freeleech\/?/g, "").replace(/\//g, " / ");
+                        let infoText = combinedInfo.textContent.replace(/\/?Freeleech\/?/g, "").replace(/\//g, " ");
 
-                        // Append resolution tags if necessary
-                        if (documentTitle.includes("(720p)")) {
-                            infoText += " / (720p)";
-                        }
-                        if (documentTitle.includes("(1080p)")) {
-                            infoText += " / (1080p)";
-                        }
-                        if (documentTitle.includes("(2160p)")) {
-                            infoText += " / (2160p)";
-                        }
-
-                        // Always append "Special Edition" if present
-                        if (documentTitle.includes("(Special Edition)")) {
-                            infoText += " / (Special Edition)";
+                        if (improved_tags) {
+                            infoText = infoText.replace("VOB IFO", "VOB");
+                            if (documentTitle.includes("(720p)")) {
+                                infoText += " 720p";
+                            }
+                            if (documentTitle.includes("(1080p)")) {
+                                infoText += " 1080p";
+                            }
+                            if (documentTitle.includes("(2160p)")) {
+                                infoText += " 2160p";
+                            }
+                            // Always append "Special Edition" if present
+                            if (documentTitle.includes("(Special Edition)")) {
+                                infoText += " (Special Edition)";
+                            }
+                            if (infoText.includes("VOB") && torrent_obj.size) {
+                                const dvdType = get_dvd_type(torrent_obj.size, documentTitle);
+                                infoText = `${dvdType} ${infoText}`;
+                            } else if (infoText.includes("m2ts") && torrent_obj.size) {
+                                const bdType = get_bd_type(torrent_obj.size, documentTitle);
+                                infoText = `${bdType} ${infoText}`;
+                            }
+                        } else {
+                            // Remove "Freeleech" and any surrounding forward slashes
+                            infoText = combinedInfo.textContent.replace(/\/?Freeleech\/?/g, "").replace(/\//g, " / ");
+                            // Append resolution tags if necessary
+                            if (documentTitle.includes("(720p)")) {
+                                infoText += " / 720p";
+                            }
+                            if (documentTitle.includes("(1080p)")) {
+                                infoText += " / 1080p";
+                            }
+                            if (documentTitle.includes("(2160p)")) {
+                                infoText += " / 2160p";
+                            }
+                            if (documentTitle.includes("(Special Edition)")) {
+                                infoText += " / (Special Edition)";
+                            }
                         }
 
                         torrent_obj.info_text = infoText;
@@ -459,14 +523,6 @@
                     } else {
                         console.error("Missing torrent ID.");
                         return; // Skip this torrent if ID is missing
-                    }
-
-                    const sizeElement = torrent.querySelector('size[type="formatted"]');
-                    if (sizeElement) {
-                        torrent_obj.size = parseFloat(sizeElement.textContent.split(" GB")[0]) * 1024; // Convert GB to MiB
-                    } else {
-                        console.error("Missing size information.");
-                        return; // Skip this torrent if size information is missing
                     }
 
                     // Extract numerical values with fallbacks
@@ -706,10 +762,7 @@
             }
         }
         else if (tracker === "ANT") {
-            // querySelector is the html element from the search result that contains the table rows <tr> with the torrent information.
-            // querySelectorALL is the actual table rows with the torrent information.
             const rows = html.querySelector(".torrent_table#torrent_details > tbody").querySelectorAll("tr:not(.colhead_dark):not(.sortGroup)");
-            // interate through each table row so that we can pull the data from each torrent.
             rows.forEach((d, index) => {
                 let torrent_obj = {};
                 let size = null;
@@ -744,26 +797,54 @@
                 if (torrentId !== null) {
                     // add the elements together to create the link.
                     const torrentPageUrl = `${baseUrl}torrentid=${torrentId}`;
-                    // the torrent size info - can't remember why it's set here.
                     torrent_obj.size = size;
 
-                    // under the table row that contains the torrent of interest, is a hidden table row.
-                    // the hidden table row contains the torrent info when the title is clicked at the source site.
-                    // this table row contains additional information such as the filename.
-                    // this next code adds a condition to pull the data from that hidden row instead.
                     const nextRow = rows[index + 1];
                     if (nextRow) {
-                        // pull the filename from that next (hidden) row.
                         let antname = nextRow.querySelector('.row > td').textContent.trim();
-
-                        // Check if antname contains ".mkv", ".mpg", ".avi" or ".mp4"
-                        if (!(antname.includes(".mkv") || antname.includes(".mpg") || antname.includes(".avi") || antname.includes(".mp4"))) {
-                            // if antname doesn't include the above, lets process info_text the old way
-                            // disc/folder content basically always has filenames that are not useful at all.
+                        let derivedContainer = antname.match(/\.[^.]*$/);
+                        if (improved_tags) {
                             const titleElement = d.querySelector("td:nth-child(1) > a");
                             if (titleElement) {
                                 let infoTextParts = [];
-                                // the information needed is also in child elements.
+                                const titleText = Array.from(titleElement.childNodes)
+                                    .filter(node => node.nodeType === Node.TEXT_NODE)
+                                    .map(node => node.textContent.trim())
+                                    .join('')
+                                    .replace(/\/+/g, '/') // Replace multiple slashes with a single slash
+                                    .replace(/\/$/, '');  // Remove the trailing slash if present
+                                if (titleText) {
+                                    infoTextParts.push(titleText);
+                                }
+                                let groupText = "";
+                                const match = titleText.match(/[^\/]+$/);
+                                    if (match) {
+                                        groupText = match[0].trim();
+                                        groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                    }
+                                torrent_obj.groupId = groupText;
+                                const strongElements = titleElement.querySelectorAll("strong.torrent_label");
+                                strongElements.forEach((strong, index) => {
+                                    const text = strong.textContent.trim();
+                                    if (strong.classList.contains("tl_notice")) {
+                                        infoTextParts.push(text);
+                                    }
+                                });
+                                let formattedText = infoTextParts.join(' / ')
+                                                                 .replace(/\/+/g, '/')
+                                                                 .replace(/\s*\/\s*/g, ' / ');
+                                if (formattedText.includes("Blu-ray") && torrent_obj.size) {
+                                    const bdType = get_bd_type(torrent_obj.size);
+                                    formattedText = `${bdType} ${formattedText}`;
+                                }
+
+                                torrent_obj.info_text = formattedText;
+                            }
+                        } else {
+                        if (!(antname.includes(".mkv") || antname.includes(".mpg") || antname.includes(".avi") || antname.includes(".mp4"))) {
+                            const titleElement = d.querySelector("td:nth-child(1) > a");
+                            if (titleElement) {
+                                let infoTextParts = [];
                                 const titleText = Array.from(titleElement.childNodes)
                                     .filter(node => node.nodeType === Node.TEXT_NODE)
                                     .map(node => node.textContent.trim())
@@ -771,7 +852,6 @@
                                 if (titleText) {
                                     infoTextParts.push(titleText);
                                 }
-                                // some of the information is also in <strong> elements.
                                 const strongElements = titleElement.querySelectorAll("strong.torrent_label");
                                 // more than 1 strong element.
                                 strongElements.forEach((strong, index) => {
@@ -781,42 +861,28 @@
                                         infoTextParts.push(text);
                                     }
                                 });
-                                // so many slashes, format the slashes so that the title displays correctly.
-                                let formattedText = infoTextParts.join(' / ')
-                                                                 .replace(/\/+/g, '/')  // Replace multiple slashes with single slash
-                                                                 .replace(/\s*\/\s*/g, ' / '); // Add space before and after slash if necessary
-                                // torrent name to display if this code is used.
-                                torrent_obj.info_text = formattedText;
+                                let otherText = infoTextParts.join(' / ')
+                                                                 .replace(/\/+/g, '/')
+                                                                 .replace(/\s*\/\s*/g, ' / ');
+                                torrent_obj.info_text = otherText;
                             }
                         } else {
-                            // remove all of the periods in the filename.
-                            // additionally, remove the file container info (eg: mkv) after the last period in the filename.
-                            antname = antname.replace(/\.[^.]*$/, "").replace(/\./g, " ");
-                            // torrent name to display if this code is used.
-                            torrent_obj.info_text = antname;
+                              antname = antname.replace(/\.[^.]*$/, "").replace(/\./g, " ");
+                              torrent_obj.info_text = antname;
+                            }
                         }
-                        // define the site.
                         torrent_obj.site = "ANT";
-                        // look at all of the href elements, and select the one that we know is the download link.
-                        // ANT has 2 download links that are basically identical.
-                        // && - don't use the href element that uses a token.
                         torrent_obj.download_link = [...d.querySelectorAll("a")].find(a => a.href.includes("torrents.php?action=") && !a.href.includes("&usetoken=1")).href.replace("passthepopcorn.me", "anthelion.me");
-                        // snatch/seed/leech counts from the <td> elements in the table row.
                         torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(3)").textContent);
                         torrent_obj.seed = parseInt(d.querySelector("td:nth-child(4)").textContent);
                         torrent_obj.leech = parseInt(d.querySelector("td:nth-child(5)").textContent);
-                        // set the torrent page.
                         torrent_obj.torrent_page = torrentPageUrl;
-                        // set the discounts based on the discount code defined towards the top of the script.
                         torrent_obj.discount = get_discount_text(d, tracker);
-                        // the html element we are using to determine whether or not the torrent is currently being seeded.
                         const elements = d.querySelectorAll('strong.torrent_label.tl_seeding.tooltip');
                         torrent_obj.status = elements.length > 0 ? 'seeding' : 'default';
-                        // the html elements we are using to determine whether or not the torrents are Internal, Trumpable or Reported.
                         torrent_obj.internal = d.querySelector('strong.torrent_label.tooltip.internal') ? true : false;
                         torrent_obj.trumpable = d.querySelector(".torrent_table#torrent_details .torrent_label.tl_trumpable.tooltip") ? true : false;
                         torrent_obj.reported = d.querySelector(".torrent_table#torrent_details .torrent_label.tl_reported.tooltip") ? true : false;
-                        // push everything to a torrent_obj for later use.
                         torrent_objs.push(torrent_obj);
                     }
                 }
@@ -824,7 +890,7 @@
         }
         else if (tracker === "BHD") {
             try {
-                [...html.querySelector("div.table-torrents > table > tbody").querySelectorAll("tr:not(.comment-hidden")].forEach((d) => {
+                [...html.querySelector("div.table-torrents > table > tbody").querySelectorAll("tr:not(.comment-hidden)")].forEach((d) => {
                     let torrent_obj = {};
 
                     try {
@@ -834,11 +900,11 @@
                         if (sizeElement) {
                             size = sizeElement.textContent.trim();
                             if (size.includes("TiB")) {
-                                size = parseInt(parseFloat(size.split(" ")[0]) * 1024 * 1024); // Convert TiB to MiB
+                                size = parseFloat(size.split(" ")[0]) * 1024 * 1024; // Convert TiB to MiB
                             } else if (size.includes("GiB")) {
-                                size = parseInt(parseFloat(size.split(" ")[0]) * 1024); // Convert GiB to MiB
+                                size = parseFloat(size.split(" ")[0]) * 1024; // Convert GiB to MiB
                             } else if (size.includes("MiB")) {
-                                size = parseInt(parseFloat(size.split(" ")[0])); // Direct MiB
+                                size = parseFloat(size.split(" ")[0]); // Direct MiB
                             }
                         }
                         torrent_obj.size = size;
@@ -849,9 +915,19 @@
 
                     try {
                         let infoTextElement = d.querySelector("a.torrent-name");
-                        const infoText = infoTextElement ? infoTextElement.textContent.trim() : "";
+                        let infoText = infoTextElement ? infoTextElement.textContent.trim() : "";
 
                         if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
+                            let groupText = "";
+                            if (improved_tags) {
+                                const match = infoText.match(/-([^-]+)$/);
+                                if (match) {
+                                    groupText = match[0].substring(1);
+                                    groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                    infoText = infoText.replace(groupText, '');
+                                }
+                            }
+                            torrent_obj.groupId = groupText;
                             torrent_obj.info_text = infoText;
                             torrent_obj.site = "BHD";
 
@@ -885,6 +961,20 @@
                             else {
                                 torrent_obj.status = "default";
                             }
+
+                            // Inject Blu-ray disc type into info_text if conditions are met
+                            let bd_element = d.querySelector("a.beta-link-blend");
+                            if (bd_element) {
+                                let bd_text = bd_element.textContent.trim();
+
+                                // Check if bd_text includes the desired substrings
+                                if (bd_text.includes("UHD 100") || bd_text.includes("UHD 66") || bd_text.includes("UHD 50") || bd_text.includes("BD 50") || bd_text.includes("BD 25") || bd_text.includes("DVD 9") || bd_text.includes("DVD 5")) {
+                                    const bdType = bd_text;
+                                    infoText = `${bdType} ${infoText}`;
+                                    torrent_obj.info_text = infoText;
+                                }
+                            }
+
                             torrent_obj.discount = get_discount_text(d, tracker);
                             torrent_obj.internal = Array.from(d.querySelectorAll("i")).some(element => {
                                 const title = element.getAttribute('title');
@@ -1143,6 +1233,7 @@
             });
         }
         else if (tracker === "NBL") {
+          try {
             html.querySelectorAll(".torrent_table.grouping > tbody > tr:not(.colhead)").forEach((d) => {
                 let torrent_obj = {};
                 let size = d.querySelector("td:nth-child(3) > div").textContent;
@@ -1187,11 +1278,13 @@
                 //torrent_obj.exclusive = d.querySelector(".tag.exclusive") ? true : false;
                 torrent_objs.push(torrent_obj);
             });
+            } catch (error) {
+              displayAlert(`Looks like NBL's HTML layout has changed, please report`);
+            }
         }
         torrent_objs = torrent_objs.map(e => {
             return { ...e, "quality": get_torrent_quality(e) };
         });
-
         return torrent_objs;
     };
 
@@ -1549,6 +1642,52 @@
         }
     };
 
+    const get_api_files = (files) => {
+        const containerExtensions = ["m2ts", "mkv", "vob", "iso", "mpg", "mp4"]; // List of possible containers you might be looking for
+
+        for (const file of files) {
+            const singleFileName = file.name;
+            const lastDotIndex = singleFileName.lastIndexOf('.');
+            if (lastDotIndex !== -1) {
+                const extension = singleFileName.substring(lastDotIndex + 1).toLowerCase();
+                if (containerExtensions.includes(extension)) {
+                    return extension; // Return the container if it's one of the specified extensions
+                }
+            }
+        }
+
+        // If no specific container found, return default behavior
+        if (files.length > 1) {
+            return "m2ts";
+        } else if (files.length === 1) {
+            const singleFileName = files[0].name;
+            const lastDotIndex = singleFileName.lastIndexOf('.');
+            if (lastDotIndex !== -1) {
+                return singleFileName.substring(lastDotIndex + 1);
+            } else {
+                // Handle case where there is no full stop in the name
+                return singleFileName;
+            }
+        } else {
+            // Handle case where there are no files, if necessary
+            return null;
+        }
+    };
+    const get_blu_ray_disc_type = (size) => {
+        const sizeInGB = size / (1024 * 1024 * 1024); // Convert size to GB
+        if (sizeInGB <= 25) {
+            return "BD25";
+        } else if (sizeInGB <= 50) {
+            return "BD50";
+        } else if (sizeInGB <= 66) {
+            return "BD66";
+        } else if (sizeInGB <= 100) {
+            return "BD100";
+        } else {
+            return "BDSET";
+        }
+    };
+
     const get_api_torrent_objects = (tracker, json) => {
         let torrent_objs = [];
 
@@ -1562,14 +1701,63 @@
         ) {
             torrent_objs = json.data.map((element) => {
                 // Mapping element attributes to a torrent object
-                const infoText = tracker === "HUNO" ? element.attributes.name.replace(/[()]/g, "") : element.attributes.name;
+                const originalInfoText = tracker === "HUNO" ? element.attributes.name.replace(/[()]/g, "") : element.attributes.name;
+                let infoText = originalInfoText;
 
                 // Check if the info text contains "SxxExx" where "xx" is not known beforehand
                 if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
                     // If the info text does not contain the pattern, proceed with further processing
+                const files = element.attributes.files || []; // Ensure files is defined
+                const container = get_api_files(files); // Call the function with files as argument
+                // Step 1: Identify the year
+                const yearMatch = infoText.match(/\((\d{4})\)/);
+                let relevantText = infoText;
+
+                if (yearMatch) {
+                    // Step 2: If a year is found, process only the text after the year
+                    const yearIndex = infoText.indexOf(yearMatch[0]) + yearMatch[0].length;
+                    relevantText = infoText.substring(yearIndex).trim();
+                }
+
+                // Step 3: Perform the match on the relevant text
+                let groupText = "";
+                const match = relevantText.match(/-(?!.*\([^()]*\))([^-]+)$/);
+
+                if (match) {
+                    groupText = match[0].trim();
+                    // Replace brackets with spaces
+                    groupText = groupText.replace(/[()]/g, ' ');
+                    groupText = groupText.replace(/\[.*?\]/g, '').trim();
+                    // Sanitize the groupText to remove any non-alphanumeric characters
+                    groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                }
+                if (improved_tags) {
+                    const region = element.attributes.region;
+                    if (region) {
+                        const regionRegex = new RegExp(`\\b${region}\\b`, 'gi');
+                        infoText = infoText.replace(regionRegex, '').trim();
+                    }
+                }
+
+                let updatedInfoText = infoText.replace(/\[.*?\]/g, '').trim();
+                if (improved_tags) {
+                    if (container) {
+                        //updatedInfoText = updatedInfoText.replace(/\[.*?\]/g, '').trim();
+                        updatedInfoText = `${container} ${updatedInfoText}`; // Append container to info_text
+                        // Add BD type if container is m2ts or iso
+                        if (container === "m2ts" || container === "iso") {
+                            const bdType = get_blu_ray_disc_type(element.attributes.size);
+                            if (tracker === "TIK") {
+                                updatedInfoText = `${bdType} Blu-ray ${updatedInfoText}`;
+                            } else {
+                                updatedInfoText = `${bdType} ${updatedInfoText}`;
+                            }
+                        }
+                    }
+                }
                     const torrentObj = {
                         size: parseInt(element.attributes.size / (1024 * 1024)),
-                        info_text: infoText,
+                        info_text: updatedInfoText,
                         tracker: tracker,
                         site: tracker,
                         snatch: element.attributes.times_completed,
@@ -1591,8 +1779,10 @@
                         double_upload: element.attributes.double_upload,
                         refundable: element.attributes.refundable,
                         personal_release: element.attributes.personal_release,
+                        groupId: groupText,
+                        distributor: element.attributes.distributor,
+                        region: element.attributes.region,
                     };
-
                     // Mapping additional properties and logging the final torrent objects
                     const mappedObj = { ...torrentObj, "quality": get_torrent_quality(torrentObj), "discount": get_api_discount(torrentObj.discount, torrentObj.refundable, tracker), "internal": get_api_internal(torrentObj.internal), "Featured": get_api_featured(torrentObj.featured)};
 
@@ -1603,7 +1793,6 @@
                     return null; // Return null to filter out this torrent object
                 }
             }).filter(obj => obj !== null); // Filter out the null objects (skipped torrents)
-
             // Returning the final torrent objects
             return torrent_objs;
         }
@@ -1719,6 +1908,17 @@
         }
     };
 
+    const get_element_size = (size) => {
+        if (typeof size === 'string') {
+            size = parseFloat(size);
+        }
+        if (isNaN(size) || size === null || size === undefined) {
+            return "N/A"; // or any default value you prefer
+        }
+        const bytes = size * 1024 * 1024;
+        return bytes.toLocaleString() + " Bytes";
+    };
+
     const add_as_first = (div, quality) => { // puts 2gb 1080p at the top of the pack.
         let all_trs = [...document.querySelectorAll("tr.group_torrent")];
         let first_idx;
@@ -1737,21 +1937,29 @@
     };
 
     const get_codec = (lower, torrent) => {
-        if (lower.includes("x264") || lower.includes("x.264")) return "x264 / ";
-        else if (lower.includes("h264") || lower.includes("h.264")) return "H.264 / ";
-        else if (lower.includes("x265") || lower.includes("x.265")) return "x265 / ";
-        else if (lower.includes("h265") || lower.includes("h.265")) return "H.265 / ";
+        if (lower.includes("x264") || lower.includes("x.264") || lower.includes("x 264")) return "x264 / ";
+        else if (lower.includes("x265") || lower.includes("x.265") || lower.includes("x 265")) return "x265 / ";
+        else if (lower.includes("bd25") || lower.includes("bd-25") || lower.includes("bd 25") || lower.includes("uhd 25") || lower.includes("uhd25") || lower.includes("uhd-25")) return "BD25 / ";
+        else if (lower.includes("bd50") || lower.includes("bd-50") || lower.includes("bd 50") || lower.includes("uhd 50") || lower.includes("uhd50") || lower.includes("uhd-50")) return "BD50 / ";
+        else if (lower.includes("bd66") || lower.includes("bd-66") || lower.includes("bd 66") || lower.includes("uhd 66") || lower.includes("uhd66") || lower.includes("uhd-66")) return "BD66 / ";
+        else if (lower.includes("bd100") || lower.includes("bd-100") || lower.includes("bd 100") || lower.includes("uhd 100") || lower.includes("uhd100") || lower.includes("uhd-100")) return "BD100 / ";
+        else if (lower.includes("h264") || lower.includes("h.264") || lower.includes("avc") || lower.includes("h 264")) return "H.264 / ";
+        else if (lower.includes("h265") || lower.includes("h.265") || lower.includes("hevc") || lower.includes("h 265")) return "H.265 / ";
         else if (lower.includes("xvid") || lower.includes("x.vid")) return "XviD / ";
         else if (lower.includes("divx") || lower.includes("div.x")) return "DivX / ";
-        else if (lower.includes("dvd5") || lower.includes("dvd-5") || lower.includes("dvd 5")) return "DVD5 / ";
+        else if (lower.includes("mpeg2") || lower.includes("mpeg-2")) return "MPEG2 / ";
+        else if (lower.includes("mpeg1") || lower.includes("mpeg-1")) return "MPEG1 / ";
+
+        return null; // skip this info
+    };
+
+    const get_disc = (lower, torrent) => {
+        if (lower.includes("dvd5") || lower.includes("dvd-5") || lower.includes("dvd 5")) return "DVD5 / ";
         else if (lower.includes("dvd9") || lower.includes("dvd-9") || lower.includes("dvd 9")) return "DVD9 / ";
+        else if (lower.includes("dvdset")) return "Disc Set / ";
+        else if (lower.includes("bdset")) return "Disc Set / ";
 
-        else if (lower.includes("bd25") || lower.includes("bd-25")) return "BD25 / ";
-        else if (lower.includes("bd50") || lower.includes("bd-50")) return "BD50 / ";
-        else if (lower.includes("bd66") || lower.includes("bd-66")) return "BD66 / ";
-        else if (lower.includes("bd100") || lower.includes("bd-100")) return "BD100 / ";
-
-        return ""; // skip this info
+        return null;
     };
 
     const get_container = (lower, torrent) => {
@@ -1759,11 +1967,11 @@
         else if (lower.includes("mpg")) return "MPG / ";
         else if (lower.includes("mkv")) return "MKV / ";
         else if (lower.includes("mp4")) return "MP4 / ";
-        else if (lower.includes("vob")) return "VOB / ";
+        else if (lower.includes("vob")) return "VOB IFO / ";
         else if (lower.includes("iso")) return "ISO / ";
         else if (lower.includes("m2ts")) return "m2ts / ";
 
-        return ""; // skip this info
+        return null; // skip this info
     };
 
     const get_source = (lower, torrent) => {
@@ -1778,7 +1986,7 @@
         else if (lower.includes("hddvd") || lower.includes("hd-dvd")) return "HD-DVD / ";
         else if (lower.includes("bluray") || lower.includes("blu-ray") || lower.includes("blu.ray") || lower.includes("blu ray")) return "Blu-ray / ";
 
-        return ""; // skip this info
+        return null; // skip this info
     };
 
     const get_res = (lower, torrent) => {
@@ -1791,19 +1999,110 @@
         else if (lower.includes("1080p")) return "1080p / ";
         else if (lower.includes("2160p")) return "2160p / ";
 
-        return ""; // skip this info
+        return null; // skip this info
+    };
+    const get_audio = (lower, torrent) => {
+        if (lower.includes("atmos")) return "Dolby Atmos / ";
+        else if (lower.includes("dts:x")) return "DTS:X / ";
+        else if (lower.includes("mp3")) return "MP3 / ";
+
+        return null;
+    };
+    const get_hdr = (lower, torrent) =>{
+        if (lower.includes("dolby vision hdr10+")) return "Dolby Vision / HDR10+ / ";
+        else if (lower.includes("dolby vision hdr10")) return "Dolby Vision / HDR10 / ";
+        else if (lower.includes("dolby vision hdr")) return "Dolby Vision / HDR10 / ";
+        else if (lower.includes("dv hdr10+")) return "Dolby Vision / HDR10+ / ";
+        else if (lower.includes("dv hdr10")) return "Dolby Vision / HDR10 / ";
+        else if (lower.includes("dv hdr")) return "Dolby Vision / HDR10 / ";
+        else if (lower.includes("hdr10+ / dv")) return "Dolby Vision / HDR10+ / ";
+        else if (lower.includes("hdr10 / dv")) return "Dolby Vision / HDR10 / ";
+        else if (lower.includes("hdr / dv")) return "Dolby Vision / HDR10 / ";
+        else if (lower.includes(" dv ")) return "Dolby Vision / "; // Need spaces or else DVD suddenly has Dolby Vision.
+        else if (lower.includes("dovi")) return "Dolby Vision / ";
+        else if (lower.includes("dolby vision")) return "Dolby Vision / ";
+        else if (lower.includes("hdr10+")) return "HDR10+ / ";
+        else if (lower.includes("hdr10")) return "HDR10 / ";
+        else if (lower.includes("hdr")) return "HDR10 / ";
+
+        return null;
+    };
+    const get_bonus = (lower, torrent) => {
+        const bonuses = [];
+
+        if (lower.includes("remux")) bonuses.push("Remux");
+        const anthologyMatch = lower.match(/anthology/);
+        const yearMatch = lower.match(/\d{4}/);
+
+        if (anthologyMatch && yearMatch && anthologyMatch.index < yearMatch.index) {
+            bonuses.push("Anthology");
+        }
+        if (lower.includes("2in1")) bonuses.push("2in1");
+        if (lower.includes("commentary")) bonuses.push("Commentary");
+        if (lower.includes("special features")) bonuses.push("Special Features");
+
+        return bonuses.length > 0 ? bonuses.join(" / ") + " / " : null;
+    };
+    const get_country = (normal, torrent) => {
+        const exceptions = ["AVC", "DDP", "DTS", "PAL", "VHS", "WEB", "DVD", "HDR", "GLK", "UHD", "AKA", "TMT", "HDT", "ABC", "MKV", "AVI", "MP4", "VOB", "MAX"]; // Add any other exceptions as needed
+        const countryCodeMatch = normal.match(/\b[A-Z]{3}\b/g);
+        if (countryCodeMatch) {
+            const filteredCodes = countryCodeMatch.filter(code => !exceptions.includes(code));
+            if (filteredCodes.length > 0) {
+                return filteredCodes.join(' / ') + " / ";
+            }
+        }
+
+        return null; // skip this info
+    };
+    const get_group = (normal, torrent) => {
+        // Prefilter for Blu-ray and Blu-Ray and skip processing
+        //if (normal.includes("Blu-ray")) {
+        //    return "NoGrp"; // Skip further processing for this info
+        //} else {
+        const match = normal.match(/-[a-z0-9]+$/i); // Updated regex to match group patterns
+        if (match) {
+            let groupName = match[0].substring(1); // Remove the leading hyphen
+            groupName = groupName.replace(/[^a-z0-9]/gi, ''); // Sanitize the group name
+            return groupName;
+        }
+        return null; // Return null if no match is found
+        //}
     };
 
     const get_simplified_title = (info_text, torrent) => {
         let lower = info_text.toLowerCase();
+        let normal = info_text;
 
-        // required infos : codec (x264 vs) / container (mkv,mp4) / source (dvd,web,bluray) / res (1080p,720,SD,1024x768 etc) / Bonus (with commentary,remux, XYZ edition)
+        // required infos: codec (x264 vs) / container (mkv, mp4) / source (dvd, web, bluray) / res (1080p, 720, SD, 1024x768 etc) / Bonus (with commentary, remux, XYZ edition)
         let codec = get_codec(lower, torrent);
         let container = get_container(lower, torrent);
         let source = get_source(lower, torrent);
         let res = get_res(lower, torrent);
+        let audio = get_audio(lower, torrent);
+        let hdr = get_hdr(lower, torrent);
+        let bonus = get_bonus(lower, torrent);
+        let country = get_country(normal, torrent);
+        let disc = get_disc(lower, torrent);
+        let group = get_group(normal, torrent);
 
-        let combined_text = codec + container + source + res;
+        const parts = [];
+
+        if (codec) parts.push(codec.trim());
+        if (container) parts.push(container.trim());
+        if (source) parts.push(source.trim());
+        if (res) parts.push(res.trim());
+        if (audio) parts.push(audio.trim());
+        if (hdr) parts.push(hdr.trim());
+        if (bonus) parts.push(bonus.trim());
+        if (country) parts.push(country.trim());
+        if (disc) parts.push(disc.trim());
+        if (group) parts.push(group.trim());
+
+        // Use a Set to filter out duplicates
+        const uniqueParts = [...new Set(parts)];
+
+        let combined_text = uniqueParts.join(' ').replace(/\s+\/$/, '').trim();
 
         if (combined_text === "") return info_text;
         else return combined_text;
@@ -1834,6 +2133,7 @@
             let ref_div;
             let tracker = torrent.site;
             let dom_id = tracker + "_" + i;
+            const group_id = get_group(torrent.info_text) || torrent.groupId;
 
             if (torrent.quality === "UHD") {
                 ref_div = get_ref_div(torrent, uhd_ptp_torrents);
@@ -1848,55 +2148,88 @@
 
             let cln = line_example.cloneNode(true);
 
-            if (show_tracker_name) {
+            if (improved_tags) {
+                cln.querySelector(".torrent-info-link").textContent = get_simplified_title(torrent.info_text);
+            } else if (show_tracker_name) {
                 cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] ` + torrent.info_text;
             } else {
                 cln.querySelector(".torrent-info-link").textContent = torrent.info_text;
             }
 
             if (!hide_tags) {
-                    // Colorize some tags, site specific.
                     if (torrent.site === "HDB") {
-                        torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
-                        torrent.exclusive ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #a14989'>Exclusive</span>" : false;
+                        torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
+                        torrent.exclusive ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__exclusive' style='font-weight: bold; color: #a14989'>Exclusive</span>" : false;
                     }
                     if (torrent.site === "BHD") {
-                        torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
+                        torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
                     }
                     if (torrent.site === "BTN") {
-                        torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #00FF00'>Internal</span>" : false;
-                        torrent.season2 ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #FF0000'>Season 2</span>" : false;
+                        torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #00FF00'>Internal</span>" : false;
+                        torrent.season2 ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__season2' style='font-weight: bold; color: #FF0000'>Season 2</span>" : false;
                     }
                     if (torrent.site === "ANT") {
-                        torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2CB430'>Internal</span>" : false;
-                        torrent.reported ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #FF0000'>Reported</span>" : false;
-                        torrent.trumpable ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #FF8C00'>Trumpable</span>" : false;
+                        torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #2CB430'>Internal</span>" : false;
                     }
                     if (torrent.site === "MTV") {
-                        torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
-                        torrent.reported ? cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #FF0000'>Reported</span>" : false;
+                        torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
                     }
                     if (torrent.site === "BLU" || torrent.site ==="Aither" || torrent.site ===  "RFX" || torrent.site ===  "OE" || torrent.site ===  "HUNO") {
-                        get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #baaf92'>Internal</span>") : false;
-                        get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #279d29'>DU</span>") : false;
-                        get_api_featured(torrent.featured) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #997799'>Featured</span>") : false;
-                        get_api_personal_release(torrent.personal_release) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #865BE9'>Personal Release</span>") : false;
+                        get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #baaf92'>Internal</span>") : false;
+                        get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__DU' style='font-weight: bold; color: #279d29'>DU</span>") : false;
+                        get_api_featured(torrent.featured) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__Featured' style='font-weight: bold; color: #997799'>Featured</span>") : false;
+                        get_api_personal_release(torrent.personal_release) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__Personal' style='font-weight: bold; color: #865BE9'>Personal Release</span>") : false;
                     }
                     if (torrent.site === "TIK") {
-                        get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #baaf92'>Internal</span>") : false;
-                        get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #3FB618'>Emerald</span>") : false;
-                        get_api_featured(torrent.featured, torrent.site) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #26A69A'>Platinum</span>") : false;
-                        get_api_personal_release(torrent.personal_release) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span style='font-weight: bold; color: #865BE9'>Personal Release</span>") : false;
+                        get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #baaf92'>Internal</span>") : false;
+                        get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__Emerald' style='font-weight: bold; color: #3FB618'>Emerald</span>") : false;
+                        get_api_featured(torrent.featured, torrent.site) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__Platinum' style='font-weight: bold; color: #26A69A'>Platinum</span>") : false;
+                        get_api_personal_release(torrent.personal_release) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__Personal' style='font-weight: bold; color: #865BE9'>Personal Release</span>") : false;
                     }
                 }
-            torrent.discount != "None" ? cln.querySelector(".torrent-info-link").innerHTML += ` / <span style='font-weight: bold;color:${get_discount_color(torrent.discount)};'>` + torrent.discount + "!</span>" : false;
+                if (improved_tags) {
+                    if (torrent.discount === "Freeleech" || torrent.discount === "Golden") {
+                        cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__download-modifier torrent-info__download-modifier--free'>Freeleech!</span>";
+                    } else if (torrent.discount === "50% Freeleech" || torrent.discount === "Bronze") {
+                        cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__download-modifier torrent-info__download-modifier--half'>Half-leech!</span>";
+                    } else if (torrent.discount != "None") {
+                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__download-mod'>${torrent.discount}!</span>`;
+                    }
+                } else {
+                    if (torrent.discount != "None") {
+                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__download-modifier torrent-info__download-modifier--free'>${torrent.discount}!</span>`;
+                    }
+                }
+                if (!hide_tags) {
+                    if (torrent.reported != null && torrent.reported != false) {
+                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__reported'>Reported</span>`;
+                    }
+                    if (torrent.trumpable != null && torrent.trumpable != false) {
+                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__trumpable'>Trumpable</span>`;
+                    }
+                }
+                if (improved_tags) {
+                    if (torrent.distributor != null && torrent.distributor != false) {
+                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__distributor'>${torrent.distributor}</span>`;
+                    }
+                    if (torrent.region != null && torrent.region != false) {
+                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__region'>${torrent.region}</span>`;
+                    }
+                    if (show_tracker_name) {
+                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__tracker-name'>[${torrent.site}]</span>`;
+                    }
+                }
 
             //cln.querySelector(".torrent-info-link").textContent = torrent.info_text;
             if (torrent.status === "seeding") cln.querySelector(".torrent-info-link").className += " torrent-info-link--user-seeding";
             if (torrent.status === "grabbed") cln.querySelector(".torrent-info-link").className += " torrent-info-link--user-downloaded";
             if (torrent.status === "snatched") cln.querySelector(".torrent-info-link").className += " torrent-info-link--user-snatched";
 
-            //cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] ` + get_simplified_title(torrent.info_text);
+            //if (show_tracker_name) {
+            //    cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] ` + get_simplified_title(torrent.info_text);
+            //} else {
+            //    cln.querySelector(".torrent-info-link").textContent = get_simplified_title(torrent.info_text);
+            //}
             let elements = cln.querySelector(".basic-movie-list__torrent__action").querySelectorAll("a");
 
             if (elements.length > 0) {
@@ -1928,8 +2261,9 @@
                 }
                 return;
             }
-
+            const element_size = get_element_size(torrent.size);
             cln.querySelector(".size-span").textContent = ptp_format_size;
+            cln.querySelector(".size-span").setAttribute("title", element_size);
             cln.querySelector("td:nth-child(3)").textContent = torrent.snatch; // snatch
             cln.querySelector("td:nth-child(4)").textContent = torrent.seed; // seed
 
@@ -1940,6 +2274,17 @@
             cln.querySelector("td:nth-child(5)").textContent = torrent.leech; // leech
             cln.querySelector(".link_3").href = torrent.torrent_page;
             cln.className += " " + dom_id;
+            cln.id += " " + dom_id;
+            if (torrent.info_text && cln.dataset.releasename) {
+                cln.datase.releasename += torrent.info_text;
+            } else if (torrent.info_text) {
+                cln.dataset.releasename = torrent.info_text;
+            }
+            if (group_id && cln.dataset.releasegroup) {
+                cln.dataset.releasegroup += group_id;
+            } else if (group_id) {
+                cln.dataset.releasegroup = group_id;
+            }
 
             if (open_in_new_tab) cln.querySelector(".link_3").target = "_blank";
 
@@ -1961,7 +2306,7 @@
             let snatchers = parseInt(torrent.snatch);
             let size = torrent.size;
 
-            doms.push({ tracker, dom_path, quality, discount, info_text, seeders, leechers, snatchers, dom_id, size });
+            doms.push({ tracker, dom_path, quality, discount, info_text, group_id, seeders, leechers, snatchers, dom_id, size });
         });
 
         let reduced_trackers = get_reduced_trackers(doms);
@@ -2033,9 +2378,13 @@
 
     const fix_doms = () => {
         doms.forEach((d) => {
-            d.dom_path = [...document.querySelectorAll(".group_torrent")].find(e => e.className.split(" ").find(c => c === d.dom_id) != undefined);
+            // Find the element with class 'group_torrent' that also has a class matching d.dom_id
+            const targetElement = [...document.querySelectorAll(".group_torrent")].find(e =>
+                e.classList.contains(d.dom_id)
+            );
+            // Update the dom_path property
+            d.dom_path = targetElement;
         });
-
     };
 
     const filter_torrents = () => {
@@ -2203,32 +2552,54 @@
     };
 
     const fix_ptp_names = () => {
-        if (ptp_release_name) {
-            document.querySelectorAll("tr.group_torrent").forEach(d => {
-                // Find the closest header element with a matching dom_id class
-                const matchingDom = doms.find(dom => d.classList.contains(dom.dom_id));
-                if (matchingDom) {
-                    const torrent = d.querySelector("a.torrent-info-link");
-                    if (torrent) {
-                        // Extract the HTML element with the specific class if present
-                        const freeleechSpan = torrent.querySelector("span.torrent-info__download-modifier.torrent-info__download-modifier--free");
-                        const trumpableSpan = torrent.querySelector("span.torrent-info__trumpable");
-                        const reportedSpan = torrent.querySelector("span.torrent-info__reported");
-                        let freeleechSpanHtml = '';
-                        if (freeleechSpan) {
-                            freeleechSpanHtml = freeleechSpan.outerHTML;
-                            freeleechSpan.remove(); // Remove the element temporarily
-                        }
-                        let trumpableSpanHtml = '';
-                        if (trumpableSpan) {
-                            trumpableSpanHtml = trumpableSpan.outerHTML;
-                            trumpableSpan.remove();
-                        }
-                        let reportedSpanHtml = '';
-                        if (reportedSpan) {
-                            reportedSpanHtml = reportedSpan.outerHTML;
-                            reportedSpan.remove();
-                        }
+        document.querySelectorAll("tr.group_torrent").forEach(d => {
+          if (ptp_release_name) {
+            // Find the closest header element with a matching dom_id class
+            const matchingDom = doms.find(dom => d.classList.contains(dom.dom_id));
+            if (matchingDom) {
+                const torrent = d.querySelector("a.torrent-info-link");
+                if (torrent) {
+                    // Extract the HTML element with the specific class if present
+                    const freeleechSpan = torrent.querySelector("span.torrent-info__download-modifier.torrent-info__download-modifier--free");
+                    const halfleechSpan = torrent.querySelector("span.torrent-info__download-modifier.torrent-info__download-modifier--half");
+                    const trumpableSpan = torrent.querySelector("span.torrent-info__trumpable");
+                    const reportedSpan = torrent.querySelector("span.torrent-info__reported");
+
+                    const freeleechSpanHtml = freeleechSpan ? freeleechSpan.outerHTML : '';
+                    const halfleechSpanHtml = halfleechSpan ? halfleechSpan.outerHTML : '';
+                    const trumpableSpanHtml = trumpableSpan ? trumpableSpan.outerHTML : '';
+                    const reportedSpanHtml = reportedSpan ? reportedSpan.outerHTML : '';
+
+                    [freeleechSpan, halfleechSpan, trumpableSpan, reportedSpan].forEach(span => {
+                        if (span) span.remove(); // Remove the element temporarily
+                    });
+
+                    // Define patterns to keep full stops
+                    const keepPatterns = [
+                        /\b\d\.\d\b/g,
+                        /\bDD\d\.\d\b/g,
+                        /\bDDP\d\.\d\b/g,
+                        /\bDD\+\d\.\d\b/g,
+                        /\bTrueHD \d\.\d\b/g,
+                        /\bDTS\d\.\d\b/g,
+                        /\bAC3\d\.\d\b/g,
+                        /\bAAC\d\.\d\b/g,
+                        /\bOPUS\d\.\d\b/g,
+                        /\bMP3\d\.\d\b/g,
+                        /\bFLAC\d\.\d\b/g,
+                        /\bLPCM\d\.\d\b/g,
+                        /\bH\.264\b/g,
+                        /\bH\.265\b/g,
+                        /\bDTS-HD MA \d\.\d\b/g
+                    ];
+
+                    let ptp_info_text = matchingDom.info_text;
+
+                    // Function to replace full stops outside of the patterns
+                    const replaceFullStops = (text) => {
+                        // Map to store original patterns and their placeholders
+                        const placeholders = new Map();
+                        let tempText = text;
 
                         // Define patterns to keep full stops
                         const keepPatterns = [
@@ -2250,80 +2621,75 @@
                             /\bDTS-HD MA \d\.\d\b/g // Ensuring variations
                         ];
 
-                        let ptp_info_text = matchingDom.info_text;
-
-                        // Conditionally remove group names
-                        if (remove_group) {
-                            ptp_info_text = ptp_info_text.replace(/-\w+/g, '');
-                        }
-
-                        // Function to replace full stops outside of the patterns
-                        const replaceFullStops = (text) => {
-                            // Map to store original patterns and their placeholders
-                            const placeholders = new Map();
-                            let tempText = text;
-
-                            // Temporarily replace patterns with placeholders
-                            keepPatterns.forEach((pattern, index) => {
-                                tempText = tempText.replace(pattern, (match) => {
-                                    const placeholder = `__PLACEHOLDER${index}__`;
-                                    placeholders.set(placeholder, match);
-                                    return placeholder;
-                                });
+                        // Temporarily replace patterns with placeholders
+                        keepPatterns.forEach((pattern, index) => {
+                            tempText = tempText.replace(pattern, (match) => {
+                                const placeholder = `__PLACEHOLDER${index}__`;
+                                placeholders.set(placeholder, match);
+                                return placeholder;
                             });
+                        });
 
-                            // Replace remaining full stops
-                            tempText = tempText.replace(/\.(?!(\d))/g, ' '); // Replace full stops not followed by a digit
-                            tempText = tempText.replace(/(?<!\d)\./g, ' '); // Replace full stops not preceded by a digit
+                        // Replace remaining full stops not followed by a digit, not preceded by a digit, or directly following a year
+                        tempText = tempText.replace(/(?<!\d)\.(?!\d)/g, ' '); // Replace full stops not preceded by a digit
+                        tempText = tempText.replace(/\.(?!(\d))/g, ' '); // Replace full stops not followed by a digit
+                        tempText = tempText.replace(/(?<=\b\d{4})\./g, ' '); // Remove full stops directly following a year
+                        tempText = tempText.replace(/\.(?=\b\d{4}\b)/g, ' '); // Remove full stops directly before a year
 
-                            // Restore the original patterns from the placeholders
-                            placeholders.forEach((original, placeholder) => {
-                                tempText = tempText.replace(placeholder, original);
-                            tempText = tempText.replace(/DD\+/g, 'DD+ ').replace(/DDP/g, 'DD+ ').replace(/DoVi/g, 'DV');
-                            tempText = tempText.replace(/\(/g, '').replace(/\)/g, '');
-                            tempText = tempText.replace(/\bhdr\b/g, 'HDR');
-                            tempText = tempText.replace(/\bweb\b/g, 'WEB');
-                            tempText = tempText.replace(/\bbluray\b/gi, 'BluRay');
-                            tempText = tempText.replace(/\bh254\b/g, 'H.264');
-                            tempText = tempText.replace(/\bh265\b/g, 'H.265');
-                            tempText = tempText.replace(/\b\w/g, char => char.toUpperCase());
-                            tempText = tempText.replace(/\bX264\b/g, 'x264');
-                            tempText = tempText.replace(/\bX265\b/g, 'x265');
-                            tempText = tempText.replace(/\b - \b/g, ' ');
-                            });
+                        // Restore the original patterns from the placeholders
+                        placeholders.forEach((original, placeholder) => {
+                            tempText = tempText.replace(new RegExp(placeholder, 'g'), original);
+                        });
 
-                            return tempText;
-                        };
+                        // Additional replacements
+                        tempText = tempText
+                            .replace(/DD\+/g, 'DD+ ')
+                            .replace(/DDP/g, 'DD+ ')
+                            .replace(/DoVi/g, 'DV')
+                            .replace(/\(/g, '')
+                            .replace(/\)/g, '')
+                            .replace(/\bhdr\b/g, 'HDR')
+                            .replace(/\bweb\b/g, 'WEB')
+                            .replace(/\bbluray\b/gi, 'BluRay')
+                            .replace(/\bh254\b/g, 'H.264')
+                            .replace(/\bh265\b/g, 'H.265')
+                            .replace(/\b\w/g, char => char.toUpperCase())
+                            .replace(/\bX264\b/g, 'x264')
+                            .replace(/\bX265\b/g, 'x265')
+                            .replace(/\b - \b/g, ' ');
 
-                        // Clean ptp_info_text by replacing full stops according to the rules
-                        const cleanedPtpInfoText = replaceFullStops(ptp_info_text);
+                        return tempText;
+                    };
 
-                        // Re-add the extracted HTML elements after making the modifications
-                        // Construct the final innerHTML string
-                        let finalHtml = `[PTP] ${cleanedPtpInfoText}`;
-                        if (freeleechSpanHtml) {
-                            finalHtml += ` / ${freeleechSpanHtml}`;
-                        }
-                        if (trumpableSpanHtml) {
-                            finalHtml += ` / ${trumpableSpanHtml}`;
-                        }
-                        if (reportedSpanHtml) {
-                            finalHtml += ` / ${reportedSpanHtml}`;
-                        }
-                        torrent.innerHTML = finalHtml;
-                        }
+                    // Clean ptp_info_text by replacing full stops according to the rules
+                    const cleanedPtpInfoText = replaceFullStops(ptp_info_text);
+
+                    // Re-add the extracted HTML elements after making the modifications
+                    // Construct the final innerHTML string
+                    let finalHtml = show_tracker_name
+                        ? `[PTP]${improved_tags ? ' /' : ''} ${cleanedPtpInfoText}`
+                        : `${cleanedPtpInfoText}`;
+
+                    [freeleechSpanHtml, halfleechSpanHtml, trumpableSpanHtml, reportedSpanHtml].forEach(spanHtml => {
+                        if (spanHtml) finalHtml += ` / ${spanHtml}`;
+                    });
+
+                    torrent.innerHTML = finalHtml;
                 }
-            });
-        } else {
-            document.querySelectorAll("tr.group_torrent").forEach(d => {
-                if (d.className != "group_torrent") {
+              }
+            } else {
+                if (d.className !== "group_torrent") {
                     const torrent = d.querySelector("a.torrent-info-link");
                     if (torrent) {
-                        torrent.innerHTML = "[PTP] " + torrent.innerHTML;
+                        if (improved_tags && show_tracker_name) {
+                            torrent.innerHTML = "[PTP] / " + torrent.innerHTML;
+                        } else if (show_tracker_name) {
+                            torrent.innerHTML = "[PTP] " + torrent.innerHTML;
+                        }
                     }
                 }
-            });
-        }
+            }
+        });
     };
 
     const add_filters_div = (trackers, discounts, qualities) => {
@@ -2519,7 +2885,9 @@
     const get_example_div = () => {
         let tr = document.createElement("tr");
         tr.className = "group_torrent group_torrent_header";
+        tr.id = "group_torrent_header";
         tr["data-releasename"] = "release_name_here";
+        tr["data-releasegroup"] = "group_name_here";
 
         let td = document.createElement("td");
         td.style.width = "596px";
@@ -2589,6 +2957,7 @@
         let span2 = document.createElement("span");
         span2.className = "size-span";
         span2.style.float = "left";
+        span2.title = "SIZE_IN_BYTES_HERE";
         span2.textContent = "TORRENT_SIZE_HERE";
         td2.appendChild(span2);
 
@@ -2778,42 +3147,42 @@
     let original_table;
 
     function displayAlert(text, backgroundColor = "red") {
-        const alert = document.createElement("div");
-        alert.className = "alert text--center alert-fade";
-        alert.textContent = text;
-        alert.style = `background-color: ${backgroundColor}; color: white`;
-        document.querySelector("#content").prepend(alert);
+      const alert = document.createElement("div");
+      alert.className = "alert text--center alert-fade";
+      alert.textContent = text;
+      alert.style = `background-color: ${backgroundColor}; color: white`;
+      document.querySelector("#content").prepend(alert);
 
+      setTimeout(() => {
+        alert.classList.add("alert-fade-out");
         setTimeout(() => {
-          alert.classList.add("alert-fade-out");
-          setTimeout(() => {
-            alert.remove();
-          }, 1000);
-        }, timerDuration);
-      }
+          alert.remove();
+        }, 1000);
+      }, timerDuration);
+    }
 
     const mainFunc = async () => {
-        if (show_tracker_name) {
+        if (show_tracker_name || improved_tags || ptp_release_name) {
             fix_ptp_names();
         }
 
-        let imdb_id;
+    let imdb_id;
 
+    try {
+        // Attempt to fetch the IMDb ID from a specific link
+        imdb_id = "tt" + document.getElementById("imdb-title-link").href.split("/tt")[1].split("/")[0];
+    } catch (e) {
+        console.log("Failed to extract IMDb ID using imdb-title-link, attempting fallback method:", e);
+        // Fallback to fetching the IMDb ID from any link within a `.rating` element that includes an IMDb URL
         try {
-            // Attempt to fetch the IMDb ID from a specific link
-            imdb_id = "tt" + document.getElementById("imdb-title-link").href.split("/tt")[1].split("/")[0];
-        } catch (e) {
-            console.log("Failed to extract IMDb ID using imdb-title-link, attempting fallback method:", e);
-            // Fallback to fetching the IMDb ID from any link within a `.rating` element that includes an IMDb URL
-            try {
-                imdb_id = "tt" + [...document.querySelectorAll(".rating")]
-                                  .find(a => a.href.includes("imdb.com"))
-                                  .href.split("/tt")[1]
-                                  .split("/")[0];
-            } catch (fallbackError) {
-                console.log("Failed to extract IMDb ID using fallback method:", fallbackError);
-            }
+            imdb_id = "tt" + [...document.querySelectorAll(".rating")]
+                              .find(a => a.href.includes("imdb.com"))
+                              .href.split("/tt")[1]
+                              .split("/")[0];
+        } catch (fallbackError) {
+            console.log("Failed to extract IMDb ID using fallback method:", fallbackError);
         }
+    }
 
         let name_url = document.querySelector("h2.page__title").textContent.trim();
         let show_name;
