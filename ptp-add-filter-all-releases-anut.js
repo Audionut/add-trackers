@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.4.4-A
+// @version      3.4.5-A
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -53,7 +53,7 @@
     const run_by_default = true; // false = won't run the script by default, but will add an "Other Trackers" link under the page title, which when clicked will run the script.
     const timer = 4000; // set the timer here to timeout slow/non-responsive tracker calls. 4 seconds seems like a safe default.
     const timerDuration = 2000; // set the length of time the error message should be displayed on page.
-    let ptp_release_name = true; // true = show release name - false = original PTP release style. Set false if Improved Tags.
+    let ptp_release_name = true; // true = show release name - false = original PTP release style. Ignored if Improved Tags  = true
     let improved_tags = false; // true = Change display to work fully with PTP Improved Tags from jmxd.
     const show_resolution_by_default = []; // Use this to only show specified resolutions by default. ||| "SD", "480p", "576p", "720p", "1080p", "2160p"
 
@@ -2167,7 +2167,7 @@
             let cln = line_example.cloneNode(true);
 
             if (improved_tags) {
-                cln.querySelector(".torrent-info-link").textContent = get_simplified_title(torrent.info_text);
+                cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] ` + get_simplified_title(torrent.info_text);
             } else if (show_tracker_name) {
                 cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] ` + torrent.info_text;
             } else {
@@ -2233,21 +2233,12 @@
                     if (torrent.region != null && torrent.region != false) {
                         cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__region'>${torrent.region}</span>`;
                     }
-                    if (show_tracker_name) {
-                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__tracker-name'>[${torrent.site}]</span>`;
-                    }
                 }
 
-            //cln.querySelector(".torrent-info-link").textContent = torrent.info_text;
             if (torrent.status === "seeding") cln.querySelector(".torrent-info-link").className += " torrent-info-link--user-seeding";
             if (torrent.status === "grabbed") cln.querySelector(".torrent-info-link").className += " torrent-info-link--user-downloaded";
             if (torrent.status === "snatched") cln.querySelector(".torrent-info-link").className += " torrent-info-link--user-snatched";
 
-            //if (show_tracker_name) {
-            //    cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] ` + get_simplified_title(torrent.info_text);
-            //} else {
-            //    cln.querySelector(".torrent-info-link").textContent = get_simplified_title(torrent.info_text);
-            //}
             let elements = cln.querySelector(".basic-movie-list__torrent__action").querySelectorAll("a");
 
             if (elements.length > 0) {
@@ -2327,8 +2318,8 @@
             doms.push({ tracker, dom_path, quality, discount, info_text, group_id, seeders, leechers, snatchers, dom_id, size });
         });
 
-        console.log("Finished processing");
-        const event = new CustomEvent('scriptAFinished');
+        console.log("Finished processing for other scripts");
+        const event = new CustomEvent('PTPAddReleasesFromOtherTrackersComplete');
         window.dispatchEvent(event);
 
         let reduced_trackers = get_reduced_trackers(doms);
@@ -2616,7 +2607,7 @@
 
     const fix_ptp_names = () => {
         document.querySelectorAll("tr.group_torrent").forEach(d => {
-          if (ptp_release_name) {
+          if (ptp_release_name && !improved_tags) {
             // Find the closest header element with a matching dom_id class
             const matchingDom = doms.find(dom => d.classList.contains(dom.dom_id));
             if (matchingDom) {
@@ -3025,13 +3016,8 @@
         td2.appendChild(span2);
 
         let td3 = document.createElement("td");
-        td3.style.width = "31px";
-
         let td4 = document.createElement("td");
-        td3.style.width = "21px";
-
         let td5 = document.createElement("td");
-        td3.style.width = "10px";
 
         tr.appendChild(td);
         tr.appendChild(td2);
