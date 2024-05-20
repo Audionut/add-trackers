@@ -2285,9 +2285,9 @@
             cln.className += " " + dom_id;
             cln.id += " " + dom_id;
             if (torrent.info_text && cln.dataset.releasename) {
-                cln.datase.releasename += torrent.info_text;
+                cln.datase.releasename += `[${torrent.site}] ` + torrent.info_text;
             } else if (torrent.info_text) {
-                cln.dataset.releasename = torrent.info_text;
+                cln.dataset.releasename = `[${torrent.site}] ` + torrent.info_text;
             }
             if (group_id && cln.dataset.releasegroup) {
                 cln.dataset.releasegroup += group_id;
