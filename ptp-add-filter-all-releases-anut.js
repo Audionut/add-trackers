@@ -919,6 +919,16 @@
                         let infoText = infoTextElement ? infoTextElement.textContent.trim() : "";
 
                         if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
+                            let groupText = "";
+                            if (remove_group || improved_tags) {
+                                const match = infoText.match(/-([^-]+)$/);
+                                if (match) {
+                                    groupText = match[0].substring(1);
+                                    groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                    infoText = infoText.replace(groupText, '');
+                                }
+                            }
+                            torrent_obj.groupId = groupText;
                             torrent_obj.info_text = infoText;
                             torrent_obj.site = "BHD";
 
@@ -1675,7 +1685,7 @@
         } else if (sizeInGB <= 100) {
             return "BD100";
         } else {
-            return "BDXL";
+            return "BDSET";
         }
     };
 
@@ -1899,6 +1909,17 @@
         }
     };
 
+    const get_element_size = (size) => {
+        if (typeof size === 'string') {
+            size = parseFloat(size);
+        }
+        if (isNaN(size) || size === null || size === undefined) {
+            return "N/A"; // or any default value you prefer
+        }
+        const bytes = size * 1024 * 1024;
+        return bytes.toLocaleString() + " Bytes";
+    };
+
     const add_as_first = (div, quality) => { // puts 2gb 1080p at the top of the pack.
         let all_trs = [...document.querySelectorAll("tr.group_torrent")];
         let first_idx;
@@ -2037,9 +2058,9 @@
     };
     const get_group = (normal, torrent) => {
         // Prefilter for Blu-ray and Blu-Ray and skip processing
-        if (normal.includes("Blu-ray")) {
-            return "NoGrp"; // Skip further processing for this info
-        } else {
+        //if (normal.includes("Blu-ray")) {
+        //    return "NoGrp"; // Skip further processing for this info
+        //} else {
         const match = normal.match(/-[a-z0-9]+$/i); // Updated regex to match group patterns
         if (match) {
             let groupName = match[0].substring(1); // Remove the leading hyphen
@@ -2047,7 +2068,7 @@
             return groupName;
         }
         return null; // Return null if no match is found
-        }
+        //}
     };
 
     const get_simplified_title = (info_text, torrent) => {
@@ -2169,7 +2190,8 @@
                         get_api_personal_release(torrent.personal_release) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__Personal' style='font-weight: bold; color: #865BE9'>Personal Release</span>") : false;
                     }
                 }
-            torrent.discount != "None" ? cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__download-modifier torrent-info__download-modifier--free'>` + torrent.discount + "!</span>" : false;
+            //torrent.discount != "None" ? cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__download-modifier torrent-info__download-modifier--free'>` + torrent.discount + "!</span>" : false;
+            torrent.discount != "None" ? cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__modifier torrent-info__modifier--spec'>` + torrent.discount + "!</span>" : false;
             if (!hide_tags) {
                 if (torrent.reported != null && torrent.reported != false) {
                     cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__reported'>Reported</span>`;
@@ -2231,8 +2253,9 @@
                 }
                 return;
             }
-
+            const element_size = get_element_size(torrent.size);
             cln.querySelector(".size-span").textContent = ptp_format_size;
+            cln.querySelector(".size-span").setAttribute("title", element_size);
             cln.querySelector("td:nth-child(3)").textContent = torrent.snatch; // snatch
             cln.querySelector("td:nth-child(4)").textContent = torrent.seed; // seed
 
@@ -2243,6 +2266,7 @@
             cln.querySelector("td:nth-child(5)").textContent = torrent.leech; // leech
             cln.querySelector(".link_3").href = torrent.torrent_page;
             cln.className += " " + dom_id;
+            cln.id += " " + dom_id;
             if (torrent.info_text && cln.dataset.releasename) {
                 cln.datase.releasename += torrent.info_text;
             } else if (torrent.info_text) {
@@ -2346,9 +2370,13 @@
 
     const fix_doms = () => {
         doms.forEach((d) => {
-            d.dom_path = [...document.querySelectorAll(".group_torrent")].find(e => e.className.split(" ").find(c => c === d.dom_id) != undefined);
+            // Find the element with class 'group_torrent' that also has a class matching d.dom_id
+            const targetElement = [...document.querySelectorAll(".group_torrent")].find(e =>
+                e.classList.contains(d.dom_id)
+            );
+            // Update the dom_path property
+            d.dom_path = targetElement;
         });
-
     };
 
     const filter_torrents = () => {
@@ -2516,32 +2544,59 @@
     };
 
     const fix_ptp_names = () => {
-        if (ptp_release_name) {
-            document.querySelectorAll("tr.group_torrent").forEach(d => {
-                // Find the closest header element with a matching dom_id class
-                const matchingDom = doms.find(dom => d.classList.contains(dom.dom_id));
-                if (matchingDom) {
-                    const torrent = d.querySelector("a.torrent-info-link");
-                    if (torrent) {
-                        // Extract the HTML element with the specific class if present
-                        const freeleechSpan = torrent.querySelector("span.torrent-info__download-modifier.torrent-info__download-modifier--free");
-                        const trumpableSpan = torrent.querySelector("span.torrent-info__trumpable");
-                        const reportedSpan = torrent.querySelector("span.torrent-info__reported");
-                        let freeleechSpanHtml = '';
-                        if (freeleechSpan) {
-                            freeleechSpanHtml = freeleechSpan.outerHTML;
-                            freeleechSpan.remove(); // Remove the element temporarily
-                        }
-                        let trumpableSpanHtml = '';
-                        if (trumpableSpan) {
-                            trumpableSpanHtml = trumpableSpan.outerHTML;
-                            trumpableSpan.remove();
-                        }
-                        let reportedSpanHtml = '';
-                        if (reportedSpan) {
-                            reportedSpanHtml = reportedSpan.outerHTML;
-                            reportedSpan.remove();
-                        }
+        document.querySelectorAll("tr.group_torrent").forEach(d => {
+            // Find the closest header element with a matching dom_id class
+            const matchingDom = doms.find(dom => d.classList.contains(dom.dom_id));
+            if (matchingDom) {
+                const torrent = d.querySelector("a.torrent-info-link");
+                if (torrent) {
+                    // Extract the HTML element with the specific class if present
+                    const freeleechSpan = torrent.querySelector("span.torrent-info__download-modifier.torrent-info__download-modifier--free");
+                    const halfleechSpan = torrent.querySelector("span.torrent-info__download-modifier.torrent-info__download-modifier--half");
+                    const trumpableSpan = torrent.querySelector("span.torrent-info__trumpable");
+                    const reportedSpan = torrent.querySelector("span.torrent-info__reported");
+
+                    const freeleechSpanHtml = freeleechSpan ? freeleechSpan.outerHTML : '';
+                    const halfleechSpanHtml = halfleechSpan ? halfleechSpan.outerHTML : '';
+                    const trumpableSpanHtml = trumpableSpan ? trumpableSpan.outerHTML : '';
+                    const reportedSpanHtml = reportedSpan ? reportedSpan.outerHTML : '';
+
+                    [freeleechSpan, halfleechSpan, trumpableSpan, reportedSpan].forEach(span => {
+                        if (span) span.remove(); // Remove the element temporarily
+                    });
+
+                    // Define patterns to keep full stops
+                    const keepPatterns = [
+                        /\b\d\.\d\b/g,
+                        /\bDD\d\.\d\b/g,
+                        /\bDDP\d\.\d\b/g,
+                        /\bDD\+\d\.\d\b/g,
+                        /\bTrueHD \d\.\d\b/g,
+                        /\bDTS\d\.\d\b/g,
+                        /\bAC3\d\.\d\b/g,
+                        /\bAAC\d\.\d\b/g,
+                        /\bOPUS\d\.\d\b/g,
+                        /\bMP3\d\.\d\b/g,
+                        /\bFLAC\d\.\d\b/g,
+                        /\bLPCM\d\.\d\b/g,
+                        /\bH\.264\b/g,
+                        /\bH\.265\b/g,
+                        /\bDTS-HD MA \d\.\d\b/g
+                    ];
+
+                    let ptp_info_text = matchingDom.info_text;
+                    console.log("info text", matchingDom.info_text);
+
+                    // Conditionally remove group names
+                    if (remove_group) {
+                        ptp_info_text = ptp_info_text.replace(/-\w+/g, '');
+                    }
+
+                    // Function to replace full stops outside of the patterns
+                    const replaceFullStops = (text) => {
+                        // Map to store original patterns and their placeholders
+                        const placeholders = new Map();
+                        let tempText = text;
 
                         // Define patterns to keep full stops
                         const keepPatterns = [
@@ -2559,100 +2614,76 @@
                             /\bLPCM\d\.\d\b/g,
                             /\bH\.264\b/g,
                             /\bH\.265\b/g,
-                            /\bDTS-HD MA \d\.\d\b/g,
-                            /\bDTS-HD MA \d\.\d\b/g // Ensuring variations
+                            /\bDTS-HD MA \d\.\d\b/g
                         ];
 
-                        let ptp_info_text = matchingDom.info_text;
-
-                        // Conditionally remove group names
-                        if (remove_group) {
-                            ptp_info_text = ptp_info_text.replace(/-\w+/g, '');
-                        }
-
-                        // Function to replace full stops outside of the patterns
-                        const replaceFullStops = (text) => {
-                            // Map to store original patterns and their placeholders
-                            const placeholders = new Map();
-                            let tempText = text;
-
-                            // Temporarily replace patterns with placeholders
-                            keepPatterns.forEach((pattern, index) => {
-                                tempText = tempText.replace(pattern, (match) => {
-                                    const placeholder = `__PLACEHOLDER${index}__`;
-                                    placeholders.set(placeholder, match);
-                                    return placeholder;
-                                });
+                        // Temporarily replace patterns with placeholders
+                        keepPatterns.forEach((pattern, index) => {
+                            tempText = tempText.replace(pattern, (match) => {
+                                const placeholder = `__PLACEHOLDER${index}__`;
+                                placeholders.set(placeholder, match);
+                                return placeholder;
                             });
+                        });
 
-                            // Replace remaining full stops
-                            tempText = tempText.replace(/\.(?!(\d))/g, ' '); // Replace full stops not followed by a digit
-                            tempText = tempText.replace(/(?<!\d)\./g, ' '); // Replace full stops not preceded by a digit
+                        // Replace remaining full stops not followed by a digit, not preceded by a digit, or directly following a year
+                        tempText = tempText.replace(/(?<!\d)\.(?!\d)/g, ' '); // Replace full stops not preceded by a digit
+                        tempText = tempText.replace(/\.(?!(\d))/g, ' '); // Replace full stops not followed by a digit
+                        tempText = tempText.replace(/(?<=\b\d{4})\./g, ' '); // Remove full stops directly following a year
+                        tempText = tempText.replace(/\.(?=\b\d{4}\b)/g, ' '); // Remove full stops directly before a year
 
-                            // Restore the original patterns from the placeholders
-                            placeholders.forEach((original, placeholder) => {
-                                tempText = tempText.replace(placeholder, original);
-                            tempText = tempText.replace(/DD\+/g, 'DD+ ').replace(/DDP/g, 'DD+ ').replace(/DoVi/g, 'DV');
-                            tempText = tempText.replace(/\(/g, '').replace(/\)/g, '');
-                            tempText = tempText.replace(/\bhdr\b/g, 'HDR');
-                            tempText = tempText.replace(/\bweb\b/g, 'WEB');
-                            tempText = tempText.replace(/\bbluray\b/gi, 'BluRay');
-                            tempText = tempText.replace(/\bh254\b/g, 'H.264');
-                            tempText = tempText.replace(/\bh265\b/g, 'H.265');
-                            tempText = tempText.replace(/\b\w/g, char => char.toUpperCase());
-                            tempText = tempText.replace(/\bX264\b/g, 'x264');
-                            tempText = tempText.replace(/\bX265\b/g, 'x265');
-                            tempText = tempText.replace(/\b - \b/g, ' ');
-                            });
+                        // Restore the original patterns from the placeholders
+                        placeholders.forEach((original, placeholder) => {
+                            tempText = tempText.replace(new RegExp(placeholder, 'g'), original);
+                        });
 
-                            return tempText;
-                        };
+                        // Additional replacements
+                        tempText = tempText
+                            .replace(/DD\+/g, 'DD+ ')
+                            .replace(/DDP/g, 'DD+ ')
+                            .replace(/DoVi/g, 'DV')
+                            .replace(/\(/g, '')
+                            .replace(/\)/g, '')
+                            .replace(/\bhdr\b/g, 'HDR')
+                            .replace(/\bweb\b/g, 'WEB')
+                            .replace(/\bbluray\b/gi, 'BluRay')
+                            .replace(/\bh254\b/g, 'H.264')
+                            .replace(/\bh265\b/g, 'H.265')
+                            .replace(/\b\w/g, char => char.toUpperCase())
+                            .replace(/\bX264\b/g, 'x264')
+                            .replace(/\bX265\b/g, 'x265')
+                            .replace(/\b - \b/g, ' ');
 
-                        // Clean ptp_info_text by replacing full stops according to the rules
-                        const cleanedPtpInfoText = replaceFullStops(ptp_info_text);
+                        return tempText;
+                    };
 
-                        // Re-add the extracted HTML elements after making the modifications
-                        // Construct the final innerHTML string
-                        if (show_tracker_name) {
-                            let finalHtml = `[PTP] ${cleanedPtpInfoText}`;
-                        } else {
-                            let finalHtml = `${cleanedPtpInfoText}`;
-                        }
+                    // Clean ptp_info_text by replacing full stops according to the rules
+                    const cleanedPtpInfoText = replaceFullStops(ptp_info_text);
+                    console.log("cleaned", cleanedPtpInfoText);
 
-                        if (freeleechSpanHtml) {
-                            finalHtml += ` / ${freeleechSpanHtml}`;
-                        }
-                        if (trumpableSpanHtml) {
-                            finalHtml += ` / ${trumpableSpanHtml}`;
-                        }
-                        if (reportedSpanHtml) {
-                            finalHtml += ` / ${reportedSpanHtml}`;
-                        }
+                    // Re-add the extracted HTML elements after making the modifications
+                    // Construct the final innerHTML string
+                    let finalHtml = show_tracker_name ? `[PTP] ${cleanedPtpInfoText}` : `${cleanedPtpInfoText}`;
 
-                        torrent.innerHTML = finalHtml;
-                        }
+                    [freeleechSpanHtml, halfleechSpanHtml, trumpableSpanHtml, reportedSpanHtml].forEach(spanHtml => {
+                        if (spanHtml) finalHtml += ` / ${spanHtml}`;
+                    });
+
+                    torrent.innerHTML = finalHtml;
                 }
-            });
-        } else {
-            document.querySelectorAll("tr.group_torrent").forEach(d => {
-                if (d.className != "group_torrent") {
+            } else {
+                if (d.className !== "group_torrent") {
                     const torrent = d.querySelector("a.torrent-info-link");
-                    if (improved_tags && show_tracker_name) {
-                      if (torrent) {
-                        torrent.innerHTML = "[PTP] / " + torrent.innerHTML;
-                        }
-                    } else if (show_tracker_name) {
-                      if (torrent) {
-                        torrent.innerHTML = "[PTP] " + torrent.innerHTML;
-                        }
-                    } else {
-                      if (torrent) {
-                        torrent.innerHTML = torrent.innerHTML;
+                    if (torrent) {
+                        if (improved_tags && show_tracker_name) {
+                            torrent.innerHTML = "[PTP] / " + torrent.innerHTML;
+                        } else if (show_tracker_name) {
+                            torrent.innerHTML = "[PTP] " + torrent.innerHTML;
                         }
                     }
                 }
-            });
-        }
+            }
+        });
     };
 
     const add_filters_div = (trackers, discounts, qualities) => {
@@ -2848,7 +2879,9 @@
     const get_example_div = () => {
         let tr = document.createElement("tr");
         tr.className = "group_torrent group_torrent_header";
+        tr.id = "group_torrent_header";
         tr["data-releasename"] = "release_name_here";
+        tr["data-releasegroup"] = "group_name_here";
 
         let td = document.createElement("td");
         td.style.width = "596px";
@@ -2918,6 +2951,7 @@
         let span2 = document.createElement("span");
         span2.className = "size-span";
         span2.style.float = "left";
+        span2.title = "SIZE_IN_BYTES_HERE";
         span2.textContent = "TORRENT_SIZE_HERE";
         td2.appendChild(span2);
 
