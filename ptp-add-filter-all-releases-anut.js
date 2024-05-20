@@ -2661,7 +2661,9 @@
 
                     // Re-add the extracted HTML elements after making the modifications
                     // Construct the final innerHTML string
-                    let finalHtml = show_tracker_name ? `[PTP] ${cleanedPtpInfoText}` : `${cleanedPtpInfoText}`;
+                    let finalHtml = show_tracker_name
+                        ? `[PTP]${improved_tags ? ' /' : ''} ${cleanedPtpInfoText}`
+                        : `${cleanedPtpInfoText}`;
 
                     [freeleechSpanHtml, halfleechSpanHtml, trumpableSpanHtml, reportedSpanHtml].forEach(spanHtml => {
                         if (spanHtml) finalHtml += ` / ${spanHtml}`;
