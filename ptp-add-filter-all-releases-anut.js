@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.4.3-A
+// @version      3.4.4-A
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -55,6 +55,7 @@
     const timerDuration = 2000; // set the length of time the error message should be displayed on page.
     let ptp_release_name = true; // true = show release name - false = original PTP release style. Set false if Improved Tags.
     let improved_tags = false; // true = Change display to work fully with PTP Improved Tags from jmxd.
+    const show_resolution_by_default = []; // Use this to only show specified resolutions by default. ||| "SD", "480p", "576p", "720p", "1080p", "2160p"
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -2409,7 +2410,7 @@
             let tracker_constraint = false;
 
             let inc_value = undefined;
-            let exc_value = undefined; // should this be the initial value or should it be null?
+            let exc_value = undefined;
 
             let status = filters.trackers.find(d => d.name === e.tracker).status;
 
@@ -2417,22 +2418,22 @@
             else if (status === "exclude") exc_value = true;
 
             if (inc_value === true) tracker_constraint = true;
-            else if (exc_value === true) tracker_constraint = false; // actually this line is redundant.
+            else if (exc_value === true) tracker_constraint = false;
             else {
                 tracker_constraint = true;
                 if (filters.trackers.filter(e => e.status === "include").length > 0) tracker_constraint = false;
-
             }
 
             if (tracker_constraint === false) {
                 e.dom_path.style.display = "none";
                 return;
             }
+
             ////////////////////
             let discount_constraint = false;
 
             let inc_value_2 = undefined;
-            let exc_value_2 = undefined; // should this be the initial value or should it be null?
+            let exc_value_2 = undefined;
 
             let status_2 = filters.discounts.find(d => d.name === e.discount).status;
 
@@ -2440,8 +2441,8 @@
             else if (status_2 === "exclude") exc_value_2 = true;
 
             if (inc_value_2 === true) discount_constraint = true;
-            else if (exc_value_2 === true) discount_constraint = false; // actually this line is redundant.
-            else { // neutral
+            else if (exc_value_2 === true) discount_constraint = false;
+            else {
                 discount_constraint = true;
                 if (filters.discounts.filter(e => e.status === "include").length > 0) discount_constraint = false;
             }
@@ -2450,11 +2451,12 @@
                 e.dom_path.style.display = "none";
                 return;
             }
+
             /////////////////////////////////
             let quality_constraint = false;
 
             let inc_value_3 = undefined;
-            let exc_value_3 = undefined; // should this be the initial value or should it be null?
+            let exc_value_3 = undefined;
 
             let status_3 = filters.qualities.find(d => d.name === e.quality).status;
 
@@ -2462,8 +2464,8 @@
             else if (status_3 === "exclude") exc_value_3 = true;
 
             if (inc_value_3 === true) quality_constraint = true;
-            else if (exc_value_3 === true) quality_constraint = false; // actually this line is redundant.
-            else { // neutral
+            else if (exc_value_3 === true) quality_constraint = false;
+            else {
                 quality_constraint = true;
                 if (filters.qualities.filter(e => e.status === "include").length > 0) quality_constraint = false;
             }
@@ -2472,16 +2474,21 @@
                 e.dom_path.style.display = "none";
                 return;
             }
+
             //////////////////////
-
             let text_constraint = true;
-            let must_include_words = document.querySelector(".torrent-search").value.split(" ").map((w) => w.toLowerCase());
+            const torrentSearchElement = document.querySelector(".torrent-search");
+            if (torrentSearchElement) {
+                let must_include_words = torrentSearchElement.value.split(" ").map((w) => w.toLowerCase());
 
-            for (let word of must_include_words) {
-                if (e.info_text.toLowerCase().includes(word) === false) {
-                    text_constraint = false;
-                    break;
+                for (let word of must_include_words) {
+                    if (e.info_text.toLowerCase().includes(word) === false) {
+                        text_constraint = false;
+                        break;
+                    }
                 }
+            } else {
+                console.log("No element with class 'torrent-search' found.");
             }
 
             if (text_constraint === false) {
@@ -2489,21 +2496,56 @@
                 return;
             }
 
-            // congrats !
+            // congrats!
             e.dom_path.style.display = "table-row";
         });
     };
 
     function apply_default_filters() {
+        console.log("Applying default filters...");
+
+        // Apply default tracker filters
         show_only_by_default.forEach(tracker => {
-            const trackerID = `#filter-${tracker.toLowerCase()}`; // Converts tracker name to lowercase and constructs the DOM id
+            const trackerID = `#filter-${tracker.toLowerCase()}`;
             const dom_path = document.querySelector(trackerID);
+
             if (dom_path) {
-                filters.trackers.find(e => e.name === tracker).status = "include";
-                dom_path.style.background = "#40E0D0";
-                dom_path.style.color = "#111";
+                const trackerFilter = filters.trackers.find(e => e.name === tracker);
+                if (trackerFilter) {
+                    trackerFilter.status = "include";
+                    dom_path.style.background = "#40E0D0";
+                    dom_path.style.color = "#111";
+                    console.log(`Applied tracker filter for ${tracker}`);
+                } else {
+                    console.log(`Tracker ${tracker} not found in filters.`);
+                }
             } else {
-                console.log(`No data for ${tracker}, can't filter by default.`);
+                console.log(`No DOM element found for tracker ${trackerID}`);
+            }
+        });
+
+        // Apply default quality filters
+        show_resolution_by_default.forEach(quality => {
+            const qualityElements = document.querySelectorAll(".filter-box");
+            let qualityFound = false;
+
+            qualityElements.forEach(dom_path => {
+                if (dom_path.textContent.trim().toLowerCase() === quality.toLowerCase()) {
+                    const qualityFilter = filters.qualities.find(e => e.name === quality);
+                    if (qualityFilter) {
+                        qualityFilter.status = "include";
+                        dom_path.style.background = "#40E0D0";
+                        dom_path.style.color = "#111";
+                        qualityFound = true;
+                        console.log(`Applied quality filter for ${quality}`);
+                    } else {
+                        console.log(`Quality ${quality} not found in filters.`);
+                    }
+                }
+            });
+
+            if (!qualityFound) {
+                console.log(`No DOM element found for quality ${quality}`);
             }
         });
 
@@ -3229,7 +3271,7 @@
                 original_table = document.querySelector("table.torrent_table").cloneNode(true);
 
                 // Only apply default filters if there are any specified
-                if (show_only_by_default.length > 0) {
+                if (show_only_by_default.length > 0 || show_resolution_by_default.length > 0) {
                     apply_default_filters();
                 }
 
