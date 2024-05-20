@@ -2167,7 +2167,7 @@
             let cln = line_example.cloneNode(true);
 
             if (improved_tags) {
-                cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] ` + get_simplified_title(torrent.info_text);
+                cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] / ` + get_simplified_title(torrent.info_text);
             } else if (show_tracker_name) {
                 cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] ` + torrent.info_text;
             } else {
