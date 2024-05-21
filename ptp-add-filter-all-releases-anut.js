@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.4.5-A
+// @version      3.4.6-A
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -2351,7 +2351,7 @@
 
         console.log("Finished processing for other scripts");
         const event = new CustomEvent('PTPAddReleasesFromOtherTrackersComplete');
-        window.dispatchEvent(event);
+        document.dispatchEvent(event);
 
         let reduced_trackers = get_reduced_trackers(doms);
         let reduced_discounts = get_reduced_discounts(doms);
