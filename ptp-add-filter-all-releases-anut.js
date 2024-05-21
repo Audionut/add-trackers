@@ -980,7 +980,6 @@
                             if (bd_elements.length > 0) {
                                 bd_elements.forEach(element => {
                                     let bd_text = element.textContent.trim();
-                                    console.log("bd element", bd_text);
 
                                 // Check if bd_text includes the desired substrings
                                     if (bd_text.includes("UHD 100") || bd_text.includes("UHD 66") || bd_text.includes("UHD 50") || bd_text.includes("BD 50") || bd_text.includes("BD 25") || bd_text.includes("DVD 9") || bd_text.includes("DVD 5")) {
