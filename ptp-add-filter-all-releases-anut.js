@@ -1776,6 +1776,7 @@
                     }
                 }
                     const torrentObj = {
+                        api_size: parseInt(element.attributes.size),
                         size: parseInt(element.attributes.size / (1024 * 1024)),
                         info_text: updatedInfoText,
                         tracker: tracker,
@@ -2304,8 +2305,19 @@
                 return;
             }
             const element_size = get_element_size(torrent.size);
+            let api_sized = torrent.api_size;
+
+            if (api_sized !== undefined && api_sized !== null) {
+                api_sized = api_sized.toLocaleString() + " Bytes";
+            }
+
             cln.querySelector(".size-span").textContent = ptp_format_size;
-            cln.querySelector(".size-span").setAttribute("title", element_size);
+
+            if (torrent.site === "BLU" || torrent.site ==="Aither" || torrent.site ===  "RFX" || torrent.site ===  "OE" || torrent.site ===  "HUNO" || torrent.site === "TIK") {
+                cln.querySelector(".size-span").setAttribute("title", api_sized);
+            } else {
+                cln.querySelector(".size-span").setAttribute("title", element_size);
+            }
             cln.querySelector("td:nth-child(3)").textContent = torrent.snatch; // snatch
             cln.querySelector("td:nth-child(4)").textContent = torrent.seed; // seed
 
