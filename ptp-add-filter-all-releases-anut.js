@@ -991,9 +991,9 @@
                             }
 
                             torrent_obj.discount = get_discount_text(d, tracker);
-                            torrent_obj.internal = Array.from(d.querySelectorAll("i")).some(element => {
-                                const title = element.getAttribute('title');
-                                return title ? title.includes('Quality Seal') : false;
+                            torrent_obj.internal = Array.from(d.querySelectorAll("span")).some(element => {
+                                const isInternal = element.getAttribute('class');
+                                return isInternal ? isInternal.includes('badge-internal') : false;
                             });
                             torrent_objs.push(torrent_obj);
                         }
