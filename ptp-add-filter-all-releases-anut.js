@@ -2179,6 +2179,12 @@
 
             if (!hide_tags) {
                 if (improved_tags)
+                    if (torrent.region != null && torrent.region != false) {
+                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__region'>${torrent.region}</span>`;
+                    }
+                    if (torrent.distributor != null && torrent.distributor != false) {
+                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__distributor'>${torrent.distributor}</span>`;
+                    }
                     if (torrent.site === "HDB") {
                         torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal'>Internal</span>" : false;
                         torrent.exclusive ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__exclusive'>Exclusive</span>" : false;
@@ -2258,14 +2264,6 @@
                     }
                     if (torrent.trumpable != null && torrent.trumpable != false) {
                         cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__trumpable'>Trumpable</span>`;
-                    }
-                }
-                if (improved_tags) {
-                    if (torrent.distributor != null && torrent.distributor != false) {
-                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__distributor'>${torrent.distributor}</span>`;
-                    }
-                    if (torrent.region != null && torrent.region != false) {
-                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__region'>${torrent.region}</span>`;
                     }
                 }
 
