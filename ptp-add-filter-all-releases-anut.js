@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.4.6-A
+// @version      3.4.7-A
 // @description  add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -911,11 +911,13 @@
                         if (sizeElement) {
                             size = sizeElement.textContent.trim();
                             if (size.includes("TiB")) {
-                                size = parseFloat(size.split(" ")[0]) * 1024 * 1024; // Convert TiB to MiB
+                                // 1 TiB = 1024 GiB = 1024 * 1024 MiB
+                                size = parseInt(parseFloat(size.split("TiB")[0]) * 1024 * 1024);
                             } else if (size.includes("GiB")) {
-                                size = parseFloat(size.split(" ")[0]) * 1024; // Convert GiB to MiB
+                                // 1 GiB = 1024 MiB
+                                size = parseInt(parseFloat(size.split("GiB")[0]) * 1024);
                             } else if (size.includes("MiB")) {
-                                size = parseFloat(size.split(" ")[0]); // Direct MiB
+                                size = parseInt(parseFloat(size.split("MiB")[0]));
                             }
                         }
                         torrent_obj.size = size;
