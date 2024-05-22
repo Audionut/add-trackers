@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.4.7-A
+// @version      3.4.8-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -27,19 +27,19 @@
         "ptp": {"label": "PTP", "type": "checkbox", "default": true},
         "pxhd": {"label": "PxHD", "type": "checkbox", "default": false},
         "mtv": {"label": "MTV", "type": "checkbox", "default": false},
-        "blu": {"label": "BLU", "type": "checkbox", "default": false},
-        "huno": {"label": "HUNO", "type": "checkbox", "default": false},
-        "tik": {"label": "TIK", "type": "checkbox", "default": false},
-        "aither": {"label": "Aither", "type": "checkbox", "default": false},
-        "rfx": {"label": "RFX", "type": "checkbox", "default": false},
-        "oe": {"label": "OE", "type": "checkbox", "default": false},
+        "blu": {"label": "BLU *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
+        "huno": {"label": "HUNO *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
+        "tik": {"label": "TIK *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
+        "aither": {"label": "Aither *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
+        "rfx": {"label": "RFX *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
+        "oe": {"label": "OE *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "avistaz": {"label": "Avistaz", "type": "checkbox", "default": false},
         "cinemaz": {"label": "CinemaZ", "type": "checkbox", "default": false},
         "phd": {"label": "PHD", "type": "checkbox", "default": false},
         "ant": {"label": "ANT", "type": "checkbox", "default": false},
         "cg": {"label": "CG", "type": "checkbox", "default": false},
         "btn": {"label": "BTN", "type": "checkbox", "default": false},
-        "tvv": {"label": "TVV", "type": "checkbox", "default": false},
+        "tvv": {"label": "TVV *", "type": "checkbox", "default": false, "tooltip": "Enter auth key & torrent pass below"},
         "nbl": {"label": "NBL", "type": "checkbox", "default": false},
         "blu_api": {"label": "BLU_API_TOKEN", "type": "text", "default": ""},
         "tik_api": {"label": "TIK_API_TOKEN", "type": "text", "default": ""},
@@ -47,7 +47,7 @@
         "huno_api": {"label": "HUNO_API_TOKEN", "type": "text", "default": ""},
         "rfx_api": {"label": "RFX_API_TOKEN", "type": "text", "default": ""},
         "oe_api": {"label": "OE_API_TOKEN", "type": "text", "default": ""},
-        "tvv_auth": {"label": "TVV_AUTH_KEY", "type": "text", "default": ""},
+        "tvv_auth": {"label": "TVV_AUTH_KEY", "type": "text", "default": "", "tooltip": "Find from a torrent download link at TVV"},
         "tvv_torr": {"label": "TVV_TORR_PASS", "type": "text", "default": "", "tooltip": "Needed to access TVV xml output"},
         "show_icon": {"label": "Show Tracker Icon", "type": "checkbox", "default": true, "tooltip": "Display the tracker icon next to releases"},
         "show_name": {"label": "Show Tracker Name", "type": "checkbox", "default": true, "tooltip": "Display the tracker name next to releases"},
