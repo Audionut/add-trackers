@@ -717,13 +717,15 @@
                                     }
                                     torrent_obj.groupId = groupText;
                                     if (improved_tags) {
-                                        let sceneElements = d.querySelectorAll("a");
-                                        if (sceneElements.length > 0) {
-                                            sceneElements.forEach(element => {
-                                                let sceneText = element.textContent.trim();
-                                                if (sceneText.includes("scene.group.release")) {
-                                                    modifiedInfoText = "scene" + `${modifiedInfoText}`;
-                                                    torrent_obj.info_text = modifiedInfoText;
+                                        let tagElements = d.querySelectorAll("a");
+                                        if (tagElements.length > 0) {
+                                            tagElements.forEach(element => {
+                                                let tagsText = element.textContent.trim();
+                                                if (tagsText.includes("scene.group.release")) {
+                                                    modifiedInfoText = "scene" + modifiedInfoText;
+                                                }
+                                                if (tagsText.includes("dts.x.audio")) {
+                                                    modifiedInfoText = "dts:x" + modifiedInfoText;
                                                 }
                                             });
                                         }
