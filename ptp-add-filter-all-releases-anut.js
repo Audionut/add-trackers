@@ -1273,24 +1273,39 @@
                 let infoLink = d.querySelector("td a[data-src]");
                 if (infoLink) {
                     let dataSource = infoLink.getAttribute("data-src");
+                    let groupText = "";
+
+                    // Improved tags processing
+                    if (improved_tags) {
+                        const match = dataSource.match(/-([^-]+)$/); // Match the last hyphen and text following it
+                        if (match) {
+                            groupText = match[1]; // Get the group text without the leading hyphen
+                            groupText = groupText.replace(/[^a-z0-9]/gi, ''); // Remove non-alphanumeric characters
+                            dataSource = dataSource.replace(match[0], ''); // Remove the matched part from dataSource
+                        }
+                    }
+
+                    torrent_obj.groupId = groupText;
+
                     // Remove all periods from the dataSource string
                     let cleanedDataSource = dataSource.replace(/\./g, ' ');
+                    console.log("NLB text", cleanedDataSource);
 
                     torrent_obj.info_text = cleanedDataSource;
 
                     // Regular expression to detect SxxExx pattern
                     if (/S\d+E\d+/i.test(torrent_obj.info_text)) {
-                        return; // Skip this entry
+                        return; // Skip this entry if SxxExx pattern is found
                     }
+
+                    // Process scene tags if improved_tags is enabled
                     if (improved_tags) {
                         let sceneElements = d.querySelectorAll("a");
                         if (sceneElements.length > 0) {
                             sceneElements.forEach(element => {
                                 let sceneText = element.textContent.trim();
-
                                 if (sceneText.includes("scene")) {
-                                    const sceneTrue = sceneText;
-                                    cleanedDataSource = `${sceneTrue} ${cleanedDataSource}`;
+                                    cleanedDataSource = `${sceneText} ${cleanedDataSource}`;
                                     torrent_obj.info_text = cleanedDataSource;
                                 }
                             });
