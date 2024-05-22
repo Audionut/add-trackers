@@ -834,6 +834,7 @@
                     const nextRow = rows[index + 1];
                     if (nextRow) {
                         let antname = nextRow.querySelector('.row > td').textContent.trim();
+                        let mediaInfo = nextRow.querySelector('.mediainfo > tbody > tr > td:nth-child(2) > table > tbody > tr:nth-child(2) > td:nth-child(2)').textContent.trim();
                         let derivedContainer = antname.match(/\.[^.]*$/);
                         if (improved_tags) {
                             const titleElement = d.querySelector("td:nth-child(1) > a");
@@ -869,7 +870,9 @@
                                     const bdType = get_bd_type(torrent_obj.size);
                                     formattedText = `${bdType} ${formattedText}`;
                                 }
-
+                                if (mediaInfo.includes("HDR10+")) {
+                                    formattedText = formattedText.replace("HDR10", "HDR10+");
+                                }
                                 torrent_obj.info_text = formattedText;
                             }
                         } else {
