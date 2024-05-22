@@ -11,7 +11,6 @@
 // @grant        GM.getValue
 // @grant        GM.setValue
 // @grant        GM.registerMenuCommand
-// @require      https://cdnjs.cloudflare.com/ajax/libs/gm-config/1.3.3/gm-config.min.js
 // @require      https://cdn.jsdelivr.net/gh/sizzlemctwizzle/GM_config@43fd0fe4de1166f343883511e53546e87840aeaf/gm_config.js
 // ==/UserScript==
 
