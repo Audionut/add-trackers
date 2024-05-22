@@ -63,16 +63,19 @@
     };
 
     function resetToDefaults() {
-        // Reset each field to its default value
-        for (const field in fields) {
-            if (fields.hasOwnProperty(field)) {
-                GM_config.set(field, fields[field].default);
+        // Add a confirmation popup
+        if (confirm("Are you sure you want to reset all settings to their default values?")) {
+            // Reset each field to its default value
+            for (const field in fields) {
+                if (fields.hasOwnProperty(field)) {
+                    GM_config.set(field, fields[field].default);
+                }
             }
+            GM_config.save();
+            alert("All settings have been reset to their default values.");
+            GM_config.close();
+            GM_config.open();
         }
-        GM_config.save();
-        alert("All settings have been reset to their default values.");
-        GM_config.close();
-        GM_config.open();
     }
 
     GM_config.init({
@@ -83,9 +86,7 @@
             #PTPAddReleases {background: #333333; width: 85%; margin: 10px 0; padding: 20px 20px}
             #PTPAddReleases .field_label {color: #fff; width: 100%;}
             #PTPAddReleases .config_header {color: #fff; padding-bottom: 10px; font-weight: 100;}
-            #PTPAddReleases .reset {color: #f00; text-align: left;}
             #PTPAddReleases .config_var {display: flex; flex-direction: row; text-align: left; justify-content: center; align-items: center; width: 75%; margin: 4px auto; padding: 4px 0;}
-            .reset_button {background: #f00; color: #fff; border: none; padding: 5px 10px; cursor: pointer; border-radius: 5px;}
         `,
         "events": {
             "open": function (doc) {
