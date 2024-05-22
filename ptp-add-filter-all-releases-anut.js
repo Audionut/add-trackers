@@ -2,7 +2,7 @@
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
 // @version      3.4.7-A
-// @description  add releases from other trackers
+// @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
 // @match        *://passthepopcorn.me/*threadid=44047*
@@ -16,215 +16,76 @@
 
 (function () {
     "use strict";
-    const fields = {
-        "bhd": {
-            "label": "BHD",
-            "type": "checkbox",
-            "default": true
-        },
-        "fl": {
-            "label": "FL",
-            "type": "checkbox",
-            "default": true
-        },
-        "hdb": {
-            "label": "HDB",
-            "type": "checkbox",
-            "default": true
-        },
-        "kg": {
-            "label": "KG",
-            "type": "checkbox",
-            "default": true
-        },
-        "ptp": {
-            "label": "PTP",
-            "type": "checkbox",
-            "default": true
-        },
-        "pxhd": {
-            "label": "PxHD",
-            "type": "checkbox",
-            "default": true
-        },
-        "mtv": {
-            "label": "MTV",
-            "type": "checkbox",
-            "default": true
-        },
-        "blu": {
-            "label": "BLU",
-            "type": "checkbox",
-            "default": true
-        },
-        "huno": {
-            "label": "HUNO",
-            "type": "checkbox",
-            "default": true
-        },
-        "tik": {
-            "label": "TIK",
-            "type": "checkbox",
-            "default": true
-        },
-        "aither": {
-            "label": "Aither",
-            "type": "checkbox",
-            "default": true
-        },
-        "rfx": {
-            "label": "RFX",
-            "type": "checkbox",
-            "default": true
-        },
-        "oe": {
-            "label": "OE",
-            "type": "checkbox",
-            "default": true
-        },
-        "avistaz": {
-            "label": "Avistaz",
-            "type": "checkbox",
-            "default": true
-        },
-        "cinemaz": {
-            "label": "CinemaZ",
-            "type": "checkbox",
-            "default": true
-        },
-        "phd": {
-            "label": "PHD",
-            "type": "checkbox",
-            "default": true
-        },
-        "ant": {
-            "label": "ANT",
-            "type": "checkbox",
-            "default": true
-        },
-        "cg": {
-            "label": "CG",
-            "type": "checkbox",
-            "default": true
-        },
-        "btn": {
-            "label": "BTN",
-            "type": "checkbox",
-            "default": true
-        },
-        "tvv": {
-            "label": "TVV",
-            "type": "checkbox",
-            "default": true
-        },
-        "nbl": {
-            "label": "NBL",
-            "type": "checkbox",
-            "default": true
-        },
-        "blu_api": {
-            "label": "BLU_API_TOKEN",
-            "type": "text",
-            "default": ""
-        },
-        "tik_api": {
-            "label": "TIK_API_TOKEN",
-            "type": "text",
-            "default": ""
-        },
-        "aither_api": {
-            "label": "AITHER_API_TOKEN",
-            "type": "text",
-            "default": ""
-        },
-        "huno_api": {
-            "label": "HUNO_API_TOKEN",
-            "type": "text",
-            "default": ""
-        },
-        "rfx_api": {
-            "label": "RFX_API_TOKEN",
-            "type": "text",
-            "default": ""
-        },
-        "oe_api": {
-            "label": "OE_API_TOKEN",
-            "type": "text",
-            "default": ""
-        },
-        "tvv_auth": {
-            "label": "TVV_AUTH_KEY",
-            "type": "text",
-            "default": ""
-        },
-        "tvv_torr": {
-            "label": "TVV_TORR_PASS",
-            "type": "text",
-            "default": ""
-        },
-        "show_icon": {
-            "label": "Show Tracker Icon",
-            "type": "checkbox",
-            "default": true
-        },
-        "show_name": {
-            "label": "Show Tracker Name",
-            "type": "checkbox",
-            "default": true
-        },
-        "hide_same_size": {
-            "label": "Hide torrents with same size",
-            "type": "checkbox",
-            "default": false
-        },
-        "log_same_size": {
-            "label": "Log torrents with same size",
-            "type": "checkbox",
-            "default": false
-        },
-        "hide_filters": {
-            "label": "Hide filters box",
-            "type": "checkbox",
-            "default": false
-        },
-        "hide_dead": {
-            "label": "Hide dead external torrents",
-            "type": "checkbox",
-            "default": false
-        },
-        "new_tab": {
-            "label": "Open in new tab",
-            "type": "checkbox",
-            "default": true
-        },
-        "hide_tags": {
-            "label": "Hide tags (Featured, DU, reported, etc.)",
-            "type": "checkbox",
-            "default": false
-        },
-        "run_default": {
-            "label": "Run by default?",
-            "type": "checkbox",
-            "default": true
-        },
-        "ptp_name": {
-            "label": "Show release name",
-            "type": "checkbox",
-            "default": true
-        }
 
+    console.log("PTP - Add releases from other trackers script loaded");
+
+    const fields = {
+        "bhd": {"label": "BHD", "type": "checkbox", "default": false},
+        "fl": {"label": "FL", "type": "checkbox", "default": false},
+        "hdb": {"label": "HDB", "type": "checkbox", "default": false},
+        "kg": {"label": "KG", "type": "checkbox", "default": false},
+        "ptp": {"label": "PTP", "type": "checkbox", "default": false},
+        "pxhd": {"label": "PxHD", "type": "checkbox", "default": false},
+        "mtv": {"label": "MTV", "type": "checkbox", "default": false},
+        "blu": {"label": "BLU", "type": "checkbox", "default": false},
+        "huno": {"label": "HUNO", "type": "checkbox", "default": false},
+        "tik": {"label": "TIK", "type": "checkbox", "default": false},
+        "aither": {"label": "Aither", "type": "checkbox", "default": false},
+        "rfx": {"label": "RFX", "type": "checkbox", "default": false},
+        "oe": {"label": "OE", "type": "checkbox", "default": false},
+        "avistaz": {"label": "Avistaz", "type": "checkbox", "default": false},
+        "cinemaz": {"label": "CinemaZ", "type": "checkbox", "default": false},
+        "phd": {"label": "PHD", "type": "checkbox", "default": false},
+        "ant": {"label": "ANT", "type": "checkbox", "default": false},
+        "cg": {"label": "CG", "type": "checkbox", "default": false},
+        "btn": {"label": "BTN", "type": "checkbox", "default": false},
+        "tvv": {"label": "TVV", "type": "checkbox", "default": false},
+        "nbl": {"label": "NBL", "type": "checkbox", "default": false},
+        "blu_api": {"label": "BLU_API_TOKEN", "type": "text", "default": ""},
+        "tik_api": {"label": "TIK_API_TOKEN", "type": "text", "default": ""},
+        "aither_api": {"label": "AITHER_API_TOKEN", "type": "text", "default": ""},
+        "huno_api": {"label": "HUNO_API_TOKEN", "type": "text", "default": ""},
+        "rfx_api": {"label": "RFX_API_TOKEN", "type": "text", "default": ""},
+        "oe_api": {"label": "OE_API_TOKEN", "type": "text", "default": ""},
+        "tvv_auth": {"label": "TVV_AUTH_KEY", "type": "text", "default": ""},
+        "tvv_torr": {"label": "TVV_TORR_PASS", "type": "text", "default": ""},
+        "show_icon": {"label": "Show Tracker Icon", "type": "checkbox", "default": true},
+        "show_name": {"label": "Show Tracker Name", "type": "checkbox", "default": true},
+        "hide_same_size": {"label": "Hide torrents with same size", "type": "checkbox", "default": false},
+        "log_same_size": {"label": "Log torrents with same size", "type": "checkbox", "default": false},
+        "hide_filters": {"label": "Hide filters box", "type": "checkbox", "default": false},
+        "hide_dead": {"label": "Hide dead external torrents", "type": "checkbox", "default": false},
+        "new_tab": {"label": "Open in new tab", "type": "checkbox", "default": true},
+        "hide_tags": {"label": "Hide tags (Featured, DU, reported, etc.)", "type": "checkbox", "default": false},
+        "run_default": {"label": "Run by default?", "type": "checkbox", "default": true},
+        "ptp_name": {"label": "Show release name", "type": "checkbox", "default": true}
+    };
+
+    function resetToDefaults() {
+        // Reset each field to its default value
+        for (const field in fields) {
+            if (fields.hasOwnProperty(field)) {
+                GM_config.set(field, fields[field].default);
+            }
+        }
+        GM_config.save();
+        alert("All settings have been reset to their default values.");
+        GM_config.close();
+        GM_config.open();
     }
 
     GM_config.init({
         "id": "PTPAddReleases",
         "title": "PTP - Add releases from other trackers",
+        "fields": fields,
         "css": `
             #PTPAddReleases {background: #333333; width: 85%; margin: 10px 0; padding: 20px 20px}
             #PTPAddReleases .field_label {color: #fff; width: 100%;}
             #PTPAddReleases .config_header {color: #fff; padding-bottom: 10px; font-weight: 100;}
             #PTPAddReleases .reset {color: #f00; text-align: left;}
-            #PTPAddReleases .config_var {display: flex; flex-direction: row; text-align: left; justify-content: center; align-items: center; width: 75%; margin: 4px auto; padding: 4px 0; }
-            `,
+            #PTPAddReleases .config_var {display: flex; flex-direction: row; text-align: left; justify-content: center; align-items: center; width: 75%; margin: 4px auto; padding: 4px 0;}
+            .reset_button {background: #f00; color: #fff; border: none; padding: 5px 10px; cursor: pointer; border-radius: 5px;}
+        `,
         "events": {
             "open": function (doc) {
                 let style = this.frame.style;
@@ -234,26 +95,31 @@
                 style.top = "6%";
                 style.right = "6%";
                 style.borderRadius = "25px";
+                console.log("Config window opened");
+
+                // Add reset button to the UI
+                let resetButton = doc.createElement("button");
+                resetButton.innerHTML = "Reset to Defaults";
+                resetButton.className = "reset_button";
+                resetButton.addEventListener("click", resetToDefaults);
+                doc.querySelector("#PTPAddReleases").appendChild(resetButton);
             },
             'save': function () {
-                alert("Saved Successfully!")
+                alert("Saved Successfully!");
+                console.log("Settings saved");
             }
-        },
-        "fields": fields
+        }
     });
-    GM.registerMenuCommand("PTP - Add releases from other trackers", () => GM_config.open());
+
+    // Register menu command
+    GM.registerMenuCommand("PTP - Add releases from other trackers", () => {
+        console.log("Menu command clicked");
+        GM_config.open();
+    });
+
     if (window.location.href.includes('/torrents.php?id=')) {
+        console.log("Match page detected");
 
-        /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        /////////////////////////                                   USER OPTIONS                     ////////////////////////////////////
-        /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-        //  available movie trackers: "BHD", "CG", "FL", "HDB", "KG", "PTP", "PxHD", "MTV", "ANT", "BLU"*, "HUNO"*, "TIK"*, "Aither"*, "RFX"*, "OE"*, "AvistaZ"**, "CinemaZ"**, "PHD"**
-        //  available tv trackers: "BTN", "NBL", "TVV"***
-        //  if you don't need the results from some of these trackers, do not add them. the fewer you add, the faster the code execution.
-        //  remove trackers that you do not have access too and don't add trackers to the wrong const. 
-        //  *requires API key     **performs two requests     *** XML output that needs authkey and torrent_pass from a download link
-        //  requires each tracker to be logged in with the same browser session (and container type if using multi-account containers).
         const movie_dict = {
             "BHD": GM_config.get("bhd"),
             "FL": GM_config.get("fl"),
@@ -271,51 +137,39 @@
             "AvistaZ": GM_config.get("avistaz"),
             "CinemaZ": GM_config.get("cinemaz"),
             "PHD": GM_config.get("phd"),
-        }
+        };
 
         const movie_only_dict = {
             "ANT": GM_config.get("ant"),
             "CG": GM_config.get("cg"),
-        }
+        };
 
         const tv_dict = {
             "BTN": GM_config.get("btn"),
             "NBL": GM_config.get("nbl"),
             "TVV": GM_config.get("tvv"),
-        }
+        };
 
         const old_dict = {
             "TVV": GM_config.get("tvv")
-        }
+        };
 
         const movie_trackers = [];
-        const movie_only_trackers = []; // these trackers only have movies, not anything tv including miniseries.
+        const movie_only_trackers = [];
         const tv_trackers = [];
-        const old_trackers = [];   // Add trackers here that do not allow recent content. Do not remove the trackers added here from any other tracker defintion. Trackers added here need to be defined in both applicable areas.
-        
-        
-        // fill movie_trackers with trackers
-        for (const [key, value] of Object.entries(movie_dict)) {
-            if (value) {
-                movie_trackers.push(key);
-            }
-        }
-        // fill movie_only_trackers with trackers
-        for (const [key, value] of Object.entries(movie_only_dict)) {
-            if (value) {
-                movie_only_trackers.push(key);
-            }
-        }
-        // fill tv_trackers with trackers
-        for (const [key, value] of Object.entries(tv_dict)) {
-            if (value) {
-                tv_trackers.push(key);
-            }
-        }
-        // fill old_trackers with trackers
-        for (const [key, value] of Object.entries(old_dict)) {
-            if (value) {
-                old_trackers.push(key);
+        const old_trackers = [];
+
+        // Fill trackers arrays with enabled trackers
+        fillTrackers(movie_dict, movie_trackers);
+        fillTrackers(movie_only_dict, movie_only_trackers);
+        fillTrackers(tv_dict, tv_trackers);
+        fillTrackers(old_dict, old_trackers);
+
+        function fillTrackers(dict, trackerArray) {
+            for (const [key, value] of Object.entries(dict)) {
+                if (value) {
+                    trackerArray.push(key);
+                }
             }
         }
         const show_only_by_default = [];  // Use this to only show these trackers by default. Same input style as above.
