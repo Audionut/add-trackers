@@ -46,20 +46,20 @@
         "rfx_api": {"label": "RFX_API_TOKEN", "type": "text", "default": ""},
         "oe_api": {"label": "OE_API_TOKEN", "type": "text", "default": ""},
         "tvv_auth": {"label": "TVV_AUTH_KEY", "type": "text", "default": ""},
-        "tvv_torr": {"label": "TVV_TORR_PASS", "type": "text", "default": ""},
-        "show_icon": {"label": "Show Tracker Icon", "type": "checkbox", "default": true},
-        "show_name": {"label": "Show Tracker Name", "type": "checkbox", "default": true},
-        "hide_same_size": {"label": "Hide torrents with same size", "type": "checkbox", "default": false},
-        "log_same_size": {"label": "Log torrents with same size", "type": "checkbox", "default": false},
-        "hide_filters": {"label": "Hide filters box", "type": "checkbox", "default": false},
-        "hide_dead": {"label": "Hide dead external torrents", "type": "checkbox", "default": false},
-        "new_tab": {"label": "Open in new tab", "type": "checkbox", "default": true},
-        "hide_tags": {"label": "Hide tags (Featured, DU, reported, etc.)", "type": "checkbox", "default": false},
-        "run_default": {"label": "Run by default?", "type": "checkbox", "default": true},
-        "ptp_name": {"label": "Show release name", "type": "checkbox", "default": true},
-        "funky_tags": {"label": "Improved Tags", "type": "checkbox", "default": false},
-        "timer": {"label": "Error timeout (seconds)", "type": "int", "default": 4}, // Default 4 seconds
-        "timerDuration": {"label": "Error display duration (seconds)", "type": "int", "default": 2} // Default 2 seconds
+        "tvv_torr": {"label": "TVV_TORR_PASS", "type": "text", "default": "", "tooltip": "Needed to access TVV xml output"},
+        "show_icon": {"label": "Show Tracker Icon", "type": "checkbox", "default": true, "tooltip": "Display the tracker icon next to releases"},
+        "show_name": {"label": "Show Tracker Name", "type": "checkbox", "default": true, "tooltip": "Display the tracker name next to releases"},
+        "hide_same_size": {"label": "Hide torrents with same size", "type": "checkbox", "default": false, "tooltip": "Hide torrents that have the same file size as existing ones"},
+        "log_same_size": {"label": "Log torrents with same size", "type": "checkbox", "default": false, "tooltip": "Log torrents that have the same file size as existing ones"},
+        "hide_filters": {"label": "Hide filters box", "type": "checkbox", "default": false, "tooltip": "Hide the Filter Releases box in the UI"},
+        "hide_dead": {"label": "Hide dead external torrents", "type": "checkbox", "default": false, "tooltip": "Hide torrents that have no seeders"},
+        "new_tab": {"label": "Open in new tab", "type": "checkbox", "default": true, "tooltip": "Open links in a new browser tab"},
+        "hide_tags": {"label": "Hide tags", "type": "checkbox", "default": false, "tooltip": "Hide tags such as Featured, DU, reported, etc."},
+        "run_default": {"label": "Run by default?", "type": "checkbox", "default": true, "tooltip": "Run this script by default on page load, else click Other Trackers under title to run the script"},
+        "ptp_name": {"label": "Show release name", "type": "checkbox", "default": true, "tooltip": "Display the PTP release (file) name instead of the default display"},
+        "funky_tags": {"label": "Improved Tags", "type": "checkbox", "default": false, "tooltip": "Work with jmxd' PTP Improved Tags script"},
+        "timer": {"label": "Error timeout (seconds)", "type": "int", "default": 4, "tooltip": "Set the error timeout duration in seconds to skip slow/dead trackers"},
+        "timerDuration": {"label": "Error display duration (seconds)", "type": "int", "default": 2, "tooltip": "Set the duration for displaying errors in seconds"}
     };
 
     function resetToDefaults() {
@@ -80,7 +80,7 @@
 
     GM_config.init({
         "id": "PTPAddReleases",
-        "title": "PTP - Add releases from other trackers",
+        "title": "<div>Add releases from other trackers<br><small style='font-weight:normal;'>Select trackers you have access too</small></div>",
         "fields": fields,
         "css": `
             #PTPAddReleases {background: #333333; width: 85%; margin: 10px 0; padding: 20px 20px}
@@ -91,7 +91,7 @@
         "events": {
             "open": function (doc) {
                 let style = this.frame.style;
-                style.width = "400px";
+                style.width = "500px";
                 style.height = "800px";
                 style.inset = "";
                 style.top = "6%";
@@ -105,6 +105,16 @@
                 resetButton.className = "reset_button";
                 resetButton.addEventListener("click", resetToDefaults);
                 doc.querySelector("#PTPAddReleases").appendChild(resetButton);
+
+                // Add tooltips
+                for (const field in fields) {
+                    if (fields.hasOwnProperty(field) && fields[field].tooltip) {
+                        let label = doc.querySelector(`label[for="PTPAddReleases_field_${field}"]`);
+                        if (label) {
+                            label.title = fields[field].tooltip;
+                        }
+                    }
+                }
             },
             "save": function () {
                 alert("Saved Successfully!");
