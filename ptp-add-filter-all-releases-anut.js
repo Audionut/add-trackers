@@ -56,7 +56,8 @@
         "new_tab": {"label": "Open in new tab", "type": "checkbox", "default": true},
         "hide_tags": {"label": "Hide tags (Featured, DU, reported, etc.)", "type": "checkbox", "default": false},
         "run_default": {"label": "Run by default?", "type": "checkbox", "default": true},
-        "ptp_name": {"label": "Show release name", "type": "checkbox", "default": true}
+        "ptp_name": {"label": "Show release name", "type": "checkbox", "default": true},
+        "funky_tags": {"label": "Improved Tags", "type": "checkbox", "default": false}
     };
 
     function resetToDefaults() {
@@ -102,9 +103,13 @@
                 resetButton.addEventListener("click", resetToDefaults);
                 doc.querySelector("#PTPAddReleases").appendChild(resetButton);
             },
-            'save': function () {
+            "save": function () {
                 alert("Saved Successfully!");
                 console.log("Settings saved");
+            },
+            "close": function () {
+                console.log("Config window closed, reloading page");
+                window.location.reload();
             }
         }
     });
@@ -198,7 +203,7 @@
         const timer = 4000; // set the timer here to timeout slow/non-responsive tracker calls. 4 seconds seems like a safe default.
         const timerDuration = 2000; // set the length of time the error message should be displayed on page.
         let ptp_release_name = GM_config.get("ptp_name"); // true = show release name - false = original PTP release style. Ignored if Improved Tags  = true
-        let improved_tags = false; // true = Change display to work fully with PTP Improved Tags from jmxd.
+        let improved_tags = GM_config.get("funky_tags"); // true = Change display to work fully with PTP Improved Tags from jmxd.
         const show_resolution_by_default = []; // Use this to only show specified resolutions by default. ||| "SD", "480p", "576p", "720p", "1080p", "2160p"
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
