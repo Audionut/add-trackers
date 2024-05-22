@@ -7,8 +7,8 @@
 // @match        https://passthepopcorn.me/torrents.php?id=*
 // @match        *://passthepopcorn.me/*threadid=44047*
 // @icon         https://passthepopcorn.me/favicon.ico
-// Download      https://github.com/Audionut/add-trackers/blob/main/ptp-add-filter-all-releases-anut.js
-// Update        https://github.com/Audionut/add-trackers/blob/main/ptp-add-filter-all-releases-anut.js
+// @downloadurl  https://github.com/Audionut/add-trackers/blob/main/ptp-add-filter-all-releases-anut.js
+// @updateurl    https://github.com/Audionut/add-trackers/blob/main/ptp-add-filter-all-releases-anut.js
 // @grant        GM_xmlhttpRequest
 // @grant        GM.getValue
 // @grant        GM.setValue
