@@ -57,7 +57,9 @@
         "hide_tags": {"label": "Hide tags (Featured, DU, reported, etc.)", "type": "checkbox", "default": false},
         "run_default": {"label": "Run by default?", "type": "checkbox", "default": true},
         "ptp_name": {"label": "Show release name", "type": "checkbox", "default": true},
-        "funky_tags": {"label": "Improved Tags", "type": "checkbox", "default": false}
+        "funky_tags": {"label": "Improved Tags", "type": "checkbox", "default": false},
+        "timer": {"label": "Error timeout (seconds)", "type": "int", "default": 4}, // Default 4 seconds
+        "timerDuration": {"label": "Error display duration (seconds)", "type": "int", "default": 2} // Default 2 seconds
     };
 
     function resetToDefaults() {
@@ -114,7 +116,7 @@
                 } else {
                     setTimeout(() => {
                         window.location.reload();
-                    }, 100);
+                    }, 150);
                 }
             }
         }
@@ -206,8 +208,8 @@
         const open_in_new_tab = GM_config.get("new_tab"); // false : when you click external torrent, it will open the page in new tab. ||| true : it will replace current tab.
         let hide_tags = GM_config.get("hide_tags"); // true = will hide all of the tags. Featured, DU, reported, etc.
         const run_by_default = GM_config.get("run_default"); // false = won't run the script by default, but will add an "Other Trackers" link under the page title, which when clicked will run the script.
-        const timer = 4000; // set the timer here to timeout slow/non-responsive tracker calls. 4 seconds seems like a safe default.
-        const timerDuration = 2000; // set the length of time the error message should be displayed on page.
+        const timer = GM_config.get("timer") * 1000; // Convert to milliseconds
+        const timerDuration = GM_config.get("timerDuration") * 1000; // Convert to milliseconds
         let ptp_release_name = GM_config.get("ptp_name"); // true = show release name - false = original PTP release style. Ignored if Improved Tags  = true
         let improved_tags = GM_config.get("funky_tags"); // true = Change display to work fully with PTP Improved Tags from jmxd.
         const show_resolution_by_default = []; // Use this to only show specified resolutions by default. ||| "SD", "480p", "576p", "720p", "1080p", "2160p"
