@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.4.4-A
+// @version      3.4.7-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -129,7 +129,7 @@
                 } else {
                     setTimeout(() => {
                         window.location.reload();
-                    }, 150);
+                    }, 250);
                 }
             }
         }
