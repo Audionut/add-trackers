@@ -249,7 +249,8 @@
                 excludedTrackers.push({ tracker: tracker, reason: 'Not classified as a Feature Film' });
             });
         }
-        const selectedTVTrackers = []; // This was calling TVV even though it was disabled.
+        const selectedTVTrackers = ["TVV"]; // Trackers defined here also contain TV movies and the like.
+
         // Add TV trackers if it is a PTP miniseries page, but skip selected TV Trackers handling for now.
         if (isMiniSeriesFromSpan) {
             trackers = trackers.concat(tv_trackers.filter(tracker => !selectedTVTrackers.includes(tracker)));
@@ -260,17 +261,23 @@
                 }
             });
         }
+
         // This also captures TV movies and the like from Collections. Add selected TV Trackers.
         if (isMiniSeries) {
-            // Only add trackers from selectedTVTrackers if they are not already in the trackers array
-            selectedTVTrackers.forEach(tracker => {
+            // Filter selectedTVTrackers to only include those that are also in tv_trackers
+            const validSelectedTVTrackers = selectedTVTrackers.filter(tracker => tv_trackers.includes(tracker));
+
+            // Only add trackers from validSelectedTVTrackers if they are not already in the trackers array
+            validSelectedTVTrackers.forEach(tracker => {
                 if (!trackers.includes(tracker)) {
                     trackers.push(tracker);
                 }
             });
         } else {
             selectedTVTrackers.forEach(tracker => {
-                excludedTrackers.push({ tracker: tracker, reason: 'Not classified as a Miniseries' });
+                if (tv_trackers.includes(tracker)) {
+                    excludedTrackers.push({ tracker: tracker, reason: 'Not classified as a Miniseries' });
+                }
             });
         }
 
