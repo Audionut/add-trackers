@@ -1,12 +1,14 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.4.7-A
+// @version      3.4.4-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
 // @match        *://passthepopcorn.me/*threadid=44047*
 // @icon         https://passthepopcorn.me/favicon.ico
+// Download      https://github.com/Audionut/add-trackers/blob/main/ptp-add-filter-all-releases-anut.js
+// Update        https://github.com/Audionut/add-trackers/blob/main/ptp-add-filter-all-releases-anut.js
 // @grant        GM_xmlhttpRequest
 // @grant        GM.getValue
 // @grant        GM.setValue
@@ -194,7 +196,7 @@
                 }
             }
         }
-        const show_only_by_default = [];  // Use this to only show these trackers by default. Same input style as above.
+        const show_only_by_default = [];  // Use this to only show these trackers by default.
 
         const BLU_API_TOKEN = GM_config.get("blu_api"); // if you want to use BLU - find your api key here: https://blutopia.cc/users/YOUR_USERNAME_HERE/apikeys
         const TIK_API_TOKEN = GM_config.get("tik_api"); // if you want to use TIK - find your api key here: https://cinematik.net/users/YOUR_USERNAME_HERE/apikeys
