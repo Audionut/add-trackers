@@ -109,7 +109,13 @@
             },
             "close": function () {
                 console.log("Config window closed, reloading page");
-                window.location.reload();
+                if (this.frame) {
+                    window.location.reload();
+                } else {
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 100);
+                }
             }
         }
     });
