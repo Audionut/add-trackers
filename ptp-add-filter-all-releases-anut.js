@@ -1282,7 +1282,20 @@
                     if (/S\d+E\d+/i.test(torrent_obj.info_text)) {
                         return; // Skip this entry
                     }
+                    if (improved_tags) {
+                        let sceneElements = d.querySelectorAll("a");
+                        if (sceneElements.length > 0) {
+                            sceneElements.forEach(element => {
+                                let sceneText = element.textContent.trim();
 
+                                if (sceneText.includes("scene")) {
+                                    const sceneTrue = sceneText;
+                                    cleanedDataSource = `${sceneTrue} ${cleanedDataSource}`;
+                                    torrent_obj.info_text = cleanedDataSource;
+                                }
+                            });
+                        }
+                    }
                     // Further check if it is not a mini-series and the title contains "Sxx" where "xx" is unknown beforehand
                     if (!isMiniSeriesFromSpan && /S\d+/i.test(torrent_obj.info_text)) {
                         return; // Skip this entry if it is not a mini-series and has "Sxx" in the title
@@ -2099,6 +2112,11 @@
         return null; // Return null if no match is found
         //}
     };
+    const get_scene = (lower, torrent) => {
+        if (lower.includes("scene")) return "Scene / ";
+
+        return null;
+    }
 
     const get_simplified_title = (info_text, torrent) => {
         let lower = info_text.toLowerCase();
@@ -2115,6 +2133,7 @@
         let country = get_country(normal, torrent);
         let disc = get_disc(lower, torrent);
         let group = get_group(normal, torrent);
+        let scene = get_scene(lower, torrent);
 
         const parts = [];
 
@@ -2127,6 +2146,7 @@
         if (bonus) parts.push(bonus.trim());
         if (country) parts.push(country.trim());
         if (disc) parts.push(disc.trim());
+        if (scene) parts.push(scene.trim());
         if (group) parts.push(group.trim());
 
         // Use a Set to filter out duplicates
