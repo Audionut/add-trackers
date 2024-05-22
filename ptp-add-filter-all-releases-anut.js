@@ -17,14 +17,12 @@
 (function () {
     "use strict";
 
-    console.log("PTP - Add releases from other trackers script loaded");
-
     const fields = {
         "bhd": {"label": "BHD", "type": "checkbox", "default": false},
         "fl": {"label": "FL", "type": "checkbox", "default": false},
         "hdb": {"label": "HDB", "type": "checkbox", "default": false},
         "kg": {"label": "KG", "type": "checkbox", "default": false},
-        "ptp": {"label": "PTP", "type": "checkbox", "default": false},
+        "ptp": {"label": "PTP", "type": "checkbox", "default": true},
         "pxhd": {"label": "PxHD", "type": "checkbox", "default": false},
         "mtv": {"label": "MTV", "type": "checkbox", "default": false},
         "blu": {"label": "BLU", "type": "checkbox", "default": false},
