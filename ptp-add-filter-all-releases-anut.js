@@ -459,10 +459,17 @@
 
                     const sizeElement = torrent.querySelector('size[type="formatted"]');
                     if (sizeElement) {
-                        torrent_obj.size = parseFloat(sizeElement.textContent.split(" GB")[0]) * 1024; // Convert GB to MiB
+                        torrent_obj.size = parseInt(parseFloat(sizeElement.textContent.split(" GB")[0]) * 1024); // Convert GB to MiB
                     } else {
                         console.error("Missing size information.");
                         return; // Skip this torrent if size information is missing
+                    }
+                    const bytesElement = torrent.querySelector('size[type="bytes"]');
+                    if (bytesElement) {
+                        torrent_obj.api_size = parseInt(bytesElement.textContent);
+                    } else {
+                        console.error("Missing TVV bytes information");
+                        return;
                     }
 
                     // Check for the existence of each element before accessing its textContent
@@ -2313,7 +2320,7 @@
 
             cln.querySelector(".size-span").textContent = ptp_format_size;
 
-            if (torrent.site === "BLU" || torrent.site ==="Aither" || torrent.site ===  "RFX" || torrent.site ===  "OE" || torrent.site ===  "HUNO" || torrent.site === "TIK") {
+            if (torrent.site === "BLU" || torrent.site ==="Aither" || torrent.site ===  "RFX" || torrent.site ===  "OE" || torrent.site ===  "HUNO" || torrent.site === "TIK" || torrent.site === "TVV") {
                 cln.querySelector(".size-span").setAttribute("title", api_sized);
             } else {
                 cln.querySelector(".size-span").setAttribute("title", element_size);
