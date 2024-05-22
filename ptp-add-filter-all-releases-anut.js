@@ -716,6 +716,18 @@
                                         }
                                     }
                                     torrent_obj.groupId = groupText;
+                                    if (improved_tags) {
+                                        let sceneElements = d.querySelectorAll("a");
+                                        if (sceneElements.length > 0) {
+                                            sceneElements.forEach(element => {
+                                                let sceneText = element.textContent.trim();
+                                                if (sceneText.includes("scene.group.release")) {
+                                                    modifiedInfoText = "scene" + `${modifiedInfoText}`;
+                                                    torrent_obj.info_text = modifiedInfoText;
+                                                }
+                                            });
+                                        }
+                                    }
                                     torrent_obj.info_text = modifiedInfoText;
                                     torrent_obj.internal = isInternal ? true : false;
 
@@ -1289,8 +1301,6 @@
 
                     // Remove all periods from the dataSource string
                     let cleanedDataSource = dataSource.replace(/\./g, ' ');
-                    console.log("NLB text", cleanedDataSource);
-
                     torrent_obj.info_text = cleanedDataSource;
 
                     // Regular expression to detect SxxExx pattern
