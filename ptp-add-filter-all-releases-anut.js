@@ -586,6 +586,7 @@
 
                     torrent_obj.size = size;
                     let releaseName = d.querySelector("td:nth-child(3) > b > a").textContent.trim();
+                    torrent_obj.datasetRelease = releaseName;
                     let groupText = "";
                     if (improved_tags) {
                         const match = releaseName.match(/-([^-]+)$/);
@@ -1011,6 +1012,7 @@
                         const nextRow = rows[index + 1];
                         if (nextRow) {
                             let antname = nextRow.querySelector('.row > td').textContent.trim();
+                            torrent_obj.datasetRelease = antname;
                             let mediaInfo = nextRow.querySelector('.mediainfo > tbody > tr > td:nth-child(2) > table > tbody > tr:nth-child(2) > td:nth-child(2)').textContent.trim();
                             if (improved_tags) {
                                 const titleElement = d.querySelector("td:nth-child(1) > a");
@@ -2562,8 +2564,14 @@
                 cln.querySelector(".link_3").href = torrent.torrent_page;
                 cln.className += " " + dom_id;
                 cln.id += " " + dom_id;
-                if (torrent.info_text && cln.dataset.releasename) {
-                    cln.datase.releasename += `[${torrent.site}] ` + torrent.info_text;
+                if (torrent?.datasetRelease) {
+                    if (cln?.dataset?.releasename) {
+                        cln.dataset.releasename += `[${torrent.site}] ` + torrent.datasetRelease;
+                    } else {
+                        cln.dataset.releasename = `[${torrent.site}] ` + torrent.datasetRelease;
+                    }
+                } else if (torrent.info_text && cln.dataset.releasename) {
+                    cln.dataset.releasename += `[${torrent.site}] ` + torrent.info_text;
                 } else if (torrent.info_text) {
                     cln.dataset.releasename = `[${torrent.site}] ` + torrent.info_text;
                 }
