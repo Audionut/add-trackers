@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.4.9-A
+// @version      3.5.0-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -41,6 +41,7 @@
         "btn": {"label": "BTN", "type": "checkbox", "default": false},
         "tvv": {"label": "TVV *", "type": "checkbox", "default": false, "tooltip": "Enter auth key & torrent pass below"},
         "nbl": {"label": "NBL", "type": "checkbox", "default": false},
+        "rtf": {"label": "RTF", "type": "checkbox", "default": false},
         "blu_api": {"label": "BLU_API_TOKEN", "type": "text", "default": ""},
         "tik_api": {"label": "TIK_API_TOKEN", "type": "text", "default": ""},
         "aither_api": {"label": "AITHER_API_TOKEN", "type": "text", "default": ""},
@@ -155,6 +156,7 @@
             "AvistaZ": GM_config.get("avistaz"),
             "CinemaZ": GM_config.get("cinemaz"),
             "PHD": GM_config.get("phd"),
+            "RTF": GM_config.get("rtf"),
         };
 
         const movie_only_dict = {
@@ -171,17 +173,22 @@
         const old_dict = {
             "TVV": GM_config.get("tvv")
         };
+        const very_old_dict = {
+            "RTF": GM_config.get("rtf")
+        };
 
         const movie_trackers = [];
         const movie_only_trackers = [];
         const tv_trackers = [];
         const old_trackers = [];
+        const very_old_trackers = [];
 
         // Fill trackers arrays with enabled trackers
         fillTrackers(movie_dict, movie_trackers);
         fillTrackers(movie_only_dict, movie_only_trackers);
         fillTrackers(tv_dict, tv_trackers);
         fillTrackers(old_dict, old_trackers);
+        fillTrackers(very_old_dict, very_old_trackers);
 
         function fillTrackers(dict, trackerArray) {
             for (const [key, value] of Object.entries(dict)) {
@@ -295,6 +302,22 @@
                 }
             });
         }
+        if (year && (year < 2014 || year > 2100)) {
+            very_old_trackers.forEach(tracker => {
+                if (!trackers.includes(tracker)) {
+                    trackers.push(tracker);
+                }
+            });
+        } else {
+            const initialTrackers = [...trackers]; // Make a copy to compare later
+            trackers = trackers.filter(tracker => !very_old_trackers.includes(tracker));
+
+            initialTrackers.forEach(tracker => {
+                if (!trackers.includes(tracker)) {
+                    excludedTrackers.push({ tracker, reason: `Excluded by year range check (Year: ${year})` });
+                }
+            });
+        }
 
         // Remove old trackers from the included trackers array if the content matches the year range.
         if (year && (year < 2019 || year > 2100)) {
@@ -306,11 +329,12 @@
                 });
             }
         } else {
-            const initialTrackers = trackers.slice(); // Make a copy to compare later
+            const initialTrackers = [...trackers]; // Make a copy to compare later
             trackers = trackers.filter(tracker => !old_trackers.includes(tracker));
+
             initialTrackers.forEach(tracker => {
                 if (!trackers.includes(tracker)) {
-                    excludedTrackers.push({ tracker: tracker, reason: `Excluded by year range check (Year: ${year})` });
+                    excludedTrackers.push({ tracker, reason: `Excluded by year range check (Year: ${year})` });
                 }
             });
         }
@@ -510,7 +534,8 @@
                 "HUNO": "https://hawke.uno/favicon.ico",
                 "BTN": "https://broadcasthe.net/favicon.ico",
                 "TVV": "https://tv-vault.me/favicon.ico",
-                "NBL": "https://nebulance.io/favicon.ico"
+                "NBL": "https://nebulance.io/favicon.ico",
+                "RTF": "https://retroflix.club/favicon.ico"
             };
 
             // Get the URL from the icons object
@@ -1526,6 +1551,108 @@
                     displayAlert(`Looks like NBL's HTML layout has changed, please report`);
                 }
             }
+            if (tracker === "RTF") {
+                // Select all rows within the div with class "col-12"
+                const rows = html.querySelectorAll("div.row.pt-2.pb-2");
+                console.log("RTF rows count:", rows.length); // Log the number of rows found
+
+                rows.forEach((d) => {
+                    console.log("Processing row:", d); // Log the row being processed
+
+                    let torrent_obj = {};
+                    let sizeText = "";
+                    d.querySelectorAll("div.col-4.col-xl-2.text-center").forEach((sizeElement) => {
+                        let textContent = sizeElement.textContent.trim();
+                        if (textContent.includes("TB") || textContent.includes("GB") || textContent.includes("MB")) {
+                            sizeText = textContent;
+                        }
+                    });
+
+                    console.log("Filtered size text:", sizeText); // Log the filtered size text
+
+                    // Size conversion logic
+                    let size = 0;
+                    if (sizeText.includes("TB")) {
+                        size = parseInt(parseFloat(sizeText.split("TB")[0]) * 1024 * 1024); // Convert TB to MB
+                    } else if (sizeText.includes("GB")) {
+                        size = parseInt(parseFloat(sizeText.split("GB")[0]) * 1024); // Convert GB to MB
+                    } else if (sizeText.includes("MB")) {
+                        size = parseInt(parseFloat(sizeText.split("MB")[0]));
+                    }
+
+                    console.log("Converted size in MB:", size); // Log the converted size
+                    torrent_obj.size = size;
+
+                    let releaseName = d.querySelector("div.col-md-8.col-xl-8 a.font-weight-bold")?.textContent.trim() || "";
+                    console.log("Original release name:", releaseName); // Log the original release name
+
+                    torrent_obj.datasetRelease = releaseName;
+                    let groupText = "";
+                    if (improved_tags) {
+                        const match = releaseName.match(/-([^-]+)$/);
+                        if (match) {
+                            groupText = match[0].substring(1);
+                            groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                            releaseName = releaseName.replace(groupText, '');
+                        }
+                    }
+                    console.log("Group text:", groupText); // Log the group text
+                    torrent_obj.groupId = groupText;
+
+                    // Clean up release name
+                    releaseName = releaseName.replace(/:/g, ' ');
+                    releaseName = releaseName.replace(/\bDoVi\b/g, 'DV');
+                    releaseName = releaseName.replace(/DD\+/g, 'DD+ ');
+
+                    // Inject Blu-ray disc type into info_text if conditions are met
+                    if (improved_tags && releaseName.includes("Blu-ray") && torrent_obj.size) {
+                        const bdType = get_bd_type(torrent_obj.size);
+                        releaseName = `${bdType} ${releaseName}`;
+                    }
+
+                    console.log("Cleaned release name:", releaseName); // Log the cleaned release name
+                    torrent_obj.info_text = releaseName;
+                    torrent_obj.site = "RTF";
+
+                    // Transform download link and page link
+                    const downloadLinkElement = d.querySelector(".download");
+                    if (downloadLinkElement) {
+                        torrent_obj.download_link = downloadLinkElement.closest("a")?.href.replace("passthepopcorn.me", "retroflix.club");
+                    }
+
+                    const torrentPageElement = d.querySelector("div.col-md-8.col-xl-8 a.font-weight-bold");
+                    if (torrentPageElement) {
+                        torrent_obj.torrent_page = torrentPageElement.href.replace("passthepopcorn.me", "retroflix.club");
+                    }
+
+                    console.log("Download link:", torrent_obj.download_link); // Log the download link
+                    console.log("Torrent page link:", torrent_obj.torrent_page); // Log the torrent page link
+
+                    // Extract additional data
+                    const snatchSpan = [...d.querySelectorAll("div.col-2.col-xl-1.text-center span")]
+                        .find(span => !span.classList.contains("text-success") && !span.classList.contains("text-muted") && !span.classList.contains("text-danger"));
+                    torrent_obj.snatch = snatchSpan ? parseInt(snatchSpan.textContent.trim()) : 0;
+                    console.log("snatch", torrent_obj.snatch);
+
+                    const seedSpan = d.querySelector("div.col-2.col-xl-1.text-center span.text-success");
+                    torrent_obj.seed = seedSpan ? parseInt(seedSpan.textContent.trim()) : 0;
+                    console.log("seed", torrent_obj.seed);
+
+                    const leechSpan = d.querySelector("div.col-2.col-xl-1.text-center span.text-muted");
+                    torrent_obj.leech = leechSpan ? parseInt(leechSpan.textContent.trim()) : 0;
+                    console.log("leech", torrent_obj.leech);
+
+                    torrent_obj.status = d.querySelectorAll("span.tag_seeding").length > 0 ? "seeding" : "default";
+                    torrent_obj.discount = "None";
+
+                    // Add the parsed torrent object to the array
+                    torrent_objs.push(torrent_obj);
+
+                    console.log("Processed torrent object:", torrent_obj); // Log the processed torrent object
+                });
+
+                console.log("Final torrent objects:", torrent_objs); // Log the final torrent objects array
+            }
             torrent_objs = torrent_objs.map(e => {
                 return { ...e, "quality": get_torrent_quality(e) };
             });
@@ -1544,6 +1671,9 @@
             else if (tracker === "TVV") {
                 if (html.querySelector('NoResults') !== null) return false;
                 else return true;
+            }
+            else if (tracker === "RTF") {
+                return true;
             }
             else if (tracker === "NBL") {
                 const element = html.querySelector("div.box.pad > h2");
@@ -1757,6 +1887,10 @@
                 }
                 else if (tracker === "TVV") {
                     query_url = "https://tv-vault.me/xmlsearch.php?query=get&torrent_pass=" + TVV_TORR_PASS + "&imdbid=" + imdb_id;
+                }
+                else if (tracker === "RTF") {
+                    query_url = "https://retroflix.club/browse?years%5B%5D=1890&years%5B%5D=2024&includingDead=1&promotionType=&bookmarked=&search=" + imdb_id + "&searchIn=4&termMatchKind=0&submit=";
+                    console.log("RTF link", query_url);
                 }
                 else if (tracker === "NBL") {
                     query_url = "https://nebulance.io/torrents.php?order_by=time&order_way=desc&title=" + show_name;
@@ -2255,6 +2389,7 @@
 
             return null; // skip this info
         };
+
         const get_audio = (lower, torrent) => {
             if (lower.includes("atmos")) return "Dolby Atmos / ";
             else if (lower.includes("dts:x")) return "DTS:X / ";
@@ -2262,6 +2397,7 @@
 
             return null;
         };
+
         const get_hdr = (lower, torrent) => {
             if (lower.includes("dolby vision hdr10+")) return "Dolby Vision / HDR10+ / ";
             else if (lower.includes("dolby vision hdr10")) return "Dolby Vision / HDR10 / ";
@@ -2282,6 +2418,7 @@
 
             return null;
         };
+
         const get_bonus = (lower, torrent) => {
             const bonuses = [];
 
@@ -2298,6 +2435,7 @@
 
             return bonuses.length > 0 ? bonuses.join(" / ") + " / " : null;
         };
+
         const get_country = (normal, torrent) => {
             const exceptions = ["AVC", "DDP", "DTS", "PAL", "VHS", "WEB", "DVD", "HDR", "GLK", "UHD", "AKA", "TMT", "HDT", "ABC", "MKV", "AVI", "MP4", "VOB", "MAX"]; // Add any other exceptions as needed
             const countryCodeMatch = normal.match(/\b[A-Z]{3}\b/g);
@@ -2310,6 +2448,7 @@
 
             return null; // skip this info
         };
+
         const get_group = (normal, torrent) => {
             // Prefilter for Blu-ray and Blu-Ray and skip processing
             //if (normal.includes("Blu-ray")) {
@@ -2324,6 +2463,7 @@
             return null; // Return null if no match is found
             //}
         };
+
         const get_scene = (lower, torrent) => {
             if (lower.includes("scene")) return "Scene / ";
 
