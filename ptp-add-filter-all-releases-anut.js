@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.5.0-A
+// @version      3.5.1-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -1498,7 +1498,7 @@
                         } else if (size.includes("MB")) {
                             size = parseInt(parseFloat(size.split("MB")[0]));
                         }
-                        let releaseName = item.querySelector("td:nth-child(1) > a");
+                        let releaseName = item.querySelector("td:nth-child(1) > a").textContent;
                         let groupText = "";
                         if (improved_tags) {
                             const match = releaseName.match(/-([^-]+)$/);
@@ -1512,7 +1512,7 @@
                             edition: currentEdition,
                             size: size,
                             datasetRelease: releaseName,
-                            info_text: releaseName.textContent.replace(/\n/g, "") + ' / ' + edition,
+                            info_text: releaseName.replace(/\n/g, "") + ' / ' + edition,
                             groupId: groupText,
                             site: "PxHD",
                             download_link: item.querySelector("td:nth-child(1) > span > a").href.replace("passthepopcorn.me", "pixelhd.me"),
