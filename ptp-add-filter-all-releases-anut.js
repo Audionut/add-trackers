@@ -923,7 +923,7 @@
 
                             try {
                                 torrent_obj.site = "MTV";
-                                const downloadLinkArray = [...d.querySelectorAll("a")].filter(a => a.href.includes("torrents.php?action="));
+                                const downloadLinkArray = [...d.querySelectorAll("a[title='Download Torrent']")].filter(a => a.href.includes("torrents.php?action="));
                                 if (downloadLinkArray.length > 0) {
                                     torrent_obj.download_link = downloadLinkArray[0].href.replace("passthepopcorn.me", "morethantv.me");
                                 } else {
@@ -2269,6 +2269,7 @@
             else if (lower.includes("hdr10+ / dv")) return "Dolby Vision / HDR10+ / ";
             else if (lower.includes("hdr10 / dv")) return "Dolby Vision / HDR10 / ";
             else if (lower.includes("hdr / dv")) return "Dolby Vision / HDR10 / ";
+            else if (lower.includes("hdr dv")) return "Dolby Vision / HDR10 / ";
             else if (lower.includes(" dv ")) return "Dolby Vision / "; // Need spaces or else DVD suddenly has Dolby Vision.
             else if (lower.includes("dovi")) return "Dolby Vision / ";
             else if (lower.includes("dolby vision")) return "Dolby Vision / ";
