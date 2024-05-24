@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.4.8-A
+// @version      3.4.9-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -88,6 +88,7 @@
             #PTPAddReleases {background: #333333; width: 85%; margin: 10px 0; padding: 20px 20px}
             #PTPAddReleases .field_label {color: #fff; width: 100%;}
             #PTPAddReleases .config_header {color: #fff; padding-bottom: 10px; font-weight: 100;}
+            #PTPAddReleases .reset {color: #f00; text-align: left;}
             #PTPAddReleases .config_var {display: flex; flex-direction: row; text-align: left; justify-content: center; align-items: center; width: 75%; margin: 4px auto; padding: 4px 0;}
         `,
         "events": {
@@ -100,13 +101,6 @@
                 style.right = "6%";
                 style.borderRadius = "25px";
                 console.log("Config window opened");
-
-                // Add reset button to the UI
-                let resetButton = doc.createElement("button");
-                resetButton.innerHTML = "Reset to Defaults";
-                resetButton.className = "reset_button";
-                resetButton.addEventListener("click", resetToDefaults);
-                doc.querySelector("#PTPAddReleases").appendChild(resetButton);
 
                 // Add tooltips
                 for (const field in fields) {
@@ -586,6 +580,7 @@
 
                     torrent_obj.size = size;
                     let releaseName = d.querySelector("td:nth-child(3) > b > a").textContent.trim();
+                    torrent_obj.datasetRelease = releaseName;
                     let groupText = "";
                     if (improved_tags) {
                         const match = releaseName.match(/-([^-]+)$/);
@@ -783,6 +778,7 @@
                             .filter(text => !text.includes("DL") || text.includes("WEB-DL"))
                             .filter(text => !text.includes("]"))
                             .join(" ");
+                        torrent_obj.datasetRelease = torrent_obj.info_text;
                         torrent_obj.site = "BTN";
                         torrent_obj.download_link = d.querySelector("a[title='Download']").href.replace("passthepopcorn.me", "broadcasthe.net");
                         torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(4)").textContent);
@@ -819,6 +815,7 @@
                             .filter(text => !text.includes("DL") || text.includes("WEB-DL"))
                             .filter(text => !text.includes("]"))
                             .join(" ");
+                        torrent_obj.datasetRelease = torrent_obj.info_text;
                         torrent_obj.site = "BTN";
                         torrent_obj.download_link = d.querySelector("a[title='Download']").href.replace("passthepopcorn.me", "broadcasthe.net");
                         torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(3)").textContent);
@@ -867,6 +864,7 @@
                                 if (infoText) {
                                     // Check if the inner text contains "SxxExx" where "xx" is not known beforehand
                                     if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
+                                        torrent_obj.datasetRelease = infoText;
                                         // If the inner text does not contain the pattern, proceed with further processing
                                         // Remove forward slashes
                                         infoText = infoText.replace(/\//g, '');
@@ -922,7 +920,7 @@
 
                             try {
                                 torrent_obj.site = "MTV";
-                                const downloadLinkArray = [...d.querySelectorAll("a")].filter(a => a.href.includes("torrents.php?action="));
+                                const downloadLinkArray = [...d.querySelectorAll("a[title='Download Torrent']")].filter(a => a.href.includes("torrents.php?action="));
                                 if (downloadLinkArray.length > 0) {
                                     torrent_obj.download_link = downloadLinkArray[0].href.replace("passthepopcorn.me", "morethantv.me");
                                 } else {
@@ -1011,6 +1009,7 @@
                         const nextRow = rows[index + 1];
                         if (nextRow) {
                             let antname = nextRow.querySelector('.row > td').textContent.trim();
+                            torrent_obj.datasetRelease = antname;
                             let mediaInfo = nextRow.querySelector('.mediainfo > tbody > tr > td:nth-child(2) > table > tbody > tr:nth-child(2) > td:nth-child(2)').textContent.trim();
                             if (improved_tags) {
                                 const titleElement = d.querySelector("td:nth-child(1) > a");
@@ -1076,8 +1075,10 @@
                                             .replace(/\/+/g, '/')
                                             .replace(/\s*\/\s*/g, ' / ');
                                         torrent_obj.info_text = otherText;
+                                        torrent_obj.datasetRelease = otherText;
                                     }
                                 } else {
+                                    torrent_obj.datasetRelease = antname;
                                     antname = antname.replace(/\.[^.]*$/, "").replace(/\./g, " ");
                                     torrent_obj.info_text = antname;
                                 }
@@ -1131,6 +1132,7 @@
                             let infoText = infoTextElement ? infoTextElement.textContent.trim() : "";
 
                             if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
+                                torrent_obj.datasetRelease = infoText;
                                 let groupText = "";
                                 if (improved_tags) {
                                     const match = infoText.match(/-([^-]+)$/);
@@ -1466,6 +1468,7 @@
                         let infoLink = d.querySelector("td a[data-src]");
                         if (infoLink) {
                             let dataSource = infoLink.getAttribute("data-src");
+                            torrent_obj.datasetRelease = dataSource;
                             let groupText = "";
 
                             // Improved tags processing
@@ -1943,6 +1946,7 @@
                 torrent_objs = json.data.map((element) => {
                     // Mapping element attributes to a torrent object
                     const originalInfoText = tracker === "HUNO" ? element.attributes.name.replace(/[()]/g, "") : element.attributes.name;
+                    let getRelease = originalInfoText;
                     let infoText = originalInfoText;
 
                     // Check if the info text contains "SxxExx" where "xx" is not known beforehand
@@ -2005,6 +2009,7 @@
                         }
                         const torrentObj = {
                             api_size: parseInt(element.attributes.size),
+                            datasetRelease: getRelease,
                             size: parseInt(element.attributes.size / (1024 * 1024)),
                             info_text: updatedInfoText,
                             tracker: tracker,
@@ -2267,6 +2272,7 @@
             else if (lower.includes("hdr10+ / dv")) return "Dolby Vision / HDR10+ / ";
             else if (lower.includes("hdr10 / dv")) return "Dolby Vision / HDR10 / ";
             else if (lower.includes("hdr / dv")) return "Dolby Vision / HDR10 / ";
+            else if (lower.includes("hdr dv")) return "Dolby Vision / HDR10 / ";
             else if (lower.includes(" dv ")) return "Dolby Vision / "; // Need spaces or else DVD suddenly has Dolby Vision.
             else if (lower.includes("dovi")) return "Dolby Vision / ";
             else if (lower.includes("dolby vision")) return "Dolby Vision / ";
@@ -2562,8 +2568,14 @@
                 cln.querySelector(".link_3").href = torrent.torrent_page;
                 cln.className += " " + dom_id;
                 cln.id += " " + dom_id;
-                if (torrent.info_text && cln.dataset.releasename) {
-                    cln.datase.releasename += `[${torrent.site}] ` + torrent.info_text;
+                if (torrent?.datasetRelease) {
+                    if (cln?.dataset?.releasename) {
+                        cln.dataset.releasename += torrent.datasetRelease;
+                    } else {
+                        cln.dataset.releasename = torrent.datasetRelease;
+                    }
+                } else if (torrent.info_text && cln.dataset.releasename) {
+                    cln.dataset.releasename += `[${torrent.site}] ` + torrent.info_text;
                 } else if (torrent.info_text) {
                     cln.dataset.releasename = `[${torrent.site}] ` + torrent.info_text;
                 }
