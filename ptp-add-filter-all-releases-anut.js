@@ -88,6 +88,7 @@
             #PTPAddReleases {background: #333333; width: 85%; margin: 10px 0; padding: 20px 20px}
             #PTPAddReleases .field_label {color: #fff; width: 100%;}
             #PTPAddReleases .config_header {color: #fff; padding-bottom: 10px; font-weight: 100;}
+            #PTPAddReleases .reset {color: #f00; text-align: left;}
             #PTPAddReleases .config_var {display: flex; flex-direction: row; text-align: left; justify-content: center; align-items: center; width: 75%; margin: 4px auto; padding: 4px 0;}
         `,
         "events": {
@@ -100,13 +101,6 @@
                 style.right = "6%";
                 style.borderRadius = "25px";
                 console.log("Config window opened");
-
-                // Add reset button to the UI
-                let resetButton = doc.createElement("button");
-                resetButton.innerHTML = "Reset to Defaults";
-                resetButton.className = "reset_button";
-                resetButton.addEventListener("click", resetToDefaults);
-                doc.querySelector("#PTPAddReleases").appendChild(resetButton);
 
                 // Add tooltips
                 for (const field in fields) {
