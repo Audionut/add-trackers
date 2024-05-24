@@ -784,6 +784,7 @@
                             .filter(text => !text.includes("DL") || text.includes("WEB-DL"))
                             .filter(text => !text.includes("]"))
                             .join(" ");
+                        torrent_obj.datasetRelease = torrent_obj.info_text;
                         torrent_obj.site = "BTN";
                         torrent_obj.download_link = d.querySelector("a[title='Download']").href.replace("passthepopcorn.me", "broadcasthe.net");
                         torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(4)").textContent);
@@ -820,6 +821,7 @@
                             .filter(text => !text.includes("DL") || text.includes("WEB-DL"))
                             .filter(text => !text.includes("]"))
                             .join(" ");
+                        torrent_obj.datasetRelease = torrent_obj.info_text;
                         torrent_obj.site = "BTN";
                         torrent_obj.download_link = d.querySelector("a[title='Download']").href.replace("passthepopcorn.me", "broadcasthe.net");
                         torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(3)").textContent);
@@ -868,6 +870,7 @@
                                 if (infoText) {
                                     // Check if the inner text contains "SxxExx" where "xx" is not known beforehand
                                     if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
+                                        torrent_obj.datasetRelease = infoText;
                                         // If the inner text does not contain the pattern, proceed with further processing
                                         // Remove forward slashes
                                         infoText = infoText.replace(/\//g, '');
@@ -1078,8 +1081,10 @@
                                             .replace(/\/+/g, '/')
                                             .replace(/\s*\/\s*/g, ' / ');
                                         torrent_obj.info_text = otherText;
+                                        torrent_obj.datasetRelease = otherText;
                                     }
                                 } else {
+                                    torrent_obj.datasetRelease = antname;
                                     antname = antname.replace(/\.[^.]*$/, "").replace(/\./g, " ");
                                     torrent_obj.info_text = antname;
                                 }
@@ -1133,6 +1138,7 @@
                             let infoText = infoTextElement ? infoTextElement.textContent.trim() : "";
 
                             if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
+                                torrent_obj.datasetRelease = infoText;
                                 let groupText = "";
                                 if (improved_tags) {
                                     const match = infoText.match(/-([^-]+)$/);
@@ -1468,6 +1474,7 @@
                         let infoLink = d.querySelector("td a[data-src]");
                         if (infoLink) {
                             let dataSource = infoLink.getAttribute("data-src");
+                            torrent_obj.datasetRelease = dataSource;
                             let groupText = "";
 
                             // Improved tags processing
@@ -1945,6 +1952,7 @@
                 torrent_objs = json.data.map((element) => {
                     // Mapping element attributes to a torrent object
                     const originalInfoText = tracker === "HUNO" ? element.attributes.name.replace(/[()]/g, "") : element.attributes.name;
+                    let getRelease = originalInfoText;
                     let infoText = originalInfoText;
 
                     // Check if the info text contains "SxxExx" where "xx" is not known beforehand
@@ -2007,6 +2015,7 @@
                         }
                         const torrentObj = {
                             api_size: parseInt(element.attributes.size),
+                            datasetRelease: getRelease,
                             size: parseInt(element.attributes.size / (1024 * 1024)),
                             info_text: updatedInfoText,
                             tracker: tracker,
