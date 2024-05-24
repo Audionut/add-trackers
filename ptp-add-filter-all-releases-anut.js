@@ -2576,9 +2576,9 @@
                 cln.id += " " + dom_id;
                 if (torrent?.datasetRelease) {
                     if (cln?.dataset?.releasename) {
-                        cln.dataset.releasename += `[${torrent.site}] ` + torrent.datasetRelease;
+                        cln.dataset.releasename += torrent.datasetRelease;
                     } else {
-                        cln.dataset.releasename = `[${torrent.site}] ` + torrent.datasetRelease;
+                        cln.dataset.releasename = torrent.datasetRelease;
                     }
                 } else if (torrent.info_text && cln.dataset.releasename) {
                     cln.dataset.releasename += `[${torrent.site}] ` + torrent.info_text;
