@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.4.9-A
+// @version      3.5.0-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -1223,7 +1223,19 @@
                     }
 
                     torrent_obj.size = size;
-                    torrent_obj.info_text = [...d.querySelectorAll("a")].find(a => a.href.includes("details.php?id=")).title.replace(/\./g, " ");
+                    let releaseName = [...d.querySelectorAll("a")].find(a => a.href.includes("details.php?id="));
+                    torrent_obj.datasetRelease = releaseName;
+                    let groupText = "";
+                    if (improved_tags) {
+                        const match = releaseName.match(/-([^-]+)$/);
+                        if (match) {
+                            groupText = match[0].substring(1);
+                            groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                            releaseName = releaseName.replace(groupText, '');
+                        }
+                    }
+                    torrent_obj.info_text = releaseName.title.replace(/\./g, " ");
+                    torrent_obj.groupId = groupText;
                     torrent_obj.site = "FL";
                     torrent_obj.snatch = parseInt(d.querySelector("div:nth-child(8)").textContent.replace(/,/g, ""));
                     torrent_obj.seed = parseInt(d.querySelector("div:nth-child(9)").textContent.replace(/,/g, ""));
@@ -1258,7 +1270,19 @@
                     else size = 1; // must be kiloBytes, so lets assume 1mb.
 
                     torrent_obj.size = size;
-                    torrent_obj.info_text = d.querySelectorAll("td")[1].querySelector("b").textContent.trim();
+                    let releaseName = d.querySelectorAll("td")[1].querySelector("b").textContent.trim();
+                    torrent_obj.datasetRelease = releaseName;
+                    let groupText = "";
+                    if (improved_tags) {
+                        const match = releaseName.match(/-([^-]+)$/);
+                        if (match) {
+                            groupText = match[0].substring(1);
+                            groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                            releaseName = releaseName.replace(groupText, '');
+                        }
+                    }
+                    torrent_obj.info_text = releaseName;
+                    torrent_obj.groupId = groupText;
                     torrent_obj.site = "CG";
                     torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(6)").textContent);
                     torrent_obj.seed = parseInt(d.querySelector("td:nth-child(7)").textContent);
@@ -1288,7 +1312,19 @@
                         const images = d.querySelectorAll("[style='position:absolute;top:0px; left:0px'] > img");
                         torrent_obj.quality = Array.from(images).some(img => img.title.includes("HD")) ? "HD" : "SD";
                         torrent_obj.size = size;
-                        torrent_obj.info_text = d.querySelectorAll("td")[1].querySelector("a").textContent.trim();
+                        let releaseName = d.querySelectorAll("td")[1].querySelector("a").textContent.trim();
+                        torrent_obj.datasetRelease = releaseName;
+                        let groupText = "";
+                        if (improved_tags) {
+                            const match = releaseName.match(/-([^-]+)$/);
+                            if (match) {
+                                groupText = match[0].substring(1);
+                                groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                releaseName = releaseName.replace(groupText, '');
+                            }
+                        }
+                        torrent_obj.info_text = releaseName;
+                        torrent_obj.groupId = groupText;
                         torrent_obj.site = "KG";
                         torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(12)").textContent);
                         torrent_obj.seed = parseInt(d.querySelector("td:nth-child(13)").textContent);
@@ -1325,7 +1361,19 @@
 
                     const torrentLink = d.querySelector(".torrent-file > div > a");
                     torrent_obj.size = size;
-                    torrent_obj.info_text = torrentLink.textContent.trim();
+                    let releaseName = torrentLink.textContent.trim();
+                    torrent_obj.datasetRelease = releaseName;
+                    let groupText = "";
+                    if (improved_tags) {
+                        const match = releaseName.match(/-([^-]+)$/);
+                        if (match) {
+                            groupText = match[0].substring(1);
+                            groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                            releaseName = releaseName.replace(groupText, '');
+                        }
+                    }
+                    torrent_obj.info_text = releaseName;
+                    torrent_obj.groupId = groupText;
                     torrent_obj.site = "AvistaZ";
                     torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(8)").textContent);
                     torrent_obj.seed = parseInt(d.querySelector("td:nth-child(6)").textContent);
@@ -1359,7 +1407,19 @@
 
                     const torrentLink = d.querySelector(".torrent-file > div > a");
                     torrent_obj.size = size;
-                    torrent_obj.info_text = torrentLink.textContent.trim();
+                    let releaseName = torrentLink.textContent.trim();
+                    torrent_obj.datasetRelease = releaseName;
+                    let groupText = "";
+                    if (improved_tags) {
+                        const match = releaseName.match(/-([^-]+)$/);
+                        if (match) {
+                            groupText = match[0].substring(1);
+                            groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                            releaseName = releaseName.replace(groupText, '');
+                        }
+                    }
+                    torrent_obj.info_text = releaseName;
+                    torrent_obj.groupId = groupText;
                     torrent_obj.site = "CinemaZ";
                     torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(8)").textContent);
                     torrent_obj.seed = parseInt(d.querySelector("td:nth-child(6)").textContent);
@@ -1393,7 +1453,19 @@
 
                     const torrentLink = d.querySelector(".torrent-file > div > a");
                     torrent_obj.size = size;
-                    torrent_obj.info_text = torrentLink.textContent.trim();
+                    let releaseName = torrentLink.textContent.trim();
+                    torrent_obj.datasetRelease = releaseName;
+                    let groupText = "";
+                    if (improved_tags) {
+                        const match = releaseName.match(/-([^-]+)$/);
+                        if (match) {
+                            groupText = match[0].substring(1);
+                            groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                            releaseName = releaseName.replace(groupText, '');
+                        }
+                    }
+                    torrent_obj.info_text = releaseName;
+                    torrent_obj.groupId = groupText;
                     torrent_obj.site = "PHD";
                     torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(8)").textContent);
                     torrent_obj.seed = parseInt(d.querySelector("td:nth-child(6)").textContent);
@@ -1426,11 +1498,22 @@
                         } else if (size.includes("MB")) {
                             size = parseInt(parseFloat(size.split("MB")[0]));
                         }
-
+                        let releaseName = item.querySelector("td:nth-child(1) > a");
+                        let groupText = "";
+                        if (improved_tags) {
+                            const match = releaseName.match(/-([^-]+)$/);
+                            if (match) {
+                                groupText = match[0].substring(1);
+                                groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                releaseName = releaseName.replace(groupText, '');
+                            }
+                        }
                         let torrent_obj = {
                             edition: currentEdition,
                             size: size,
-                            info_text: item.querySelector("td:nth-child(1) > a").textContent.replace(/\n/g, "") + ' / ' + edition,
+                            datasetRelease: releaseName,
+                            info_text: releaseName.textContent.replace(/\n/g, "") + ' / ' + edition,
+                            groupId: groupText,
                             site: "PxHD",
                             download_link: item.querySelector("td:nth-child(1) > span > a").href.replace("passthepopcorn.me", "pixelhd.me"),
                             snatch: parseInt(item.querySelector("td:nth-child(6)").textContent),
