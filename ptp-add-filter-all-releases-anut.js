@@ -1489,16 +1489,18 @@
                     if (!edition) {
                         edition = currentEdition;
 
-                        let size = item.querySelector("td:nth-child(4)").textContent;
-
-                        if (size.includes("TB")) {
-                            size = parseInt(parseFloat(size.split("TB")[0]) * 1024 * 1024); // Convert TiB to MiB
-                        } else if (size.includes("GB")) {
-                            size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // Convert GB to MiB
-                        } else if (size.includes("MB")) {
-                            size = parseInt(parseFloat(size.split("MB")[0]));
+                        let sizeText = item.querySelector("td:nth-child(4)").textContent.trim();
+                        let size = 0;
+                        if (sizeText.includes("TB")) {
+                            size = parseInt(parseFloat(sizeText.split("TB")[0]) * 1024 * 1024); // Convert TB to MB
+                        } else if (sizeText.includes("GB")) {
+                            size = parseInt(parseFloat(sizeText.split("GB")[0]) * 1024); // Convert GB to MB
+                        } else if (sizeText.includes("MB")) {
+                            size = parseInt(parseFloat(sizeText.split("MB")[0]));
                         }
-                        let releaseName = item.querySelector("td:nth-child(1) > a").textContent;
+
+                        let releaseNameElement = item.querySelector("td:nth-child(1) > a");
+                        let releaseName = releaseNameElement ? releaseNameElement.textContent.trim() : "";
                         let groupText = "";
                         if (improved_tags) {
                             const match = releaseName.match(/-([^-]+)$/);
@@ -1508,18 +1510,21 @@
                                 releaseName = releaseName.replace(groupText, '');
                             }
                         }
+
+                        let downloadLinkElement = item.querySelector("td:nth-child(1) > span > a");
+                        let torrentPageElement = item.querySelector("td:nth-child(1) > a");
                         let torrent_obj = {
                             edition: currentEdition,
                             size: size,
                             datasetRelease: releaseName,
-                            info_text: releaseName.replace(/\n/g, "") + ' / ' + edition,
+                            info_text: `${releaseName.replace(/\n/g, "")} / ${edition}`,
                             groupId: groupText,
                             site: "PxHD",
-                            download_link: item.querySelector("td:nth-child(1) > span > a").href.replace("passthepopcorn.me", "pixelhd.me"),
+                            download_link: downloadLinkElement ? downloadLinkElement.href.replace("passthepopcorn.me", "pixelhd.me") : "",
                             snatch: parseInt(item.querySelector("td:nth-child(6)").textContent),
                             seed: parseInt(item.querySelector("td:nth-child(7)").textContent),
                             leech: parseInt(item.querySelector("td:nth-child(8)").textContent),
-                            torrent_page: item.querySelector("td:nth-child(1) > a").href.replace("passthepopcorn.me", "pixelhd.me"),
+                            torrent_page: torrentPageElement ? torrentPageElement.href.replace("passthepopcorn.me", "pixelhd.me") : "",
                             status: item.querySelectorAll("span.tag_seeding").length > 0 ? "seeding" : "default",
                             discount: "None",
                             internal: false,
