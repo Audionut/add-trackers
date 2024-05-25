@@ -173,6 +173,7 @@
         const old_dict = {
             "TVV": GM_config.get("tvv")
         };
+
         const very_old_dict = {
             "RTF": GM_config.get("rtf")
         };
@@ -1582,12 +1583,9 @@
                 }
             }
             if (tracker === "RTF") {
-                // Select all rows within the div with class "col-12"
                 const rows = html.querySelectorAll("div.row.pt-2.pb-2");
-                console.log("RTF rows count:", rows.length); // Log the number of rows found
 
                 rows.forEach((d) => {
-                    console.log("Processing row:", d); // Log the row being processed
 
                     let torrent_obj = {};
                     let sizeText = "";
@@ -1598,9 +1596,6 @@
                         }
                     });
 
-                    console.log("Filtered size text:", sizeText); // Log the filtered size text
-
-                    // Size conversion logic
                     let size = 0;
                     if (sizeText.includes("TB")) {
                         size = parseInt(parseFloat(sizeText.split("TB")[0]) * 1024 * 1024); // Convert TB to MB
@@ -1610,11 +1605,9 @@
                         size = parseInt(parseFloat(sizeText.split("MB")[0]));
                     }
 
-                    console.log("Converted size in MB:", size); // Log the converted size
                     torrent_obj.size = size;
 
                     let releaseName = d.querySelector("div.col-md-8.col-xl-8 a.font-weight-bold")?.textContent.trim() || "";
-                    console.log("Original release name:", releaseName); // Log the original release name
 
                     torrent_obj.datasetRelease = releaseName;
                     let groupText = "";
@@ -1626,25 +1619,73 @@
                             releaseName = releaseName.replace(groupText, '');
                         }
                     }
-                    console.log("Group text:", groupText); // Log the group text
                     torrent_obj.groupId = groupText;
 
-                    // Clean up release name
-                    releaseName = releaseName.replace(/:/g, ' ');
-                    releaseName = releaseName.replace(/\bDoVi\b/g, 'DV');
-                    releaseName = releaseName.replace(/DD\+/g, 'DD+ ');
+                            let cleanTheText = releaseName;
+                            const replaceFullStops = (text) => {
 
-                    // Inject Blu-ray disc type into info_text if conditions are met
-                    if (improved_tags && releaseName.includes("Blu-ray") && torrent_obj.size) {
-                        const bdType = get_bd_type(torrent_obj.size);
-                        releaseName = `${bdType} ${releaseName}`;
-                    }
+                                const placeholders = new Map();
+                                let tempText = text;
 
-                    console.log("Cleaned release name:", releaseName); // Log the cleaned release name
-                    torrent_obj.info_text = releaseName;
+                                const keepPatterns = [
+                                    /\b\d\.\d\b/g,
+                                    /\bDD\d\.\d\b/g,
+                                    /\bDDP\d\.\d\b/g,
+                                    /\bDD\+\d\.\d\b/g,
+                                    /\bTrueHD \d\.\d\b/g,
+                                    /\bDTS\d\.\d\b/g,
+                                    /\bAC3\d\.\d\b/g,
+                                    /\bAAC\d\.\d\b/g,
+                                    /\bOPUS\d\.\d\b/g,
+                                    /\bMP3\d\.\d\b/g,
+                                    /\bFLAC\d\.\d\b/g,
+                                    /\bLPCM\d\.\d\b/g,
+                                    /\bH\.264\b/g,
+                                    /\bH\.265\b/g,
+                                    /\bDTS-HD MA \d\.\d\b/g,
+                                    /\bDTS-HD MA \d\.\d\b/g // Ensuring variations
+                                ];
+
+                                keepPatterns.forEach((pattern, index) => {
+                                    tempText = tempText.replace(pattern, (match) => {
+                                        const placeholder = `__PLACEHOLDER${index}__`;
+                                        placeholders.set(placeholder, match);
+                                        return placeholder;
+                                    });
+                                });
+
+                                // Replace remaining full stops not followed by a digit, not preceded by a digit, or directly following a year
+                                tempText = tempText.replace(/(?<!\d)\.(?!\d)/g, ' '); // Replace full stops not preceded by a digit
+                                tempText = tempText.replace(/\.(?!(\d))/g, ' '); // Replace full stops not followed by a digit
+                                tempText = tempText.replace(/(?<=\b\d{4})\./g, ' '); // Remove full stops directly following a year
+                                tempText = tempText.replace(/\.(?=\b\d{4}\b)/g, ' '); // Remove full stops directly before a year
+
+                                placeholders.forEach((original, placeholder) => {
+                                    tempText = tempText.replace(new RegExp(placeholder, 'g'), original);
+                                });
+
+                                tempText = tempText
+                                    .replace(/DD\+/g, 'DD+ ')
+                                    .replace(/DDP/g, 'DD+ ')
+                                    .replace(/DoVi/g, 'DV')
+                                    .replace(/\(/g, '')
+                                    .replace(/\)/g, '')
+                                    .replace(/\bhdr\b/g, 'HDR')
+                                    .replace(/\bweb\b/g, 'WEB')
+                                    .replace(/\bbluray\b/gi, 'BluRay')
+                                    .replace(/\bh254\b/g, 'H.264')
+                                    .replace(/\bh265\b/g, 'H.265')
+                                    .replace(/\b\w/g, char => char.toUpperCase())
+                                    .replace(/\bX264\b/g, 'x264')
+                                    .replace(/\bX265\b/g, 'x265')
+                                    .replace(/\b - \b/g, ' ');
+
+                                return tempText;
+                            };
+
+                    torrent_obj.info_text = replaceFullStops(cleanTheText);
                     torrent_obj.site = "RTF";
 
-                    // Transform download link and page link
                     const downloadLinkElement = d.querySelector(".download");
                     if (downloadLinkElement) {
                         torrent_obj.download_link = downloadLinkElement.closest("a")?.href.replace("passthepopcorn.me", "retroflix.club");
@@ -1655,33 +1696,22 @@
                         torrent_obj.torrent_page = torrentPageElement.href.replace("passthepopcorn.me", "retroflix.club");
                     }
 
-                    console.log("Download link:", torrent_obj.download_link); // Log the download link
-                    console.log("Torrent page link:", torrent_obj.torrent_page); // Log the torrent page link
-
-                    // Extract additional data
                     const snatchSpan = [...d.querySelectorAll("div.col-2.col-xl-1.text-center span")]
                         .find(span => !span.classList.contains("text-success") && !span.classList.contains("text-muted") && !span.classList.contains("text-danger"));
                     torrent_obj.snatch = snatchSpan ? parseInt(snatchSpan.textContent.trim()) : 0;
-                    console.log("snatch", torrent_obj.snatch);
 
                     const seedSpan = d.querySelector("div.col-2.col-xl-1.text-center span.text-success");
                     torrent_obj.seed = seedSpan ? parseInt(seedSpan.textContent.trim()) : 0;
-                    console.log("seed", torrent_obj.seed);
 
                     const leechSpan = d.querySelector("div.col-2.col-xl-1.text-center span.text-muted");
                     torrent_obj.leech = leechSpan ? parseInt(leechSpan.textContent.trim()) : 0;
-                    console.log("leech", torrent_obj.leech);
 
                     torrent_obj.status = d.querySelectorAll("span.tag_seeding").length > 0 ? "seeding" : "default";
                     torrent_obj.discount = "None";
 
-                    // Add the parsed torrent object to the array
                     torrent_objs.push(torrent_obj);
 
-                    console.log("Processed torrent object:", torrent_obj); // Log the processed torrent object
                 });
-
-                console.log("Final torrent objects:", torrent_objs); // Log the final torrent objects array
             }
             torrent_objs = torrent_objs.map(e => {
                 return { ...e, "quality": get_torrent_quality(e) };
@@ -1920,7 +1950,6 @@
                 }
                 else if (tracker === "RTF") {
                     query_url = "https://retroflix.club/browse?years%5B%5D=1890&years%5B%5D=2024&includingDead=1&promotionType=&bookmarked=&search=" + imdb_id + "&searchIn=4&termMatchKind=0&submit=";
-                    console.log("RTF link", query_url);
                 }
                 else if (tracker === "NBL") {
                     query_url = "https://nebulance.io/torrents.php?order_by=time&order_way=desc&title=" + show_name;
