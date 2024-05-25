@@ -20,7 +20,7 @@
     "use strict";
 
     const fields = {
-        "bhd": {"label": "BHD", "type": "checkbox", "default": false},
+        "bhd": {"label": "BHD *", "type": "checkbox", "default": false, "tooltip": "Enter API and RSS key below"},
         "fl": {"label": "FL", "type": "checkbox", "default": false},
         "hdb": {"label": "HDB", "type": "checkbox", "default": false},
         "kg": {"label": "KG", "type": "checkbox", "default": false},
@@ -42,6 +42,8 @@
         "tvv": {"label": "TVV *", "type": "checkbox", "default": false, "tooltip": "Enter auth key & torrent pass below"},
         "nbl": {"label": "NBL", "type": "checkbox", "default": false},
         "rtf": {"label": "RTF", "type": "checkbox", "default": false},
+        "bhd_api": {"label": "BHD_API_TOKEN", "type": "text", "default": ""},
+        "bhd_rss": {"label": "BHD_RSS_KEY", "type": "text", "default": ""},
         "blu_api": {"label": "BLU_API_TOKEN", "type": "text", "default": ""},
         "tik_api": {"label": "TIK_API_TOKEN", "type": "text", "default": ""},
         "aither_api": {"label": "AITHER_API_TOKEN", "type": "text", "default": ""},
@@ -206,6 +208,8 @@
         const HUNO_API_TOKEN = GM_config.get("huno_api"); // if you want to use HUNO - find your api key here: https://hawke.uno/users/YOUR_USERNAME_HERE/settings/security#api
         const RFX_API_TOKEN = GM_config.get("rfx_api"); // if you want to use RFX - find your api key here: https:/reelflix.xyz/users/YOUR_USERNAME_HERE/apikeys
         const OE_API_TOKEN = GM_config.get("oe_api"); /// if you want to use OE - find your api key here: https:/onlyencodes.cc/users/YOUR_USERNAME_HERE/apikeys
+        const BHD_API_TOKEN = GM_config.get("bhd_api");
+        const BHD_RSS_KEY = GM_config.get("bhd_rss");
 
         // We need to use XML resposne with TVV and have to define some parameters for it to work correctly.
         const TVV_AUTH_KEY = GM_config.get("tvv_auth"); // If you want to use TVV - find your authkey from a torrent download link
@@ -416,27 +420,6 @@
                 else if (div.querySelector("b > a").title.includes("Neutral Leech")) return "Neutral Leech";
                 else if (div.querySelector("b > a").title.includes("100% FL")) return "Freeleech";
             }
-            else if (tracker === "BHD") {
-                if (div.querySelector("i.fa-peace") != null) return "Freeleech"; // limited FL, with 1.0 upload cap.
-                else if (div.querySelector("i.fa-popcorn") != null) return "Rewind"; // limited FL, until there are enough seeders?
-                else if (div.querySelector("i.text-refund") != null) return "Refundable";
-                else if (div.querySelector("i.fa-life-ring") != null) return "Rescuable"; // limited FL, until there are enough seeders=
-                else { // eğer fl varsa
-                    let discount = [...div.querySelectorAll("i.fa-star")].find(i => {
-                        return (
-                            i.getAttribute("title") != null &&
-                            i.getAttribute("title").includes("Free")
-                        );
-                    });
-                    //[...div.querySelectorAll("i.fa-star")].forEach(a => console.log(a));
-                    if (discount === undefined) return "None";
-                    else {
-                        let discount_value = discount.getAttribute("title").split(" ")[0]; // returns 50%
-                        if (discount_value === "100%") return "Freeleech";
-                        else return discount_value + " Freeleech";
-                    }
-                }
-            }
             else if (["BLU", "Aither", "RFX", "OE", "TIK", "HUNO"].includes(tracker)) {
                 return true;
             }
@@ -562,6 +545,14 @@
             )
                 return true;
             else return false;
+        };
+
+        const use_post_instead = (tracker) => {
+            if (tracker === "BHD") {
+                return true;
+            } else {
+                return false;
+            }
         };
 
         const get_torrent_objs = async (tracker, html) => {
@@ -1156,113 +1147,6 @@
                     }
                 });
             }
-            else if (tracker === "BHD") {
-                try {
-                    [...html.querySelector("div.table-torrents > table > tbody").querySelectorAll("tr:not(.comment-hidden)")].forEach((d) => {
-                        let torrent_obj = {};
-
-                        try {
-                            let sizeElements = Array.from(d.querySelectorAll("span.text-size")); // Convert NodeList to array
-                            let sizeElement = sizeElements.find(e => e.textContent.includes(" TiB") || e.textContent.includes(" GiB") || e.textContent.includes(" MiB"));
-                            let size = null;
-                            if (sizeElement) {
-                                size = sizeElement.textContent.trim();
-                                if (size.includes("TiB")) {
-                                    // 1 TiB = 1024 GiB = 1024 * 1024 MiB
-                                    size = parseInt(parseFloat(size.split("TiB")[0]) * 1024 * 1024);
-                                } else if (size.includes("GiB")) {
-                                    // 1 GiB = 1024 MiB
-                                    size = parseInt(parseFloat(size.split("GiB")[0]) * 1024);
-                                } else if (size.includes("MiB")) {
-                                    size = parseInt(parseFloat(size.split("MiB")[0]));
-                                }
-                            }
-                            torrent_obj.size = size;
-                        } catch (error) {
-                            console.error("An error occurred while extracting size:", error);
-                            torrent_obj.size = null;
-                        }
-
-                        try {
-                            let infoTextElement = d.querySelector("a.torrent-name");
-                            let infoText = infoTextElement ? infoTextElement.textContent.trim() : "";
-
-                            if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
-                                torrent_obj.datasetRelease = infoText;
-                                let groupText = "";
-                                if (improved_tags) {
-                                    const match = infoText.match(/-([^-]+)$/);
-                                    if (match) {
-                                        groupText = match[0].substring(1);
-                                        groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                                        infoText = infoText.replace(groupText, '');
-                                    }
-                                }
-                                torrent_obj.groupId = groupText;
-                                torrent_obj.info_text = infoText;
-                                torrent_obj.site = "BHD";
-
-                                let snatchElements = d.querySelectorAll("span[title='Times Completed']");
-                                let snatchElement = snatchElements.length > 0 ? snatchElements[0] : null; // Use the first span if available
-                                torrent_obj.snatch = snatchElement ? parseInt(snatchElement.textContent.trim()) : 0;
-
-                                let seedElements = d.querySelectorAll("span[title='Seeders']");
-                                let seedElement = seedElements.length > 0 ? seedElements[0] : null; // Use the first span if available
-                                torrent_obj.seed = seedElement ? parseInt(seedElement.textContent.trim()) : 0;
-
-                                let leechElements = d.querySelectorAll("span[title='Leechers']");
-                                let leechElement = leechElements.length > 0 ? leechElements[0] : null; // Use the first span if available
-                                torrent_obj.leech = leechElement ? parseInt(leechElement.textContent.trim()) : 0;
-
-                                let downloadLinkElement = [...d.querySelectorAll("a")].find(a => a.title === "Download Torrent");
-                                torrent_obj.download_link = downloadLinkElement ? downloadLinkElement.href : "";
-
-                                let torrentPageElement = d.querySelector("a.torrent-name");
-                                torrent_obj.torrent_page = torrentPageElement ? torrentPageElement.href : "";
-
-                                // Check if "snatched" condition is met
-                                if (d.querySelectorAll("i.fa-check").length > 0) {
-                                    torrent_obj.status = "snatched";
-                                }
-                                // Check if "seeding" condition is met
-                                else if (d.querySelectorAll("i.fa-seedling").length > 0) {
-                                    torrent_obj.status = "seeding";
-                                }
-                                // Default case if none of the above conditions are met
-                                else {
-                                    torrent_obj.status = "default";
-                                }
-
-                                // Inject Blu-ray disc type into info_text if conditions are met
-                                let bd_elements = d.querySelectorAll("a.beta-link-blend");
-                                if (bd_elements.length > 0) {
-                                    bd_elements.forEach(element => {
-                                        let bd_text = element.textContent.trim();
-
-                                        // Check if bd_text includes the desired substrings
-                                        if (bd_text.includes("UHD 100") || bd_text.includes("UHD 66") || bd_text.includes("UHD 50") || bd_text.includes("BD 50") || bd_text.includes("BD 25") || bd_text.includes("DVD 9") || bd_text.includes("DVD 5")) {
-                                            const bdType = bd_text;
-                                            infoText = `${bdType} ${infoText}`;
-                                            torrent_obj.info_text = infoText;
-                                        }
-                                    });
-                                }
-
-                                torrent_obj.discount = get_discount_text(d, tracker);
-                                torrent_obj.internal = Array.from(d.querySelectorAll("span")).some(element => {
-                                    const isInternal = element.getAttribute('class');
-                                    return isInternal ? isInternal.includes('badge-internal') : false;
-                                });
-                                torrent_objs.push(torrent_obj);
-                            }
-                        } catch (error) {
-                            console.error("An error occurred while extracting info text:", error);
-                        }
-                    });
-                } catch (error) {
-                    console.error("An error occurred while processing BHD tracker:", error);
-                }
-            }
             else if (tracker === "FL") {
                 html.querySelectorAll(".torrentrow").forEach((d) => {
                     let torrent_obj = {};
@@ -1701,10 +1585,10 @@
                     let groupText = "";
                     if (improved_tags) {
                         const match = releaseName.match(/-([^-]+)$/);
-                        if (match) {
+                        if (match && match[1].length <= 9) {
                             groupText = match[0].substring(1);
-                            groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                            releaseName = releaseName.replace(groupText, '');
+                            groupText = groupText.replace(/[^a-z0-9]/gi, ' ');
+                            releaseName = releaseName.replace(`-${groupText}`, '');
                         }
                     }
                     torrent_obj.groupId = groupText;
@@ -1864,12 +1748,7 @@
                 else return true;
             }
             else if (tracker === "BHD") {
-                const headerElement = html.querySelector("div.text-center > h5");
-                if (headerElement && headerElement.textContent.includes("N/A")) {
-                    return false; // Returns false only if the element exists and contains "N/A"
-                } else {
-                    return true; // Returns true if the element does not contain "N/A" or if the element is null
-                }
+                    return true;
             }
             else if (tracker === "BLU" || tracker === "Aither" || tracker === "RFX" || tracker === "OE" || tracker === "HUNO" || tracker === "TIK") {
                 if (html.querySelector(".torrent-search--list__no-result") === null) return true;
@@ -1911,6 +1790,55 @@
                 } else {
                     return true; // Element not found
                 }
+            }
+        };
+
+        const post_json = async (post_query_url, tracker, postData, timeout = timer) => {
+            let timer;
+            try {
+                const response = await new Promise((resolve, reject) => {
+                    timer = setTimeout(() => {
+                        console.error(`Request timed out for ${tracker} at URL: ${post_query_url}`);
+                        displayAlert(`Request timed out for ${tracker}`);
+                        reject(new Error('Request timed out'));
+                    }, timeout);
+
+                    GM_xmlhttpRequest({
+                        url: post_query_url,
+                        method: "POST",
+                        data: JSON.stringify(postData),
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        onload: (res) => {
+                            clearTimeout(timer);
+                            resolve(res);
+                        },
+                        onerror: (err) => {
+                            clearTimeout(timer);
+                            reject(err);
+                        },
+                        onabort: (err) => {
+                            clearTimeout(timer);
+                            reject(err);
+                        },
+                        ontimeout: (err) => {
+                            clearTimeout(timer);
+                            reject(err);
+                        },
+                    });
+                });
+
+                if (response.status === 200) {
+                    console.log("Raw response from BHD:", response.responseText); // Log raw response
+                    return JSON.parse(response.responseText);
+                } else {
+                    console.error(`Error: HTTP ${response.status} Error.`);
+                    return null;  // Allow other processing to continue by returning null
+                }
+            } catch (error) {
+                console.error(`Error fetching URL from ${tracker}: ${error.message}`);
+                return null;  // Return null to allow continuation of other operations
             }
         };
 
@@ -1980,6 +1908,8 @@
                 }, timeout);
                 let query_url = "";
                 let api_query_url = "";
+                let post_query_url = "";
+                let postData = {};
 
                 if (tracker === "PTP") {
                     query_url = "https://passthepopcorn.me/torrents.php?imdb=" + imdb_id;
@@ -1996,11 +1926,20 @@
                 }
                 else if (tracker === "ANT") {
                     query_url = "https://anthelion.me/torrents.php?searchstr=" + imdb_id + "&order_by=time&order_way=desc&group_results=1&action=basic&searchsubmit=1";
-                }
-                else if (tracker === "BHD") {
-                    query_url = "https://beyond-hd.me/torrents?search=&doSearch=Search&imdb=" + imdb_id;
-                }
-                else if (tracker === "BLU") {
+                } else if (tracker === "BHD") {
+                    try {
+                        post_query_url = "https://beyond-hd.me/api/torrents/" + BHD_API_TOKEN;
+                        postData = {
+                            action: "search",
+                            rsskey: BHD_RSS_KEY,
+                            imdb_id: imdb_id.split("tt")[1]
+                        };
+                    } catch (error) {
+                        console.error(`Error setting up BHD query: ${error.message}`);
+                        resolve([]); // Resolve with an empty array if there's an error
+                        return;
+                    }
+                } else if (tracker === "BLU") {
                     api_query_url =
                         "https://blutopia.cc/api/torrents/filter?imdbId=" +
                         imdb_id.split("tt")[1] +
@@ -2073,7 +2012,24 @@
                     query_url = "https://pixelhd.me/torrents.php?groupname=&year=&tmdbover=&tmdbunder=&tmdbid=&imdbover=&imdbunder=&imdbid=" + imdb_id + "&order_by=time&order_way=desc&taglist=&tags_type=1&filter_cat%5B1%5D=1&filterTorrentsButton=Filter+Torrents";
                 }
                 const performRequest = () => {
-                    if (use_api_instead(tracker) === false) {
+                    if (use_post_instead(tracker) === true) {
+                        post_json(post_query_url, tracker, postData, timeout)
+                            .then(result => {
+                                clearTimeout(timer); // Clear the timer on successful fetch
+                                console.log("Parsed result from BHD:", result); // Log parsed result
+                                if (result && result.results) {
+                                    resolve(get_post_torrent_objects(tracker, result));
+                                } else {
+                                    console.log(`${tracker} reached successfully but no results found`);
+                                    resolve([]);
+                                }
+                            })
+                            .catch(error => {
+                                console.error(`Error fetching data from ${tracker}:`, error);
+                                displayAlert(`Error fetching data from ${tracker}`);
+                                resolve([]); // Resolve with an empty array if there's an error
+                            });
+                    } else if (use_api_instead(tracker) === false) {
                         fetch_url(query_url)
                             .then(result => {
                                 clearTimeout(timer); // Clear the timer on successful fetch
@@ -2116,6 +2072,66 @@
 
                 performRequest();
             });
+        };
+
+        const get_post_torrent_objects = (tracker, postData) => {
+            let torrent_objs = [];
+            if (tracker === "BHD") {
+                try {
+                    torrent_objs = postData.results.map((d) => {
+                        const size = parseInt(d.size / (1024 * 1024)); // Convert size to MiB
+                        const api_size = parseInt(d.size); // Original size
+
+                        const originalInfoText = d.name;
+                        let infoText = originalInfoText;
+                        let groupText = "";
+
+                        if (improved_tags) {
+                            const match = infoText.match(/-([^-]+)$/);
+                            if (match) {
+                                groupText = match[0].substring(1);
+                                groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                infoText = infoText.replace(groupText, '');
+                            }
+                        }
+
+                        const torrentObj = {
+                            api_size: api_size,
+                            datasetRelease: originalInfoText,
+                            size: size,
+                            info_text: infoText,
+                            tracker: tracker,
+                            site: tracker,
+                            snatch: d.times_completed || 0,
+                            seed: d.seeders || 0,
+                            leech: d.leechers || 0,
+                            download_link: d.download_url || "",
+                            torrent_page: d.url || "",
+                            discount: d.freeleech === 1 ? "Freeleech" : "None",
+                            internal: d.internal === 1 ? true : false,
+                            status: "default",
+                            groupId: groupText,
+                            bhd_rating: d.bhd_rating,
+                            tmdb_rating: d.tmdb_rating,
+                            imdb_rating: d.imdb_rating,
+                            year: d.year,
+                            type: d.type,
+                        };
+
+                        // Map additional properties if necessary
+                        const mappedObj = {
+                            ...torrentObj,
+                            quality: get_torrent_quality(torrentObj),
+                        };
+
+                        console.log("Parsed torrent object:", mappedObj); // Log each parsed torrent object
+                        return mappedObj;
+                    }).filter(obj => obj !== null); // Filter out any null objects
+                } catch (error) {
+                    console.error("An error occurred while processing BHD tracker:", error);
+                }
+            }
+            return torrent_objs;
         };
 
         const get_api_discount = (text, refundable) => {
