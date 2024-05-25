@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.5.2-A
+// @version      3.5.3-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -41,6 +41,7 @@
         "btn": {"label": "BTN", "type": "checkbox", "default": false},
         "tvv": {"label": "TVV *", "type": "checkbox", "default": false, "tooltip": "Enter auth key & torrent pass below"},
         "nbl": {"label": "NBL", "type": "checkbox", "default": false},
+        "rtf": {"label": "RTF", "type": "checkbox", "default": false},
         "blu_api": {"label": "BLU_API_TOKEN", "type": "text", "default": ""},
         "tik_api": {"label": "TIK_API_TOKEN", "type": "text", "default": ""},
         "aither_api": {"label": "AITHER_API_TOKEN", "type": "text", "default": ""},
@@ -155,6 +156,7 @@
             "AvistaZ": GM_config.get("avistaz"),
             "CinemaZ": GM_config.get("cinemaz"),
             "PHD": GM_config.get("phd"),
+            "RTF": GM_config.get("rtf"),
         };
 
         const movie_only_dict = {
@@ -172,16 +174,22 @@
             "TVV": GM_config.get("tvv")
         };
 
+        const very_old_dict = {
+            "RTF": GM_config.get("rtf")
+        };
+
         const movie_trackers = [];
         const movie_only_trackers = [];
         const tv_trackers = [];
         const old_trackers = [];
+        const very_old_trackers = [];
 
         // Fill trackers arrays with enabled trackers
         fillTrackers(movie_dict, movie_trackers);
         fillTrackers(movie_only_dict, movie_only_trackers);
         fillTrackers(tv_dict, tv_trackers);
         fillTrackers(old_dict, old_trackers);
+        fillTrackers(very_old_dict, very_old_trackers);
 
         function fillTrackers(dict, trackerArray) {
             for (const [key, value] of Object.entries(dict)) {
@@ -295,6 +303,22 @@
                 }
             });
         }
+        if (year && (year < 2014 || year > 2100)) {
+            very_old_trackers.forEach(tracker => {
+                if (!trackers.includes(tracker)) {
+                    trackers.push(tracker);
+                }
+            });
+        } else {
+            const initialTrackers = [...trackers]; // Make a copy to compare later
+            trackers = trackers.filter(tracker => !very_old_trackers.includes(tracker));
+
+            initialTrackers.forEach(tracker => {
+                if (!trackers.includes(tracker)) {
+                    excludedTrackers.push({ tracker, reason: `Excluded by year range check (Year: ${year})` });
+                }
+            });
+        }
 
         // Remove old trackers from the included trackers array if the content matches the year range.
         if (year && (year < 2019 || year > 2100)) {
@@ -306,11 +330,12 @@
                 });
             }
         } else {
-            const initialTrackers = trackers.slice(); // Make a copy to compare later
+            const initialTrackers = [...trackers]; // Make a copy to compare later
             trackers = trackers.filter(tracker => !old_trackers.includes(tracker));
+
             initialTrackers.forEach(tracker => {
                 if (!trackers.includes(tracker)) {
-                    excludedTrackers.push({ tracker: tracker, reason: `Excluded by year range check (Year: ${year})` });
+                    excludedTrackers.push({ tracker, reason: `Excluded by year range check (Year: ${year})` });
                 }
             });
         }
@@ -510,7 +535,8 @@
                 "HUNO": "https://hawke.uno/favicon.ico",
                 "BTN": "https://broadcasthe.net/favicon.ico",
                 "TVV": "https://tv-vault.me/favicon.ico",
-                "NBL": "https://nebulance.io/favicon.ico"
+                "NBL": "https://nebulance.io/favicon.ico",
+                "RTF": "https://retroflix.club/favicon.ico"
             };
 
             // Get the URL from the icons object
@@ -735,6 +761,7 @@
             else if (tracker === "BTN") {
                 let skipFollowingRows = false; // Flag to skip rows after detecting an episode
                 let withinSeason2 = false; // Flag to track if we are within "Season 2" rows
+                let withinExtras = false;
 
                 html.querySelector(".main_column").querySelectorAll(".torrent_table > tbody:nth-child(2) > tr").forEach((d) => {
                     // Check for episode and handle skipping logic
@@ -757,8 +784,18 @@
                         }
                     }
 
+                    const extrasLink = d.querySelector('td > div > strong > a[title="View Torrent"]');
+                    if (extrasLink) {
+                        let extrasText = extrasLink.textContent.trim();
+                        if (extrasText.includes("Extras")) {
+                            withinExtras = true;
+                        } else {
+                            withinExtras = false;
+                        }
+                    }
                     // BTN has differing layouts for the torrents, this will process torrents with this html layout.
-                    if (d.querySelectorAll("td")[2].textContent.includes("GB")) {
+                    let correntParse = d.querySelectorAll("td")[2].textContent;
+                    if (correntParse.includes("GB") || correntParse.includes("MB") || correntParse.includes("TB")) {
                         let torrent_obj = {};
                         let size = d.querySelectorAll("td")[2].textContent;
 
@@ -771,13 +808,21 @@
                         }
 
                         torrent_obj.size = size;
-                        torrent_obj.info_text = Array.from(d.querySelector("td:nth-child(2)").querySelectorAll("span"))
+                        let aElement = d.querySelector("td:nth-child(2)"); // Select the second td element
+                        let spanTexts = Array.from(aElement.querySelectorAll("span"))
                             .map(span => span.textContent.trim())
+                            .filter(text => text.length > 0) // Remove any empty strings after trimming
                             .filter(text => !text.includes("Internal"))
                             .filter(text => !text.includes("["))
                             .filter(text => !text.includes("DL") || text.includes("WEB-DL"))
                             .filter(text => !text.includes("]"))
-                            .join(" ");
+                            .join(' / ')
+                            .replace(/(\s*\/\s*)+/g, ' / ');
+                        if (improved_tags && spanTexts.includes("BD50") && torrent_obj.size) {
+                            const bdType = get_bd_type(torrent_obj.size);
+                            spanTexts = `${bdType} ${spanTexts}`;
+                        }
+                        torrent_obj.info_text = spanTexts;
                         torrent_obj.datasetRelease = torrent_obj.info_text;
                         torrent_obj.site = "BTN";
                         torrent_obj.download_link = d.querySelector("a[title='Download']").href.replace("passthepopcorn.me", "broadcasthe.net");
@@ -790,12 +835,14 @@
                         torrent_obj.internal = Array.from(d.querySelector("td:nth-child(2)").querySelectorAll("span"))
                             .map(span => span.textContent.trim())
                             .some(text => text.includes("Internal"));
-                        torrent_obj.season2 = withinSeason2, // Direct assignment using flag
-                            torrent_objs.push(torrent_obj);
+                        torrent_obj.season2 = withinSeason2; // Direct assignment using flag
+                        torrent_obj.extras = withinExtras;
+                        torrent_objs.push(torrent_obj);
                     }
 
                     // Layout for other torrents.
-                    if (d.querySelectorAll("td")[1].textContent.includes("GB")) {
+                    let textContent = d.querySelectorAll("td")[1].textContent;
+                    if (textContent.includes("GB") || textContent.includes("MB") || textContent.includes("TB")) {
                         let torrent_obj = {};
                         let size = d.querySelectorAll("td")[1].textContent;
 
@@ -808,14 +855,22 @@
                         }
 
                         torrent_obj.size = size;
-                        torrent_obj.info_text = Array.from(d.querySelector("td:nth-child(1)").querySelectorAll("span"))
+                        let aElement = d.querySelector("td:nth-child(1)"); // Select the second td element
+                        let spanTexts = Array.from(aElement.querySelectorAll("span"))
                             .map(span => span.textContent.trim())
+                            .filter(text => text.length > 0) // Remove any empty strings after trimming
                             .filter(text => !text.includes("Internal"))
                             .filter(text => !text.includes("["))
                             .filter(text => !text.includes("DL") || text.includes("WEB-DL"))
                             .filter(text => !text.includes("]"))
-                            .join(" ");
-                        torrent_obj.datasetRelease = torrent_obj.info_text;
+                            .join(' / ')
+                            .replace(/(\s*\/\s*)+/g, ' / ');
+                        if (improved_tags && spanTexts.includes("BD50") && torrent_obj.size) {
+                            const bdType = get_bd_type(torrent_obj.size);
+                            spanTexts = `${bdType} ${spanTexts}`;
+                        }
+                        torrent_obj.info_text = spanTexts;
+                        torrent_obj.datasetRelease = spanTexts;
                         torrent_obj.site = "BTN";
                         torrent_obj.download_link = d.querySelector("a[title='Download']").href.replace("passthepopcorn.me", "broadcasthe.net");
                         torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(3)").textContent);
@@ -828,7 +883,8 @@
                             .map(span => span.textContent.trim())
                             .some(text => text.includes("Internal"));
                         torrent_obj.season2 = withinSeason2, // Direct assignment using flag
-                            torrent_objs.push(torrent_obj);
+                        torrent_obj.extras = withinExtras;
+                        torrent_objs.push(torrent_obj);
                     }
                 });
             }
@@ -1614,6 +1670,137 @@
                     displayAlert(`Looks like NBL's HTML layout has changed, please report`);
                 }
             }
+            if (tracker === "RTF") {
+                const rows = html.querySelectorAll("div.row.pt-2.pb-2");
+
+                rows.forEach((d) => {
+
+                    let torrent_obj = {};
+                    let sizeText = "";
+                    d.querySelectorAll("div.col-4.col-xl-2.text-center").forEach((sizeElement) => {
+                        let textContent = sizeElement.textContent.trim();
+                        if (textContent.includes("TB") || textContent.includes("GB") || textContent.includes("MB")) {
+                            sizeText = textContent;
+                        }
+                    });
+
+                    let size = 0;
+                    if (sizeText.includes("TB")) {
+                        size = parseInt(parseFloat(sizeText.split("TB")[0]) * 1024 * 1024); // Convert TB to MB
+                    } else if (sizeText.includes("GB")) {
+                        size = parseInt(parseFloat(sizeText.split("GB")[0]) * 1024); // Convert GB to MB
+                    } else if (sizeText.includes("MB")) {
+                        size = parseInt(parseFloat(sizeText.split("MB")[0]));
+                    }
+
+                    torrent_obj.size = size;
+
+                    let releaseName = d.querySelector("div.col-md-8.col-xl-8 a.font-weight-bold")?.textContent.trim() || "";
+
+                    torrent_obj.datasetRelease = releaseName;
+                    let groupText = "";
+                    if (improved_tags) {
+                        const match = releaseName.match(/-([^-]+)$/);
+                        if (match) {
+                            groupText = match[0].substring(1);
+                            groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                            releaseName = releaseName.replace(groupText, '');
+                        }
+                    }
+                    torrent_obj.groupId = groupText;
+
+                            let cleanTheText = releaseName;
+                            const replaceFullStops = (text) => {
+
+                                const placeholders = new Map();
+                                let tempText = text;
+
+                                const keepPatterns = [
+                                    /\b\d\.\d\b/g,
+                                    /\bDD\d\.\d\b/g,
+                                    /\bDDP\d\.\d\b/g,
+                                    /\bDD\+\d\.\d\b/g,
+                                    /\bTrueHD \d\.\d\b/g,
+                                    /\bDTS\d\.\d\b/g,
+                                    /\bAC3\d\.\d\b/g,
+                                    /\bAAC\d\.\d\b/g,
+                                    /\bOPUS\d\.\d\b/g,
+                                    /\bMP3\d\.\d\b/g,
+                                    /\bFLAC\d\.\d\b/g,
+                                    /\bLPCM\d\.\d\b/g,
+                                    /\bH\.264\b/g,
+                                    /\bH\.265\b/g,
+                                    /\bDTS-HD MA \d\.\d\b/g,
+                                    /\bDTS-HD MA \d\.\d\b/g // Ensuring variations
+                                ];
+
+                                keepPatterns.forEach((pattern, index) => {
+                                    tempText = tempText.replace(pattern, (match) => {
+                                        const placeholder = `__PLACEHOLDER${index}__`;
+                                        placeholders.set(placeholder, match);
+                                        return placeholder;
+                                    });
+                                });
+
+                                // Replace remaining full stops not followed by a digit, not preceded by a digit, or directly following a year
+                                tempText = tempText.replace(/(?<!\d)\.(?!\d)/g, ' '); // Replace full stops not preceded by a digit
+                                tempText = tempText.replace(/\.(?!(\d))/g, ' '); // Replace full stops not followed by a digit
+                                tempText = tempText.replace(/(?<=\b\d{4})\./g, ' '); // Remove full stops directly following a year
+                                tempText = tempText.replace(/\.(?=\b\d{4}\b)/g, ' '); // Remove full stops directly before a year
+
+                                placeholders.forEach((original, placeholder) => {
+                                    tempText = tempText.replace(new RegExp(placeholder, 'g'), original);
+                                });
+
+                                tempText = tempText
+                                    .replace(/DD\+/g, 'DD+ ')
+                                    .replace(/DDP/g, 'DD+ ')
+                                    .replace(/DoVi/g, 'DV')
+                                    .replace(/\(/g, '')
+                                    .replace(/\)/g, '')
+                                    .replace(/\bhdr\b/g, 'HDR')
+                                    .replace(/\bweb\b/g, 'WEB')
+                                    .replace(/\bbluray\b/gi, 'BluRay')
+                                    .replace(/\bh254\b/g, 'H.264')
+                                    .replace(/\bh265\b/g, 'H.265')
+                                    .replace(/\b\w/g, char => char.toUpperCase())
+                                    .replace(/\bX264\b/g, 'x264')
+                                    .replace(/\bX265\b/g, 'x265')
+                                    .replace(/\b - \b/g, ' ');
+
+                                return tempText;
+                            };
+
+                    torrent_obj.info_text = replaceFullStops(cleanTheText);
+                    torrent_obj.site = "RTF";
+
+                    const downloadLinkElement = d.querySelector(".download");
+                    if (downloadLinkElement) {
+                        torrent_obj.download_link = downloadLinkElement.closest("a")?.href.replace("passthepopcorn.me", "retroflix.club");
+                    }
+
+                    const torrentPageElement = d.querySelector("div.col-md-8.col-xl-8 a.font-weight-bold");
+                    if (torrentPageElement) {
+                        torrent_obj.torrent_page = torrentPageElement.href.replace("passthepopcorn.me", "retroflix.club");
+                    }
+
+                    const snatchSpan = [...d.querySelectorAll("div.col-2.col-xl-1.text-center span")]
+                        .find(span => !span.classList.contains("text-success") && !span.classList.contains("text-muted") && !span.classList.contains("text-danger"));
+                    torrent_obj.snatch = snatchSpan ? parseInt(snatchSpan.textContent.trim()) : 0;
+
+                    const seedSpan = d.querySelector("div.col-2.col-xl-1.text-center span.text-success");
+                    torrent_obj.seed = seedSpan ? parseInt(seedSpan.textContent.trim()) : 0;
+
+                    const leechSpan = d.querySelector("div.col-2.col-xl-1.text-center span.text-muted");
+                    torrent_obj.leech = leechSpan ? parseInt(leechSpan.textContent.trim()) : 0;
+
+                    torrent_obj.status = d.querySelectorAll("span.tag_seeding").length > 0 ? "seeding" : "default";
+                    torrent_obj.discount = "None";
+
+                    torrent_objs.push(torrent_obj);
+
+                });
+            }
             torrent_objs = torrent_objs.map(e => {
                 return { ...e, "quality": get_torrent_quality(e) };
             });
@@ -1632,6 +1819,18 @@
             else if (tracker === "TVV") {
                 if (html.querySelector('NoResults') !== null) return false;
                 else return true;
+            }
+            else if (tracker === "RTF") {
+                const element = html.querySelector("div.col-md-12 > h4")
+                if (element) {
+                    if (element.textContent.includes("No results found")) {
+                        return false;
+                    } else {
+                        return true;
+                    }
+                } else {
+                    return true;
+                }
             }
             else if (tracker === "NBL") {
                 const element = html.querySelector("div.box.pad > h2");
@@ -1845,6 +2044,9 @@
                 }
                 else if (tracker === "TVV") {
                     query_url = "https://tv-vault.me/xmlsearch.php?query=get&torrent_pass=" + TVV_TORR_PASS + "&imdbid=" + imdb_id;
+                }
+                else if (tracker === "RTF") {
+                    query_url = "https://retroflix.club/browse?years%5B%5D=1890&years%5B%5D=2024&includingDead=1&promotionType=&bookmarked=&search=" + imdb_id + "&searchIn=4&termMatchKind=2&submit=";
                 }
                 else if (tracker === "NBL") {
                     query_url = "https://nebulance.io/torrents.php?order_by=time&order_way=desc&title=" + show_name;
@@ -2343,6 +2545,7 @@
 
             return null; // skip this info
         };
+
         const get_audio = (lower, torrent) => {
             if (lower.includes("atmos")) return "Dolby Atmos / ";
             else if (lower.includes("dts:x")) return "DTS:X / ";
@@ -2350,6 +2553,7 @@
 
             return null;
         };
+
         const get_hdr = (lower, torrent) => {
             if (lower.includes("dolby vision hdr10+")) return "Dolby Vision / HDR10+ / ";
             else if (lower.includes("dolby vision hdr10")) return "Dolby Vision / HDR10 / ";
@@ -2370,6 +2574,7 @@
 
             return null;
         };
+
         const get_bonus = (lower, torrent) => {
             const bonuses = [];
 
@@ -2386,6 +2591,7 @@
 
             return bonuses.length > 0 ? bonuses.join(" / ") + " / " : null;
         };
+
         const get_country = (normal, torrent) => {
             const exceptions = ["AVC", "DDP", "DTS", "PAL", "VHS", "WEB", "DVD", "HDR", "GLK", "UHD", "AKA", "TMT", "HDT", "ABC", "MKV", "AVI", "MP4", "VOB", "MAX"]; // Add any other exceptions as needed
             const countryCodeMatch = normal.match(/\b[A-Z]{3}\b/g);
@@ -2398,11 +2604,8 @@
 
             return null; // skip this info
         };
+
         const get_group = (normal, torrent) => {
-            // Prefilter for Blu-ray and Blu-Ray and skip processing
-            //if (normal.includes("Blu-ray")) {
-            //    return "NoGrp"; // Skip further processing for this info
-            //} else {
             const match = normal.match(/-[a-z0-9]+$/i); // Updated regex to match group patterns
             if (match) {
                 let groupName = match[0].substring(1); // Remove the leading hyphen
@@ -2410,8 +2613,8 @@
                 return groupName;
             }
             return null; // Return null if no match is found
-            //}
         };
+
         const get_scene = (lower, torrent) => {
             if (lower.includes("scene")) return "Scene / ";
 
@@ -2507,7 +2710,7 @@
                 }
 
                 if (!hide_tags) {
-                    if (improved_tags)
+                    if (improved_tags) {
                         if (torrent.region != null && torrent.region != false) {
                             cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__region'>${torrent.region}</span>`;
                         }
@@ -2524,6 +2727,7 @@
                     if (torrent.site === "BTN") {
                         torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal'>Internal</span>" : false;
                         torrent.season2 ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__season2'>Season 2</span>" : false;
+                        torrent.extras ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__season2'>Extras</span>" : false;
                     }
                     if (torrent.site === "ANT") {
                         torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal'>Internal</span>" : false;
@@ -2542,6 +2746,7 @@
                         get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__Emerald'>Emerald</span>") : false;
                         get_api_featured(torrent.featured, torrent.site) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__Platinum'>Platinum</span>") : false;
                         get_api_personal_release(torrent.personal_release) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__Personal'>Personal Release</span>") : false;
+                    }
                     } else if (!improved_tags) {
                         if (torrent.site === "HDB") {
                             torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
@@ -2553,6 +2758,7 @@
                         if (torrent.site === "BTN") {
                             torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #00FF00'>Internal</span>" : false;
                             torrent.season2 ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__season2' style='font-weight: bold; color: #FF0000'>Season 2</span>" : false;
+                            torrent.extras ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__season2' style='font-weight: bold; color: #a14989'>Extras</span>" : false;
                         }
                         if (torrent.site === "ANT") {
                             torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #2CB430'>Internal</span>" : false;
