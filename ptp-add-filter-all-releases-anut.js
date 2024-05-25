@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.5.0-A
+// @version      3.5.3-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -1733,7 +1733,16 @@
                 else return true;
             }
             else if (tracker === "RTF") {
-                return true;
+                const element = html.querySelector("div.col-md-12 > h4")
+                if (element) {
+                    if (element.textContent.includes("No results found")) {
+                        return false;
+                    } else {
+                        return true;
+                    }
+                } else {
+                    return true;
+                }
             }
             else if (tracker === "NBL") {
                 const element = html.querySelector("div.box.pad > h2");
@@ -1949,7 +1958,7 @@
                     query_url = "https://tv-vault.me/xmlsearch.php?query=get&torrent_pass=" + TVV_TORR_PASS + "&imdbid=" + imdb_id;
                 }
                 else if (tracker === "RTF") {
-                    query_url = "https://retroflix.club/browse?years%5B%5D=1890&years%5B%5D=2024&includingDead=1&promotionType=&bookmarked=&search=" + imdb_id + "&searchIn=4&termMatchKind=0&submit=";
+                    query_url = "https://retroflix.club/browse?years%5B%5D=1890&years%5B%5D=2024&includingDead=1&promotionType=&bookmarked=&search=" + imdb_id + "&searchIn=4&termMatchKind=2&submit=";
                 }
                 else if (tracker === "NBL") {
                     query_url = "https://nebulance.io/torrents.php?order_by=time&order_way=desc&title=" + show_name;
