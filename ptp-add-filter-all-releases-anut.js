@@ -2559,7 +2559,7 @@
                 }
 
                 if (!hide_tags) {
-                    if (improved_tags)
+                    if (improved_tags) {
                         if (torrent.region != null && torrent.region != false) {
                             cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__region'>${torrent.region}</span>`;
                         }
@@ -2594,6 +2594,7 @@
                         get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__Emerald'>Emerald</span>") : false;
                         get_api_featured(torrent.featured, torrent.site) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__Platinum'>Platinum</span>") : false;
                         get_api_personal_release(torrent.personal_release) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__Personal'>Personal Release</span>") : false;
+                    }
                     } else if (!improved_tags) {
                         if (torrent.site === "HDB") {
                             torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
