@@ -20,38 +20,39 @@
     "use strict";
 
     const fields = {
+        "aither": {"label": "Aither *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
+        "avistaz": {"label": "Avistaz", "type": "checkbox", "default": false},
+        "ant": {"label": "ANT", "type": "checkbox", "default": false},
         "bhd": {"label": "BHD *", "type": "checkbox", "default": false, "tooltip": "Enter API and RSS key below"},
+        "blu": {"label": "BLU *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
+        "btn": {"label": "BTN", "type": "checkbox", "default": false},
+        "cg": {"label": "CG", "type": "checkbox", "default": false},
+        "cinemaz": {"label": "CinemaZ", "type": "checkbox", "default": false},
         "fl": {"label": "FL", "type": "checkbox", "default": false},
-        "hdb": {"label": "HDB", "type": "checkbox", "default": false},
+        "hdb": {"label": "HDB *", "type": "checkbox", "default": false, "tooltip": "Enter username and passkey key below"},
+        "huno": {"label": "HUNO *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "kg": {"label": "KG", "type": "checkbox", "default": false},
+        "mtv": {"label": "MTV", "type": "checkbox", "default": false},
+        "nbl": {"label": "NBL *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
+        "oe": {"label": "OE *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
+        "phd": {"label": "PHD", "type": "checkbox", "default": false},
         "ptp": {"label": "PTP", "type": "checkbox", "default": true},
         "pxhd": {"label": "PxHD", "type": "checkbox", "default": false},
-        "mtv": {"label": "MTV", "type": "checkbox", "default": false},
-        "blu": {"label": "BLU *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
-        "huno": {"label": "HUNO *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
-        "tik": {"label": "TIK *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
-        "aither": {"label": "Aither *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "rfx": {"label": "RFX *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
-        "oe": {"label": "OE *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
-        "avistaz": {"label": "Avistaz", "type": "checkbox", "default": false},
-        "cinemaz": {"label": "CinemaZ", "type": "checkbox", "default": false},
-        "phd": {"label": "PHD", "type": "checkbox", "default": false},
-        "ant": {"label": "ANT", "type": "checkbox", "default": false},
-        "cg": {"label": "CG", "type": "checkbox", "default": false},
-        "btn": {"label": "BTN", "type": "checkbox", "default": false},
-        "tvv": {"label": "TVV *", "type": "checkbox", "default": false, "tooltip": "Enter auth key & torrent pass below"},
-        "nbl": {"label": "NBL", "type": "checkbox", "default": false},
         "rtf": {"label": "RTF", "type": "checkbox", "default": false},
+        "tik": {"label": "TIK *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
+        "tvv": {"label": "TVV *", "type": "checkbox", "default": false, "tooltip": "Enter auth key & torrent pass below"},
+        "aither_api": {"label": "AITHER_API_TOKEN", "type": "text", "default": ""},
         "bhd_api": {"label": "BHD_API_TOKEN", "type": "text", "default": ""},
         "bhd_rss": {"label": "BHD_RSS_KEY", "type": "text", "default": ""},
         "blu_api": {"label": "BLU_API_TOKEN", "type": "text", "default": ""},
-        "tik_api": {"label": "TIK_API_TOKEN", "type": "text", "default": ""},
-        "aither_api": {"label": "AITHER_API_TOKEN", "type": "text", "default": ""},
+        "hdb_user": {"label": "HDB_USER_NAME", "type": "text", "default": "", "tooltip": "HDB username"},
+        "hdb_pass": {"label": "HDB_PASS_KEY", "type": "text", "default": "", "tooltip": "passkey from your HDB profile page"},
         "huno_api": {"label": "HUNO_API_TOKEN", "type": "text", "default": ""},
-        "rfx_api": {"label": "RFX_API_TOKEN", "type": "text", "default": ""},
+        "nbl_api": {"label": "NBL_API_TOKEN", "type": "text", "default": ""},
         "oe_api": {"label": "OE_API_TOKEN", "type": "text", "default": ""},
-        "hdb_user": {"label": "HDB_USER_NAME", "type": "text", "default": ""},
-        "hdb_pass": {"label": "HDB_PASS_KEY", "type": "text", "default": ""},
+        "rfx_api": {"label": "RFX_API_TOKEN", "type": "text", "default": ""},
+        "tik_api": {"label": "TIK_API_TOKEN", "type": "text", "default": ""},
         "tvv_auth": {"label": "TVV_AUTH_KEY", "type": "text", "default": "", "tooltip": "Find from a torrent download link at TVV"},
         "tvv_torr": {"label": "TVV_TORR_PASS", "type": "text", "default": "", "tooltip": "Needed to access TVV xml output"},
         "show_icon": {"label": "Show Tracker Icon", "type": "checkbox", "default": true, "tooltip": "Display the tracker icon next to releases"},
@@ -214,6 +215,7 @@
         const BHD_RSS_KEY = GM_config.get("bhd_rss");
         const HDB_USER_NAME = GM_config.get("hdb_user");
         const HDB_PASS_KEY = GM_config.get("hdb_pass");
+        const NBL_API_TOKEN = GM_config.get("nbl_api");
 
         // We need to use XML resposne with TVV and have to define some parameters for it to work correctly.
         const TVV_AUTH_KEY = GM_config.get("tvv_auth"); // If you want to use TVV - find your authkey from a torrent download link
@@ -548,7 +550,8 @@
         const use_post_instead = (tracker) => {
             if (
               (tracker === "BHD") ||
-              (tracker === "HDB")
+              (tracker === "HDB") ||
+              (tracker === "NBL")
               ) {
                 return true;
             } else {
@@ -1429,84 +1432,7 @@
                     }
                 });
             }
-            else if (tracker === "NBL") {
-                try {
-                    html.querySelectorAll(".torrent_table.grouping > tbody > tr:not(.colhead)").forEach((d) => {
-                        let torrent_obj = {};
-                        let size = d.querySelector("td:nth-child(3) > div").textContent;
-
-                        if (size.includes("TB")) {
-                            size = parseInt(parseFloat(size.split("TB")[0]) * 1024 * 1024); // Convert TiB to MiB
-                        } else if (size.includes("GB")) {
-                            size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // Convert GB to MiB
-                        } else if (size.includes("MB")) {
-                            size = parseInt(parseFloat(size.split("MB")[0]));
-                        }
-
-                        torrent_obj.size = size;
-
-                        let infoLink = d.querySelector("td a[data-src]");
-                        if (infoLink) {
-                            let dataSource = infoLink.getAttribute("data-src");
-                            torrent_obj.datasetRelease = dataSource;
-                            let groupText = "";
-
-                            // Improved tags processing
-                            if (improved_tags) {
-                                const match = dataSource.match(/-([^-]+)$/); // Match the last hyphen and text following it
-                                if (match) {
-                                    groupText = match[1]; // Get the group text without the leading hyphen
-                                    groupText = groupText.replace(/[^a-z0-9]/gi, ''); // Remove non-alphanumeric characters
-                                    dataSource = dataSource.replace(match[0], ''); // Remove the matched part from dataSource
-                                }
-                            }
-
-                            torrent_obj.groupId = groupText;
-
-                            // Remove all periods from the dataSource string
-                            let cleanedDataSource = dataSource.replace(/\./g, ' ');
-                            torrent_obj.info_text = cleanedDataSource;
-
-                            // Regular expression to detect SxxExx pattern
-                            if (/S\d+E\d+/i.test(torrent_obj.info_text)) {
-                                return; // Skip this entry if SxxExx pattern is found
-                            }
-
-                            // Process scene tags if improved_tags is enabled
-                            if (improved_tags) {
-                                let sceneElements = d.querySelectorAll("a");
-                                if (sceneElements.length > 0) {
-                                    sceneElements.forEach(element => {
-                                        let sceneText = element.textContent.trim();
-                                        if (sceneText.includes("scene")) {
-                                            cleanedDataSource = `${sceneText} ${cleanedDataSource}`;
-                                            torrent_obj.info_text = cleanedDataSource;
-                                        }
-                                    });
-                                }
-                            }
-                            // Further check if it is not a mini-series and the title contains "Sxx" where "xx" is unknown beforehand
-                            if (!isMiniSeriesFromSpan && /S\d+/i.test(torrent_obj.info_text)) {
-                                return; // Skip this entry if it is not a mini-series and has "Sxx" in the title
-                            }
-                        }
-                        torrent_obj.site = "NBL";
-                        torrent_obj.download_link = [...d.querySelectorAll("a")].find(a => a.href.includes("action=download")).href.replace("passthepopcorn.me", "nebulance.io");
-                        torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(5)").textContent);
-                        torrent_obj.seed = parseInt(d.querySelector("td:nth-child(6)").textContent);
-                        torrent_obj.leech = parseInt(d.querySelector("td:nth-child(7)").textContent);
-                        torrent_obj.torrent_page = [...d.querySelectorAll("a")].find(a => a.href.includes("torrents.php?id=")).href.replace("passthepopcorn.me", "nebulance.io");
-                        torrent_obj.status = d.querySelector("td > a.Seeding") ? "seeding" : "default";
-                        torrent_obj.discount = "None";
-                        //torrent_obj.internal = d.querySelector(".tag.internal") ? true : false;
-                        //torrent_obj.exclusive = d.querySelector(".tag.exclusive") ? true : false;
-                        torrent_objs.push(torrent_obj);
-                    });
-                } catch (error) {
-                    displayAlert(`Looks like NBL's HTML layout has changed, please report`);
-                }
-            }
-            if (tracker === "RTF") {
+            else if (tracker === "RTF") {
                 const rows = html.querySelectorAll("div.row.pt-2.pb-2");
 
                 rows.forEach((d) => {
@@ -1668,18 +1594,7 @@
                 }
             }
             else if (tracker === "NBL") {
-                const element = html.querySelector("div.box.pad > h2");
-
-                // Check if element exists
-                if (element) {
-                    if (element.textContent.includes("If there are Cylons aboard this ship")) {
-                        return false; // Text did not match anything
-                    } else {
-                        return true; // Text matched something
-                    }
-                } else {
-                    return true; // Element not found
-                }
+                 return true;
             }
             else if (tracker === "BTN") {
                 const headers = html.querySelectorAll(".thin > h2, .thin > h3");  // Fetch all H2 and H3 under .thin
@@ -1850,6 +1765,13 @@
             }
         };
 
+        const generateGUID = () => {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+                const r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        };
+
         const fetch_tracker = async (tracker, imdb_id, show_name, timeout = timer) => {
             return new Promise((resolve, reject) => {
                 const timer = setTimeout(() => {
@@ -1949,7 +1871,27 @@
                     query_url = "https://retroflix.club/browse?years%5B%5D=1890&years%5B%5D=2024&includingDead=1&promotionType=&bookmarked=&search=" + imdb_id + "&searchIn=4&termMatchKind=2&submit=";
                 }
                 else if (tracker === "NBL") {
-                    query_url = "https://nebulance.io/torrents.php?order_by=time&order_way=desc&title=" + show_name;
+                    try {
+                        post_query_url = "https://nebulance.io/api.php";
+                        postData = {
+                            jsonrpc: "2.0",
+                            id: generateGUID().substring(0, 8),
+                            method: "getTorrents",
+                            params: [
+                                NBL_API_TOKEN,
+                                {
+                                    //imdb: parseInt(imdb_id.split("tt")[1])
+                                    series: show_name
+                                },
+                                20, // Results per page
+                                0   // Page number
+                            ]
+                        };
+                    } catch (error) {
+                        console.error(`Error setting up NBL query: ${error.message}`);
+                        resolve([]); // Resolve with an empty array if there's an error
+                        return;
+                    }
                 }
                 else if (tracker === "AvistaZ") {
                     query_url = "https://avistaz.to/movies?search=&imdb=" + imdb_id + "&view=lists";
@@ -1982,6 +1924,8 @@
                                     if (result.results && tracker === "BHD") {
                                         resolve(get_post_torrent_objects(tracker, result));
                                     } else if (result.data && tracker === "HDB") {
+                                        resolve(get_post_torrent_objects(tracker, result));
+                                    } else if (result.result && tracker === "NBL") {
                                         resolve(get_post_torrent_objects(tracker, result));
                                     } else {
                                         console.log(`${tracker} reached successfully but no valid results found`);
@@ -2150,6 +2094,60 @@
                     }).filter(obj => obj !== null); // Filter out any null objects
                 } catch (error) {
                     console.error("An error occurred while processing HDB tracker:", error);
+                }
+            } else if (tracker === "NBL") {
+                try {
+                    if (postData.result && postData.result.items) {
+                        torrent_objs = postData.result.items.map(d => {
+                            const size = parseInt(d.size / (1024 * 1024)); // Convert size to MiB
+                            const api_size = parseInt(d.size); // Original size
+
+                            const originalInfoText = d.rls_name;
+                            let infoText = originalInfoText;
+                            let groupText = "";
+
+                            if (improved_tags) {
+                                const match = infoText.match(/-([^-]+)$/);
+                                if (match) {
+                                    groupText = match[0].substring(1);
+                                    groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                    infoText = infoText.replace(groupText, '');
+                                }
+                            }
+                            const id = d.group_id;
+                            const pageURL = 'https://nebulance.io/details.php?id=';
+
+                            const torrentObj = {
+                                api_size: api_size,
+                                datasetRelease: originalInfoText,
+                                size: size,
+                                info_text: infoText,
+                                tracker: tracker,
+                                site: tracker,
+                                snatch: d.snatch || 0,
+                                seed: d.seed || 0,
+                                leech: d.leech || 0,
+                                download_link: d.download,
+                                torrent_page: `${pageURL}${id}`,
+                                discount: "None",
+                                status: "default",
+                                groupId: groupText,
+                            };
+
+                            // Map additional properties if necessary
+                            const mappedObj = {
+                                ...torrentObj,
+                                quality: get_torrent_quality(torrentObj),
+                            };
+
+                            console.log("Parsed torrent object:", mappedObj); // Log each parsed torrent object
+                            return mappedObj;
+                        }).filter(obj => obj !== null); // Filter out any null objects
+                    } else {
+                        console.log("No items found in the response from NBL");
+                    }
+                } catch (error) {
+                    console.error("An error occurred while processing NBL tracker:", error);
                 }
             }
             return torrent_objs;
