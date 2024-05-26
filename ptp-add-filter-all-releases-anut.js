@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.5.5-A
+// @version      3.5.4-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -50,6 +50,8 @@
         "huno_api": {"label": "HUNO_API_TOKEN", "type": "text", "default": ""},
         "rfx_api": {"label": "RFX_API_TOKEN", "type": "text", "default": ""},
         "oe_api": {"label": "OE_API_TOKEN", "type": "text", "default": ""},
+        "hdb_user": {"label": "HDB_USER_NAME", "type": "text", "default": ""},
+        "hdb_pass": {"label": "HDB_PASS_KEY", "type": "text", "default": ""},
         "tvv_auth": {"label": "TVV_AUTH_KEY", "type": "text", "default": "", "tooltip": "Find from a torrent download link at TVV"},
         "tvv_torr": {"label": "TVV_TORR_PASS", "type": "text", "default": "", "tooltip": "Needed to access TVV xml output"},
         "show_icon": {"label": "Show Tracker Icon", "type": "checkbox", "default": true, "tooltip": "Display the tracker icon next to releases"},
@@ -210,6 +212,8 @@
         const OE_API_TOKEN = GM_config.get("oe_api"); /// if you want to use OE - find your api key here: https:/onlyencodes.cc/users/YOUR_USERNAME_HERE/apikeys
         const BHD_API_TOKEN = GM_config.get("bhd_api");
         const BHD_RSS_KEY = GM_config.get("bhd_rss");
+        const HDB_USER_NAME = GM_config.get("hdb_user");
+        const HDB_PASS_KEY = GM_config.get("hdb_pass");
 
         // We need to use XML resposne with TVV and have to define some parameters for it to work correctly.
         const TVV_AUTH_KEY = GM_config.get("tvv_auth"); // If you want to use TVV - find your authkey from a torrent download link
@@ -414,13 +418,7 @@
         }
 
         const get_discount_text = (div, tracker) => {
-            if (tracker === "HDB") {
-                if (div.querySelector("b > a").title.includes("50% Free Leech")) return "50% Freeleech";
-                else if (div.querySelector("b > a").title.includes("25% Free Leech")) return "25% Freeleech";
-                else if (div.querySelector("b > a").title.includes("Neutral Leech")) return "Neutral Leech";
-                else if (div.querySelector("b > a").title.includes("100% FL")) return "Freeleech";
-            }
-            else if (["BLU", "Aither", "RFX", "OE", "TIK", "HUNO"].includes(tracker)) {
+            if (["BLU", "Aither", "RFX", "OE", "TIK", "HUNO"].includes(tracker)) {
                 return true;
             }
             else if (tracker === "FL") {
@@ -548,7 +546,10 @@
         };
 
         const use_post_instead = (tracker) => {
-            if (tracker === "BHD") {
+            if (
+              (tracker === "BHD") ||
+              (tracker === "HDB")
+              ) {
                 return true;
             } else {
                 return false;
@@ -582,56 +583,7 @@
                 }
             };
             let torrent_objs = [];
-            if (tracker === "HDB") {
-                html.querySelector("#torrent-list > tbody").querySelectorAll("tr").forEach((d) => {
-                    let torrent_obj = {};
-                    let size = d.querySelectorAll("td")[5].textContent;
-
-                    if (size.includes("TiB")) {
-                        size = parseInt(parseFloat(size.split("TiB")[0]) * 1024 * 1024); // Convert TiB to MiB
-                    } else if (size.includes("GiB")) {
-                        size = parseInt(parseFloat(size.split("GiB")[0]) * 1024); // Convert GiB to MiB
-                    } else if (size.includes("MiB")) {
-                        size = parseInt(parseFloat(size.split("MiB")[0]));
-                    }
-
-                    torrent_obj.size = size;
-                    let releaseName = d.querySelector("td:nth-child(3) > b > a").textContent.trim();
-                    torrent_obj.datasetRelease = releaseName;
-                    let groupText = "";
-                    if (improved_tags) {
-                        const match = releaseName.match(/-([^-]+)$/);
-                        if (match) {
-                            groupText = match[0].substring(1);
-                            groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                            releaseName = releaseName.replace(groupText, '');
-                        }
-                    }
-                    torrent_obj.groupId = groupText;
-                    releaseName = releaseName.replace(/:/g, ' ');
-                    releaseName = releaseName.replace(/\bDoVi\b/g, 'DV');
-                    releaseName = releaseName.replace(/DD\+/g, 'DD+ ');
-                    // Inject Blu-ray disc type into info_text if conditions are met
-                    if (improved_tags && releaseName.includes("Blu-ray") && torrent_obj.size) {
-                        const bdType = get_bd_type(torrent_obj.size);
-                        releaseName = `${bdType} ${releaseName}`;
-                    }
-
-                    torrent_obj.info_text = releaseName;
-                    torrent_obj.site = "HDB";
-                    torrent_obj.download_link = d.querySelector(".js-download").href.replace("passthepopcorn.me", "hdbits.org");
-                    torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(7)").textContent);
-                    torrent_obj.seed = parseInt(d.querySelector("td:nth-child(8)").textContent);
-                    torrent_obj.leech = parseInt(d.querySelector("td:nth-child(9)").textContent);
-                    torrent_obj.torrent_page = [...d.querySelectorAll("a")].find(a => a.href.includes("/details.php?id=")).href.replace("passthepopcorn.me", "hdbits.org");
-                    torrent_obj.status = d.querySelectorAll("span.tag_seeding").length > 0 ? "seeding" : "default";
-                    torrent_obj.discount = get_discount_text(d, tracker);
-                    torrent_obj.internal = d.querySelector(".tag.internal") ? true : false;
-                    torrent_obj.exclusive = d.querySelector(".tag.exclusive") ? true : false;
-                    torrent_objs.push(torrent_obj);
-                });
-            }
-            else if (tracker === "TVV") {
+            if (tracker === "TVV") {
                 try {
                     // Process the XML document
                     const torrents = html.querySelectorAll('torrent');
@@ -1697,8 +1649,7 @@
                 else return false;
             }
             else if (tracker === "HDB") {
-                if (html.querySelector("#resultsarea").textContent.includes("Nothing here!")) return false;
-                else return true;
+                return true;
             }
             else if (tracker === "TVV") {
                 if (html.querySelector('NoResults') !== null) return false;
@@ -1830,7 +1781,7 @@
                 });
 
                 if (response.status === 200) {
-                    console.log("Raw response from BHD:", response.responseText); // Log raw response
+                    console.log(`Raw response from ${tracker}:`, response.responseText); // Log raw response
                     return JSON.parse(response.responseText);
                 } else {
                     console.error(`Error: HTTP ${response.status} Error.`);
@@ -1915,8 +1866,18 @@
                     query_url = "https://passthepopcorn.me/torrents.php?imdb=" + imdb_id;
                 }
                 else if (tracker === "HDB") {
-                    //query_url = "https://hdbits.org/browse.php?c3=1&c1=1&c2=1&tagsearchtype=or&imdb=" + mov.imdb_id + "&sort=size&h=8&d=DESC"
-                    query_url = "https://hdbits.org/browse.php?c3=1&c8=1&c1=1&c4=1&c5=1&c2=1&c7=1&descriptions=0&season_packs=0&from=&to=&imdbgt=0&imdblt=10&imdb=" + imdb_id + "&sort=size&h=8&d=DESC";
+                  try {
+                      post_query_url = "https://hdbits.org/api/torrents";
+                      postData = {
+                      username: HDB_USER_NAME,
+                      passkey: HDB_PASS_KEY,
+                      imdb: { id: imdb_id.split("tt")[1] }
+                      };
+                    } catch (error) {
+                        console.error(`Error setting up HDB query: ${error.message}`);
+                        resolve([]); // Resolve with an empty array if there's an error
+                        return;
+                    }
                 }
                 else if (tracker === "BTN") {
                     query_url = "https://broadcasthe.net/torrents.php?action=advanced&imdb=" + imdb_id;
@@ -2016,9 +1977,16 @@
                         post_json(post_query_url, tracker, postData, timeout)
                             .then(result => {
                                 clearTimeout(timer); // Clear the timer on successful fetch
-                                console.log("Parsed result from BHD:", result); // Log parsed result
-                                if (result && result.results) {
-                                    resolve(get_post_torrent_objects(tracker, result));
+                                console.log(`Parsed result from ${tracker}:`, result); // Log parsed result
+                                if (result) {
+                                    if (result.results && tracker === "BHD") {
+                                        resolve(get_post_torrent_objects(tracker, result));
+                                    } else if (result.data && tracker === "HDB") {
+                                        resolve(get_post_torrent_objects(tracker, result));
+                                    } else {
+                                        console.log(`${tracker} reached successfully but no valid results found`);
+                                        resolve([]);
+                                    }
                                 } else {
                                     console.log(`${tracker} reached successfully but no results found`);
                                     resolve([]);
@@ -2129,6 +2097,59 @@
                     }).filter(obj => obj !== null); // Filter out any null objects
                 } catch (error) {
                     console.error("An error occurred while processing BHD tracker:", error);
+                }
+            } else if (tracker === "HDB") {
+                try {
+                    torrent_objs = postData.data.map((d) => {
+                        const size = parseInt(d.size / (1024 * 1024)); // Convert size to MiB
+                        const api_size = parseInt(d.size); // Original size
+
+                        const originalInfoText = d.name;
+                        let infoText = originalInfoText;
+                        let groupText = "";
+
+                        if (improved_tags) {
+                            const match = infoText.match(/-([^-]+)$/);
+                            if (match) {
+                                groupText = match[0].substring(1);
+                                groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                infoText = infoText.replace(groupText, '');
+                            }
+                        }
+                        const id = d.id;
+                        const baseURL = 'https://hdbits.org/download.php/';
+                        const pageURL = 'https://hdbits.org/details.php?id=';
+                        const torrent = d.filename;
+
+                        const torrentObj = {
+                            api_size: api_size,
+                            datasetRelease: originalInfoText,
+                            size: size,
+                            info_text: infoText,
+                            tracker: tracker,
+                            site: tracker,
+                            snatch: d.times_completed || 0,
+                            seed: d.seeders || 0,
+                            leech: d.leechers || 0,
+                            download_link: `${baseURL}${torrent}?id=${id}&passkey=${HDB_PASS_KEY}`,
+                            torrent_page: `${pageURL}${id}`,
+                            discount: d.freeleech === "yes" ? "Freeleech" : "None",
+                            internal: d.internal === 1 ? true : false,
+                            status: "default",
+                            groupId: groupText,
+                        };
+
+                        // Map additional properties if necessary
+                        const mappedObj = {
+                            ...torrentObj,
+                            quality: get_torrent_quality(torrentObj),
+                        };
+
+                        console.log("Parsed torrent object:", mappedObj); // Log each parsed torrent object
+                        return mappedObj;
+                    }).filter(obj => obj !== null); // Filter out any null objects
+                } catch (error) {
+                    console.error("An error occurred while processing HDB tracker:", error);
                 }
             }
             return torrent_objs;
@@ -2862,7 +2883,7 @@
 
                 cln.querySelector(".size-span").textContent = ptp_format_size;
 
-                if (torrent.site === "BLU" || torrent.site === "Aither" || torrent.site === "RFX" || torrent.site === "OE" || torrent.site === "HUNO" || torrent.site === "TIK" || torrent.site === "TVV") {
+                if (torrent.site === "BLU" || torrent.site === "Aither" || torrent.site === "RFX" || torrent.site === "OE" || torrent.site === "HUNO" || torrent.site === "TIK" || torrent.site === "TVV" || torrent.site === "BHD" || torrent.site === "HDB") {
                     cln.querySelector(".size-span").setAttribute("title", api_sized);
                 } else {
                     cln.querySelector(".size-span").setAttribute("title", element_size);
