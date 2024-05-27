@@ -717,7 +717,10 @@
                             console.error("Missing title information.");
                             return; // Skip this torrent if title information is missing
                         }
+                        let infoText = documentTitle;
                         console.log("Title:", documentTitle);
+                        const isInternal = infoText.includes("-hallowed") || infoText.includes("-TEPES") || infoText.includes("-E.N.D") || infoText.includes("-WDYM");
+                        torrent_obj.internal = isInternal ? true : false;
 
                         const sizeElement = torrent.querySelector('size');
                         if (sizeElement) {
@@ -729,8 +732,18 @@
                             console.error("Missing size information.");
                             return; // Skip this torrent if size information is missing
                         }
+                        let groupText = "";
 
-                        torrent_obj.info_text = documentTitle;
+                        if (improved_tags) {
+                            const match = infoText.match(/-([^-]+)$/);
+                            if (match) {
+                                groupText = match[0].substring(1);
+                                groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                infoText = infoText.replace(groupText, '');
+                            }
+                        }
+                        torrent_obj.groupId = groupText;
+                        torrent_obj.info_text = infoText;
 
                         const linkElement = torrent.querySelector('link');
                         if (linkElement) {
@@ -2774,7 +2787,7 @@
 
                 cln.querySelector(".size-span").textContent = ptp_format_size;
 
-                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN"];
+                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV"];
                 if (byteSizedTrackers.includes(torrent.site)) {
                     cln.querySelector(".size-span").setAttribute("title", api_sized);
                 } else {
