@@ -46,6 +46,7 @@
         "bhd_api": {"label": "BHD_API_TOKEN", "type": "text", "default": ""},
         "bhd_rss": {"label": "BHD_RSS_KEY", "type": "text", "default": ""},
         "blu_api": {"label": "BLU_API_TOKEN", "type": "text", "default": ""},
+        "btn_api": {"label": "BTN_API_TOKEN", "type": "text", "default": ""},
         "hdb_user": {"label": "HDB_USER_NAME", "type": "text", "default": "", "tooltip": "HDB username"},
         "hdb_pass": {"label": "HDB_PASS_KEY", "type": "text", "default": "", "tooltip": "passkey from your HDB profile page"},
         "huno_api": {"label": "HUNO_API_TOKEN", "type": "text", "default": ""},
@@ -216,6 +217,7 @@
         const HDB_USER_NAME = GM_config.get("hdb_user");
         const HDB_PASS_KEY = GM_config.get("hdb_pass");
         const NBL_API_TOKEN = GM_config.get("nbl_api");
+        const BTN_API_TOKEN = GM_config.get("btn_api");
 
         // We need to use XML resposne with TVV and have to define some parameters for it to work correctly.
         const TVV_AUTH_KEY = GM_config.get("tvv_auth"); // If you want to use TVV - find your authkey from a torrent download link
@@ -551,7 +553,8 @@
             if (
               (tracker === "BHD") ||
               (tracker === "HDB") ||
-              (tracker === "NBL")
+              (tracker === "NBL") ||
+              (tracker === "BTN")
               ) {
                 return true;
             } else {
@@ -703,136 +706,6 @@
                 } catch (error) {
                     console.error("Error processing XML from TVV:", error);
                 }
-            }
-            else if (tracker === "BTN") {
-                let skipFollowingRows = false; // Flag to skip rows after detecting an episode
-                let withinSeason2 = false; // Flag to track if we are within "Season 2" rows
-                let withinExtras = false;
-
-                html.querySelector(".main_column").querySelectorAll(".torrent_table > tbody:nth-child(2) > tr").forEach((d) => {
-                    // Check for episode and handle skipping logic
-                    const episodeLink = d.querySelector('td > div > strong > a.episode');
-                    if (skipFollowingRows || episodeLink) {
-                        if (episodeLink) {
-                            skipFollowingRows = true; // Start skipping all following rows
-                        }
-                        return; // Skip this iteration
-                    }
-
-                    // Check and update the season flags based on content
-                    const seasonLink = d.querySelector('td > div > strong > a[title="View Torrent"]');
-                    if (seasonLink) {
-                        let seasonText = seasonLink.textContent.trim();
-                        if (seasonText.includes("Season 2")) {
-                            withinSeason2 = true;
-                        } else if (seasonText.includes("Season 1")) {
-                            withinSeason2 = false;
-                        }
-                    }
-
-                    const extrasLink = d.querySelector('td > div > strong > a[title="View Torrent"]');
-                    if (extrasLink) {
-                        let extrasText = extrasLink.textContent.trim();
-                        if (extrasText.includes("Extras")) {
-                            withinExtras = true;
-                        } else {
-                            withinExtras = false;
-                        }
-                    }
-                    // BTN has differing layouts for the torrents, this will process torrents with this html layout.
-                    let correntParse = d.querySelectorAll("td")[2].textContent;
-                    if (correntParse.includes("GB") || correntParse.includes("MB") || correntParse.includes("TB")) {
-                        let torrent_obj = {};
-                        let size = d.querySelectorAll("td")[2].textContent;
-
-                        if (size.includes("TB")) {
-                            size = parseInt(parseFloat(size.split("TB")[0]) * 1024 * 1024); // Convert TiB to MiB
-                        } else if (size.includes("GB")) {
-                            size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // Convert GB to MiB
-                        } else if (size.includes("MB")) {
-                            size = parseInt(parseFloat(size.split("MB")[0]));
-                        }
-
-                        torrent_obj.size = size;
-                        let aElement = d.querySelector("td:nth-child(2)"); // Select the second td element
-                        let spanTexts = Array.from(aElement.querySelectorAll("span"))
-                            .map(span => span.textContent.trim())
-                            .filter(text => text.length > 0) // Remove any empty strings after trimming
-                            .filter(text => !text.includes("Internal"))
-                            .filter(text => !text.includes("["))
-                            .filter(text => !text.includes("DL") || text.includes("WEB-DL"))
-                            .filter(text => !text.includes("]"))
-                            .join(' / ')
-                            .replace(/(\s*\/\s*)+/g, ' / ');
-                        if (improved_tags && spanTexts.includes("BD50") && torrent_obj.size) {
-                            const bdType = get_bd_type(torrent_obj.size);
-                            spanTexts = `${bdType} ${spanTexts}`;
-                        }
-                        torrent_obj.info_text = spanTexts;
-                        torrent_obj.datasetRelease = torrent_obj.info_text;
-                        torrent_obj.site = "BTN";
-                        torrent_obj.download_link = d.querySelector("a[title='Download']").href.replace("passthepopcorn.me", "broadcasthe.net");
-                        torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(4)").textContent);
-                        torrent_obj.seed = parseInt(d.querySelector("td:nth-child(5)").textContent);
-                        torrent_obj.leech = parseInt(d.querySelector("td:nth-child(6)").textContent);
-                        torrent_obj.torrent_page = [...d.querySelectorAll("a")].find(a => a.href.includes("torrentid=")).href.replace("passthepopcorn.me", "broadcasthe.net");
-                        torrent_obj.status = d.querySelectorAll("span.internal").length > 0 ? "seeding" : "default";
-                        torrent_obj.discount = "None";
-                        torrent_obj.internal = Array.from(d.querySelector("td:nth-child(2)").querySelectorAll("span"))
-                            .map(span => span.textContent.trim())
-                            .some(text => text.includes("Internal"));
-                        torrent_obj.season2 = withinSeason2; // Direct assignment using flag
-                        torrent_obj.extras = withinExtras;
-                        torrent_objs.push(torrent_obj);
-                    }
-
-                    // Layout for other torrents.
-                    let textContent = d.querySelectorAll("td")[1].textContent;
-                    if (textContent.includes("GB") || textContent.includes("MB") || textContent.includes("TB")) {
-                        let torrent_obj = {};
-                        let size = d.querySelectorAll("td")[1].textContent;
-
-                        if (size.includes("TB")) {
-                            size = parseInt(parseFloat(size.split("TB")[0]) * 1024 * 1024); // Convert TiB to MiB
-                        } else if (size.includes("GB")) {
-                            size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // Convert GB to MiB
-                        } else if (size.includes("MB")) {
-                            size = parseInt(parseFloat(size.split("MB")[0]));
-                        }
-
-                        torrent_obj.size = size;
-                        let aElement = d.querySelector("td:nth-child(1)"); // Select the second td element
-                        let spanTexts = Array.from(aElement.querySelectorAll("span"))
-                            .map(span => span.textContent.trim())
-                            .filter(text => text.length > 0) // Remove any empty strings after trimming
-                            .filter(text => !text.includes("Internal"))
-                            .filter(text => !text.includes("["))
-                            .filter(text => !text.includes("DL") || text.includes("WEB-DL"))
-                            .filter(text => !text.includes("]"))
-                            .join(' / ')
-                            .replace(/(\s*\/\s*)+/g, ' / ');
-                        if (improved_tags && spanTexts.includes("BD50") && torrent_obj.size) {
-                            const bdType = get_bd_type(torrent_obj.size);
-                            spanTexts = `${bdType} ${spanTexts}`;
-                        }
-                        torrent_obj.info_text = spanTexts;
-                        torrent_obj.datasetRelease = spanTexts;
-                        torrent_obj.site = "BTN";
-                        torrent_obj.download_link = d.querySelector("a[title='Download']").href.replace("passthepopcorn.me", "broadcasthe.net");
-                        torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(3)").textContent);
-                        torrent_obj.seed = parseInt(d.querySelector("td:nth-child(4)").textContent);
-                        torrent_obj.leech = parseInt(d.querySelector("td:nth-child(5)").textContent);
-                        torrent_obj.torrent_page = [...d.querySelectorAll("a")].find(a => a.href.includes("torrentid=")).href.replace("passthepopcorn.me", "broadcasthe.net");
-                        torrent_obj.status = d.querySelectorAll("span.internal").length > 0 ? "seeding" : "default";
-                        torrent_obj.discount = "None";
-                        torrent_obj.internal = Array.from(d.querySelector("td:nth-child(1)").querySelectorAll("span"))
-                            .map(span => span.textContent.trim())
-                            .some(text => text.includes("Internal"));
-                        torrent_obj.season2 = withinSeason2, // Direct assignment using flag
-                        torrent_obj.extras = withinExtras;
-                        torrent_objs.push(torrent_obj);
-                    }
-                });
             }
             else if (tracker === "MTV") {
                 try {
@@ -1118,7 +991,7 @@
                     }
 
                     torrent_obj.size = size;
-                    let releaseName = [...d.querySelectorAll("a")].find(a => a.href.includes("details.php?id="));
+                    let releaseName = [...d.querySelectorAll("a")].find(a => a.href.includes("details.php?id=")).title;
                     torrent_obj.datasetRelease = releaseName;
                     let groupText = "";
                     if (improved_tags) {
@@ -1129,7 +1002,7 @@
                             releaseName = releaseName.replace(groupText, '');
                         }
                     }
-                    torrent_obj.info_text = releaseName.title.replace(/\./g, " ");
+                    torrent_obj.info_text = releaseName.replace(/\./g, " ");
                     torrent_obj.groupId = groupText;
                     torrent_obj.site = "FL";
                     torrent_obj.snatch = parseInt(d.querySelector("div:nth-child(8)").textContent.replace(/,/g, ""));
@@ -1597,13 +1470,7 @@
                  return true;
             }
             else if (tracker === "BTN") {
-                const headers = html.querySelectorAll(".thin > h2, .thin > h3");  // Fetch all H2 and H3 under .thin
-                const errorHeader = Array.from(headers).find(h => h.textContent.includes("Error 404"));  // Find any header that includes "Error 404"
-                if (errorHeader) {
-                    return false;
-                } else {
-                    return true;
-                }
+                  return true;
             }
             else if (tracker === "MTV") {
                 if (html.querySelector(".numsearchresults > span").textContent.includes("0 Results")) return false;
@@ -1802,7 +1669,27 @@
                     }
                 }
                 else if (tracker === "BTN") {
-                    query_url = "https://broadcasthe.net/torrents.php?action=advanced&imdb=" + imdb_id;
+                    try {
+                        post_query_url = "https://api.broadcasthe.net/";
+                        postData = {
+                            jsonrpc: "2.0",
+                            id: generateGUID().substring(0, 8),
+                            method: "getTorrentsSearch",
+                            params: [
+                                BTN_API_TOKEN,
+                                {
+                                    //imdb_id: parseInt(imdb_id.split("tt")[1])
+                                    series: show_name
+                                },
+                                20, // Results per page
+                                //0   // Page number
+                            ]
+                        };
+                    } catch (error) {
+                        console.error(`Error setting up NBL query: ${error.message}`);
+                        resolve([]); // Resolve with an empty array if there's an error
+                        return;
+                    }
                 }
                 else if (tracker === "MTV") {
                     query_url = "https://www.morethantv.me/torrents/browse?page=1&order_by=time&order_way=desc&=Search&=Reset&=Search&searchtext=" + imdb_id + "&action=advanced&title=&sizeall=&sizetype=kb&sizerange=0.01&filelist=&autocomplete_toggle=on";
@@ -1927,6 +1814,8 @@
                                         resolve(get_post_torrent_objects(tracker, result));
                                     } else if (result.result && tracker === "NBL") {
                                         resolve(get_post_torrent_objects(tracker, result));
+                                    } else if (tracker === "BTN" && result.result) {
+                                        resolve(get_post_torrent_objects(tracker, result));
                                     } else {
                                         console.log(`${tracker} reached successfully but no valid results found`);
                                         resolve([]);
@@ -1939,7 +1828,7 @@
                             .catch(error => {
                                 console.error(`Error fetching data from ${tracker}:`, error);
                                 displayAlert(`Error fetching data from ${tracker}`);
-                                resolve([]); // Resolve with an empty array if there's an error
+                                resolve([]);
                             });
                     } else if (use_api_instead(tracker) === false) {
                         fetch_url(query_url)
@@ -2006,6 +1895,10 @@
                                 infoText = infoText.replace(groupText, '');
                             }
                         }
+                        const hdr10Plus = (d["hdr10+"] === 1);
+                        if (hdr10Plus) {
+                            infoText = infoText.replace("HDR", "HDR10+");
+                        }
 
                         const torrentObj = {
                             api_size: api_size,
@@ -2064,10 +1957,26 @@
                         const baseURL = 'https://hdbits.org/download.php/';
                         const pageURL = 'https://hdbits.org/details.php?id=';
                         const torrent = d.filename;
+                        const releaseName = d.filename.replace(/\.torrent$/, "");
+                        //const spaceRemoved = releaseName.replace(/\./, " / ");
+
+                        const tagsArray = d.tags.filter(tag => !infoText.includes(tag));
+                        const webTagsArray = tagsArray.map(tag => `${tag.toLowerCase()}.web.dl`);
+                        const tags = webTagsArray.join(' ');
+
+                        if (tags && improved_tags) {
+                            infoText += ` ${tags}`;
+                        }
+
+                        let finalReleaseName = releaseName;
+                        if (improved_tags) {
+                            finalReleaseName = `${tags} ${releaseName}`;
+                        }
+                        const status = d.torrent_status || "default";
 
                         const torrentObj = {
                             api_size: api_size,
-                            datasetRelease: originalInfoText,
+                            datasetRelease: finalReleaseName,
                             size: size,
                             info_text: infoText,
                             tracker: tracker,
@@ -2078,12 +1987,11 @@
                             download_link: `${baseURL}${torrent}?id=${id}&passkey=${HDB_PASS_KEY}`,
                             torrent_page: `${pageURL}${id}`,
                             discount: d.freeleech === "yes" ? "Freeleech" : "None",
-                            internal: d.internal === 1 ? true : false,
-                            status: "default",
+                            internal: d.type_origin === 1 ? true : false,
+                            status: status,
                             groupId: groupText,
                         };
 
-                        // Map additional properties if necessary
                         const mappedObj = {
                             ...torrentObj,
                             quality: get_torrent_quality(torrentObj),
@@ -2148,6 +2056,61 @@
                     }
                 } catch (error) {
                     console.error("An error occurred while processing NBL tracker:", error);
+                }
+            } else if (tracker === "BTN") {
+                try {
+                    if (postData.result && postData.result.torrents) {
+                        torrent_objs = Object.values(postData.result.torrents).map(d => {
+                            const size = parseInt(d.Size / (1024 * 1024)); // Convert size to MiB
+                            const api_size = parseInt(d.Size); // Original size
+
+                            const originalInfoText = d.ReleaseName;
+                            let infoText = originalInfoText;
+                            let groupText = "";
+
+                            if (improved_tags) {
+                                const match = infoText.match(/-([^-]+)$/);
+                                if (match) {
+                                    groupText = match[0].substring(1);
+                                    groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                    infoText = infoText.replace(groupText, '');
+                                }
+                            }
+                            const id = d.GroupID;
+                            const tid = d.TorrentID;
+                            const pageURL = 'https://broadcasthe.net/torrents.php?id=';
+
+                            const torrentObj = {
+                                api_size: api_size,
+                                datasetRelease: originalInfoText,
+                                size: size,
+                                info_text: infoText,
+                                tracker: tracker,
+                                site: tracker,
+                                snatch: parseInt(d.Snatched) || 0,
+                                seed: parseInt(d.Seeders) || 0,
+                                leech: parseInt(d.Leechers) || 0,
+                                download_link: d.DownloadURL,
+                                torrent_page: `${pageURL}${id}&torrentid=${tid}`,
+                                discount: "None",
+                                status: "default",
+                                groupId: groupText,
+                            };
+
+                            // Map additional properties if necessary
+                            const mappedObj = {
+                                ...torrentObj,
+                                quality: get_torrent_quality(torrentObj),
+                            };
+
+                            console.log("Parsed torrent object:", mappedObj); // Log each parsed torrent object
+                            return mappedObj;
+                        }).filter(obj => obj !== null); // Filter out any null objects
+                    } else {
+                        console.log("No torrents found in the response from BTN");
+                    }
+                } catch (error) {
+                    console.error("An error occurred while processing BTN tracker:", error);
                 }
             }
             return torrent_objs;
@@ -2601,6 +2564,9 @@
             else if (lower.includes("hdr / dv")) return "Dolby Vision / HDR10 / ";
             else if (lower.includes("hdr dv")) return "Dolby Vision / HDR10 / ";
             else if (lower.includes(" dv ")) return "Dolby Vision / "; // Need spaces or else DVD suddenly has Dolby Vision.
+            else if (lower.includes("dovi hdr10+")) return "Dolby Vision / HDR10+ / ";
+            else if (lower.includes("dovi hdr10")) return "Dolby Vision / HDR10 / ";
+            else if (lower.includes("dovi hdr")) return "Dolby Vision / HDR10 / ";
             else if (lower.includes("dovi")) return "Dolby Vision / ";
             else if (lower.includes("dolby vision")) return "Dolby Vision / ";
             else if (lower.includes("hdr10+")) return "HDR10+ / ";
@@ -2881,7 +2847,8 @@
 
                 cln.querySelector(".size-span").textContent = ptp_format_size;
 
-                if (torrent.site === "BLU" || torrent.site === "Aither" || torrent.site === "RFX" || torrent.site === "OE" || torrent.site === "HUNO" || torrent.site === "TIK" || torrent.site === "TVV" || torrent.site === "BHD" || torrent.site === "HDB") {
+                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN"];
+                if (byteSizedTrackers.includes(torrent.site)) {
                     cln.querySelector(".size-span").setAttribute("title", api_sized);
                 } else {
                     cln.querySelector(".size-span").setAttribute("title", element_size);
