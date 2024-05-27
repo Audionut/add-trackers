@@ -25,14 +25,14 @@
         "ant": {"label": "ANT", "type": "checkbox", "default": false},
         "bhd": {"label": "BHD *", "type": "checkbox", "default": false, "tooltip": "Enter API and RSS key below"},
         "blu": {"label": "BLU *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
-        "btn": {"label": "BTN", "type": "checkbox", "default": false},
+        "btn": {"label": "BTN *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "cg": {"label": "CG", "type": "checkbox", "default": false},
         "cinemaz": {"label": "CinemaZ", "type": "checkbox", "default": false},
         "fl": {"label": "FL", "type": "checkbox", "default": false},
-        "hdb": {"label": "HDB *", "type": "checkbox", "default": false, "tooltip": "Enter username and passkey key below"},
+        "hdb": {"label": "HDB *", "type": "checkbox", "default": false, "tooltip": "Enter username and passkey below"},
         "huno": {"label": "HUNO *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "kg": {"label": "KG", "type": "checkbox", "default": false},
-        "mtv": {"label": "MTV", "type": "checkbox", "default": false},
+        "mtv": {"label": "MTV *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "nbl": {"label": "NBL *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "oe": {"label": "OE *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "phd": {"label": "PHD", "type": "checkbox", "default": false},
@@ -50,6 +50,7 @@
         "hdb_user": {"label": "HDB_USER_NAME", "type": "text", "default": "", "tooltip": "HDB username"},
         "hdb_pass": {"label": "HDB_PASS_KEY", "type": "text", "default": "", "tooltip": "passkey from your HDB profile page"},
         "huno_api": {"label": "HUNO_API_TOKEN", "type": "text", "default": ""},
+        "mtv_api": {"label": "MTV_API_TOKEN", "type": "text", "default": ""},
         "nbl_api": {"label": "NBL_API_TOKEN", "type": "text", "default": ""},
         "oe_api": {"label": "OE_API_TOKEN", "type": "text", "default": ""},
         "rfx_api": {"label": "RFX_API_TOKEN", "type": "text", "default": ""},
@@ -218,6 +219,7 @@
         const HDB_PASS_KEY = GM_config.get("hdb_pass");
         const NBL_API_TOKEN = GM_config.get("nbl_api");
         const BTN_API_TOKEN = GM_config.get("btn_api");
+        const MTV_API_TOKEN = GM_config.get("mtv_api");
 
         // We need to use XML resposne with TVV and have to define some parameters for it to work correctly.
         const TVV_AUTH_KEY = GM_config.get("tvv_auth"); // If you want to use TVV - find your authkey from a torrent download link
@@ -596,10 +598,7 @@
                     torrents.forEach(torrent => {
                         let torrent_obj = {};
 
-                        // Access the document's title content
                         const documentTitle = torrent.querySelector('title').textContent;
-
-                        // Skip torrents that include "Extras" in the title
                         if (documentTitle.includes("Extras") || documentTitle.includes("Episode")) {
                             return; // Skip further processing for this torrent
                         }
@@ -619,7 +618,6 @@
                             return;
                         }
 
-                        // Check for the existence of each element before accessing its textContent
                         const combinedInfo = torrent.querySelector('torrentinfo[type="combined"]');
                         if (combinedInfo) {
                             let infoText = combinedInfo.textContent.replace(/\/?Freeleech\/?/g, "").replace(/\//g, " ");
@@ -680,7 +678,6 @@
                             return; // Skip this torrent if ID is missing
                         }
 
-                        // Extract numerical values with fallbacks
                         torrent_obj.snatch = parseInt(torrent.querySelector('snatches')?.textContent || "0");
                         torrent_obj.seed = parseInt(torrent.querySelector('seeders')?.textContent || "0");
                         torrent_obj.leech = parseInt(torrent.querySelector('leechers')?.textContent || "0");
@@ -709,138 +706,69 @@
             }
             else if (tracker === "MTV") {
                 try {
-                    html.querySelector("#torrent_table > tbody").querySelectorAll("tr:not(.colhead)").forEach((d) => {
-                        // Check if the torrent is marked
-                        if (!d.querySelectorAll('span[title="You cannot download a marked Torrent"]').length) {
-                            let torrent_obj = {};
+                    const torrents = html.querySelectorAll('item');
+                    console.log("MTV torrents", torrents);
 
-                            try {
-                                let sizeElement = d.querySelectorAll("td")[4];
-                                let size = null;
-                                if (sizeElement) {
-                                    size = sizeElement.textContent;
-                                    if (size.includes("TiB")) {
-                                        size = parseInt(parseFloat(size.split("TiB")[0]) * 1024 * 1024); // Convert TiB to MiB
-                                    } else if (size.includes("GiB")) {
-                                        size = parseInt(parseFloat(size.split("GiB")[0]) * 1024); // Convert GiB to MiB
-                                    } else if (size.includes("MiB")) {
-                                        size = parseInt(parseFloat(size.split("MiB")[0]));
-                                    }
-                                }
-                                torrent_obj.size = size;
-                            } catch (error) {
-                                console.error("An error occurred while extracting size:", error);
-                                torrent_obj.size = null;
-                            }
+                    torrents.forEach(torrent => {
+                        let torrent_obj = {};
 
-                            try {
-                                const overlayTorrentLink = d.querySelector("a.overlay_torrent");
-                                let infoText = overlayTorrentLink ? overlayTorrentLink.innerText : "";
-                                if (infoText) {
-                                    // Check if the inner text contains "SxxExx" where "xx" is not known beforehand
-                                    if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
-                                        torrent_obj.datasetRelease = infoText;
-                                        // If the inner text does not contain the pattern, proceed with further processing
-                                        // Remove forward slashes
-                                        infoText = infoText.replace(/\//g, '');
-
-                                        const spanElements = overlayTorrentLink.querySelectorAll('span');
-
-                                        spanElements.forEach(span => {
-                                            const spanText = span.innerText || span.textContent;
-                                            infoText = infoText.replace(spanText, '');
-                                        });
-
-                                        // Remove extra whitespaces
-                                        infoText = infoText.replace(/\s+/g, ' ').trim();
-                                        let modifiedInfoText;
-                                        modifiedInfoText = infoText.replace(/\./g, ' ');
-                                        const isInternal = infoText.includes("-hallowed") || infoText.includes("-TEPES") || infoText.includes("-E.N.D") || infoText.includes("-WDYM");
-                                        let groupText = "";
-                                        if (improved_tags) {
-                                            const match = infoText.match(/-([^-]+)$/);
-                                            if (match) {
-                                                groupText = match[0].substring(1);
-                                                groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                                                modifiedInfoText = modifiedInfoText.replace(groupText, '');
-                                            }
-                                        }
-                                        torrent_obj.groupId = groupText;
-                                        if (improved_tags) {
-                                            let tagElements = d.querySelectorAll("a");
-                                            if (tagElements.length > 0) {
-                                                tagElements.forEach(element => {
-                                                    let tagsText = element.textContent.trim();
-                                                    if (tagsText.includes("scene.group.release")) {
-                                                        modifiedInfoText = "scene" + modifiedInfoText;
-                                                    }
-                                                    if (tagsText.includes("dts.x.audio")) {
-                                                        modifiedInfoText = "dts:x" + modifiedInfoText;
-                                                    }
-                                                });
-                                            }
-                                        }
-                                        torrent_obj.info_text = modifiedInfoText;
-                                        torrent_obj.internal = isInternal ? true : false;
-
-                                        // Only push to torrent_objs if it passes the "SxxExx" check
-                                        torrent_objs.push(torrent_obj);
-                                    }
-                                } else {
-                                    console.log("Skipping torrent due to missing info text");
-                                }
-                            } catch (error) {
-                                console.error("An error occurred while extracting info text:", error);
-                            }
-
-                            try {
-                                torrent_obj.site = "MTV";
-                                const downloadLinkArray = [...d.querySelectorAll("a[title='Download Torrent']")].filter(a => a.href.includes("torrents.php?action="));
-                                if (downloadLinkArray.length > 0) {
-                                    torrent_obj.download_link = downloadLinkArray[0].href.replace("passthepopcorn.me", "morethantv.me");
-                                } else {
-                                    torrent_obj.download_link = ""; // Or assign default value if needed
-                                }
-                                torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(6)").textContent);
-                                torrent_obj.seed = parseInt(d.querySelector("td:nth-child(7)").textContent);
-                                torrent_obj.leech = parseInt(d.querySelector("td:nth-child(8)").textContent);
-                                torrent_obj.torrent_page = [...d.querySelectorAll("a.overlay_torrent")].find(a => a.href.includes("/torrents.php?id=")).href.replace("passthepopcorn.me", "morethantv.me");
-                                //MTVs seeding indicator is not accurate, often requiring a page visit to change the seeding status. Lets add a grabbed indicator so we know if the file has at least been touched.
-                                let seedingSelector = 'a[title="Currently Seeding Torrent"]';
-                                let grabbedSelector = 'a[title="Previously Grabbed Torrent File"]';
-
-                                // Check for "Currently Seeding Torrent"
-                                if (d.querySelectorAll(seedingSelector).length > 0) {
-                                    torrent_obj.status = 'seeding';
-                                }
-                                // Check for "Previously Grabbed Torrent File" if not seeding
-                                else if (d.querySelectorAll(grabbedSelector).length > 0) {
-                                    torrent_obj.status = 'grabbed';
-                                }
-                                // Default status
-                                else {
-                                    torrent_obj.status = 'default';
-                                }
-                                torrent_obj.discount = "None";
-                                torrent_obj.reported = d.querySelector(".reported") ? true : false;
-                            } catch (error) {
-                                console.error("An error occurred while extracting other properties:", error);
-                                // Assign default or null values for these properties if needed
-                                torrent_obj.site = "MTV";
-                                torrent_obj.download_link = "";
-                                torrent_obj.snatch = 0;
-                                torrent_obj.seed = 0;
-                                torrent_obj.leech = 0;
-                                torrent_obj.torrent_page = "";
-                                torrent_obj.status = "default";
-                                torrent_obj.discount = "";
-                            }
-                        } else {
-                            console.log("Skipping marked torrent");
+                        const documentTitle = torrent.querySelector('title')?.textContent;
+                        if (!documentTitle) {
+                            console.error("Missing title information.");
+                            return; // Skip this torrent if title information is missing
                         }
+                        console.log("Title:", documentTitle);
+
+                        const sizeElement = torrent.querySelector('size');
+                        if (sizeElement) {
+                            const sizeValue = sizeElement.textContent;
+                            torrent_obj.size = parseInt(parseFloat(sizeValue) / (1024 * 1024)); // Convert size from bytes to MB
+                            torrent_obj.api_size = parseInt(sizeValue);
+                            console.log("Size (MB):", torrent_obj.size);
+                        } else {
+                            console.error("Missing size information.");
+                            return; // Skip this torrent if size information is missing
+                        }
+
+                        torrent_obj.info_text = documentTitle;
+
+                        const linkElement = torrent.querySelector('link');
+                        if (linkElement) {
+                            torrent_obj.download_link = linkElement.textContent;
+                            console.log("Download link:", torrent_obj.download_link);
+                        } else {
+                            console.error("Missing download link.");
+                            return; // Skip this torrent if download link is missing
+                        }
+
+                        torrent_obj.snatch = parseInt(torrent.querySelector('torznab\\:attr[name="grabs"]')?.getAttribute('value') || "0");
+                        torrent_obj.seed = parseInt(torrent.querySelector('torznab\\:attr[name="seeders"]')?.getAttribute('value') || "0");
+                        torrent_obj.leech = parseInt(torrent.querySelector('torznab\\:attr[name="leechers"]')?.getAttribute('value') || "0");
+
+                        console.log("Snatches:", torrent_obj.snatch, "Seeders:", torrent_obj.seed, "Leechers:", torrent_obj.leech);
+
+                        const commentsElement = torrent.querySelector('comments');
+                        if (commentsElement) {
+                            torrent_obj.torrent_page = commentsElement.textContent;
+                            console.log("Torrent page:", torrent_obj.torrent_page);
+                        } else {
+                            console.error("Missing comments link.");
+                            return; // Skip this torrent if comments link is missing
+                        }
+
+                        torrent_obj.site = "MTV";
+                        const discountTVVFind = torrent.querySelector('torznab\\:attr[name="downloadvolumefactor"]');
+                        if (discountTVVFind) {
+                            torrent_obj.discount = discountTVVFind.getAttribute('value') === "0" ? "Freeleech" : "None";
+                        } else {
+                            torrent_obj.discount = "None";
+                        }
+                        console.log("Discount:", torrent_obj.discount);
+
+                        torrent_objs.push(torrent_obj);
                     });
                 } catch (error) {
-                    console.error("An error occurred while processing MTV tracker:", error);
+                    console.error("Error processing XML from MTV:", error);
                 }
             }
             else if (tracker === "ANT") {
@@ -1473,8 +1401,7 @@
                   return true;
             }
             else if (tracker === "MTV") {
-                if (html.querySelector(".numsearchresults > span").textContent.includes("0 Results")) return false;
-                else return true;
+                return true;
             }
             else if (tracker === "ANT") {
                 if (html.querySelector(".head").textContent.includes("Basic Search (")) return false;
@@ -1692,7 +1619,7 @@
                     }
                 }
                 else if (tracker === "MTV") {
-                    query_url = "https://www.morethantv.me/torrents/browse?page=1&order_by=time&order_way=desc&=Search&=Reset&=Search&searchtext=" + imdb_id + "&action=advanced&title=&sizeall=&sizetype=kb&sizerange=0.01&filelist=&autocomplete_toggle=on";
+                    query_url = "https://www.morethantv.me/api/torznab?t=search&apikey=" + MTV_API_TOKEN + "&imdbid=" + imdb_id;
                 }
                 else if (tracker === "ANT") {
                     query_url = "https://anthelion.me/torrents.php?searchstr=" + imdb_id + "&order_by=time&order_way=desc&group_results=1&action=basic&searchsubmit=1";
