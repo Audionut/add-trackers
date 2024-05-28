@@ -144,7 +144,6 @@
     });
 
     if (window.location.href.includes('/torrents.php?id=')) {
-        console.log("Match page detected");
 
         const movie_dict = {
             "BHD": GM_config.get("bhd"),
@@ -707,7 +706,6 @@
             else if (tracker === "MTV") {
                 try {
                     const torrents = html.querySelectorAll('item');
-                    console.log("MTV torrents", torrents);
 
                     torrents.forEach(torrent => {
                         let torrent_obj = {};
@@ -719,7 +717,6 @@
                         }
                         let infoText = documentTitle;
                         torrent_obj.datasetRelease = documentTitle;
-                        console.log("Title:", documentTitle);
                         const isInternal = infoText.includes("-hallowed") || infoText.includes("-TEPES") || infoText.includes("-E.N.D") || infoText.includes("-WDYM");
                         torrent_obj.internal = isInternal ? true : false;
 
@@ -728,7 +725,6 @@
                             const sizeValue = sizeElement.textContent;
                             torrent_obj.size = parseInt(parseFloat(sizeValue) / (1024 * 1024)); // Convert size from bytes to MB
                             torrent_obj.api_size = parseInt(sizeValue);
-                            console.log("Size (MB):", torrent_obj.size);
                         } else {
                             console.error("Missing size information.");
                             return; // Skip this torrent if size information is missing
@@ -813,7 +809,6 @@
                         const linkElement = torrent.querySelector('link');
                         if (linkElement) {
                             torrent_obj.download_link = linkElement.textContent;
-                            console.log("Download link:", torrent_obj.download_link);
                         } else {
                             console.error("Missing download link.");
                             return; // Skip this torrent if download link is missing
@@ -823,12 +818,9 @@
                         torrent_obj.seed = parseInt(torrent.querySelector('attr[name="seeders"]')?.getAttribute('value') || "0");
                         torrent_obj.leech = parseInt(torrent.querySelector('attr[name="leechers"]')?.getAttribute('value') || "0");
 
-                        console.log("Snatches:", torrent_obj.snatch, "Seeders:", torrent_obj.seed, "Leechers:", torrent_obj.leech);
-
                         const commentsElement = torrent.querySelector('comments');
                         if (commentsElement) {
                             torrent_obj.torrent_page = commentsElement.textContent;
-                            console.log("Torrent page:", torrent_obj.torrent_page);
                         } else {
                             console.error("Missing comments link.");
                             return; // Skip this torrent if comments link is missing
@@ -841,7 +833,6 @@
                         } else {
                             torrent_obj.discount = "None";
                         }
-                        console.log("Discount:", torrent_obj.discount);
 
                         torrent_objs.push(torrent_obj);
                     });
@@ -1568,7 +1559,6 @@
                 });
 
                 if (response.status === 200) {
-                    console.log(`Raw response from ${tracker}:`, response.responseText); // Log raw response
                     return JSON.parse(response.responseText);
                 } else {
                     console.error(`Error: HTTP ${response.status} Error.`);
@@ -1698,7 +1688,6 @@
                 }
                 else if (tracker === "MTV") {
                     query_url = "https://www.morethantv.me/api/torznab?t=search&apikey=" + MTV_API_TOKEN + "&imdbid=" + imdb_id;
-                    console.log("MTV URL", query_url);
                 }
                 else if (tracker === "ANT") {
                     query_url = "https://anthelion.me/torrents.php?searchstr=" + imdb_id + "&order_by=time&order_way=desc&group_results=1&action=basic&searchsubmit=1";
@@ -1812,7 +1801,6 @@
                         post_json(post_query_url, tracker, postData, timeout)
                             .then(result => {
                                 clearTimeout(timer); // Clear the timer on successful fetch
-                                console.log(`Parsed result from ${tracker}:`, result); // Log parsed result
                                 if (result) {
                                     if (result.results && tracker === "BHD") {
                                         resolve(get_post_torrent_objects(tracker, result));
@@ -1939,7 +1927,6 @@
                                 infoText = "Commentary" + infoText;
                             }
                         }
-                        console.log("BHD infotext", infoText);
                         const is25 = d.promo25 === 1 ? true : false;
                         const is50 = d.promo50 === 1 ? true : false;
                         const is75 = d.promo75 === 1 ? true : false;
@@ -1987,7 +1974,6 @@
                             quality: get_torrent_quality(torrentObj),
                         };
 
-                        console.log("Parsed torrent object:", mappedObj); // Log each parsed torrent object
                         return mappedObj;
                     }).filter(obj => obj !== null); // Filter out any null objects
                 } catch (error) {
@@ -2079,7 +2065,6 @@
                             quality: get_torrent_quality(torrentObj),
                         };
 
-                        console.log("Parsed torrent object:", mappedObj); // Log each parsed torrent object
                         return mappedObj;
                     }).filter(obj => obj !== null); // Filter out any null objects
                 } catch (error) {
@@ -2130,7 +2115,6 @@
                                 quality: get_torrent_quality(torrentObj),
                             };
 
-                            console.log("Parsed torrent object:", mappedObj); // Log each parsed torrent object
                             return mappedObj;
                         }).filter(obj => obj !== null); // Filter out any null objects
                     } else {
@@ -2185,7 +2169,6 @@
                                 quality: get_torrent_quality(torrentObj),
                             };
 
-                            console.log("Parsed torrent object:", mappedObj); // Log each parsed torrent object
                             return mappedObj;
                         }).filter(obj => obj !== null); // Filter out any null objects
                     } else {
