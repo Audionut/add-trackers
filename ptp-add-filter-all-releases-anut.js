@@ -754,9 +754,9 @@
                             return; // Skip this torrent if download link is missing
                         }
 
-                        torrent_obj.snatch = parseInt(torrent.querySelector('torznab\\:attr[name="grabs"]')?.getAttribute('value') || "0");
-                        torrent_obj.seed = parseInt(torrent.querySelector('torznab\\:attr[name="seeders"]')?.getAttribute('value') || "0");
-                        torrent_obj.leech = parseInt(torrent.querySelector('torznab\\:attr[name="leechers"]')?.getAttribute('value') || "0");
+                        torrent_obj.snatch = parseInt(torrent.querySelector('attr[name="grabs"]')?.getAttribute('value') || "0");
+                        torrent_obj.seed = parseInt(torrent.querySelector('attr[name="seeders"]')?.getAttribute('value') || "0");
+                        torrent_obj.leech = parseInt(torrent.querySelector('attr[name="leechers"]')?.getAttribute('value') || "0");
 
                         console.log("Snatches:", torrent_obj.snatch, "Seeders:", torrent_obj.seed, "Leechers:", torrent_obj.leech);
 
