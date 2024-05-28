@@ -1895,7 +1895,6 @@
 
                         if (improved_tags) {
                             const match = infoText.match(/-([^-]+)$/);
-                            let groupText = "";
                             if (match) {
                                 groupText = match[0].substring(1);
                                 groupText = groupText.replace(/[^a-z0-9]/gi, '');
@@ -1930,6 +1929,10 @@
                                 } else if (!infoText.includes("DV")) {
                                     infoText = "DV " + infoText;
                                 }
+                            }
+                            const bdType = get_blu_ray_disc_type(d.size);
+                            if (improved_tags && infoText.includes("Blu-ray")) {
+                                infoText = `${bdType} ${infoText}`;
                             }
                         }
                         console.log("BHD infotext", infoText);
@@ -2010,18 +2013,41 @@
                         const torrent = d.filename;
                         const releaseName = d.filename.replace(/\.torrent$/, "");
 
-                        const tagsArray = d.tags.filter(tag => !infoText.includes(tag));
-                        // ugly hack to get and append the web source for Improved Tags.
-                        const webTagsArray = tagsArray.map(tag => `${tag.toLowerCase()}.web.dl`);
-                        const tags = webTagsArray.join(' ');
-
-                        if (tags && improved_tags) {
-                            infoText += ` ${tags}`;
-                        }
-
+                        // Check if web.dl, web-dl, or webdl is present in the infoText
+                        const isWebDL = /web.dl|web-dl|webdl/i.test(infoText);
                         let finalReleaseName = releaseName;
-                        if (improved_tags) {
-                            finalReleaseName = `${tags} ${releaseName}`;
+
+                        if (isWebDL) {
+                            const tagsArray = d.tags.filter(tag => !infoText.includes(tag));
+
+                            // Create webTagsArray only if web.dl, web-dl, or webdl is present
+                            const webTagsArray = tagsArray.map(tag => `${tag.toLowerCase()}.web.dl`);
+                            const tags = webTagsArray.join(' ');
+
+                            if (tags && improved_tags) {
+                                infoText += ` ${tags}`;
+                            }
+
+                            let finalReleaseName = releaseName;
+                            if (improved_tags) {
+                                finalReleaseName = `${tags} ${releaseName}`;
+                            }
+                        } else {
+                            const tagsArray = d.tags.filter(tag => !infoText.includes(tag));
+                            const tags = tagsArray.join(' ');
+
+                            if (tags && improved_tags) {
+                                infoText += ` ${tags}`;
+                            }
+
+                            let finalReleaseName = releaseName;
+                            if (improved_tags) {
+                                finalReleaseName = `${tags} ${releaseName}`;
+                            }
+                        }
+                        const bdType = get_blu_ray_disc_type(d.size);
+                        if (improved_tags && infoText.includes("Blu-ray")) {
+                            infoText = `${bdType} ${infoText}`;
                         }
                         const status = d.torrent_status || "default";
 
@@ -2039,6 +2065,7 @@
                             torrent_page: `${pageURL}${id}`,
                             discount: d.freeleech === "yes" ? "Freeleech" : "None",
                             internal: d.type_origin === 1 ? true : false,
+                            exclusive: d.type_exclusive === 1 ? true : false,
                             status: status,
                             groupId: groupText,
                         };
