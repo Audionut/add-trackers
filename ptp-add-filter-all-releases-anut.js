@@ -21,40 +21,40 @@
 
     const fields = {
         "aither": {"label": "Aither *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
+        "aither_api": {"label": "AITHER_API_TOKEN", "type": "text", "default": ""},
         "avistaz": {"label": "Avistaz", "type": "checkbox", "default": false},
         "ant": {"label": "ANT", "type": "checkbox", "default": false},
         "bhd": {"label": "BHD *", "type": "checkbox", "default": false, "tooltip": "Enter API and RSS key below"},
+        "bhd_api": {"label": "BHD_API_TOKEN", "type": "text", "default": ""},
+        "bhd_rss": {"label": "BHD_RSS_KEY", "type": "text", "default": ""},
         "blu": {"label": "BLU *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
+        "blu_api": {"label": "BLU_API_TOKEN", "type": "text", "default": ""},
         "btn": {"label": "BTN *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
+        "btn_api": {"label": "BTN_API_TOKEN", "type": "text", "default": ""},
         "cg": {"label": "CG", "type": "checkbox", "default": false},
         "cinemaz": {"label": "CinemaZ", "type": "checkbox", "default": false},
         "fl": {"label": "FL", "type": "checkbox", "default": false},
         "hdb": {"label": "HDB *", "type": "checkbox", "default": false, "tooltip": "Enter username and passkey below"},
+        "hdb_user": {"label": "HDB_USER_NAME", "type": "text", "default": "", "tooltip": "HDB username"},
+        "hdb_pass": {"label": "HDB_PASS_KEY", "type": "text", "default": "", "tooltip": "passkey from your HDB profile page"},
         "huno": {"label": "HUNO *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
+        "huno_api": {"label": "HUNO_API_TOKEN", "type": "text", "default": ""},
         "kg": {"label": "KG", "type": "checkbox", "default": false},
         "mtv": {"label": "MTV *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
+        "mtv_api": {"label": "MTV_API_TOKEN", "type": "text", "default": ""},
         "nbl": {"label": "NBL *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
+        "nbl_api": {"label": "NBL_API_TOKEN", "type": "text", "default": ""},
         "oe": {"label": "OE *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
+        "oe_api": {"label": "OE_API_TOKEN", "type": "text", "default": ""},
         "phd": {"label": "PHD", "type": "checkbox", "default": false},
         "ptp": {"label": "PTP", "type": "checkbox", "default": true},
         "pxhd": {"label": "PxHD", "type": "checkbox", "default": false},
         "rfx": {"label": "RFX *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
+        "rfx_api": {"label": "RFX_API_TOKEN", "type": "text", "default": ""},
         "rtf": {"label": "RTF", "type": "checkbox", "default": false},
         "tik": {"label": "TIK *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
-        "tvv": {"label": "TVV *", "type": "checkbox", "default": false, "tooltip": "Enter auth key & torrent pass below"},
-        "aither_api": {"label": "AITHER_API_TOKEN", "type": "text", "default": ""},
-        "bhd_api": {"label": "BHD_API_TOKEN", "type": "text", "default": ""},
-        "bhd_rss": {"label": "BHD_RSS_KEY", "type": "text", "default": ""},
-        "blu_api": {"label": "BLU_API_TOKEN", "type": "text", "default": ""},
-        "btn_api": {"label": "BTN_API_TOKEN", "type": "text", "default": ""},
-        "hdb_user": {"label": "HDB_USER_NAME", "type": "text", "default": "", "tooltip": "HDB username"},
-        "hdb_pass": {"label": "HDB_PASS_KEY", "type": "text", "default": "", "tooltip": "passkey from your HDB profile page"},
-        "huno_api": {"label": "HUNO_API_TOKEN", "type": "text", "default": ""},
-        "mtv_api": {"label": "MTV_API_TOKEN", "type": "text", "default": ""},
-        "nbl_api": {"label": "NBL_API_TOKEN", "type": "text", "default": ""},
-        "oe_api": {"label": "OE_API_TOKEN", "type": "text", "default": ""},
-        "rfx_api": {"label": "RFX_API_TOKEN", "type": "text", "default": ""},
         "tik_api": {"label": "TIK_API_TOKEN", "type": "text", "default": ""},
+        "tvv": {"label": "TVV *", "type": "checkbox", "default": false, "tooltip": "Enter auth key & torrent pass below"},
         "tvv_auth": {"label": "TVV_AUTH_KEY", "type": "text", "default": "", "tooltip": "Find from a torrent download link at TVV"},
         "tvv_torr": {"label": "TVV_TORR_PASS", "type": "text", "default": "", "tooltip": "Needed to access TVV xml output"},
         "show_icon": {"label": "Show Tracker Icon", "type": "checkbox", "default": true, "tooltip": "Display the tracker icon next to releases"},
@@ -85,6 +85,29 @@
             alert("All settings have been reset to their default values.");
             GM_config.close();
             GM_config.open();
+       }
+   }
+
+    // Toggle the visibility of api fields if they've been enabled or disabled
+    function toggleAuthFields(key, isAuthEnabled) {
+        const multi_auth = {
+            "bhd": ["bhd_api", "bhd_rss"],
+            "hdb": ["hdb_user", "hdb_pass"],
+            "tvv": ["tvv_auth", "tvv_torr"]
+        };
+
+        if (key in multi_auth) {
+            multi_auth[key].forEach(subKey => toggleAuthFields(subKey, isAuthEnabled));
+            return;
+        }
+
+        const allKeys = Object.values(multi_auth).flat();
+        const fieldName = allKeys.includes(key) ? key : `${key}_api`;
+
+        if (GM_config.fields[fieldName]) {
+            GM_config.fields[fieldName].wrapper.style.display = isAuthEnabled ? '' : 'none';
+        } else {
+            console.error(`Field ${fieldName} does not exist in GM_config.fields`);
         }
     }
 
@@ -96,8 +119,12 @@
             #PTPAddReleases {background: #333333; width: 85%; margin: 10px 0; padding: 20px 20px}
             #PTPAddReleases .field_label {color: #fff; width: 100%;}
             #PTPAddReleases .config_header {color: #fff; padding-bottom: 10px; font-weight: 100;}
-            #PTPAddReleases .reset {color: #f00; text-align: left;}
-            #PTPAddReleases .config_var {display: flex; flex-direction: row; text-align: left; justify-content: center; align-items: center; width: 75%; margin: 4px auto; padding: 4px 0;}
+            #PTPAddReleases .reset {color: #e8d3d3; text-align: left; text-decoration: none;}
+            #PTPAddReleases .config_var {display: flex; flex-direction: row; text-align: left; justify-content: center; align-items: center; width: 85%; margin: 4px auto; padding: 4px 0;}
+            #PTPAddReleases_buttons_holder {display: grid; gap: 10px; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; width:85%; height: 100px; margin: 0 auto;}
+            #PTPAddReleases_saveBtn {grid-column:1; grid-row:1;}
+            #PTPAddReleases_closeBtn {grid-column:3; grid-row:1;}
+            #PTPAddReleases .reset_holder {grid-column:2; grid-row:2}
         `,
         "events": {
             "open": function (doc) {
@@ -118,6 +145,29 @@
                             label.title = fields[field].tooltip;
                         }
                     }
+                }                
+                // Nodes that require API keys
+                const api_based_nodes = {
+                    "aither": GM_config.fields.aither.node,
+                    "bhd": GM_config.fields.bhd.node,
+                    "blu": GM_config.fields.blu.node,
+                    "btn": GM_config.fields.btn.node,
+                    "hdb": GM_config.fields.hdb.node,
+                    "mtv": GM_config.fields.mtv.node,
+                    "nbl": GM_config.fields.nbl.node,
+                    "huno": GM_config.fields.huno.node,
+                    "oe": GM_config.fields.oe.node,
+                    "rfx": GM_config.fields.rfx.node,
+                    "tik": GM_config.fields.tik.node,
+                    "tvv": GM_config.fields.tvv.node
+                }
+
+                // Add event listeners for trackers with auth
+                for (const [key, value] of Object.entries(api_based_nodes)) {
+                    toggleAuthFields(key, value.checked);
+                    value.addEventListener('change', function () {
+                        toggleAuthFields(key, value.checked);
+                    });
                 }
             },
             "save": function () {
