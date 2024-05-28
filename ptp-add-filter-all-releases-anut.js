@@ -718,6 +718,7 @@
                             return; // Skip this torrent if title information is missing
                         }
                         let infoText = documentTitle;
+                        torrent_obj.datasetRelease = documentTitle;
                         console.log("Title:", documentTitle);
                         const isInternal = infoText.includes("-hallowed") || infoText.includes("-TEPES") || infoText.includes("-E.N.D") || infoText.includes("-WDYM");
                         torrent_obj.internal = isInternal ? true : false;
@@ -743,7 +744,71 @@
                             }
                         }
                         torrent_obj.groupId = groupText;
-                        torrent_obj.info_text = infoText;
+
+                            let cleanTheText = infoText;
+                            const replaceFullStops = (text) => {
+
+                                const placeholders = new Map();
+                                let tempText = text;
+
+                                const keepPatterns = [
+                                    /\b\d\.\d\b/g,
+                                    /\bDD\d\.\d\b/g,
+                                    /\bDDP\d\.\d\b/g,
+                                    /\bDD\+\d\.\d\b/g,
+                                    /\bTrueHD \d\.\d\b/g,
+                                    /\bDTS\d\.\d\b/g,
+                                    /\bAC3\d\.\d\b/g,
+                                    /\bAAC\d\.\d\b/g,
+                                    /\bOPUS\d\.\d\b/g,
+                                    /\bMP3\d\.\d\b/g,
+                                    /\bFLAC\d\.\d\b/g,
+                                    /\bLPCM\d\.\d\b/g,
+                                    /\bH\.264\b/g,
+                                    /\bH\.265\b/g,
+                                    /\bDTS-HD MA \d\.\d\b/g,
+                                    /\bDTS-HD MA \d\.\d\b/g // Ensuring variations
+                                ];
+
+                                keepPatterns.forEach((pattern, index) => {
+                                    tempText = tempText.replace(pattern, (match) => {
+                                        const placeholder = `__PLACEHOLDER${index}__`;
+                                        placeholders.set(placeholder, match);
+                                        return placeholder;
+                                    });
+                                });
+
+                                // Replace remaining full stops not followed by a digit, not preceded by a digit, or directly following a year
+                                tempText = tempText.replace(/(?<!\d)\.(?!\d)/g, ' '); // Replace full stops not preceded by a digit
+                                tempText = tempText.replace(/\.(?!(\d))/g, ' '); // Replace full stops not followed by a digit
+                                tempText = tempText.replace(/(?<=\b\d{4})\./g, ' '); // Remove full stops directly following a year
+                                tempText = tempText.replace(/\.(?=\b\d{4}\b)/g, ' '); // Remove full stops directly before a year
+
+                                placeholders.forEach((original, placeholder) => {
+                                    tempText = tempText.replace(new RegExp(placeholder, 'g'), original);
+                                });
+
+                                tempText = tempText
+                                    .replace(/DD\+/g, 'DD+ ')
+                                    .replace(/DDP/g, 'DD+ ')
+                                    .replace(/DoVi/g, 'DV')
+                                    .replace(/\(/g, '')
+                                    .replace(/\)/g, '')
+                                    .replace(/\bhdr\b/g, 'HDR')
+                                    .replace(/\bweb\b/g, 'WEB')
+                                    .replace(/\bbluray\b/gi, 'BluRay')
+                                    .replace(/\bh254\b/g, 'H.264')
+                                    .replace(/\bh265\b/g, 'H.265')
+                                    .replace(/\b\w/g, char => char.toUpperCase())
+                                    .replace(/\bX264\b/g, 'x264')
+                                    .replace(/\bX265\b/g, 'x265')
+                                    .replace(/\b - \b/g, ' ');
+
+                                return tempText;
+                            };
+
+                        torrent_obj.info_text = replaceFullStops(cleanTheText);
+                        //torrent_obj.info_text = infoText;
 
                         const linkElement = torrent.querySelector('link');
                         if (linkElement) {
@@ -1633,6 +1698,7 @@
                 }
                 else if (tracker === "MTV") {
                     query_url = "https://www.morethantv.me/api/torznab?t=search&apikey=" + MTV_API_TOKEN + "&imdbid=" + imdb_id;
+                    console.log("MTV URL", query_url);
                 }
                 else if (tracker === "ANT") {
                     query_url = "https://anthelion.me/torrents.php?searchstr=" + imdb_id + "&order_by=time&order_way=desc&group_results=1&action=basic&searchsubmit=1";
@@ -1829,15 +1895,60 @@
 
                         if (improved_tags) {
                             const match = infoText.match(/-([^-]+)$/);
+                            let groupText = "";
                             if (match) {
                                 groupText = match[0].substring(1);
                                 groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                                infoText = infoText.replace(groupText, '');
+                                infoText = infoText.replace(match[0], ''); // Remove the matched group from infoText
+                            }
+                            // yay for stupid release naming, thankfully, BHD seems to understand and append the correct flags to the API
+                            const dv = (d.dv === 1);
+                            const hdr10 = (d.hdr10 === 1);
+                            const hdr10Plus = (d["hdr10+"] === 1);
+
+                            // Replace "HDR" with "HDR10+" if hdr10Plus is true, otherwise replace "HDR" with "HDR10" if hdr10 is true
+                            if (hdr10Plus) {
+                                if (infoText.includes("HDR")) {
+                                    infoText = infoText.replace("HDR", "HDR10+");
+                                } else if (!infoText.includes("HDR10+")) {
+                                    infoText += " HDR10+";
+                                }
+                            } else if (hdr10) {
+                                if (infoText.includes("HDR")) {
+                                    infoText = infoText.replace("HDR", "HDR10");
+                                } else if (!infoText.includes("HDR10")) {
+                                    infoText += " HDR10";
+                                }
+                            }
+
+                            // Append "DV" if dv is true and not already present
+                            if (dv) {
+                                if (hdr10Plus && !infoText.includes("DV HDR10+")) {
+                                    infoText = "DV HDR10+ " + infoText.replace("HDR10+", "").replace("HDR10", "").replace("DV", "").trim();
+                                } else if (hdr10 && !infoText.includes("DV HDR10")) {
+                                    infoText = "DV HDR10 " + infoText.replace("HDR10+", "").replace("HDR10", "").replace("DV", "").trim();
+                                } else if (!infoText.includes("DV")) {
+                                    infoText = "DV " + infoText;
+                                }
                             }
                         }
-                        const hdr10Plus = (d["hdr10+"] === 1);
-                        if (hdr10Plus) {
-                            infoText = infoText.replace("HDR", "HDR10+");
+                        console.log("BHD infotext", infoText);
+                        const is25 = d.promo25 === 1 ? true : false;
+                        const is50 = d.promo50 === 1 ? true : false;
+                        const is75 = d.promo75 === 1 ? true : false;
+                        const is100 = d.freeleech === 1 ? true : false;
+
+                        let discounted = "";
+                        if (is25) {
+                            discounted = "25% Freeleech";
+                        } else if (is50) {
+                            discounted = "50% Freeleech";
+                        } else if (is75) {
+                            discounted = "75% Freeleech";
+                        } else if (is100) {
+                            discounted = "Freeleech";
+                        } else {
+                            discounted = "None";
                         }
 
                         const torrentObj = {
@@ -1852,7 +1963,7 @@
                             leech: d.leechers || 0,
                             download_link: d.download_url || "",
                             torrent_page: d.url || "",
-                            discount: d.freeleech === 1 ? "Freeleech" : "None",
+                            discount: discounted,
                             internal: d.internal === 1 ? true : false,
                             status: "default",
                             groupId: groupText,
@@ -1898,9 +2009,9 @@
                         const pageURL = 'https://hdbits.org/details.php?id=';
                         const torrent = d.filename;
                         const releaseName = d.filename.replace(/\.torrent$/, "");
-                        //const spaceRemoved = releaseName.replace(/\./, " / ");
 
                         const tagsArray = d.tags.filter(tag => !infoText.includes(tag));
+                        // ugly hack to get and append the web source for Improved Tags.
                         const webTagsArray = tagsArray.map(tag => `${tag.toLowerCase()}.web.dl`);
                         const tags = webTagsArray.join(' ');
 
