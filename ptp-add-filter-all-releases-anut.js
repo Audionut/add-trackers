@@ -1931,8 +1931,12 @@
                                 }
                             }
                             const bdType = get_blu_ray_disc_type(d.size);
-                            if (improved_tags && infoText.includes("Blu-ray")) {
+                            if (infoText.includes("Blu-ray")) {
                                 infoText = `${bdType} ${infoText}`;
+                            }
+                            const comms = (d.commentary === 1);
+                            if (comms) {
+                                infoText = "Commentary" + infoText;
                             }
                         }
                         console.log("BHD infotext", infoText);
