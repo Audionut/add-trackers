@@ -116,15 +116,16 @@
         "title": "<div>Add releases from other trackers<br><small style='font-weight:normal;'>Select trackers you have access too</small></div>",
         "fields": fields,
         "css": `
-            #PTPAddReleases {background: #333333; width: 85%; margin: 10px 0; padding: 20px 20px}
+            #PTPAddReleases {background: #333333; margin: 0; padding: 20px 20px}
             #PTPAddReleases .field_label {color: #fff; width: 100%;}
             #PTPAddReleases .config_header {color: #fff; padding-bottom: 10px; font-weight: 100;}
-            #PTPAddReleases .reset {color: #e8d3d3; text-align: left; text-decoration: none;}
-            #PTPAddReleases .config_var {display: flex; flex-direction: row; text-align: left; justify-content: center; align-items: center; width: 85%; margin: 4px auto; padding: 4px 0;}
-            #PTPAddReleases_buttons_holder {display: grid; gap: 10px; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; width:85%; height: 100px; margin: 0 auto;}
-            #PTPAddReleases_saveBtn {grid-column:1; grid-row:1;}
-            #PTPAddReleases_closeBtn {grid-column:3; grid-row:1;}
+            #PTPAddReleases .reset {color: #e8d3d3; text-decoration: none;}
+            #PTPAddReleases .config_var {display: flex; flex-direction: row; text-align: left; justify-content: center; align-items: center; width: 85%; margin: 4px auto; padding: 4px 0; border-bottom: 1px solid #7470703d;}
+            #PTPAddReleases_buttons_holder {display: grid; gap: 10px; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; width:85%; height: 100px; margin: 0 auto; text-align: center; align-items: center;}
+            #PTPAddReleases_saveBtn {grid-column:1; grid-row:1; cursor: pointer;}
+            #PTPAddReleases_closeBtn {grid-column:3; grid-row:1; cursor: pointer;}
             #PTPAddReleases .reset_holder {grid-column:2; grid-row:2}
+            #PTPAddReleases .config_var input[type="checkbox"] {cursor: pointer;}
         `,
         "events": {
             "open": function (doc) {
@@ -134,7 +135,7 @@
                 style.inset = "";
                 style.top = "6%";
                 style.right = "6%";
-                style.borderRadius = "25px";
+                style.borderRadius = "5px";
                 console.log("Config window opened");
 
                 // Add tooltips
