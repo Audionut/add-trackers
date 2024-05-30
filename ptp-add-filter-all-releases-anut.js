@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.5.6-A
+// @version      3.5.7-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -310,11 +310,11 @@
             const hasTV = /\btv\b/.test(text);
             const hasTelevision = /\btelevision\b/.test(text);
             // Regex to match the string starting with "films based on television programs" followed by anything else.
-            const skip1 = /^films based on television programs\b.*/i.test(text);
+           // const skip1 = /^films based on television programs\b.*/i.test(text);
 
-            if (skip1) {
-                return false; // Return false to skip adding if the exact skip text is found
-            }
+            //if (skip1) {
+            //    return false; // Return false to skip adding if the exact skip text is found
+            //}
 
             return hasMiniseries || hasTV || hasTelevision;
         }) : false;
@@ -338,7 +338,7 @@
                 excludedTrackers.push({ tracker: tracker, reason: 'Not classified as a Feature Film' });
             });
         }
-        const selectedTVTrackers = ["TVV"]; // Trackers defined here also contain TV movies and the like.
+        const selectedTVTrackers = ["TVV", "BTN"]; // Trackers defined here also contain TV movies and the like.
 
         // Add TV trackers if it is a PTP miniseries page, but skip selected TV Trackers handling for now.
         if (isMiniSeriesFromSpan) {
@@ -1707,7 +1707,7 @@
             });
         };
 
-        const fetch_tracker = async (tracker, imdb_id, show_name, timeout = timer) => {
+        const fetch_tracker = async (tracker, imdb_id, show_name, show_nbl_name, timeout = timer) => {
             return new Promise((resolve, reject) => {
                 const timer = setTimeout(() => {
                     console.error(`Request timed out for ${tracker}`);
@@ -1747,8 +1747,9 @@
                                 BTN_API_TOKEN,
                                 {
                                     //imdb_id: parseInt(imdb_id.split("tt")[1])
-                                    series: show_name
-                                    //search: show_name
+                                    //series: show_name
+                                    search: show_name
+                                    //name: show_name
                                 },
                                 20, // Results per page
                                 //0   // Page number
@@ -1837,7 +1838,7 @@
                                 NBL_API_TOKEN,
                                 {
                                     //imdb: parseInt(imdb_id.split("tt")[1])
-                                    series: show_name
+                                    series: show_nbl_name
                                 },
                                 20, // Results per page
                                 0   // Page number
@@ -2218,44 +2219,47 @@
                             const originalInfoText = d.ReleaseName;
                             let infoText = originalInfoText;
                             if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
-                                let groupText = "";
+                              if (!isMiniSeriesFromSpan && /S\d{2}/.test(infoText)) {
+                                  return null;
+                              } else {
+                                  let groupText = "";
 
-                                if (improved_tags) {
-                                    const match = infoText.match(/-([^-]+)$/);
-                                    if (match) {
-                                        groupText = match[0].substring(1);
-                                        groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                                        infoText = infoText.replace(groupText, '');
-                                    }
-                                }
-                                const id = d.GroupID;
-                                const tid = d.TorrentID;
-                                const pageURL = 'https://broadcasthe.net/torrents.php?id=';
+                                  if (improved_tags) {
+                                      const match = infoText.match(/-([^-]+)$/);
+                                      if (match) {
+                                          groupText = match[0].substring(1);
+                                          groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                          infoText = infoText.replace(groupText, '');
+                                      }
+                                  }
+                                  const id = d.GroupID;
+                                  const tid = d.TorrentID;
+                                  const pageURL = 'https://broadcasthe.net/torrents.php?id=';
 
-                                const torrentObj = {
-                                    api_size: api_size,
-                                    datasetRelease: originalInfoText,
-                                    size: size,
-                                    info_text: infoText,
-                                    tracker: tracker,
-                                    site: tracker,
-                                    snatch: parseInt(d.Snatched) || 0,
-                                    seed: parseInt(d.Seeders) || 0,
-                                    leech: parseInt(d.Leechers) || 0,
-                                    download_link: d.DownloadURL,
-                                    torrent_page: `${pageURL}${id}&torrentid=${tid}`,
-                                    discount: "None",
-                                    status: "default",
-                                    groupId: groupText,
-                                };
+                                  const torrentObj = {
+                                      api_size: api_size,
+                                      datasetRelease: originalInfoText,
+                                      size: size,
+                                      info_text: infoText,
+                                      tracker: tracker,
+                                      site: tracker,
+                                      snatch: parseInt(d.Snatched) || 0,
+                                      seed: parseInt(d.Seeders) || 0,
+                                      leech: parseInt(d.Leechers) || 0,
+                                      download_link: d.DownloadURL,
+                                      torrent_page: `${pageURL}${id}&torrentid=${tid}`,
+                                      discount: "None",
+                                      status: "default",
+                                      groupId: groupText,
+                                  };
 
-                                // Map additional properties if necessary
-                                const mappedObj = {
-                                    ...torrentObj,
-                                    quality: get_torrent_quality(torrentObj),
-                                };
+                                  const mappedObj = {
+                                      ...torrentObj,
+                                      quality: get_torrent_quality(torrentObj),
+                                  };
 
-                                return mappedObj;
+                                  return mappedObj;
+                              }
                             } else {
                               return null;
                             }
@@ -3975,23 +3979,27 @@
 
             let name_url = document.querySelector("h2.page__title").textContent.trim();
             let show_name;
+            let show_nbl_name;
             const akaIndex = name_url.indexOf(" AKA ");
             if (akaIndex !== -1) {
                 show_name = name_url.substring(0, akaIndex);
+                show_nbl_name = show_name;
             } else {
                 const yearMatch = name_url.match(/\[\d{4}\]/);
                 show_name = yearMatch ? name_url.substring(0, yearMatch.index).trim() : name_url;
+                show_nbl_name = show_name;
             }
 
-            const colonIndex = show_name.indexOf(":");
+            const colonIndex = show_nbl_name.indexOf(":");
             if (colonIndex !== -1) {
-                show_name = show_name.substring(0, colonIndex);
+                show_nbl_name = show_nbl_name.substring(0, colonIndex);
             }
 
             show_name = show_name.trim().replace(/[\s:]+$/, '');
+            show_nbl_name = show_nbl_name.trim().replace(/[\s:]+$/, '');
 
             let promises = [];
-            trackers.forEach(t => promises.push(fetch_tracker(t, imdb_id, show_name)));
+            trackers.forEach(t => promises.push(fetch_tracker(t, imdb_id, show_name, show_nbl_name)));
 
             Promise.all(promises)
                 .then(torrents_lists => {
