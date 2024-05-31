@@ -2172,6 +2172,68 @@
                                         infoText = infoText.replace(groupText, '');
                                     }
                                 }
+                                let cleanTheText = infoText;
+                                const replaceFullStops = (text) => {
+
+                                    const placeholders = new Map();
+                                    let tempText = text;
+
+                                    const keepPatterns = [
+                                        /\b\d\.\d\b/g,
+                                        /\bDD\d\.\d\b/g,
+                                        /\bDDP\d\.\d\b/g,
+                                        /\bDD\+\d\.\d\b/g,
+                                        /\bTrueHD \d\.\d\b/g,
+                                        /\bDTS\d\.\d\b/g,
+                                        /\bAC3\d\.\d\b/g,
+                                        /\bAAC\d\.\d\b/g,
+                                        /\bOPUS\d\.\d\b/g,
+                                        /\bMP3\d\.\d\b/g,
+                                        /\bFLAC\d\.\d\b/g,
+                                        /\bLPCM\d\.\d\b/g,
+                                        /\bH\.264\b/g,
+                                        /\bH\.265\b/g,
+                                        /\bDTS-HD MA \d\.\d\b/g,
+                                        /\bDTS-HD MA \d\.\d\b/g // Ensuring variations
+                                    ];
+
+                                    keepPatterns.forEach((pattern, index) => {
+                                        tempText = tempText.replace(pattern, (match) => {
+                                            const placeholder = `__PLACEHOLDER${index}__`;
+                                            placeholders.set(placeholder, match);
+                                            return placeholder;
+                                        });
+                                    });
+
+                                    // Replace remaining full stops not followed by a digit, not preceded by a digit, or directly following a year
+                                    tempText = tempText.replace(/(?<!\d)\.(?!\d)/g, ' '); // Replace full stops not preceded by a digit
+                                    tempText = tempText.replace(/\.(?!(\d))/g, ' '); // Replace full stops not followed by a digit
+                                    tempText = tempText.replace(/(?<=\b\d{4})\./g, ' '); // Remove full stops directly following a year
+                                    tempText = tempText.replace(/\.(?=\b\d{4}\b)/g, ' '); // Remove full stops directly before a year
+
+                                    placeholders.forEach((original, placeholder) => {
+                                        tempText = tempText.replace(new RegExp(placeholder, 'g'), original);
+                                    });
+
+                                    tempText = tempText
+                                        .replace(/DD\+/g, 'DD+ ')
+                                        .replace(/DDP/g, 'DD+ ')
+                                        .replace(/DoVi/g, 'DV')
+                                        .replace(/\(/g, '')
+                                        .replace(/\)/g, '')
+                                        .replace(/\bhdr\b/g, 'HDR')
+                                        .replace(/\bweb\b/g, 'WEB')
+                                        .replace(/\bbluray\b/gi, 'BluRay')
+                                        .replace(/\bh254\b/g, 'H.264')
+                                        .replace(/\bh265\b/g, 'H.265')
+                                        .replace(/\b\w/g, char => char.toUpperCase())
+                                        .replace(/\bX264\b/g, 'x264')
+                                        .replace(/\bX265\b/g, 'x265')
+                                        .replace(/\b - \b/g, ' ');
+
+                                    return tempText;
+                                };
+
                                 const id = d.group_id;
                                 const pageURL = 'https://nebulance.io/details.php?id=';
 
@@ -2179,7 +2241,7 @@
                                     api_size: api_size,
                                     datasetRelease: originalInfoText,
                                     size: size,
-                                    info_text: infoText,
+                                    info_text: replaceFullStops(cleanTheText),
                                     tracker: tracker,
                                     site: tracker,
                                     snatch: d.snatch || 0,
@@ -2232,6 +2294,67 @@
                                           infoText = infoText.replace(groupText, '');
                                       }
                                   }
+                                  let cleanTheText = infoText;
+                                  const replaceFullStops = (text) => {
+
+                                      const placeholders = new Map();
+                                      let tempText = text;
+
+                                      const keepPatterns = [
+                                          /\b\d\.\d\b/g,
+                                          /\bDD\d\.\d\b/g,
+                                          /\bDDP\d\.\d\b/g,
+                                          /\bDD\+\d\.\d\b/g,
+                                          /\bTrueHD \d\.\d\b/g,
+                                          /\bDTS\d\.\d\b/g,
+                                          /\bAC3\d\.\d\b/g,
+                                          /\bAAC\d\.\d\b/g,
+                                          /\bOPUS\d\.\d\b/g,
+                                          /\bMP3\d\.\d\b/g,
+                                          /\bFLAC\d\.\d\b/g,
+                                          /\bLPCM\d\.\d\b/g,
+                                          /\bH\.264\b/g,
+                                          /\bH\.265\b/g,
+                                          /\bDTS-HD MA \d\.\d\b/g,
+                                          /\bDTS-HD MA \d\.\d\b/g // Ensuring variations
+                                      ];
+
+                                      keepPatterns.forEach((pattern, index) => {
+                                          tempText = tempText.replace(pattern, (match) => {
+                                              const placeholder = `__PLACEHOLDER${index}__`;
+                                              placeholders.set(placeholder, match);
+                                              return placeholder;
+                                          });
+                                      });
+
+                                      // Replace remaining full stops not followed by a digit, not preceded by a digit, or directly following a year
+                                      tempText = tempText.replace(/(?<!\d)\.(?!\d)/g, ' '); // Replace full stops not preceded by a digit
+                                      tempText = tempText.replace(/\.(?!(\d))/g, ' '); // Replace full stops not followed by a digit
+                                      tempText = tempText.replace(/(?<=\b\d{4})\./g, ' '); // Remove full stops directly following a year
+                                      tempText = tempText.replace(/\.(?=\b\d{4}\b)/g, ' '); // Remove full stops directly before a year
+
+                                      placeholders.forEach((original, placeholder) => {
+                                          tempText = tempText.replace(new RegExp(placeholder, 'g'), original);
+                                      });
+
+                                      tempText = tempText
+                                          .replace(/DD\+/g, 'DD+ ')
+                                          .replace(/DDP/g, 'DD+ ')
+                                          .replace(/DoVi/g, 'DV')
+                                          .replace(/\(/g, '')
+                                          .replace(/\)/g, '')
+                                          .replace(/\bhdr\b/g, 'HDR')
+                                          .replace(/\bweb\b/g, 'WEB')
+                                          .replace(/\bbluray\b/gi, 'BluRay')
+                                          .replace(/\bh254\b/g, 'H.264')
+                                          .replace(/\bh265\b/g, 'H.265')
+                                          .replace(/\b\w/g, char => char.toUpperCase())
+                                          .replace(/\bX264\b/g, 'x264')
+                                          .replace(/\bX265\b/g, 'x265')
+                                          .replace(/\b - \b/g, ' ');
+
+                                      return tempText;
+                                  };
                                   const id = d.GroupID;
                                   const tid = d.TorrentID;
                                   const pageURL = 'https://broadcasthe.net/torrents.php?id=';
@@ -2240,7 +2363,7 @@
                                       api_size: api_size,
                                       datasetRelease: originalInfoText,
                                       size: size,
-                                      info_text: infoText,
+                                      info_text: replaceFullStops(cleanTheText),
                                       tracker: tracker,
                                       site: tracker,
                                       snatch: parseInt(d.Snatched) || 0,
