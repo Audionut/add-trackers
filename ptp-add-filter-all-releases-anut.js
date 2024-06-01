@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.5.7-A
+// @version      3.5.8-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -68,8 +68,8 @@
         "run_default": {"label": "Run by default?", "type": "checkbox", "default": true, "tooltip": "Run this script by default on page load, else click Other Trackers under title to run the script"},
         "ptp_name": {"label": "Show release name", "type": "checkbox", "default": true, "tooltip": "Display the PTP release (file) name instead of the default display"},
         "funky_tags": {"label": "Improved Tags", "type": "checkbox", "default": false, "tooltip": "Work with jmxd' PTP Improved Tags script"},
-        "tracker_by_default": {"label": "Only these sites by default", "type": "text", "default": "", "tooltip": "Show only these sites by default. Comma separated like \"PTP\", \"BHD\""},
-        "res_by_default": {"label": "Only these resolutions by default", "type": "text", "default": "", "tooltip": "Show only these resolutions by default. Comma separated valued values \"SD\", \"480p\", \"576p\", \"720p\", \"1080p\", \"2160p\""},
+        "tracker_by_default": {"label": "Only these sites by default", "type": "text", "default": "", "tooltip": "Show only these sites by default. Comma separated. PTP, BHD, ANT, etc"},
+        "res_by_default": {"label": "Only these resolutions by default", "type": "text", "default": "", "tooltip": "Show only these resolutions by default. Comma separated, with valued values. SD, 480p, 576p, 720p, 1080p, 2160p"},
         "timer": {"label": "Error timeout (seconds)", "type": "int", "default": 4, "tooltip": "Set the error timeout duration in seconds to skip slow/dead trackers"},
         "timerDuration": {"label": "Error display duration (seconds)", "type": "int", "default": 2, "tooltip": "Set the duration for displaying errors in seconds"}
     };
@@ -198,6 +198,11 @@
 
     if (window.location.href.includes('/torrents.php?id=')) {
 
+    const show_only_by_default = GM_config.get("tracker_by_default").split(',').map(t => t.trim()).filter(Boolean); // Ensure it's an array and remove empty values
+    const show_resolution_by_default = GM_config.get("res_by_default").split(',').map(t => t.trim()).filter(Boolean); // Ensure it's an array and remove empty values
+
+    // Function to get trackers from the configuration
+    function getTrackersFromConfig() {
         const movie_dict = {
             "BHD": GM_config.get("bhd"),
             "FL": GM_config.get("fl"),
@@ -237,27 +242,51 @@
             "RTF": GM_config.get("rtf")
         };
 
-        const movie_trackers = [];
-        const movie_only_trackers = [];
-        const tv_trackers = [];
-        const old_trackers = [];
-        const very_old_trackers = [];
+        return {
+            movie_dict,
+            movie_only_dict,
+            tv_dict,
+            old_dict,
+            very_old_dict
+        };
+    }
 
-        // Fill trackers arrays with enabled trackers
-        fillTrackers(movie_dict, movie_trackers);
-        fillTrackers(movie_only_dict, movie_only_trackers);
-        fillTrackers(tv_dict, tv_trackers);
-        fillTrackers(old_dict, old_trackers);
-        fillTrackers(very_old_dict, very_old_trackers);
+    // Filter trackers by default setting
+    function filterTrackersByDefault(trackers) {
+        return trackers.filter(tracker => show_only_by_default.includes(tracker));
+    }
 
-        function fillTrackers(dict, trackerArray) {
-            for (const [key, value] of Object.entries(dict)) {
-                if (value) {
-                    trackerArray.push(key);
-                }
+    // Fill trackers arrays with enabled trackers
+    function fillTrackers(dict, trackerArray) {
+        for (const [key, value] of Object.entries(dict)) {
+            if (value) {
+                trackerArray.push(key);
             }
         }
-        const show_only_by_default = GM_config.get("tracker_by_default");  // Use this to only show these trackers by default.
+    }
+
+    // Get trackers from the configuration
+    const { movie_dict, movie_only_dict, tv_dict, old_dict, very_old_dict } = getTrackersFromConfig();
+
+    const movie_trackers = [];
+    const movie_only_trackers = [];
+    const tv_trackers = [];
+    const old_trackers = [];
+    const very_old_trackers = [];
+
+    // Fill trackers arrays
+    fillTrackers(movie_dict, movie_trackers);
+    fillTrackers(movie_only_dict, movie_only_trackers);
+    fillTrackers(tv_dict, tv_trackers);
+    fillTrackers(old_dict, old_trackers);
+    fillTrackers(very_old_dict, very_old_trackers);
+
+    // Apply default filters
+    const filtered_movie_trackers = filterTrackersByDefault(movie_trackers);
+    const filtered_movie_only_trackers = filterTrackersByDefault(movie_only_trackers);
+    const filtered_tv_trackers = filterTrackersByDefault(tv_trackers);
+    const filtered_old_trackers = filterTrackersByDefault(old_trackers);
+    const filtered_very_old_trackers = filterTrackersByDefault(very_old_trackers);
 
         const BLU_API_TOKEN = GM_config.get("blu_api"); // if you want to use BLU - find your api key here: https://blutopia.cc/users/YOUR_USERNAME_HERE/apikeys
         const TIK_API_TOKEN = GM_config.get("tik_api"); // if you want to use TIK - find your api key here: https://cinematik.net/users/YOUR_USERNAME_HERE/apikeys
@@ -293,7 +322,6 @@
         const timerDuration = GM_config.get("timerDuration") * 1000; // Convert to milliseconds
         let ptp_release_name = GM_config.get("ptp_name"); // true = show release name - false = original PTP release style. Ignored if Improved Tags  = true
         let improved_tags = GM_config.get("funky_tags"); // true = Change display to work fully with PTP Improved Tags from jmxd.
-        const show_resolution_by_default = GM_config.get("res_by_default"); // Use this to only show specified resolutions by default. ||| "SD", "480p", "576p", "720p", "1080p", "2160p"
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
