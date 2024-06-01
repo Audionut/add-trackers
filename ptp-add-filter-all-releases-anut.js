@@ -2255,13 +2255,15 @@
                                 }
                             }
 
-                            if (improved_tags) {
-                                    const match = infoText.match(/-([^-]+)$/);
-                                    if (match) {
-                                        groupText = match[0].substring(1);
-                                        groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                                        infoText = infoText.replace(groupText, '');
-                                    }
+                            if (!matchedGroup) {
+                                const match = infoText.match(/-([^-]+)$/);
+                                if (match) {
+                                    groupText = match[0].substring(1);
+                                    groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                        if (improved_tags) {
+                                            infoText = infoText.replace(groupText, '');
+                                        }
+                                }
                             }
                                 let cleanTheText = infoText;
                                 const replaceFullStops = (text) => {
@@ -2393,13 +2395,15 @@
                                       }
                                   }
 
-                                  if (improved_tags) {
-                                          const match = infoText.match(/-([^-]+)$/);
-                                          if (match) {
-                                              groupText = match[0].substring(1);
-                                              groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                                              infoText = infoText.replace(groupText, '');
-                                          }
+                                  if (!matchedGroup) {
+                                      const match = infoText.match(/-([^-]+)$/);
+                                      if (match) {
+                                          groupText = match[0].substring(1);
+                                          groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                              if (improved_tags) {
+                                                  infoText = infoText.replace(groupText, '');
+                                              }
+                                      }
                                   }
                                   let cleanTheText = infoText;
                                   const replaceFullStops = (text) => {
