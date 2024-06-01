@@ -70,6 +70,7 @@
         "funky_tags": {"label": "Improved Tags", "type": "checkbox", "default": false, "tooltip": "Work with jmxd' PTP Improved Tags script"},
         "tracker_by_default": {"label": "Only these sites by default", "type": "text", "default": "", "tooltip": "Show only these sites by default. Comma separated. PTP, BHD, ANT, etc"},
         "res_by_default": {"label": "Only these resolutions by default", "type": "text", "default": "", "tooltip": "Show only these resolutions by default. Comma separated, with valued values. SD, 480p, 576p, 720p, 1080p, 2160p"},
+        "cache_tracker_icons": {"label": "Cache tracker icons (weeks)", "type": "int", "default": 4, "tooltip": "Set the duration for caching tracker icons, in weeks"},
         "timer": {"label": "Error timeout (seconds)", "type": "int", "default": 4, "tooltip": "Set the error timeout duration in seconds to skip slow/dead trackers"},
         "timerDuration": {"label": "Error display duration (seconds)", "type": "int", "default": 2, "tooltip": "Set the duration for displaying errors in seconds"}
     };
@@ -569,15 +570,16 @@
         };
 
         const get_tracker_icon = (tracker) => {
-            const oneWeekInMilliseconds = 7 * 24 * 60 * 60 * 1000; // One week in milliseconds
+            const cacheDurationInWeeks = GM_config.get("cache_tracker_icons"); // Retrieve the cache duration in weeks
+            const cacheDurationInMilliseconds = cacheDurationInWeeks * 7 * 24 * 60 * 60 * 1000; // Convert weeks to milliseconds
             const currentTime = new Date().getTime(); // Current timestamp in milliseconds
 
             // First, try to retrieve the cached URL and timestamp from localStorage
             const cachedData = localStorage.getItem(tracker + "_icon_data");
             if (cachedData) {
                 const { iconURL, timestamp } = JSON.parse(cachedData);
-                if (currentTime - timestamp < oneWeekInMilliseconds) {
-                    return iconURL; // Use cached data if less than a week old
+                if (currentTime - timestamp < cacheDurationInMilliseconds) {
+                    return iconURL; // Use cached data if within cache duration
                 }
             }
 
