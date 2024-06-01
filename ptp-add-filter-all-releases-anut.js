@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.5.8-A
+// @version      3.5.9-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -644,6 +644,14 @@
             } else {
                 return false;
             }
+        };
+
+        const goodGroups = () => {
+            return [
+                "D-Z0N3"
+                //"ExampleText2",
+                //"ExampleText3"
+            ];
         };
 
         const get_torrent_objs = async (tracker, html) => {
@@ -1985,54 +1993,73 @@
                         const originalInfoText = d.name;
                         let infoText = originalInfoText;
                         if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
-                            let groupText = "";
+                        let groupText = "";
+                        const groups = goodGroups();
+                        let matchedGroup = null;
 
+                        for (const group of groups) {
+                            if (infoText.includes(group)) {
+                                matchedGroup = group;
+                                break;
+                            }
+                        }
+
+                        if (matchedGroup) {
+                            groupText = matchedGroup;
                             if (improved_tags) {
-                                const match = infoText.match(/-([^-]+)$/);
-                                if (match) {
-                                    groupText = match[0].substring(1);
-                                    groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                                    infoText = infoText.replace(match[0], ''); // Remove the matched group from infoText
-                                }
-                                // yay for stupid release naming, thankfully, BHD seems to understand and append the correct flags to the API
-                                const dv = (d.dv === 1);
-                                const hdr10 = (d.hdr10 === 1);
-                                const hdr10Plus = (d["hdr10+"] === 1);
+                            infoText = infoText.replace(groupText, '');
+                            }
+                        }
+                        const match = infoText.match(/-([^-]+)$/);
+                        if (!matchedGroup) {
+                          if (match) {
+                            groupText = match[0].substring(1);
+                            groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                          }
+                        }
+                            if (improved_tags) {
+                              infoText = infoText.replace(groupText, '');
+                            // yay for stupid release naming, thankfully, BHD seems to understand and append the correct flags to the API
+                            const dv = (d.dv === 1);
+                            const hdr10 = (d.hdr10 === 1);
+                            const hdr10Plus = (d["hdr10+"] === 1);
 
-                                // Replace "HDR" with "HDR10+" if hdr10Plus is true, otherwise replace "HDR" with "HDR10" if hdr10 is true
-                                if (hdr10Plus) {
-                                    if (infoText.includes("HDR")) {
-                                        infoText = infoText.replace("HDR", "HDR10+");
-                                    } else if (!infoText.includes("HDR10+")) {
-                                        infoText += " HDR10+";
-                                    }
-                                } else if (hdr10) {
-                                    if (infoText.includes("HDR")) {
-                                        infoText = infoText.replace("HDR", "HDR10");
-                                    } else if (!infoText.includes("HDR10")) {
-                                        infoText += " HDR10";
-                                    }
+                            // Replace "HDR" with "HDR10+" if hdr10Plus is true, otherwise replace "HDR" with "HDR10" if hdr10 is true
+                            if (hdr10Plus) {
+                                if (infoText.includes("HDR")) {
+                                    infoText = infoText.replace("HDR", "HDR10+");
+                                } else if (!infoText.includes("HDR10+")) {
+                                    infoText += " HDR10+";
                                 }
-
-                                // Append "DV" if dv is true and not already present
-                                if (dv) {
-                                    if (hdr10Plus && !infoText.includes("DV HDR10+")) {
-                                        infoText = "DV HDR10+ " + infoText.replace("HDR10+", "").replace("HDR10", "").replace("DV", "").trim();
-                                    } else if (hdr10 && !infoText.includes("DV HDR10")) {
-                                        infoText = "DV HDR10 " + infoText.replace("HDR10+", "").replace("HDR10", "").replace("DV", "").trim();
-                                    } else if (!infoText.includes("DV")) {
-                                        infoText = "DV " + infoText;
-                                    }
-                                }
-                                const bdType = get_blu_ray_disc_type(d.size);
-                                if (infoText.includes("Blu-ray")) {
-                                    infoText = `${bdType} ${infoText}`;
-                                }
-                                const comms = (d.commentary === 1);
-                                if (comms) {
-                                    infoText = "Commentary" + infoText;
+                            } else if (hdr10) {
+                                if (infoText.includes("HDR")) {
+                                    infoText = infoText.replace("HDR", "HDR10");
+                                } else if (!infoText.includes("HDR10")) {
+                                    infoText += " HDR10";
                                 }
                             }
+
+                            // Append "DV" if dv is true and not already present
+                            if (dv) {
+                                if (hdr10Plus && !infoText.includes("DV HDR10+")) {
+                                    infoText = "DV HDR10+ " + infoText.replace("HDR10+", "").replace("HDR10", "").replace("DV", "").trim();
+                                } else if (hdr10 && !infoText.includes("DV HDR10")) {
+                                    infoText = "DV HDR10 " + infoText.replace("HDR10+", "").replace("HDR10", "").replace("DV", "").trim();
+                                } else if (!infoText.includes("DV")) {
+                                    infoText = "DV " + infoText;
+                                }
+                            }
+
+                            const bdType = get_blu_ray_disc_type(d.size);
+                            if (infoText.includes("Blu-ray")) {
+                                infoText = `${bdType} ${infoText}`;
+                            }
+
+                            const comms = (d.commentary === 1);
+                            if (comms) {
+                                infoText = "Commentary " + infoText;
+                            }
+                        }
                             const is25 = d.promo25 === 1 ? true : false;
                             const is50 = d.promo50 === 1 ? true : false;
                             const is75 = d.promo75 === 1 ? true : false;
@@ -2096,14 +2123,32 @@
                         const originalInfoText = d.name;
                         let infoText = originalInfoText;
                         if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
-                            let groupText = "";
+                        let groupText = "";
+                        const groups = goodGroups();
+                        let matchedGroup = null;
 
+                        for (const group of groups) {
+                            if (infoText.includes(group)) {
+                                matchedGroup = group;
+                                break;
+                            }
+                        }
+
+                        if (matchedGroup) {
+                            groupText = matchedGroup;
                             if (improved_tags) {
+                            infoText = infoText.replace(groupText, '');
+                            }
+                        }
+
+                            if (!matchedGroup) {
                                 const match = infoText.match(/-([^-]+)$/);
                                 if (match) {
                                     groupText = match[0].substring(1);
                                     groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                    if (improved_tags) {
                                     infoText = infoText.replace(groupText, '');
+                                    }
                                 }
                             }
                             const id = d.id;
@@ -2192,16 +2237,32 @@
                             const originalInfoText = d.rls_name;
                             let infoText = originalInfoText;
                             if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
-                                let groupText = "";
+                            let groupText = "";
+                            const groups = goodGroups();
+                            let matchedGroup = null;
 
+                            for (const group of groups) {
+                                if (infoText.includes(group)) {
+                                    matchedGroup = group;
+                                    break;
+                                }
+                            }
+
+                            if (matchedGroup) {
+                                groupText = matchedGroup;
                                 if (improved_tags) {
+                                infoText = infoText.replace(groupText, '');
+                                }
+                            }
+
+                            if (improved_tags) {
                                     const match = infoText.match(/-([^-]+)$/);
                                     if (match) {
                                         groupText = match[0].substring(1);
                                         groupText = groupText.replace(/[^a-z0-9]/gi, '');
                                         infoText = infoText.replace(groupText, '');
                                     }
-                                }
+                            }
                                 let cleanTheText = infoText;
                                 const replaceFullStops = (text) => {
 
@@ -2315,14 +2376,30 @@
                                   return null;
                               } else {
                                   let groupText = "";
+                                  const groups = goodGroups();
+                                  let matchedGroup = null;
+
+                                  for (const group of groups) {
+                                      if (infoText.includes(group)) {
+                                          matchedGroup = group;
+                                          break;
+                                      }
+                                  }
+
+                                  if (matchedGroup) {
+                                      groupText = matchedGroup;
+                                      if (improved_tags) {
+                                      infoText = infoText.replace(groupText, '');
+                                      }
+                                  }
 
                                   if (improved_tags) {
-                                      const match = infoText.match(/-([^-]+)$/);
-                                      if (match) {
-                                          groupText = match[0].substring(1);
-                                          groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                                          infoText = infoText.replace(groupText, '');
-                                      }
+                                          const match = infoText.match(/-([^-]+)$/);
+                                          if (match) {
+                                              groupText = match[0].substring(1);
+                                              groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                              infoText = infoText.replace(groupText, '');
+                                          }
                                   }
                                   let cleanTheText = infoText;
                                   const replaceFullStops = (text) => {
@@ -2565,6 +2642,20 @@
 
                         // Step 3: Perform the match on the relevant text
                         let groupText = "";
+                        const groups = goodGroups();
+                        let matchedGroup = null;
+
+                        for (const group of groups) {
+                            if (infoText.includes(group)) {
+                                matchedGroup = group;
+                                break;
+                            }
+                        }
+
+                        if (matchedGroup) {
+                            groupText = matchedGroup;
+                            relevantText = relevantText.replace(groupText, '');
+                        }
                         const match = relevantText.match(/-(?!.*\([^()]*\))([^-]+)$/);
 
                         if (match) {
@@ -2917,16 +3008,6 @@
             return null; // skip this info
         };
 
-        const get_group = (normal, torrent) => {
-            const match = normal.match(/-[a-z0-9]+$/i); // Updated regex to match group patterns
-            if (match) {
-                let groupName = match[0].substring(1); // Remove the leading hyphen
-                groupName = groupName.replace(/[^a-z0-9]/gi, ''); // Sanitize the group name
-                return groupName;
-            }
-            return null; // Return null if no match is found
-        };
-
         const get_scene = (lower, torrent) => {
             if (lower.includes("scene")) return "Scene / ";
 
@@ -2947,7 +3028,6 @@
             let bonus = get_bonus(lower, torrent);
             let country = get_country(normal, torrent);
             let disc = get_disc(lower, torrent);
-            let group = get_group(normal, torrent);
             let scene = get_scene(lower, torrent);
 
             const parts = [];
@@ -2962,7 +3042,6 @@
             if (country) parts.push(country.trim());
             if (disc) parts.push(disc.trim());
             if (scene) parts.push(scene.trim());
-            if (group) parts.push(group.trim());
 
             // Use a Set to filter out duplicates
             const uniqueParts = [...new Set(parts)];
@@ -2998,7 +3077,7 @@
                 let ref_div;
                 let tracker = torrent.site;
                 let dom_id = tracker + "_" + i;
-                const group_id = get_group(torrent.info_text) || torrent.groupId;
+                const group_id = torrent.groupId;
 
                 if (torrent.quality === "UHD") {
                     ref_div = get_ref_div(torrent, uhd_ptp_torrents);
