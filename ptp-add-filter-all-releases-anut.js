@@ -654,6 +654,14 @@
             ];
         };
 
+        const badGroups = () => {
+            return [
+                "NOGRP"
+                //"ExampleText2",
+                //"ExampleText3"
+            ];
+        };
+
         const get_torrent_objs = async (tracker, html) => {
             const get_dvd_type = (size) => {
                 const sizeInGB = size / 1024; // Convert size from MiB to GB
@@ -822,31 +830,44 @@
                                 return; // Skip this torrent if size information is missing
                             }
                             let groupText = "";
-                            const groups = goodGroups();
+                            const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
+                            const badGroupsList = badGroups(); // Get the list of bad group names
                             let matchedGroup = null;
+                            let badGroupFound = false;
 
-                            for (const group of groups) {
-                                if (infoText.includes(group)) {
-                                    matchedGroup = group;
+                            // Check for bad groups
+                            for (const badGroup of badGroupsList) {
+                                if (infoText.includes(badGroup)) {
+                                    badGroupFound = true;
+                                    infoText = infoText.replace(badGroup, '').trim(); // Remove the bad group text
+                                    groupText = ""; // Set groupText to an empty string
                                     break;
                                 }
                             }
 
-                            if (matchedGroup) {
-                                groupText = matchedGroup;
-                                if (improved_tags) {
-                                infoText = infoText.replace(groupText, '');
+                            if (!badGroupFound) {
+                                // Check for good groups if no bad group was found
+                                for (const group of groups) {
+                                    if (infoText.includes(group)) {
+                                        matchedGroup = group;
+                                        break;
+                                    }
                                 }
-                            }
 
-                            if (!matchedGroup) {
-                                const match = infoText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
-                                if (match) {
-                                    groupText = match[0].substring(1);
-                                    groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                if (matchedGroup) {
+                                    groupText = matchedGroup;
+                                    if (improved_tags) {
+                                        infoText = infoText.replace(groupText, '').trim();
+                                    }
+                                } else {
+                                    const match = infoText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
+                                    if (match) {
+                                        groupText = match[1]; // Use match[1] to get the capturing group
+                                        groupText = groupText.replace(/[^a-z0-9]/gi, '');
                                         if (improved_tags) {
-                                            infoText = infoText.replace(groupText, '');
+                                            infoText = infoText.replace(`-${match[1]}`, '').trim();
                                         }
+                                    }
                                 }
                             }
                             torrent_obj.groupId = groupText;
