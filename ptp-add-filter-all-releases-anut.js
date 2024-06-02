@@ -3451,7 +3451,13 @@
             if (lower.includes("commentary")) bonuses.push("Commentary");
             if (lower.includes("10bit")) bonuses.push("10bit");
             if (lower.includes("35mm")) bonuses.push("35mm");
-            if (lower.includes("3d")) bonuses.push("3D Edition");
+            if (lower.includes("half-sbs") || lower.includes("half sbs")) {
+                bonuses.push("3D Half SBS");
+            }
+            if (lower.includes("half-ou") || lower.includes("half ou")) {
+                bonuses.push("3D Half OU");
+            }
+            else if (lower.includes("3d")) bonuses.push("3D Edition");
             if (lower.includes("hfr")) bonuses.push("High Frame-rate");
             if (lower.includes("dcp")) bonuses.push("Digital Cinema Package");
             if (lower.includes("open matte")) bonuses.push("Open Matte");
@@ -3460,7 +3466,7 @@
         };
 
         const get_country = (normal, torrent) => {
-            const exceptions = ["AVC", "DDP", "DTS", "PAL", "VHS", "WEB", "DVD", "HDR", "GLK", "UHD", "AKA", "TMT", "HDT", "ABC", "MKV", "AVI", "MP4", "VOB", "MAX", "HFR", "SDR", "DCP"]; // Add any other exceptions as needed
+            const exceptions = ["AVC", "DDP", "DTS", "PAL", "VHS", "WEB", "DVD", "HDR", "GLK", "UHD", "AKA", "TMT", "HDT", "ABC", "MKV", "AVI", "MP4", "VOB", "MAX", "HFR", "SDR", "DCP", "MVC"]; // Add any other exceptions as needed
             const countryCodeMatch = normal.match(/\b[A-Z]{3}\b/g);
             if (countryCodeMatch) {
                 const filteredCodes = countryCodeMatch.filter(code => !exceptions.includes(code));
