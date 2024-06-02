@@ -912,11 +912,13 @@
 
                                     return tempText;
                                 };
-                            let formatted = replaceFullStops(cleanTheText);
-                            if (formatted.includes("Blu-ray") && torrent_obj.size) {
-                                const bdType = get_bd_type(torrent_obj.size);
-                                formatted = `${bdType} ${formatted}`;
-                            }
+                                let formatted = replaceFullStops(cleanTheText);
+                                let files = parseInt(torrent.querySelector('files').textContent);
+    
+                                if (formatted.includes("BluRay") && torrent_obj.size && files > 10) {
+                                    const bdType = get_bd_type(torrent_obj.size);
+                                    formatted = `${bdType} ${formatted}`;
+                                }
 
                             torrent_obj.info_text = formatted;
 
