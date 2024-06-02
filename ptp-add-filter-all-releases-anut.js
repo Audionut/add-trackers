@@ -1012,10 +1012,30 @@
                                         infoTextParts.push(titleText);
                                     }
                                     let groupText = "";
-                                    const match = titleText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
-                                    if (match) {
-                                        groupText = match[0].trim();
-                                        groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                    const groups = goodGroups();
+                                    let matchedGroup = null;
+
+                                    for (const group of groups) {
+                                        if (infoTextParts.includes(group)) {
+                                            matchedGroup = group;
+                                            break;
+                                        }
+                                    }
+
+                                    if (matchedGroup) {
+                                        groupText = matchedGroup;
+                                        if (improved_tags) {
+                                        infoTextParts = infoTextParts.replace(groupText, '');
+                                        }
+                                    }
+
+                                    if (!matchedGroup) {
+                                        const match = infoTextParts.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
+                                        if (match) {
+                                            groupText = match[0].substring(1);
+                                            groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                            infoTextParts = infoTextParts.replace(groupText, '');
+                                        }
                                     }
                                     torrent_obj.groupId = groupText;
                                     const strongElements = titleElement.querySelectorAll("strong.torrent_label");
@@ -1106,12 +1126,31 @@
                     let releaseName = [...d.querySelectorAll("a")].find(a => a.href.includes("details.php?id=")).title;
                     torrent_obj.datasetRelease = releaseName;
                     let groupText = "";
-                    if (improved_tags) {
+                    const groups = goodGroups();
+                    let matchedGroup = null;
+
+                    for (const group of groups) {
+                        if (releaseName.includes(group)) {
+                            matchedGroup = group;
+                            break;
+                        }
+                    }
+
+                    if (matchedGroup) {
+                        groupText = matchedGroup;
+                        if (improved_tags) {
+                        releaseName = releaseName.replace(groupText, '');
+                        }
+                    }
+
+                    if (!matchedGroup) {
                         const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
                         if (match) {
                             groupText = match[0].substring(1);
                             groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                            releaseName = releaseName.replace(groupText, '');
+                                if (improved_tags) {
+                                    releaseName = releaseName.replace(groupText, '');
+                                }
                         }
                     }
                     torrent_obj.info_text = releaseName.replace(/\./g, " ");
@@ -1153,12 +1192,31 @@
                     let releaseName = d.querySelectorAll("td")[1].querySelector("b").textContent.trim();
                     torrent_obj.datasetRelease = releaseName;
                     let groupText = "";
-                    if (improved_tags) {
+                    const groups = goodGroups();
+                    let matchedGroup = null;
+
+                    for (const group of groups) {
+                        if (releaseName.includes(group)) {
+                            matchedGroup = group;
+                            break;
+                        }
+                    }
+
+                    if (matchedGroup) {
+                        groupText = matchedGroup;
+                        if (improved_tags) {
+                        releaseName = releaseName.replace(groupText, '');
+                        }
+                    }
+
+                    if (!matchedGroup) {
                         const match = releaseName.match(/-(?![^(]*[()[]])[a-zA-Z]([a-zA-Z0-9]*$|[^-]*\([^()]*\)[^-]*)/);
                         if (match) {
                             groupText = match[0].substring(1);
                             groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                            releaseName = releaseName.replace(groupText, '');
+                                if (improved_tags) {
+                                    releaseName = releaseName.replace(groupText, '');
+                                }
                         }
                     }
                     torrent_obj.info_text = releaseName;
@@ -1195,12 +1253,31 @@
                         let releaseName = d.querySelectorAll("td")[1].querySelector("a").textContent.trim();
                         torrent_obj.datasetRelease = releaseName;
                         let groupText = "";
-                        if (improved_tags) {
+                        const groups = goodGroups();
+                        let matchedGroup = null;
+
+                        for (const group of groups) {
+                            if (releaseName.includes(group)) {
+                                matchedGroup = group;
+                                break;
+                            }
+                        }
+
+                        if (matchedGroup) {
+                            groupText = matchedGroup;
+                            if (improved_tags) {
+                            releaseName = releaseName.replace(groupText, '');
+                            }
+                        }
+
+                        if (!matchedGroup) {
                             const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
                             if (match) {
                                 groupText = match[0].substring(1);
                                 groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                                releaseName = releaseName.replace(groupText, '');
+                                    if (improved_tags) {
+                                        releaseName = releaseName.replace(groupText, '');
+                                    }
                             }
                         }
                         torrent_obj.info_text = releaseName;
@@ -1244,12 +1321,31 @@
                     let releaseName = torrentLink.textContent.trim();
                     torrent_obj.datasetRelease = releaseName;
                     let groupText = "";
-                    if (improved_tags) {
+                    const groups = goodGroups();
+                    let matchedGroup = null;
+
+                    for (const group of groups) {
+                        if (releaseName.includes(group)) {
+                            matchedGroup = group;
+                            break;
+                        }
+                    }
+
+                    if (matchedGroup) {
+                        groupText = matchedGroup;
+                        if (improved_tags) {
+                        releaseName = releaseName.replace(groupText, '');
+                        }
+                    }
+
+                    if (!matchedGroup) {
                         const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
                         if (match) {
                             groupText = match[0].substring(1);
                             groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                            releaseName = releaseName.replace(groupText, '');
+                                if (improved_tags) {
+                                    releaseName = releaseName.replace(groupText, '');
+                                }
                         }
                     }
                     torrent_obj.info_text = releaseName;
@@ -1290,12 +1386,31 @@
                     let releaseName = torrentLink.textContent.trim();
                     torrent_obj.datasetRelease = releaseName;
                     let groupText = "";
-                    if (improved_tags) {
+                    const groups = goodGroups();
+                    let matchedGroup = null;
+
+                    for (const group of groups) {
+                        if (releaseName.includes(group)) {
+                            matchedGroup = group;
+                            break;
+                        }
+                    }
+
+                    if (matchedGroup) {
+                        groupText = matchedGroup;
+                        if (improved_tags) {
+                        releaseName = releaseName.replace(groupText, '');
+                        }
+                    }
+
+                    if (!matchedGroup) {
                         const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
                         if (match) {
                             groupText = match[0].substring(1);
                             groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                            releaseName = releaseName.replace(groupText, '');
+                                if (improved_tags) {
+                                    releaseName = releaseName.replace(groupText, '');
+                                }
                         }
                     }
                     torrent_obj.info_text = releaseName;
@@ -1336,12 +1451,31 @@
                     let releaseName = torrentLink.textContent.trim();
                     torrent_obj.datasetRelease = releaseName;
                     let groupText = "";
-                    if (improved_tags) {
+                    const groups = goodGroups();
+                    let matchedGroup = null;
+
+                    for (const group of groups) {
+                        if (releaseName.includes(group)) {
+                            matchedGroup = group;
+                            break;
+                        }
+                    }
+
+                    if (matchedGroup) {
+                        groupText = matchedGroup;
+                        if (improved_tags) {
+                        releaseName = releaseName.replace(groupText, '');
+                        }
+                    }
+
+                    if (!matchedGroup) {
                         const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
                         if (match) {
                             groupText = match[0].substring(1);
                             groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                            releaseName = releaseName.replace(groupText, '');
+                                if (improved_tags) {
+                                    releaseName = releaseName.replace(groupText, '');
+                                }
                         }
                     }
                     torrent_obj.info_text = releaseName;
@@ -1382,12 +1516,31 @@
                         let releaseNameElement = item.querySelector("td:nth-child(1) > a");
                         let releaseName = releaseNameElement ? releaseNameElement.textContent.trim() : "";
                         let groupText = "";
-                        if (improved_tags) {
+                        const groups = goodGroups();
+                        let matchedGroup = null;
+
+                        for (const group of groups) {
+                            if (releaseName.includes(group)) {
+                                matchedGroup = group;
+                                break;
+                            }
+                        }
+
+                        if (matchedGroup) {
+                            groupText = matchedGroup;
+                            if (improved_tags) {
+                            releaseName = releaseName.replace(groupText, '');
+                            }
+                        }
+
+                        if (!matchedGroup) {
                             const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
                             if (match) {
                                 groupText = match[0].substring(1);
                                 groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                                releaseName = releaseName.replace(groupText, '');
+                                    if (improved_tags) {
+                                        releaseName = releaseName.replace(groupText, '');
+                                    }
                             }
                         }
 
@@ -1446,12 +1599,31 @@
 
                     torrent_obj.datasetRelease = releaseName;
                     let groupText = "";
-                    if (improved_tags) {
+                    const groups = goodGroups();
+                    let matchedGroup = null;
+
+                    for (const group of groups) {
+                        if (releaseName.includes(group)) {
+                            matchedGroup = group;
+                            break;
+                        }
+                    }
+
+                    if (matchedGroup) {
+                        groupText = matchedGroup;
+                        if (improved_tags) {
+                        releaseName = releaseName.replace(groupText, '');
+                        }
+                    }
+
+                    if (!matchedGroup) {
                         const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
-                        if (match && match[1].length <= 9) {
+                        if (match) {
                             groupText = match[0].substring(1);
-                            groupText = groupText.replace(/[^a-z0-9]/gi, ' ');
-                            releaseName = releaseName.replace(`-${groupText}`, '');
+                            groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                if (improved_tags) {
+                                    releaseName = releaseName.replace(groupText, '');
+                                }
                         }
                     }
                     torrent_obj.groupId = groupText;
