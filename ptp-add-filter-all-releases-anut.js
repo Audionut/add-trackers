@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.5.9-A
+// @version      3.6.0-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -70,6 +70,7 @@
         "funky_tags": {"label": "Improved Tags", "type": "checkbox", "default": false, "tooltip": "Work with jmxd' PTP Improved Tags script"},
         "tracker_by_default": {"label": "Only these sites by default", "type": "text", "default": "", "tooltip": "Show only these sites by default. Comma separated. PTP, BHD, ANT, etc"},
         "res_by_default": {"label": "Only these resolutions by default", "type": "text", "default": "", "tooltip": "Show only these resolutions by default. Comma separated, with valued values. SD, 480p, 576p, 720p, 1080p, 2160p"},
+        "hideBlankLinks": {"label": "How to display download link", "type": "select", "options": ["DL", "Download", "Spaced"], "default": "DL", "tooltip": "Choose how to display the download links: DL (original method), DOWNLOAD, or Spaced. Other methods help with some stylesheets."},
         "cache_tracker_icons": {"label": "Cache tracker icons (weeks)", "type": "int", "default": 4, "tooltip": "Set the duration for caching tracker icons, in weeks"},
         "timer": {"label": "Error timeout (seconds)", "type": "int", "default": 4, "tooltip": "Set the error timeout duration in seconds to skip slow/dead trackers"},
         "timerDuration": {"label": "Error display duration (seconds)", "type": "int", "default": 2, "tooltip": "Set the duration for displaying errors in seconds"}
@@ -307,9 +308,7 @@
         const TVV_AUTH_KEY = GM_config.get("tvv_auth"); // If you want to use TVV - find your authkey from a torrent download link
         const TVV_TORR_PASS = GM_config.get("tvv_torr"); // We also need the torrent pass - find your torrent_pass from a torrent download link
 
-        // Define how the DL link is displayed. Useful to clean the displayed output depending on stylsheet.
-        let hideBlankLinks = "DL"; // Options are "DL" which only displays the "DL" link (like the old code). "Download" which displays "DOWNLOAD". "Spaced" which adds "DL" but spaced to fit left aligned style sheets.
-
+        const hideBlankLinks = GM_config.get("hideBlankLinks");
         const show_tracker_icon = GM_config.get("show_icon"); // false = will show default green checked icon ||| true = will show tracker logo instead of checked icon
         const show_tracker_name = GM_config.get("show_name"); // false = will hide tracker name ||| true = will show tracker name
         const hide_if_torrent_with_same_size_exists = GM_config.get("hide_same_size"); // true = will hide torrents with the same file size as existing PTP ones
@@ -3442,6 +3441,7 @@
             if (lower.includes("3d")) bonuses.push("3D Edition");
             if (lower.includes("hfr")) bonuses.push("High Frame-rate");
             if (lower.includes("dcp")) bonuses.push("Digital Cinema Package");
+            if (lower.includes("open matte")) bonuses.push("Open Matte");
 
             return bonuses.length > 0 ? bonuses.join(" / ") + " / " : null;
         };
@@ -3645,6 +3645,7 @@
                 }
 
                 if (torrent.status === "seeding") cln.querySelector(".torrent-info-link").className += " torrent-info-link--user-seeding";
+                if (torrent.status === "leeching") cln.querySelector(".torrent-info-link").className += " torrent-info-link--user-leeching";
                 if (torrent.status === "grabbed") cln.querySelector(".torrent-info-link").className += " torrent-info-link--user-downloaded";
                 if (torrent.status === "snatched") cln.querySelector(".torrent-info-link").className += " torrent-info-link--user-snatched";
 
