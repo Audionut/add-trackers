@@ -3071,7 +3071,7 @@
                                 if (match) {
                                     groupText = match[1]; // Use match[1] to get the capturing group
                                     groupText = groupText.replace(/[()]/g, ' '); // Replace parentheses with spaces
-                                    groupText = groupText.replace(/\[.*?\]/g, '').trim(); // Remove text inside brackets and trim
+                                    //groupText = groupText.replace(/\[.*?\]/g, '').trim(); // Remove text inside brackets and trim
                                     groupText = groupText.replace(/[^a-z0-9]/gi, ''); // Sanitize to alphanumeric characters
                                     if (improved_tags) {
                                         infoText = infoText.replace(`-${match[0].substring(1)}`, '').trim(); // Remove the matched group
@@ -3082,7 +3082,7 @@
                             }
                         }
 
-                        let updatedInfoText = infoText.replace(/\[.*?\]/g, '').trim();
+                        let updatedInfoText = infoText.trim();
                         if (improved_tags) {
                             const region = element.attributes.region;
                             if (region) {
