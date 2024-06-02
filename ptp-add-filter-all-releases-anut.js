@@ -3444,7 +3444,6 @@
             if (lower.includes("skynet edition")) bonuses.push("Skynet Edition");
             if (lower.includes("ultimate cut")) bonuses.push("Ultimate Cut");
             if (lower.includes("ultimate edition")) bonuses.push("Ultimate Edition");
-            if (lower.includes("extended")) bonuses.push("Extended Edition");
             if (lower.includes("extended edition")) bonuses.push("Extended Edition");
             if (lower.includes("remastered")) bonuses.push("Remastered");
             if (lower.includes("10bit")) bonuses.push("10bit");
