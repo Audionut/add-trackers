@@ -3476,7 +3476,7 @@
             if (lower.includes("half-sbs") || lower.includes("half sbs")) {
                 bonuses.push("3D Half SBS");
             }
-            if (lower.includes("half-ou") || lower.includes("half ou")) {
+            else if (lower.includes("half-ou") || lower.includes("half ou")) {
                 bonuses.push("3D Half OU");
             }
             else if (lower.includes("3d")) bonuses.push("3D Edition");
