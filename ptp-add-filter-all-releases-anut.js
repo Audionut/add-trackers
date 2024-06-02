@@ -2577,21 +2577,23 @@
                             if (improved_tags && infoText.includes("Blu-ray")) {
                                 infoText = `${bdType} ${infoText}`;
                             }
-                            const isRemux = infoText.includes("Remux");
-                            const isBdDisc = infoText.includes("Blu-ray");
-                            const isHdDvd = infoText.includes("HD DVD");
+                            const isRemux = d.type_medium === 5 ? true : false;
+                            const isDisc = d.type_medium === 1 ? true : false;
+                            const isCapture = d.type_medium === 4 ? true : false;
+                            const isWeb = d.type_medium === 6 ? true : false;
                             const isHdtv = infoText.includes("HDTV");
                             const isInternal = d.type_origin === 1 ? true : false;
                             const isDoco = d.type_category === 3 ? true : false;
+                            const isTv = d.type_category === 2 ? true : false;
                             const get_hdb_discount = () => {
                                 let discountText = "";
                                 if (d.freeleech === "yes") {
                                     discountText = "Freeleech";
                                 } else {
-                                    if (isInternal || isRemux || isBdDisc || isHdDvd || isHdtv || isMiniSeriesFromSpan || isDoco) {
+                                    if (isInternal || isRemux || isDisc || isCapture || isHdtv || isTv || isMiniSeriesFromSpan || isDoco) {
                                     discountText = "50% Freeleech";
                                     }
-                                  else if (isWebDL && isInternal) {
+                                  else if (isWeb && isInternal) {
                                     discountText = "25% Freeleech";
                                   } else {
                                     discountText = "None";
