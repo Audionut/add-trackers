@@ -3131,8 +3131,10 @@
                             if (isHdr10Plus) {
                                 updatedInfoText = updatedInfoText.replace("HDR", "HDR10+");
                             }
-                            if (isCommentary) {
-                                updatedInfoText = updatedInfoText += "Commentary";
+                            if (improved_tags) {
+                                if (isCommentary) {
+                                    updatedInfoText = updatedInfoText += "Commentary";
+                                }
                             }
                         }
                         const torrentObj = {
@@ -3432,7 +3434,6 @@
             if (lower.includes("2in1")) bonuses.push("2in1");
             if (lower.includes("3in1")) bonuses.push("3in1");
             if (lower.includes("4in1")) bonuses.push("4in1");
-            if (lower.includes("commentary")) bonuses.push("Commentary");
             if (lower.includes("special features")) bonuses.push("Special Features");
             if (lower.includes("special edition")) bonuses.push("Special Edition");
             if (lower.includes("directors cut")) bonuses.push("Directors Cut");
@@ -3446,6 +3447,7 @@
             if (lower.includes("ultimate edition")) bonuses.push("Ultimate Edition");
             if (lower.includes("extended edition")) bonuses.push("Extended Edition");
             if (lower.includes("remastered")) bonuses.push("Remastered");
+            if (lower.includes("commentary")) bonuses.push("Commentary");
             if (lower.includes("10bit")) bonuses.push("10bit");
             if (lower.includes("35mm")) bonuses.push("35mm");
             if (lower.includes("3d")) bonuses.push("3D Edition");
