@@ -654,7 +654,9 @@
                 "HONE",
                 "TAoE",
                 "Silence QxR",
-                "0xC0"
+                "0xC0",
+                "r00t QxR",
+                "AI-Raws"
                 //"ExampleText3"
             ];
         };
