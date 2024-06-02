@@ -648,8 +648,8 @@
 
         const goodGroups = () => {
             return [
-                "D-Z0N3"
-                //"ExampleText2",
+                "D-Z0N3",
+                "Tigole QxR"
                 //"ExampleText3"
             ];
         };
@@ -933,13 +933,13 @@
 
                                     return tempText;
                                 };
-                                let formatted = replaceFullStops(cleanTheText);
-                                let files = parseInt(torrent.querySelector('files').textContent);
-    
-                                if (formatted.includes("BluRay") && torrent_obj.size && files > 10) {
-                                    const bdType = get_bd_type(torrent_obj.size);
-                                    formatted = `${bdType} ${formatted}`;
-                                }
+                            let formatted = replaceFullStops(cleanTheText);
+                            let files = parseInt(torrent.querySelector('files').textContent);
+
+                            if (formatted.includes("BluRay") && torrent_obj.size && files > 10) {
+                                const bdType = get_bd_type(torrent_obj.size);
+                                formatted = `${bdType} ${formatted}`;
+                            }
 
                             torrent_obj.info_text = formatted;
 
@@ -1035,29 +1035,44 @@
                                         infoTextParts.push(titleText);
                                     }
                                     let groupText = "";
-                                    const groups = goodGroups();
+                                    const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
+                                    const badGroupsList = badGroups(); // Get the list of bad group names
                                     let matchedGroup = null;
+                                    let badGroupFound = false;
 
-                                    for (const group of groups) {
-                                        if (infoTextParts.includes(group)) {
-                                            matchedGroup = group;
+                                    // Check for bad groups
+                                    for (const badGroup of badGroupsList) {
+                                        if (infoTextParts.includes(badGroup)) {
+                                            badGroupFound = true;
+                                            infoTextParts = infoTextParts.replace(badGroup, '').trim(); // Remove the bad group text
+                                            groupText = ""; // Set groupText to an empty string
                                             break;
                                         }
                                     }
 
-                                    if (matchedGroup) {
-                                        groupText = matchedGroup;
-                                        if (improved_tags) {
-                                        infoTextParts = infoTextParts.replace(groupText, '');
+                                    if (!badGroupFound) {
+                                        // Check for good groups if no bad group was found
+                                        for (const group of groups) {
+                                            if (infoTextParts.includes(group)) {
+                                                matchedGroup = group;
+                                                break;
+                                            }
                                         }
-                                    }
 
-                                    if (!matchedGroup) {
-                                        const match = infoTextParts.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
-                                        if (match) {
-                                            groupText = match[0].substring(1);
-                                            groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                                            infoTextParts = infoTextParts.replace(groupText, '');
+                                        if (matchedGroup) {
+                                            groupText = matchedGroup;
+                                            if (improved_tags) {
+                                                infoTextParts = infoTextParts.replace(groupText, '').trim();
+                                            }
+                                        } else {
+                                            const match = infoTextParts.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
+                                            if (match) {
+                                                groupText = match[1]; // Use match[1] to get the capturing group
+                                                groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                                if (improved_tags) {
+                                                    infoTextParts = infoTextParts.replace(`-${match[1]}`, '').trim();
+                                                }
+                                            }
                                         }
                                     }
                                     torrent_obj.groupId = groupText;
@@ -1149,31 +1164,44 @@
                     let releaseName = [...d.querySelectorAll("a")].find(a => a.href.includes("details.php?id=")).title;
                     torrent_obj.datasetRelease = releaseName;
                     let groupText = "";
-                    const groups = goodGroups();
+                    const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
+                    const badGroupsList = badGroups(); // Get the list of bad group names
                     let matchedGroup = null;
+                    let badGroupFound = false;
 
-                    for (const group of groups) {
-                        if (releaseName.includes(group)) {
-                            matchedGroup = group;
+                    // Check for bad groups
+                    for (const badGroup of badGroupsList) {
+                        if (releaseName.includes(badGroup)) {
+                            badGroupFound = true;
+                            releaseName = releaseName.replace(badGroup, '').trim(); // Remove the bad group text
+                            groupText = ""; // Set groupText to an empty string
                             break;
                         }
                     }
 
-                    if (matchedGroup) {
-                        groupText = matchedGroup;
-                        if (improved_tags) {
-                        releaseName = releaseName.replace(groupText, '');
+                    if (!badGroupFound) {
+                        // Check for good groups if no bad group was found
+                        for (const group of groups) {
+                            if (releaseName.includes(group)) {
+                                matchedGroup = group;
+                                break;
+                            }
                         }
-                    }
 
-                    if (!matchedGroup) {
-                        const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
-                        if (match) {
-                            groupText = match[0].substring(1);
-                            groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                        if (matchedGroup) {
+                            groupText = matchedGroup;
+                            if (improved_tags) {
+                                releaseName = releaseName.replace(groupText, '').trim();
+                            }
+                        } else {
+                            const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
+                            if (match) {
+                                groupText = match[1]; // Use match[1] to get the capturing group
+                                groupText = groupText.replace(/[^a-z0-9]/gi, '');
                                 if (improved_tags) {
-                                    releaseName = releaseName.replace(groupText, '');
+                                    releaseName = releaseName.replace(`-${match[1]}`, '').trim();
                                 }
+                            }
                         }
                     }
                     torrent_obj.info_text = releaseName.replace(/\./g, " ");
@@ -1215,31 +1243,44 @@
                     let releaseName = d.querySelectorAll("td")[1].querySelector("b").textContent.trim();
                     torrent_obj.datasetRelease = releaseName;
                     let groupText = "";
-                    const groups = goodGroups();
+                    const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
+                    const badGroupsList = badGroups(); // Get the list of bad group names
                     let matchedGroup = null;
+                    let badGroupFound = false;
 
-                    for (const group of groups) {
-                        if (releaseName.includes(group)) {
-                            matchedGroup = group;
+                    // Check for bad groups
+                    for (const badGroup of badGroupsList) {
+                        if (releaseName.includes(badGroup)) {
+                            badGroupFound = true;
+                            releaseName = releaseName.replace(badGroup, '').trim(); // Remove the bad group text
+                            groupText = ""; // Set groupText to an empty string
                             break;
                         }
                     }
 
-                    if (matchedGroup) {
-                        groupText = matchedGroup;
-                        if (improved_tags) {
-                        releaseName = releaseName.replace(groupText, '');
+                    if (!badGroupFound) {
+                        // Check for good groups if no bad group was found
+                        for (const group of groups) {
+                            if (releaseName.includes(group)) {
+                                matchedGroup = group;
+                                break;
+                            }
                         }
-                    }
 
-                    if (!matchedGroup) {
-                        const match = releaseName.match(/-(?![^(]*[()[]])[a-zA-Z]([a-zA-Z0-9]*$|[^-]*\([^()]*\)[^-]*)/);
-                        if (match) {
-                            groupText = match[0].substring(1);
-                            groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                        if (matchedGroup) {
+                            groupText = matchedGroup;
+                            if (improved_tags) {
+                                releaseName = releaseName.replace(groupText, '').trim();
+                            }
+                        } else {
+                            const match = releaseName.match(/-(?![^(]*[()[]])[a-zA-Z]([a-zA-Z0-9]*$|[^-]*\([^()]*\)[^-]*)/);
+                            if (match) {
+                                groupText = match[1]; // Use match[1] to get the capturing group
+                                groupText = groupText.replace(/[^a-z0-9]/gi, '');
                                 if (improved_tags) {
-                                    releaseName = releaseName.replace(groupText, '');
+                                    releaseName = releaseName.replace(`-${match[1]}`, '').trim();
                                 }
+                            }
                         }
                     }
                     torrent_obj.info_text = releaseName;
@@ -1276,31 +1317,44 @@
                         let releaseName = d.querySelectorAll("td")[1].querySelector("a").textContent.trim();
                         torrent_obj.datasetRelease = releaseName;
                         let groupText = "";
-                        const groups = goodGroups();
+                        const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
+                        const badGroupsList = badGroups(); // Get the list of bad group names
                         let matchedGroup = null;
+                        let badGroupFound = false;
 
-                        for (const group of groups) {
-                            if (releaseName.includes(group)) {
-                                matchedGroup = group;
+                        // Check for bad groups
+                        for (const badGroup of badGroupsList) {
+                            if (releaseName.includes(badGroup)) {
+                                badGroupFound = true;
+                                releaseName = releaseName.replace(badGroup, '').trim(); // Remove the bad group text
+                                groupText = ""; // Set groupText to an empty string
                                 break;
                             }
                         }
 
-                        if (matchedGroup) {
-                            groupText = matchedGroup;
-                            if (improved_tags) {
-                            releaseName = releaseName.replace(groupText, '');
+                        if (!badGroupFound) {
+                            // Check for good groups if no bad group was found
+                            for (const group of groups) {
+                                if (releaseName.includes(group)) {
+                                    matchedGroup = group;
+                                    break;
+                                }
                             }
-                        }
 
-                        if (!matchedGroup) {
-                            const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
-                            if (match) {
-                                groupText = match[0].substring(1);
-                                groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                            if (matchedGroup) {
+                                groupText = matchedGroup;
+                                if (improved_tags) {
+                                    releaseName = releaseName.replace(groupText, '').trim();
+                                }
+                            } else {
+                                const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
+                                if (match) {
+                                    groupText = match[1]; // Use match[1] to get the capturing group
+                                    groupText = groupText.replace(/[^a-z0-9]/gi, '');
                                     if (improved_tags) {
-                                        releaseName = releaseName.replace(groupText, '');
+                                        releaseName = releaseName.replace(`-${match[1]}`, '').trim();
                                     }
+                                }
                             }
                         }
                         torrent_obj.info_text = releaseName;
@@ -1344,31 +1398,44 @@
                     let releaseName = torrentLink.textContent.trim();
                     torrent_obj.datasetRelease = releaseName;
                     let groupText = "";
-                    const groups = goodGroups();
+                    const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
+                    const badGroupsList = badGroups(); // Get the list of bad group names
                     let matchedGroup = null;
+                    let badGroupFound = false;
 
-                    for (const group of groups) {
-                        if (releaseName.includes(group)) {
-                            matchedGroup = group;
+                    // Check for bad groups
+                    for (const badGroup of badGroupsList) {
+                        if (releaseName.includes(badGroup)) {
+                            badGroupFound = true;
+                            releaseName = releaseName.replace(badGroup, '').trim(); // Remove the bad group text
+                            groupText = ""; // Set groupText to an empty string
                             break;
                         }
                     }
 
-                    if (matchedGroup) {
-                        groupText = matchedGroup;
-                        if (improved_tags) {
-                        releaseName = releaseName.replace(groupText, '');
+                    if (!badGroupFound) {
+                        // Check for good groups if no bad group was found
+                        for (const group of groups) {
+                            if (releaseName.includes(group)) {
+                                matchedGroup = group;
+                                break;
+                            }
                         }
-                    }
 
-                    if (!matchedGroup) {
-                        const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
-                        if (match) {
-                            groupText = match[0].substring(1);
-                            groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                        if (matchedGroup) {
+                            groupText = matchedGroup;
+                            if (improved_tags) {
+                                releaseName = releaseName.replace(groupText, '').trim();
+                            }
+                        } else {
+                            const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
+                            if (match) {
+                                groupText = match[1]; // Use match[1] to get the capturing group
+                                groupText = groupText.replace(/[^a-z0-9]/gi, '');
                                 if (improved_tags) {
-                                    releaseName = releaseName.replace(groupText, '');
+                                    releaseName = releaseName.replace(`-${match[1]}`, '').trim();
                                 }
+                            }
                         }
                     }
                     torrent_obj.info_text = releaseName;
@@ -1409,31 +1476,44 @@
                     let releaseName = torrentLink.textContent.trim();
                     torrent_obj.datasetRelease = releaseName;
                     let groupText = "";
-                    const groups = goodGroups();
+                    const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
+                    const badGroupsList = badGroups(); // Get the list of bad group names
                     let matchedGroup = null;
+                    let badGroupFound = false;
 
-                    for (const group of groups) {
-                        if (releaseName.includes(group)) {
-                            matchedGroup = group;
+                    // Check for bad groups
+                    for (const badGroup of badGroupsList) {
+                        if (releaseName.includes(badGroup)) {
+                            badGroupFound = true;
+                            releaseName = releaseName.replace(badGroup, '').trim(); // Remove the bad group text
+                            groupText = ""; // Set groupText to an empty string
                             break;
                         }
                     }
 
-                    if (matchedGroup) {
-                        groupText = matchedGroup;
-                        if (improved_tags) {
-                        releaseName = releaseName.replace(groupText, '');
+                    if (!badGroupFound) {
+                        // Check for good groups if no bad group was found
+                        for (const group of groups) {
+                            if (releaseName.includes(group)) {
+                                matchedGroup = group;
+                                break;
+                            }
                         }
-                    }
 
-                    if (!matchedGroup) {
-                        const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
-                        if (match) {
-                            groupText = match[0].substring(1);
-                            groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                        if (matchedGroup) {
+                            groupText = matchedGroup;
+                            if (improved_tags) {
+                                releaseName = releaseName.replace(groupText, '').trim();
+                            }
+                        } else {
+                            const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
+                            if (match) {
+                                groupText = match[1]; // Use match[1] to get the capturing group
+                                groupText = groupText.replace(/[^a-z0-9]/gi, '');
                                 if (improved_tags) {
-                                    releaseName = releaseName.replace(groupText, '');
+                                    releaseName = releaseName.replace(`-${match[1]}`, '').trim();
                                 }
+                            }
                         }
                     }
                     torrent_obj.info_text = releaseName;
@@ -1474,31 +1554,44 @@
                     let releaseName = torrentLink.textContent.trim();
                     torrent_obj.datasetRelease = releaseName;
                     let groupText = "";
-                    const groups = goodGroups();
+                    const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
+                    const badGroupsList = badGroups(); // Get the list of bad group names
                     let matchedGroup = null;
+                    let badGroupFound = false;
 
-                    for (const group of groups) {
-                        if (releaseName.includes(group)) {
-                            matchedGroup = group;
+                    // Check for bad groups
+                    for (const badGroup of badGroupsList) {
+                        if (releaseName.includes(badGroup)) {
+                            badGroupFound = true;
+                            releaseName = releaseName.replace(badGroup, '').trim(); // Remove the bad group text
+                            groupText = ""; // Set groupText to an empty string
                             break;
                         }
                     }
 
-                    if (matchedGroup) {
-                        groupText = matchedGroup;
-                        if (improved_tags) {
-                        releaseName = releaseName.replace(groupText, '');
+                    if (!badGroupFound) {
+                        // Check for good groups if no bad group was found
+                        for (const group of groups) {
+                            if (releaseName.includes(group)) {
+                                matchedGroup = group;
+                                break;
+                            }
                         }
-                    }
 
-                    if (!matchedGroup) {
-                        const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
-                        if (match) {
-                            groupText = match[0].substring(1);
-                            groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                        if (matchedGroup) {
+                            groupText = matchedGroup;
+                            if (improved_tags) {
+                                releaseName = releaseName.replace(groupText, '').trim();
+                            }
+                        } else {
+                            const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
+                            if (match) {
+                                groupText = match[1]; // Use match[1] to get the capturing group
+                                groupText = groupText.replace(/[^a-z0-9]/gi, '');
                                 if (improved_tags) {
-                                    releaseName = releaseName.replace(groupText, '');
+                                    releaseName = releaseName.replace(`-${match[1]}`, '').trim();
                                 }
+                            }
                         }
                     }
                     torrent_obj.info_text = releaseName;
@@ -1539,31 +1632,44 @@
                         let releaseNameElement = item.querySelector("td:nth-child(1) > a");
                         let releaseName = releaseNameElement ? releaseNameElement.textContent.trim() : "";
                         let groupText = "";
-                        const groups = goodGroups();
+                        const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
+                        const badGroupsList = badGroups(); // Get the list of bad group names
                         let matchedGroup = null;
+                        let badGroupFound = false;
 
-                        for (const group of groups) {
-                            if (releaseName.includes(group)) {
-                                matchedGroup = group;
+                        // Check for bad groups
+                        for (const badGroup of badGroupsList) {
+                            if (releaseName.includes(badGroup)) {
+                                badGroupFound = true;
+                                releaseName = releaseName.replace(badGroup, '').trim(); // Remove the bad group text
+                                groupText = ""; // Set groupText to an empty string
                                 break;
                             }
                         }
 
-                        if (matchedGroup) {
-                            groupText = matchedGroup;
-                            if (improved_tags) {
-                            releaseName = releaseName.replace(groupText, '');
+                        if (!badGroupFound) {
+                            // Check for good groups if no bad group was found
+                            for (const group of groups) {
+                                if (releaseName.includes(group)) {
+                                    matchedGroup = group;
+                                    break;
+                                }
                             }
-                        }
 
-                        if (!matchedGroup) {
-                            const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
-                            if (match) {
-                                groupText = match[0].substring(1);
-                                groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                            if (matchedGroup) {
+                                groupText = matchedGroup;
+                                if (improved_tags) {
+                                    releaseName = releaseName.replace(groupText, '').trim();
+                                }
+                            } else {
+                                const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
+                                if (match) {
+                                    groupText = match[1]; // Use match[1] to get the capturing group
+                                    groupText = groupText.replace(/[^a-z0-9]/gi, '');
                                     if (improved_tags) {
-                                        releaseName = releaseName.replace(groupText, '');
+                                        releaseName = releaseName.replace(`-${match[1]}`, '').trim();
                                     }
+                                }
                             }
                         }
 
@@ -1622,31 +1728,44 @@
 
                     torrent_obj.datasetRelease = releaseName;
                     let groupText = "";
-                    const groups = goodGroups();
+                    const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
+                    const badGroupsList = badGroups(); // Get the list of bad group names
                     let matchedGroup = null;
+                    let badGroupFound = false;
 
-                    for (const group of groups) {
-                        if (releaseName.includes(group)) {
-                            matchedGroup = group;
+                    // Check for bad groups
+                    for (const badGroup of badGroupsList) {
+                        if (releaseName.includes(badGroup)) {
+                            badGroupFound = true;
+                            releaseName = releaseName.replace(badGroup, '').trim(); // Remove the bad group text
+                            groupText = ""; // Set groupText to an empty string
                             break;
                         }
                     }
 
-                    if (matchedGroup) {
-                        groupText = matchedGroup;
-                        if (improved_tags) {
-                        releaseName = releaseName.replace(groupText, '');
+                    if (!badGroupFound) {
+                        // Check for good groups if no bad group was found
+                        for (const group of groups) {
+                            if (releaseName.includes(group)) {
+                                matchedGroup = group;
+                                break;
+                            }
                         }
-                    }
 
-                    if (!matchedGroup) {
-                        const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
-                        if (match) {
-                            groupText = match[0].substring(1);
-                            groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                        if (matchedGroup) {
+                            groupText = matchedGroup;
+                            if (improved_tags) {
+                                releaseName = releaseName.replace(groupText, '').trim();
+                            }
+                        } else {
+                            const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
+                            if (match) {
+                                groupText = match[1]; // Use match[1] to get the capturing group
+                                groupText = groupText.replace(/[^a-z0-9]/gi, '');
                                 if (improved_tags) {
-                                    releaseName = releaseName.replace(groupText, '');
+                                    releaseName = releaseName.replace(`-${match[1]}`, '').trim();
                                 }
+                            }
                         }
                     }
                     torrent_obj.groupId = groupText;
@@ -2210,73 +2329,87 @@
                         const originalInfoText = d.name;
                         let infoText = originalInfoText;
                         if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
-                        let groupText = "";
-                        const groups = goodGroups();
-                        let matchedGroup = null;
+                            let groupText = "";
+                            const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
+                            const badGroupsList = badGroups(); // Get the list of bad group names
+                            let matchedGroup = null;
+                            let badGroupFound = false;
 
-                        for (const group of groups) {
-                            if (infoText.includes(group)) {
-                                matchedGroup = group;
-                                break;
-                            }
-                        }
-
-                        if (matchedGroup) {
-                            groupText = matchedGroup;
-                            if (improved_tags) {
-                            infoText = infoText.replace(groupText, '');
-                            }
-                        }
-                        const match = infoText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
-                        if (!matchedGroup) {
-                          if (match) {
-                            groupText = match[0].substring(1);
-                            groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                          }
-                        }
-                            if (improved_tags) {
-                              infoText = infoText.replace(groupText, '');
-                            // yay for stupid release naming, thankfully, BHD seems to understand and append the correct flags to the API
-                            const dv = (d.dv === 1);
-                            const hdr10 = (d.hdr10 === 1);
-                            const hdr10Plus = (d["hdr10+"] === 1);
-
-                            // Replace "HDR" with "HDR10+" if hdr10Plus is true, otherwise replace "HDR" with "HDR10" if hdr10 is true
-                            if (hdr10Plus) {
-                                if (infoText.includes("HDR")) {
-                                    infoText = infoText.replace("HDR", "HDR10+");
-                                } else if (!infoText.includes("HDR10+")) {
-                                    infoText += " HDR10+";
-                                }
-                            } else if (hdr10) {
-                                if (infoText.includes("HDR")) {
-                                    infoText = infoText.replace("HDR", "HDR10");
-                                } else if (!infoText.includes("HDR10")) {
-                                    infoText += " HDR10";
+                            // Check for bad groups
+                            for (const badGroup of badGroupsList) {
+                                if (infoText.includes(badGroup)) {
+                                    badGroupFound = true;
+                                    infoText = infoText.replace(badGroup, '').trim(); // Remove the bad group text
+                                    groupText = ""; // Set groupText to an empty string
+                                    break;
                                 }
                             }
 
-                            // Append "DV" if dv is true and not already present
-                            if (dv) {
-                                if (hdr10Plus && !infoText.includes("DV HDR10+")) {
-                                    infoText = "DV HDR10+ " + infoText.replace("HDR10+", "").replace("HDR10", "").replace("DV", "").trim();
-                                } else if (hdr10 && !infoText.includes("DV HDR10")) {
-                                    infoText = "DV HDR10 " + infoText.replace("HDR10+", "").replace("HDR10", "").replace("DV", "").trim();
-                                } else if (!infoText.includes("DV")) {
-                                    infoText = "DV " + infoText;
+                            if (!badGroupFound) {
+                                // Check for good groups if no bad group was found
+                                for (const group of groups) {
+                                    if (infoText.includes(group)) {
+                                        matchedGroup = group;
+                                        break;
+                                    }
+                                }
+
+                                if (matchedGroup) {
+                                    groupText = matchedGroup;
+                                    if (improved_tags) {
+                                        infoText = infoText.replace(groupText, '').trim();
+                                    }
+                                } else {
+                                    const match = infoText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
+                                    if (match) {
+                                        groupText = match[1]; // Use match[1] to get the capturing group
+                                        groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                        if (improved_tags) {
+                                            infoText = infoText.replace(`-${match[1]}`, '').trim();
+                                            // yay for stupid release naming, thankfully, BHD seems to understand and append the correct flags to the API
+                                            const dv = (d.dv === 1);
+                                            const hdr10 = (d.hdr10 === 1);
+                                            const hdr10Plus = (d["hdr10+"] === 1);
+
+                                            // Replace "HDR" with "HDR10+" if hdr10Plus is true, otherwise replace "HDR" with "HDR10" if hdr10 is true
+                                            if (hdr10Plus) {
+                                                if (infoText.includes("HDR")) {
+                                                    infoText = infoText.replace("HDR", "HDR10+");
+                                                } else if (!infoText.includes("HDR10+")) {
+                                                    infoText += " HDR10+";
+                                                }
+                                            } else if (hdr10) {
+                                                if (infoText.includes("HDR")) {
+                                                    infoText = infoText.replace("HDR", "HDR10");
+                                                } else if (!infoText.includes("HDR10")) {
+                                                    infoText += " HDR10";
+                                                }
+                                            }
+
+                                            // Append "DV" if dv is true and not already present
+                                            if (dv) {
+                                                if (hdr10Plus && !infoText.includes("DV HDR10+")) {
+                                                    infoText = "DV HDR10+ " + infoText.replace("HDR10+", "").replace("HDR10", "").replace("DV", "").trim();
+                                                } else if (hdr10 && !infoText.includes("DV HDR10")) {
+                                                    infoText = "DV HDR10 " + infoText.replace("HDR10+", "").replace("HDR10", "").replace("DV", "").trim();
+                                                } else if (!infoText.includes("DV")) {
+                                                    infoText = "DV " + infoText;
+                                                }
+                                            }
+
+                                            const bdType = get_blu_ray_disc_type(d.size);
+                                            if (infoText.includes("Blu-ray")) {
+                                                infoText = `${bdType} ${infoText}`;
+                                            }
+
+                                            const comms = (d.commentary === 1);
+                                            if (comms) {
+                                                infoText = "Commentary " + infoText;
+                                            }
+                                        }
+                                    }
                                 }
                             }
-
-                            const bdType = get_blu_ray_disc_type(d.size);
-                            if (infoText.includes("Blu-ray")) {
-                                infoText = `${bdType} ${infoText}`;
-                            }
-
-                            const comms = (d.commentary === 1);
-                            if (comms) {
-                                infoText = "Commentary " + infoText;
-                            }
-                        }
                             const is25 = d.promo25 === 1 ? true : false;
                             const is50 = d.promo50 === 1 ? true : false;
                             const is75 = d.promo75 === 1 ? true : false;
@@ -2340,31 +2473,44 @@
                         const originalInfoText = d.name;
                         let infoText = originalInfoText;
                         if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
-                        let groupText = "";
-                        const groups = goodGroups();
-                        let matchedGroup = null;
+                            let groupText = "";
+                            const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
+                            const badGroupsList = badGroups(); // Get the list of bad group names
+                            let matchedGroup = null;
+                            let badGroupFound = false;
 
-                        for (const group of groups) {
-                            if (infoText.includes(group)) {
-                                matchedGroup = group;
-                                break;
+                            // Check for bad groups
+                            for (const badGroup of badGroupsList) {
+                                if (infoText.includes(badGroup)) {
+                                    badGroupFound = true;
+                                    infoText = infoText.replace(badGroup, '').trim(); // Remove the bad group text
+                                    groupText = ""; // Set groupText to an empty string
+                                    break;
+                                }
                             }
-                        }
 
-                        if (matchedGroup) {
-                            groupText = matchedGroup;
-                            if (improved_tags) {
-                            infoText = infoText.replace(groupText, '');
-                            }
-                        }
+                            if (!badGroupFound) {
+                                // Check for good groups if no bad group was found
+                                for (const group of groups) {
+                                    if (infoText.includes(group)) {
+                                        matchedGroup = group;
+                                        break;
+                                    }
+                                }
 
-                            if (!matchedGroup) {
-                                const match = infoText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
-                                if (match) {
-                                    groupText = match[0].substring(1);
-                                    groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                if (matchedGroup) {
+                                    groupText = matchedGroup;
                                     if (improved_tags) {
-                                    infoText = infoText.replace(groupText, '');
+                                        infoText = infoText.replace(groupText, '').trim();
+                                    }
+                                } else {
+                                    const match = infoText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
+                                    if (match) {
+                                        groupText = match[1]; // Use match[1] to get the capturing group
+                                        groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                        if (improved_tags) {
+                                            infoText = infoText.replace(`-${match[1]}`, '').trim();
+                                        }
                                     }
                                 }
                             }
@@ -2456,31 +2602,44 @@
                             let infoText = originalInfoText;
                             if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
                             let groupText = "";
-                            const groups = goodGroups();
+                            const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
+                            const badGroupsList = badGroups(); // Get the list of bad group names
                             let matchedGroup = null;
+                            let badGroupFound = false;
 
-                            for (const group of groups) {
-                                if (infoText.includes(group)) {
-                                    matchedGroup = group;
+                            // Check for bad groups
+                            for (const badGroup of badGroupsList) {
+                                if (infoText.includes(badGroup)) {
+                                    badGroupFound = true;
+                                    infoText = infoText.replace(badGroup, '').trim(); // Remove the bad group text
+                                    groupText = ""; // Set groupText to an empty string
                                     break;
                                 }
                             }
 
-                            if (matchedGroup) {
-                                groupText = matchedGroup;
-                                if (improved_tags) {
-                                infoText = infoText.replace(groupText, '');
+                            if (!badGroupFound) {
+                                // Check for good groups if no bad group was found
+                                for (const group of groups) {
+                                    if (infoText.includes(group)) {
+                                        matchedGroup = group;
+                                        break;
+                                    }
                                 }
-                            }
 
-                            if (!matchedGroup) {
-                                const match = infoText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
-                                if (match) {
-                                    groupText = match[0].substring(1);
-                                    groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                if (matchedGroup) {
+                                    groupText = matchedGroup;
+                                    if (improved_tags) {
+                                        infoText = infoText.replace(groupText, '').trim();
+                                    }
+                                } else {
+                                    const match = infoText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
+                                    if (match) {
+                                        groupText = match[1]; // Use match[1] to get the capturing group
+                                        groupText = groupText.replace(/[^a-z0-9]/gi, '');
                                         if (improved_tags) {
-                                            infoText = infoText.replace(groupText, '');
+                                            infoText = infoText.replace(`-${match[1]}`, '').trim();
                                         }
+                                    }
                                 }
                             }
                                 let cleanTheText = infoText;
@@ -2596,31 +2755,44 @@
                                   return null;
                               } else {
                                   let groupText = "";
-                                  const groups = goodGroups();
+                                  const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
+                                  const badGroupsList = badGroups(); // Get the list of bad group names
                                   let matchedGroup = null;
+                                  let badGroupFound = false;
 
-                                  for (const group of groups) {
-                                      if (infoText.includes(group)) {
-                                          matchedGroup = group;
+                                  // Check for bad groups
+                                  for (const badGroup of badGroupsList) {
+                                      if (infoText.includes(badGroup)) {
+                                          badGroupFound = true;
+                                          infoText = infoText.replace(badGroup, '').trim(); // Remove the bad group text
+                                          groupText = ""; // Set groupText to an empty string
                                           break;
                                       }
                                   }
 
-                                  if (matchedGroup) {
-                                      groupText = matchedGroup;
-                                      if (improved_tags) {
-                                      infoText = infoText.replace(groupText, '');
+                                  if (!badGroupFound) {
+                                      // Check for good groups if no bad group was found
+                                      for (const group of groups) {
+                                          if (infoText.includes(group)) {
+                                              matchedGroup = group;
+                                              break;
+                                          }
                                       }
-                                  }
 
-                                  if (!matchedGroup) {
-                                      const match = infoText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
-                                      if (match) {
-                                          groupText = match[0].substring(1);
-                                          groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                      if (matchedGroup) {
+                                          groupText = matchedGroup;
+                                          if (improved_tags) {
+                                              infoText = infoText.replace(groupText, '').trim();
+                                          }
+                                      } else {
+                                          const match = infoText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
+                                          if (match) {
+                                              groupText = match[1]; // Use match[1] to get the capturing group
+                                              groupText = groupText.replace(/[^a-z0-9]/gi, '');
                                               if (improved_tags) {
-                                                  infoText = infoText.replace(groupText, '');
+                                                  infoText = infoText.replace(`-${match[1]}`, '').trim();
                                               }
+                                          }
                                       }
                                   }
                                   let cleanTheText = infoText;
@@ -2864,37 +3036,49 @@
 
                         // Step 3: Perform the match on the relevant text
                         let groupText = "";
-                        const groups = goodGroups();
+                        const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
+                        const badGroupsList = badGroups(); // Get the list of bad group names
                         let matchedGroup = null;
+                        let badGroupFound = false;
 
-                        for (const group of groups) {
-                            if (infoText.includes(group)) {
-                                matchedGroup = group;
+                        // Check for bad groups
+                        for (const badGroup of badGroupsList) {
+                            if (infoText.includes(badGroup)) {
+                                badGroupFound = true;
+                                infoText = infoText.replace(badGroup, '').trim(); // Remove the bad group text
+                                groupText = ""; // Set groupText to an empty string
                                 break;
                             }
                         }
 
-                        if (matchedGroup) {
-                            groupText = matchedGroup;
-                            relevantText = relevantText.replace(groupText, '');
-                        }
-                        //const match = relevantText.match(/-(?!.*\([^()]*\))([^-]+)$/);
-                        const match = relevantText.match(/-(?!\.[^-]*)\s*[a-zA-Z]([a-zA-Z0-9]*$|[^-]*\([^()]*\)[^-]*)/);
+                        if (!badGroupFound) {
+                            // Check for good groups if no bad group was found
+                            for (const group of groups) {
+                                if (infoText.includes(group)) {
+                                    matchedGroup = group;
+                                    break;
+                                }
+                            }
 
-                        if (match) {
-                            groupText = match[0].trim();
-                            // Replace brackets with spaces
-                            groupText = groupText.replace(/[()]/g, ' ');
-                            groupText = groupText.replace(/\[.*?\]/g, '').trim();
-                            // Sanitize the groupText to remove any non-alphanumeric characters
-                            groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                        }
-                        if (improved_tags) {
-                            const region = element.attributes.region;
-                            if (region) {
-                                const regionRegex = new RegExp(`\\b${region}\\b`, 'gi');
-                                infoText = infoText.replace(regionRegex, '').trim();
-                                infoText = infoText.replace(groupText, '').trim();
+                            if (matchedGroup) {
+                                groupText = matchedGroup;
+                                if (improved_tags) {
+                                    infoText = infoText.replace(groupText, '').trim();
+                                }
+                            } else {
+                                // Adjust the regex to correctly capture the desired group
+                                const match = relevantText.match(/-\s*([a-zA-Z0-9]+)$/);
+                                if (match) {
+                                    groupText = match[1]; // Use match[1] to get the capturing group
+                                    groupText = groupText.replace(/[()]/g, ' '); // Replace parentheses with spaces
+                                    groupText = groupText.replace(/\[.*?\]/g, '').trim(); // Remove text inside brackets and trim
+                                    groupText = groupText.replace(/[^a-z0-9]/gi, ''); // Sanitize to alphanumeric characters
+                                    if (improved_tags) {
+                                        infoText = infoText.replace(`-${match[0].substring(1)}`, '').trim(); // Remove the matched group
+                                    }
+                                } else {
+                                    groupText = ""; // Explicitly set to an empty string if no match
+                                }
                             }
                         }
 
