@@ -3124,6 +3124,13 @@
                                 }
                             }
                         }
+                        const mediaInfo = element.attributes.media_info;
+                        if (mediaInfo) {
+                            let isHdr10Plus = mediaInfo.includes("HDR10+");
+                            if (isHdr10Plus) {
+                                updatedInfoText = updatedInfoText.replace("HDR", "HDR10+");
+                            }
+                        }
                         const torrentObj = {
                             api_size: parseInt(element.attributes.size),
                             datasetRelease: getRelease,
