@@ -822,13 +822,31 @@
                                 return; // Skip this torrent if size information is missing
                             }
                             let groupText = "";
+                            const groups = goodGroups();
+                            let matchedGroup = null;
 
-                            if (improved_tags) {
-                                const match = infoText.match(/-([^-]+)$/);
+                            for (const group of groups) {
+                                if (infoText.includes(group)) {
+                                    matchedGroup = group;
+                                    break;
+                                }
+                            }
+
+                            if (matchedGroup) {
+                                groupText = matchedGroup;
+                                if (improved_tags) {
+                                infoText = infoText.replace(groupText, '');
+                                }
+                            }
+
+                            if (!matchedGroup) {
+                                const match = infoText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
                                 if (match) {
                                     groupText = match[0].substring(1);
                                     groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                                    infoText = infoText.replace(groupText, '');
+                                        if (improved_tags) {
+                                            infoText = infoText.replace(groupText, '');
+                                        }
                                 }
                             }
                             torrent_obj.groupId = groupText;
@@ -894,16 +912,20 @@
 
                                     return tempText;
                                 };
+                            let formatted = replaceFullStops(cleanTheText);
+                            if (formatted.includes("Blu-ray") && torrent_obj.size) {
+                                const bdType = get_bd_type(torrent_obj.size);
+                                formatted = `${bdType} ${formatted}`;
+                            }
 
-                            torrent_obj.info_text = replaceFullStops(cleanTheText);
-                            //torrent_obj.info_text = infoText;
+                            torrent_obj.info_text = formatted;
 
                             const linkElement = torrent.querySelector('link');
                             if (linkElement) {
                                 torrent_obj.download_link = linkElement.textContent;
                             } else {
                                 console.error("Missing download link.");
-                                return; // Skip this torrent if download link is missing
+                                return;
                             }
 
                             torrent_obj.snatch = parseInt(torrent.querySelector('attr[name="grabs"]')?.getAttribute('value') || "0");
@@ -915,7 +937,7 @@
                                 torrent_obj.torrent_page = commentsElement.textContent;
                             } else {
                                 console.error("Missing comments link.");
-                                return; // Skip this torrent if comments link is missing
+                                return;
                             }
 
                             torrent_obj.site = "MTV";
@@ -990,7 +1012,7 @@
                                         infoTextParts.push(titleText);
                                     }
                                     let groupText = "";
-                                    const match = titleText.match(/[^\/]+$/);
+                                    const match = titleText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
                                     if (match) {
                                         groupText = match[0].trim();
                                         groupText = groupText.replace(/[^a-z0-9]/gi, '');
@@ -1085,7 +1107,7 @@
                     torrent_obj.datasetRelease = releaseName;
                     let groupText = "";
                     if (improved_tags) {
-                        const match = releaseName.match(/-([^-]+)$/);
+                        const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
                         if (match) {
                             groupText = match[0].substring(1);
                             groupText = groupText.replace(/[^a-z0-9]/gi, '');
@@ -1132,7 +1154,7 @@
                     torrent_obj.datasetRelease = releaseName;
                     let groupText = "";
                     if (improved_tags) {
-                        const match = releaseName.match(/-([^-]+)$/);
+                        const match = releaseName.match(/-(?![^(]*[()[]])[a-zA-Z]([a-zA-Z0-9]*$|[^-]*\([^()]*\)[^-]*)/);
                         if (match) {
                             groupText = match[0].substring(1);
                             groupText = groupText.replace(/[^a-z0-9]/gi, '');
@@ -1174,7 +1196,7 @@
                         torrent_obj.datasetRelease = releaseName;
                         let groupText = "";
                         if (improved_tags) {
-                            const match = releaseName.match(/-([^-]+)$/);
+                            const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
                             if (match) {
                                 groupText = match[0].substring(1);
                                 groupText = groupText.replace(/[^a-z0-9]/gi, '');
@@ -1223,7 +1245,7 @@
                     torrent_obj.datasetRelease = releaseName;
                     let groupText = "";
                     if (improved_tags) {
-                        const match = releaseName.match(/-([^-]+)$/);
+                        const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
                         if (match) {
                             groupText = match[0].substring(1);
                             groupText = groupText.replace(/[^a-z0-9]/gi, '');
@@ -1269,7 +1291,7 @@
                     torrent_obj.datasetRelease = releaseName;
                     let groupText = "";
                     if (improved_tags) {
-                        const match = releaseName.match(/-([^-]+)$/);
+                        const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
                         if (match) {
                             groupText = match[0].substring(1);
                             groupText = groupText.replace(/[^a-z0-9]/gi, '');
@@ -1315,7 +1337,7 @@
                     torrent_obj.datasetRelease = releaseName;
                     let groupText = "";
                     if (improved_tags) {
-                        const match = releaseName.match(/-([^-]+)$/);
+                        const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
                         if (match) {
                             groupText = match[0].substring(1);
                             groupText = groupText.replace(/[^a-z0-9]/gi, '');
@@ -1361,7 +1383,7 @@
                         let releaseName = releaseNameElement ? releaseNameElement.textContent.trim() : "";
                         let groupText = "";
                         if (improved_tags) {
-                            const match = releaseName.match(/-([^-]+)$/);
+                            const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
                             if (match) {
                                 groupText = match[0].substring(1);
                                 groupText = groupText.replace(/[^a-z0-9]/gi, '');
@@ -1425,7 +1447,7 @@
                     torrent_obj.datasetRelease = releaseName;
                     let groupText = "";
                     if (improved_tags) {
-                        const match = releaseName.match(/-([^-]+)$/);
+                        const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
                         if (match && match[1].length <= 9) {
                             groupText = match[0].substring(1);
                             groupText = groupText.replace(/[^a-z0-9]/gi, ' ');
@@ -2010,7 +2032,7 @@
                             infoText = infoText.replace(groupText, '');
                             }
                         }
-                        const match = infoText.match(/-([^-]+)$/);
+                        const match = infoText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
                         if (!matchedGroup) {
                           if (match) {
                             groupText = match[0].substring(1);
@@ -2142,7 +2164,7 @@
                         }
 
                             if (!matchedGroup) {
-                                const match = infoText.match(/-([^-]+)$/);
+                                const match = infoText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
                                 if (match) {
                                     groupText = match[0].substring(1);
                                     groupText = groupText.replace(/[^a-z0-9]/gi, '');
@@ -2151,6 +2173,7 @@
                                     }
                                 }
                             }
+
                             const id = d.id;
                             const baseURL = 'https://hdbits.org/download.php/';
                             const pageURL = 'https://hdbits.org/details.php?id=';
@@ -2256,7 +2279,7 @@
                             }
 
                             if (!matchedGroup) {
-                                const match = infoText.match(/-([^-]+)$/);
+                                const match = infoText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
                                 if (match) {
                                     groupText = match[0].substring(1);
                                     groupText = groupText.replace(/[^a-z0-9]/gi, '');
@@ -2396,7 +2419,7 @@
                                   }
 
                                   if (!matchedGroup) {
-                                      const match = infoText.match(/-([^-]+)$/);
+                                      const match = infoText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
                                       if (match) {
                                           groupText = match[0].substring(1);
                                           groupText = groupText.replace(/[^a-z0-9]/gi, '');
@@ -2660,7 +2683,8 @@
                             groupText = matchedGroup;
                             relevantText = relevantText.replace(groupText, '');
                         }
-                        const match = relevantText.match(/-(?!.*\([^()]*\))([^-]+)$/);
+                        //const match = relevantText.match(/-(?!.*\([^()]*\))([^-]+)$/);
+                        const match = relevantText.match(/-(?!\.[^-]*)\s*[a-zA-Z]([a-zA-Z0-9]*$|[^-]*\([^()]*\)[^-]*)/);
 
                         if (match) {
                             groupText = match[0].trim();
@@ -2887,16 +2911,13 @@
         const get_codec = (lower, torrent) => {
             if (lower.includes("x264") || lower.includes("x.264") || lower.includes("x 264")) return "x264 / ";
             else if (lower.includes("x265") || lower.includes("x.265") || lower.includes("x 265")) return "x265 / ";
-            else if (lower.includes("bd25") || lower.includes("bd-25") || lower.includes("bd 25") || lower.includes("uhd 25") || lower.includes("uhd25") || lower.includes("uhd-25")) return "BD25 / ";
-            else if (lower.includes("bd50") || lower.includes("bd-50") || lower.includes("bd 50") || lower.includes("uhd 50") || lower.includes("uhd50") || lower.includes("uhd-50")) return "BD50 / ";
-            else if (lower.includes("bd66") || lower.includes("bd-66") || lower.includes("bd 66") || lower.includes("uhd 66") || lower.includes("uhd66") || lower.includes("uhd-66")) return "BD66 / ";
-            else if (lower.includes("bd100") || lower.includes("bd-100") || lower.includes("bd 100") || lower.includes("uhd 100") || lower.includes("uhd100") || lower.includes("uhd-100")) return "BD100 / ";
             else if (lower.includes("h264") || lower.includes("h.264") || lower.includes("avc") || lower.includes("h 264")) return "H.264 / ";
             else if (lower.includes("h265") || lower.includes("h.265") || lower.includes("hevc") || lower.includes("h 265")) return "H.265 / ";
             else if (lower.includes("xvid") || lower.includes("x.vid")) return "XviD / ";
             else if (lower.includes("divx") || lower.includes("div.x")) return "DivX / ";
             else if (lower.includes("mpeg2") || lower.includes("mpeg-2")) return "MPEG2 / ";
             else if (lower.includes("mpeg1") || lower.includes("mpeg-1")) return "MPEG1 / ";
+            else if (lower.includes("vc-1")) return "VC-1 / ";
 
             return null; // skip this info
         };
@@ -2904,6 +2925,10 @@
         const get_disc = (lower, torrent) => {
             if (lower.includes("dvd5") || lower.includes("dvd-5") || lower.includes("dvd 5")) return "DVD5 / ";
             else if (lower.includes("dvd9") || lower.includes("dvd-9") || lower.includes("dvd 9")) return "DVD9 / ";
+            else if (lower.includes("bd25") || lower.includes("bd-25") || lower.includes("bd 25") || lower.includes("uhd 25") || lower.includes("uhd25") || lower.includes("uhd-25")) return "BD25 / ";
+            else if (lower.includes("bd50") || lower.includes("bd-50") || lower.includes("bd 50") || lower.includes("uhd 50") || lower.includes("uhd50") || lower.includes("uhd-50")) return "BD50 / ";
+            else if (lower.includes("bd66") || lower.includes("bd-66") || lower.includes("bd 66") || lower.includes("uhd 66") || lower.includes("uhd66") || lower.includes("uhd-66")) return "BD66 / ";
+            else if (lower.includes("bd100") || lower.includes("bd-100") || lower.includes("bd 100") || lower.includes("uhd 100") || lower.includes("uhd100") || lower.includes("uhd-100")) return "BD100 / ";
             else if (lower.includes("dvdset")) return "Disc Set / ";
             else if (lower.includes("bdset")) return "Disc Set / ";
 
@@ -2919,7 +2944,7 @@
             else if (lower.includes("iso")) return "ISO / ";
             else if (lower.includes("m2ts")) return "m2ts / ";
 
-            return null; // skip this info
+            return null;
         };
 
         const get_source = (lower, torrent) => {
@@ -2928,13 +2953,13 @@
             else if (lower.includes("/r5")) return "R5 / ";
             else if (lower.includes("vhs")) return "VHS / ";
             else if (lower.includes("web")) return "WEB / ";
+            else if (lower.includes("hddvd") || lower.includes("hd-dvd") || lower.includes("hd dvd")) return "HD-DVD / ";
             else if (lower.includes("dvd")) return "DVD / ";
             else if (lower.includes("hdtv") || lower.includes("hd-tv")) return "HDTV / ";
             else if (lower.includes("tv")) return "TV / ";
-            else if (lower.includes("hddvd") || lower.includes("hd-dvd")) return "HD-DVD / ";
             else if (lower.includes("bluray") || lower.includes("blu-ray") || lower.includes("blu.ray") || lower.includes("blu ray")) return "Blu-ray / ";
 
-            return null; // skip this info
+            return null;
         };
 
         const get_res = (lower, torrent) => {
@@ -2947,7 +2972,7 @@
             else if (lower.includes("1080p")) return "1080p / ";
             else if (lower.includes("2160p")) return "2160p / ";
 
-            return null; // skip this info
+            return null;
         };
 
         const get_audio = (lower, torrent) => {
@@ -2978,6 +3003,8 @@
             else if (lower.includes("hdr10+")) return "HDR10+ / ";
             else if (lower.includes("hdr10")) return "HDR10 / ";
             else if (lower.includes("hdr")) return "HDR10 / ";
+            else if (lower.includes("pq10")) return "10bit / ";
+            else if (lower.includes("sdr")) return "SDR / ";
 
             return null;
         };
@@ -2993,14 +3020,34 @@
                 bonuses.push("Anthology");
             }
             if (lower.includes("2in1")) bonuses.push("2in1");
+            if (lower.includes("3in1")) bonuses.push("3in1");
+            if (lower.includes("4in1")) bonuses.push("4in1");
             if (lower.includes("commentary")) bonuses.push("Commentary");
             if (lower.includes("special features")) bonuses.push("Special Features");
+            if (lower.includes("special edition")) bonuses.push("Special Edition");
+            if (lower.includes("directors cut")) bonuses.push("Directors Cut");
+            if (lower.includes("director's cut")) bonuses.push("Directors Cut");
+            if (lower.includes("pan & scan")) bonuses.push("Pan & Scan");
+            if (lower.includes("repack")) bonuses.push("Repack");
+            if (lower.includes("repack2")) bonuses.push("Repack2");
+            if (lower.includes("hybrid")) bonuses.push("Hybrid");
+            if (lower.includes("skynet edition")) bonuses.push("Skynet Edition");
+            if (lower.includes("ultimate cut")) bonuses.push("Ultimate Cut");
+            if (lower.includes("ultimate edition")) bonuses.push("Ultimate Edition");
+            if (lower.includes("extended")) bonuses.push("Extended Edition");
+            if (lower.includes("extended edition")) bonuses.push("Extended Edition");
+            if (lower.includes("remastered")) bonuses.push("Remastered");
+            if (lower.includes("10bit")) bonuses.push("10bit");
+            if (lower.includes("35mm")) bonuses.push("35mm");
+            if (lower.includes("3d")) bonuses.push("3D Edition");
+            if (lower.includes("hfr")) bonuses.push("High Frame-rate");
+            if (lower.includes("dcp")) bonuses.push("Digital Cinema Package");
 
             return bonuses.length > 0 ? bonuses.join(" / ") + " / " : null;
         };
 
         const get_country = (normal, torrent) => {
-            const exceptions = ["AVC", "DDP", "DTS", "PAL", "VHS", "WEB", "DVD", "HDR", "GLK", "UHD", "AKA", "TMT", "HDT", "ABC", "MKV", "AVI", "MP4", "VOB", "MAX"]; // Add any other exceptions as needed
+            const exceptions = ["AVC", "DDP", "DTS", "PAL", "VHS", "WEB", "DVD", "HDR", "GLK", "UHD", "AKA", "TMT", "HDT", "ABC", "MKV", "AVI", "MP4", "VOB", "MAX", "HFR", "SDR", "DCP"]; // Add any other exceptions as needed
             const countryCodeMatch = normal.match(/\b[A-Z]{3}\b/g);
             if (countryCodeMatch) {
                 const filteredCodes = countryCodeMatch.filter(code => !exceptions.includes(code));
@@ -3009,7 +3056,7 @@
                 }
             }
 
-            return null; // skip this info
+            return null;
         };
 
         const get_scene = (lower, torrent) => {
