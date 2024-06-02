@@ -708,10 +708,24 @@
 
                         const sizeElement = torrent.querySelector('size[type="formatted"]');
                         if (sizeElement) {
-                            torrent_obj.size = parseInt(parseFloat(sizeElement.textContent.split(" GB")[0]) * 1024); // Convert GB to MiB
+                            const sizeText = sizeElement.textContent;
+                            let sizeInMiB;
+
+                            if (sizeText.includes(" TB")) {
+                                sizeInMiB = parseFloat(sizeText.split(" TB")[0]) * 1024 * 1024; // Convert TB to MiB
+                            } else if (sizeText.includes(" GB")) {
+                                sizeInMiB = parseFloat(sizeText.split(" GB")[0]) * 1024; // Convert GB to MiB
+                            } else if (sizeText.includes(" MB")) {
+                                sizeInMiB = parseFloat(sizeText.split(" MB")[0]); // MB is already in MiB
+                            } else {
+                                console.error("Unknown size unit.");
+                                return;
+                            }
+
+                            torrent_obj.size = parseInt(sizeInMiB);
                         } else {
                             console.error("Missing size information.");
-                            return; // Skip this torrent if size information is missing
+                            return;
                         }
                         const bytesElement = torrent.querySelector('size[type="bytes"]');
                         if (bytesElement) {
