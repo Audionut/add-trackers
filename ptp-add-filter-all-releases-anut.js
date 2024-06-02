@@ -3439,13 +3439,14 @@
             if (lower.includes("directors cut")) bonuses.push("Directors Cut");
             if (lower.includes("director's cut")) bonuses.push("Directors Cut");
             if (lower.includes("pan & scan")) bonuses.push("Pan & Scan");
-            if (lower.includes("repack")) bonuses.push("Repack");
             if (lower.includes("repack2")) bonuses.push("Repack2");
+            else if (lower.includes("repack")) bonuses.push("Repack");
             if (lower.includes("hybrid")) bonuses.push("Hybrid");
             if (lower.includes("skynet edition")) bonuses.push("Skynet Edition");
             if (lower.includes("ultimate cut")) bonuses.push("Ultimate Cut");
             if (lower.includes("ultimate edition")) bonuses.push("Ultimate Edition");
             if (lower.includes("extended edition")) bonuses.push("Extended Edition");
+            else if (lower.includes("extended")) bonuses.push("Extended Edition");
             if (lower.includes("remastered")) bonuses.push("Remastered");
             if (lower.includes("commentary")) bonuses.push("Commentary");
             if (lower.includes("10bit")) bonuses.push("10bit");
