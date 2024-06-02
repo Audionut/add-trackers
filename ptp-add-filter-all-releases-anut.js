@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.6.1-A
+// @version      3.6.2-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -2338,7 +2338,7 @@
             });
         };
 
-        const get_post_torrent_objects = (tracker, postData) => {
+        const get_post_torrent_objects = (tracker, postData, isMiniSeries) => {
             let torrent_objs = [];
             if (tracker === "BHD") {
                 try {
@@ -2577,6 +2577,27 @@
                             if (improved_tags && infoText.includes("Blu-ray")) {
                                 infoText = `${bdType} ${infoText}`;
                             }
+                            const isRemux = infoText.includes("Remux");
+                            const isBdDisc = infoText.includes("Blu-ray");
+                            const isHdDvd = infoText.includes("HD DVD");
+                            const isHdtv = infoText.includes("HDTV");
+                            const isInternal = d.type_origin === 1 ? true : false;
+                            const get_hdb_discount = () => {
+                                let discountText = "";
+                                if (d.freeleech === "yes") {
+                                    discountText = "Freeleech";
+                                } else {
+                                    if (isInternal || isRemux || isBdDisc || isHdDvd || isHdtv || isMiniSeriesFromSpan) {
+                                    discountText = "50% Freeleech";
+                                    }
+                                  else if (isWebDL && isInternal) {
+                                    discountText = "25% Freeleech";
+                                  } else {
+                                    discountText = "None";
+                                  }
+                                }
+                                return discountText;
+                            }
                             const status = d.torrent_status || "default";
 
                             const torrentObj = {
@@ -2592,7 +2613,7 @@
                                 download_link: `${baseURL}${torrent}?id=${id}&passkey=${HDB_PASS_KEY}`,
                                 torrent_page: `${pageURL}${id}`,
                                 discount: d.freeleech === "yes" ? "Freeleech" : "None",
-                                internal: d.type_origin === 1 ? true : false,
+                                internal: isInternal,
                                 exclusive: d.type_exclusive === 1 ? true : false,
                                 status: status,
                                 groupId: groupText,
@@ -2600,7 +2621,7 @@
 
                             const mappedObj = {
                                 ...torrentObj,
-                                quality: get_torrent_quality(torrentObj),
+                                quality: get_torrent_quality(torrentObj), "discount": get_hdb_discount(torrentObj.discount),
                             };
 
                             return mappedObj;
@@ -3442,6 +3463,7 @@
             if (lower.includes("repack2")) bonuses.push("Repack2");
             else if (lower.includes("repack")) bonuses.push("Repack");
             if (lower.includes("hybrid")) bonuses.push("Hybrid");
+            if (lower.includes("proper")) bonuses.push("Proper");
             if (lower.includes("skynet edition")) bonuses.push("Skynet Edition");
             if (lower.includes("ultimate cut")) bonuses.push("Ultimate Cut");
             if (lower.includes("ultimate edition")) bonuses.push("Ultimate Edition");
