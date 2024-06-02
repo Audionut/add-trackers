@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.6.2-A
+// @version      3.6.3-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -2582,12 +2582,13 @@
                             const isHdDvd = infoText.includes("HD DVD");
                             const isHdtv = infoText.includes("HDTV");
                             const isInternal = d.type_origin === 1 ? true : false;
+                            const isDoco = d.type_category === 3 ? true : false;
                             const get_hdb_discount = () => {
                                 let discountText = "";
                                 if (d.freeleech === "yes") {
                                     discountText = "Freeleech";
                                 } else {
-                                    if (isInternal || isRemux || isBdDisc || isHdDvd || isHdtv || isMiniSeriesFromSpan) {
+                                    if (isInternal || isRemux || isBdDisc || isHdDvd || isHdtv || isMiniSeriesFromSpan || isDoco) {
                                     discountText = "50% Freeleech";
                                     }
                                   else if (isWebDL && isInternal) {
