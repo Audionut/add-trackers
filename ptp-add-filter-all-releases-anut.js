@@ -3492,7 +3492,7 @@
                 }
                 if (group_id && cln.dataset.releasegroup) {
                     cln.dataset.releasegroup += group_id;
-                } else if (group_id) {
+                } else if (group_id || group_id === "") {
                     cln.dataset.releasegroup = group_id;
                 }
 
