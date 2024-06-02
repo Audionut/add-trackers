@@ -649,7 +649,12 @@
         const goodGroups = () => {
             return [
                 "D-Z0N3",
-                "Tigole QxR"
+                "Tigole QxR",
+                "FraMeSToR",
+                "HONE",
+                "TAoE",
+                "Silence QxR",
+                "0xC0"
                 //"ExampleText3"
             ];
         };
@@ -3356,7 +3361,7 @@
 
         const get_audio = (lower, torrent) => {
             if (lower.includes("atmos")) return "Dolby Atmos / ";
-            else if (lower.includes("dts:x")) return "DTS:X / ";
+            else if (lower.includes("dts:x") || lower.includes("dts-x")) return "DTS:X / ";
             else if (lower.includes("mp3")) return "MP3 / ";
 
             return null;
