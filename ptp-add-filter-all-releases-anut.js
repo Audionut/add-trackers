@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.6.6-A
+// @version      3.6.7-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -3177,10 +3177,10 @@
                             }
                             if (isHdr10) {
                                 updatedInfoText = updatedInfoText.replace("HDR", "HDR10");
-                            }
-                            if (improved_tags) {
-                                if (!updatedInfoText.includes("HDR")) {
-                                    updatedInfoText = updatedInfoText += "HDR10";
+                                if (improved_tags) {
+                                    if (!updatedInfoText.includes("HDR")) {
+                                        updatedInfoText = updatedInfoText += "HDR10";
+                                    }
                                 }
                             }
                             if (improved_tags) {
