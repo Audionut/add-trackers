@@ -4612,68 +4612,55 @@
         let leech_desc = true;
         let snatch_desc = true;
         let size_desc = true;
+        let sortingInProgress = false;
 
         const add_sort_listeners = () => {
-            let seed_th = [...document.querySelector("table.torrent_table").querySelectorAll("th")].filter(e => e.querySelector("img") != null).find(t => t.querySelector("img").src.includes("seeders.png"));
+            const sortTable = (key, desc) => {
+                if (sortingInProgress) return;
+                sortingInProgress = true;
 
-            seed_th.style.cursor = "pointer";
-            seed_th.addEventListener("click", () => {
-                if (seed_desc) doms = doms.sort((a, b) => parseInt(a.seeders) < parseInt(b.seeders) ? 1 : -1);
-                else doms = doms.sort((a, b) => parseInt(a.seeders) > parseInt(b.seeders) ? 1 : -1);
-
-                seed_desc = !seed_desc;
-
-                document.querySelectorAll(".group_torrent").forEach(d => d.remove());
-
-                doms.forEach(d => document.querySelector("table.torrent_table > tbody").appendChild(d.dom_path));
-            });
-
-            /////////////////////////////////////
-            let leech_th = [...document.querySelector("table.torrent_table").querySelectorAll("th.sign")].filter(e => e.querySelector("img") != null).find(t => t.querySelector("img").src.includes("leechers.png"));
-
-            leech_th.style.cursor = "pointer";
-            leech_th.addEventListener("click", () => {
-                if (leech_desc) doms = doms.sort((a, b) => parseInt(a.leechers) < parseInt(b.leechers) ? 1 : -1);
-                else doms = doms.sort((a, b) => parseInt(a.leechers) > parseInt(b.leechers) ? 1 : -1);
-
-                leech_desc = !leech_desc;
+                doms = doms.sort((a, b) => {
+                    const aValue = parseInt(a[key]);
+                    const bValue = parseInt(b[key]);
+                    return desc ? bValue - aValue : aValue - bValue;
+                });
 
                 document.querySelectorAll(".group_torrent").forEach(d => d.remove());
-
                 doms.forEach(d => document.querySelector("table.torrent_table > tbody").appendChild(d.dom_path));
-            });
 
-            ////////////////////////////
-            let snatch_th = [...document.querySelector("table.torrent_table").querySelectorAll("th")].filter(e => e.querySelector("img") != null).find(t => t.querySelector("img").src.includes("snatched.png"));
+                console.log("Finished sorting");
+                const event = new CustomEvent('SortingComplete');
+                document.dispatchEvent(event);
 
-            snatch_th.style.cursor = "pointer";
-            snatch_th.addEventListener("click", () => {
-                if (snatch_desc) doms = doms.sort((a, b) => parseInt(a.snatchers) < parseInt(b.snatchers) ? 1 : -1);
-                else doms = doms.sort((a, b) => parseInt(a.snatchers) > parseInt(b.snatchers) ? 1 : -1);
+                // Allow sorting again after a brief delay
+                setTimeout(() => {
+                    sortingInProgress = false;
+                }, 500); // Adjust the delay as needed
+            };
 
-                snatch_desc = !snatch_desc;
+            const addSortListener = (headerElement, key, descRef) => {
+                headerElement.style.cursor = "pointer";
+                headerElement.addEventListener("click", () => {
+                    descRef.value = !descRef.value;
+                    sortTable(key, descRef.value);
+                });
+            };
 
-                document.querySelectorAll(".group_torrent").forEach(d => d.remove());
+            const seed_th = [...document.querySelector("table.torrent_table").querySelectorAll("th")].find(e => e.querySelector("img")?.src.includes("seeders.png"));
+            addSortListener(seed_th, 'seeders', { value: seed_desc });
 
-                doms.forEach(d => document.querySelector("table.torrent_table > tbody").appendChild(d.dom_path));
-            });
+            const leech_th = [...document.querySelector("table.torrent_table").querySelectorAll("th")].find(e => e.querySelector("img")?.src.includes("leechers.png"));
+            addSortListener(leech_th, 'leechers', { value: leech_desc });
 
-            /////////////////////////////////
-            let size_th = [...document.querySelector("table.torrent_table").querySelectorAll("th")].find(e => e.textContent === "Size");
+            const snatch_th = [...document.querySelector("table.torrent_table").querySelectorAll("th")].find(e => e.querySelector("img")?.src.includes("snatched.png"));
+            addSortListener(snatch_th, 'snatchers', { value: snatch_desc });
 
-            size_th.style.cursor = "pointer";
-            size_th.addEventListener("click", () => {
-
-                if (size_desc) doms = doms.sort((a, b) => parseInt(a.size) < parseInt(b.size) ? 1 : -1);
-                else doms = doms.sort((a, b) => parseInt(a.size) > parseInt(b.size) ? 1 : -1);
-
-                size_desc = !size_desc;
-
-                document.querySelectorAll(".group_torrent").forEach(d => d.remove());
-
-                doms.forEach(d => document.querySelector("table.torrent_table > tbody").appendChild(d.dom_path));
-            });
+            const size_th = [...document.querySelector("table.torrent_table").querySelectorAll("th")].find(e => e.textContent === "Size");
+            addSortListener(size_th, 'size', { value: size_desc });
         };
+
+        // Call the function to add the listeners
+        add_sort_listeners();
 
         let line_example = get_example_div();
         let group_header_example = document.querySelector("tr.group_torrent").cloneNode(true);
