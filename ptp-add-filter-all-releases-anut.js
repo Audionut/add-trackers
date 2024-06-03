@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.6.5-A
+// @version      3.6.6-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -959,7 +959,7 @@
                             let formatted = replaceFullStops(cleanTheText);
                             let files = parseInt(torrent.querySelector('files').textContent);
 
-                            if (formatted.includes("BluRay") && torrent_obj.size && files > 10) {
+                            if (formatted.includes("BluRay") && (!isMiniSeriesFromSpan) && torrent_obj.size && files > 10) {
                                 const bdType = get_bd_type(torrent_obj.size);
                                 formatted = `${bdType} ${formatted}`;
                             }
@@ -3372,6 +3372,28 @@
             insertAfter(div, all_trs[first_idx]);
         };
 
+        const countryCodes = [
+            "AFG", "ALB", "DZA", "AND", "AGO", "ARG", "ARM", "AUS", "AUT", "AZE",
+            "BHS", "BHR", "BGD", "BRB", "BLR", "BEL", "BLZ", "BEN", "BTN", "BOL",
+            "BIH", "BWA", "BRA", "BRN", "BGR", "BFA", "BDI", "CPV", "KHM", "CMR",
+            "CAN", "CAF", "TCD", "CHL", "CHN", "COL", "COM", "COG", "CRI", "HRV",
+            "CUB", "CYP", "CZE", "DNK", "DJI", "DMA", "DOM", "ECU", "EGY", "SLV",
+            "GNQ", "ERI", "EST", "ETH", "FJI", "FIN", "FRA", "GAB", "GMB", "GEO",
+            "DEU", "GHA", "GRC", "GRD", "GTM", "GIN", "GNB", "GUY", "HTI", "HND",
+            "HUN", "ISL", "IND", "IDN", "IRN", "IRQ", "IRL", "ISR", "ITA", "JAM",
+            "JPN", "JOR", "KAZ", "KEN", "KIR", "PRK", "KOR", "KWT", "KGZ", "LAO",
+            "LVA", "LBN", "LSO", "LBR", "LBY", "LIE", "LTU", "LUX", "MDG", "MWI",
+            "MYS", "MDV", "MLI", "MLT", "MHL", "MRT", "MUS", "MEX", "FSM", "MDA",
+            "MCO", "MNG", "MNE", "MAR", "MOZ", "MMR", "NAM", "NRU", "NPL", "NLD",
+            "NZL", "NIC", "NER", "NGA", "NOR", "OMN", "PAK", "PLW", "PAN", "PNG",
+            "PRY", "PER", "PHL", "POL", "PRT", "QAT", "ROU", "RUS", "RWA", "KNA",
+            "LCA", "VCT", "WSM", "SMR", "STP", "SAU", "SEN", "SRB", "SYC", "SLE",
+            "SGP", "SVK", "SVN", "SLB", "SOM", "ZAF", "SSD", "ESP", "LKA", "SDN",
+            "SUR", "SWE", "CHE", "SYR", "TWN", "TJK", "TZA", "THA", "TLS", "TGO",
+            "TON", "TTO", "TUN", "TUR", "TKM", "TUV", "UGA", "UKR", "ARE", "GBR",
+            "USA", "URY", "UZB", "VUT", "VEN", "VNM", "YEM", "ZMB", "ZWE"
+        ];
+
         const get_codec = (lower, torrent) => {
             if (lower.includes("x264") || lower.includes("x.264") || lower.includes("x 264")) return "x264 / ";
             else if (lower.includes("x265") || lower.includes("x.265") || lower.includes("x 265")) return "x265 / ";
@@ -3520,10 +3542,9 @@
         };
 
         const get_country = (normal, torrent) => {
-            const exceptions = ["AVC", "DDP", "DTS", "PAL", "VHS", "WEB", "DVD", "HDR", "GLK", "UHD", "AKA", "TMT", "HDT", "ABC", "MKV", "AVI", "MP4", "VOB", "MAX", "HFR", "SDR", "DCP", "MVC", "SBS", "CUT"]; // Add any other exceptions as needed
             const countryCodeMatch = normal.match(/\b[A-Z]{3}\b/g);
             if (countryCodeMatch) {
-                const filteredCodes = countryCodeMatch.filter(code => !exceptions.includes(code));
+                const filteredCodes = countryCodeMatch.filter(code => countryCodes.includes(code));
                 if (filteredCodes.length > 0) {
                     return filteredCodes.join(' / ') + " / ";
                 }
