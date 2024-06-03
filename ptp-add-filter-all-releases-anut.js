@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.6.4-A
+// @version      3.6.5-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -4619,14 +4619,74 @@
                 if (sortingInProgress) return;
                 sortingInProgress = true;
 
-                doms = doms.sort((a, b) => {
-                    const aValue = parseInt(a[key]);
-                    const bValue = parseInt(b[key]);
-                    return desc ? bValue - aValue : aValue - bValue;
+                let rowsData = [];
+
+                // Collecting main rows and their hidden siblings
+                document.querySelectorAll("tr.group_torrent.group_torrent_header").forEach(row => {
+                    let keyElement;
+                    let parsedKey = null; // Default value for rows without key elements
+                    switch(key) {
+                        case 'seeders':
+                            keyElement = row.children[3];
+                            parsedKey = keyElement ? parseInt(keyElement.textContent.trim().replace(/,/g, '')) || 0 : 0;
+                            break;
+                        case 'leechers':
+                            keyElement = row.children[4];
+                            parsedKey = keyElement ? parseInt(keyElement.textContent.trim().replace(/,/g, '')) || 0 : 0;
+                            break;
+                        case 'snatchers':
+                            keyElement = row.children[2];
+                            parsedKey = keyElement ? parseInt(keyElement.textContent.trim().replace(/,/g, '')) || 0 : 0;
+                            break;
+                        case 'size':
+                            keyElement = row.querySelector('td.nobr span');
+                            if (keyElement) {
+                                let sizeText = keyElement.getAttribute('title');
+                                if (sizeText) {
+                                    parsedKey = parseInt(sizeText.replace(/,/g, '')) || 0;
+                                }
+                            }
+                            break;
+                        default:
+                            keyElement = null;
+                            parsedKey = 0;
+                    }
+
+                    if (parsedKey !== null) {
+                        let dataObj = {
+                            key: parsedKey,
+                            mainRow: row,
+                            hiddenRows: []
+                        };
+
+                        // Track hidden sibling rows
+                        let nextRow = row.nextElementSibling;
+                        while (nextRow && nextRow.classList.contains('torrent_info_row')) {
+                            dataObj.hiddenRows.push(nextRow);
+                            nextRow = nextRow.nextElementSibling;
+                        }
+
+                        rowsData.push(dataObj);
+                    } else {
+                        console.log('Skipping row due to null key:', row);
+                    }
                 });
 
-                document.querySelectorAll(".group_torrent").forEach(d => d.remove());
-                doms.forEach(d => document.querySelector("table.torrent_table > tbody").appendChild(d.dom_path));
+                // Filter and sort rows with valid keys
+                let sortableRows = rowsData.filter(row => row.key !== null);
+                sortableRows.sort((a, b) => desc ? b.key - a.key : a.key - b.key);
+
+                // Debugging output
+
+                // Remove existing rows from the DOM
+                document.querySelectorAll(".group_torrent, .torrent_info_row").forEach(d => d.remove());
+
+                // Re-insert sorted rows and their hidden siblings
+                const tbody = document.querySelector("table.torrent_table > tbody");
+                sortableRows.forEach(dataObj => {
+                    tbody.appendChild(dataObj.mainRow);
+                    dataObj.hiddenRows.forEach(row => tbody.appendChild(row));
+                });
 
                 console.log("Finished sorting");
                 const event = new CustomEvent('SortingComplete');
