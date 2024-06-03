@@ -2393,48 +2393,58 @@
                                 }
                             }
 
-                                if (improved_tags) {
-                                    // Handle HDR and DV tags
-                                    const dv = (d.dv === 1);
-                                    const hdr10 = (d.hdr10 === 1);
-                                    const hdr10Plus = (d["hdr10+"] === 1);
+                            if (improved_tags) {
+                                // Handle HDR and DV tags
+                                const dv = (d.dv === 1);
+                                const hdr10 = (d.hdr10 === 1);
+                                const hdr10Plus = (d["hdr10+"] === 1);
 
-                                    if (hdr10Plus) {
-                                        if (infoText.includes("HDR")) {
-                                            infoText = infoText.replace("HDR", "HDR10+");
-                                        } else if (!infoText.includes("HDR10+")) {
-                                            infoText += " HDR10+";
-                                        }
-                                    } else if (hdr10) {
-                                        if (infoText.includes("HDR")) {
-                                            infoText = infoText.replace("HDR", "HDR10");
-                                        } else if (!infoText.includes("HDR10")) {
-                                            infoText += " HDR10";
-                                        }
+                                if (hdr10Plus) {
+                                    if (infoText.includes("HDR")) {
+                                        infoText = infoText.replace("HDR", "HDR10+");
+                                    } else if (!infoText.includes("HDR10+")) {
+                                        infoText += " HDR10+";
                                     }
-
-                                    // Append DV tag
-                                    if (dv) {
-                                        if (hdr10Plus && !infoText.includes("DV HDR10+")) {
-                                            infoText = "DV HDR10+ " + infoText.replace("HDR10+", "").replace("HDR10", "").replace("DV", "").trim();
-                                        } else if (hdr10 && !infoText.includes("DV HDR10")) {
-                                            infoText = "DV HDR10 " + infoText.replace("HDR10+", "").replace("HDR10", "").replace("DV", "").trim();
-                                        } else if (!infoText.includes("DV")) {
-                                            infoText = "DV " + infoText;
-                                        }
-                                    }
-
-                                    // Append Blu-ray type
-                                    const bdType = get_blu_ray_disc_type(d.size);
-                                    if (infoText.includes("Blu-ray")) {
-                                        infoText = `${bdType} ${infoText}`;
-                                    }
-
-                                    // Append Commentary tag
-                                    if (d.commentary === 1) {
-                                        infoText = "Commentary " + infoText;
+                                } else if (hdr10) {
+                                    if (infoText.includes("HDR")) {
+                                        infoText = infoText.replace("HDR", "HDR10");
+                                    } else if (!infoText.includes("HDR10")) {
+                                        infoText += " HDR10";
                                     }
                                 }
+
+                                // Append DV tag
+                                if (dv) {
+                                    if (hdr10Plus && !infoText.includes("DV HDR10+")) {
+                                        infoText = "DV HDR10+ " + infoText.replace("HDR10+", "").replace("HDR10", "").replace("DV", "").trim();
+                                    } else if (hdr10 && !infoText.includes("DV HDR10")) {
+                                        infoText = "DV HDR10 " + infoText.replace("HDR10+", "").replace("HDR10", "").replace("DV", "").trim();
+                                    } else if (!infoText.includes("DV")) {
+                                        infoText = "DV " + infoText;
+                                    }
+                                }
+
+                                if (d.commentary === 1) {
+                                    infoText = "Commentary " + infoText;
+                                }
+
+                                const resolution = d.type;
+                                if (resolution) {
+                                    let resText = resolution;
+                                    const originalResText = resText;
+
+                                    resText = resText.replace(/UHD\s?.{0,3}/, "2160p");
+                                    resText = resText.replace(/BD\s?.{0,3}/, "1080p");
+
+                                    if (!infoText.includes(resText)) {
+                                        infoText = `${resText} ${infoText}`;
+                                    }
+
+                                    if (!infoText.includes(originalResText)) {
+                                        infoText = `${originalResText} ${infoText}`;
+                                    }
+                                }
+                            }
 
                             const is25 = d.promo25 === 1 ? true : false;
                             const is50 = d.promo50 === 1 ? true : false;
@@ -2484,7 +2494,7 @@
                             };
                             return mappedObj;
                         } else {
-                          return null;
+                            return null;
                         }
                     }).filter(obj => obj !== null); // Filter out any null objects
                 } catch (error) {
