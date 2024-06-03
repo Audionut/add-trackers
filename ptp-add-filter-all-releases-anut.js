@@ -2577,8 +2577,12 @@
                                 }
                             }
                             const bdType = get_blu_ray_disc_type(d.size);
-                            if (improved_tags && infoText.includes("Blu-ray")) {
+                            if (improved_tags && infoText.includes("Blu-ray") && (infoText.includes("1080p") || infoText.includes("2160p"))) {
                                 infoText = `${bdType} ${infoText}`;
+                            }
+                            const isAudioOnly = d.type_category === 6 ? true : false;
+                            if (isAudioOnly) {
+                                infoText = infoText += "Audio Only Track";
                             }
                             const isRemux = d.type_medium === 5 ? true : false;
                             const isDisc = d.type_medium === 1 ? true : false;
