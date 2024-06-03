@@ -2348,19 +2348,19 @@
 
                         const originalInfoText = d.name;
                         let infoText = originalInfoText;
+
                         if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
                             let groupText = "";
-                            const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
-                            const badGroupsList = badGroups(); // Get the list of bad group names
+                            const groups = goodGroups(); // Array of good group names
+                            const badGroupsList = badGroups(); // Array of bad group names
                             let matchedGroup = null;
                             let badGroupFound = false;
 
-                            // Check for bad groups
+                            // Remove bad groups if found
                             for (const badGroup of badGroupsList) {
                                 if (infoText.includes(badGroup)) {
                                     badGroupFound = true;
-                                    infoText = infoText.replace(badGroup, '').trim(); // Remove the bad group text
-                                    groupText = ""; // Set groupText to an empty string
+                                    infoText = infoText.replace(badGroup, '').trim();
                                     break;
                                 }
                             }
@@ -2373,63 +2373,66 @@
                                         break;
                                     }
                                 }
+                            }
 
-                                if (matchedGroup) {
-                                    groupText = matchedGroup;
-                                    if (improved_tags) {
-                                        infoText = infoText.replace(groupText, '').trim();
-                                    }
-                                } else {
-                                    const match = infoText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
-                                    if (match) {
-                                        groupText = match[1]; // Use match[1] to get the capturing group
-                                        groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                                        if (improved_tags) {
-                                            infoText = infoText.replace(`-${match[1]}`, '').trim();
-                                            // yay for stupid release naming, thankfully, BHD seems to understand and append the correct flags to the API
-                                            const dv = (d.dv === 1);
-                                            const hdr10 = (d.hdr10 === 1);
-                                            const hdr10Plus = (d["hdr10+"] === 1);
-
-                                            // Replace "HDR" with "HDR10+" if hdr10Plus is true, otherwise replace "HDR" with "HDR10" if hdr10 is true
-                                            if (hdr10Plus) {
-                                                if (infoText.includes("HDR")) {
-                                                    infoText = infoText.replace("HDR", "HDR10+");
-                                                } else if (!infoText.includes("HDR10+")) {
-                                                    infoText += " HDR10+";
-                                                }
-                                            } else if (hdr10) {
-                                                if (infoText.includes("HDR")) {
-                                                    infoText = infoText.replace("HDR", "HDR10");
-                                                } else if (!infoText.includes("HDR10")) {
-                                                    infoText += " HDR10";
-                                                }
-                                            }
-
-                                            // Append "DV" if dv is true and not already present
-                                            if (dv) {
-                                                if (hdr10Plus && !infoText.includes("DV HDR10+")) {
-                                                    infoText = "DV HDR10+ " + infoText.replace("HDR10+", "").replace("HDR10", "").replace("DV", "").trim();
-                                                } else if (hdr10 && !infoText.includes("DV HDR10")) {
-                                                    infoText = "DV HDR10 " + infoText.replace("HDR10+", "").replace("HDR10", "").replace("DV", "").trim();
-                                                } else if (!infoText.includes("DV")) {
-                                                    infoText = "DV " + infoText;
-                                                }
-                                            }
-
-                                            const bdType = get_blu_ray_disc_type(d.size);
-                                            if (infoText.includes("Blu-ray")) {
-                                                infoText = `${bdType} ${infoText}`;
-                                            }
-
-                                            const comms = (d.commentary === 1);
-                                            if (comms) {
-                                                infoText = "Commentary " + infoText;
-                                            }
-                                        }
-                                    }
+                            if (matchedGroup) {
+                                groupText = matchedGroup;
+                                if (improved_tags) {
+                                    infoText = infoText.replace(groupText, '').trim();
                                 }
                             }
+
+                            const match = infoText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
+                            if (match) {
+                                groupText = match[1].replace(/[^a-z0-9]/gi, '');
+                                if (improved_tags) {
+                                    infoText = infoText.replace(`-${match[1]}`, '').trim();
+                                }
+                            }
+
+                                if (improved_tags) {
+                                    // Handle HDR and DV tags
+                                    const dv = (d.dv === 1);
+                                    const hdr10 = (d.hdr10 === 1);
+                                    const hdr10Plus = (d["hdr10+"] === 1);
+
+                                    if (hdr10Plus) {
+                                        if (infoText.includes("HDR")) {
+                                            infoText = infoText.replace("HDR", "HDR10+");
+                                        } else if (!infoText.includes("HDR10+")) {
+                                            infoText += " HDR10+";
+                                        }
+                                    } else if (hdr10) {
+                                        if (infoText.includes("HDR")) {
+                                            infoText = infoText.replace("HDR", "HDR10");
+                                        } else if (!infoText.includes("HDR10")) {
+                                            infoText += " HDR10";
+                                        }
+                                    }
+
+                                    // Append DV tag
+                                    if (dv) {
+                                        if (hdr10Plus && !infoText.includes("DV HDR10+")) {
+                                            infoText = "DV HDR10+ " + infoText.replace("HDR10+", "").replace("HDR10", "").replace("DV", "").trim();
+                                        } else if (hdr10 && !infoText.includes("DV HDR10")) {
+                                            infoText = "DV HDR10 " + infoText.replace("HDR10+", "").replace("HDR10", "").replace("DV", "").trim();
+                                        } else if (!infoText.includes("DV")) {
+                                            infoText = "DV " + infoText;
+                                        }
+                                    }
+
+                                    // Append Blu-ray type
+                                    const bdType = get_blu_ray_disc_type(d.size);
+                                    if (infoText.includes("Blu-ray")) {
+                                        infoText = `${bdType} ${infoText}`;
+                                    }
+
+                                    // Append Commentary tag
+                                    if (d.commentary === 1) {
+                                        infoText = "Commentary " + infoText;
+                                    }
+                                }
+
                             const is25 = d.promo25 === 1 ? true : false;
                             const is50 = d.promo50 === 1 ? true : false;
                             const is75 = d.promo75 === 1 ? true : false;
@@ -2581,7 +2584,6 @@
                             const isDisc = d.type_medium === 1 ? true : false;
                             const isCapture = d.type_medium === 4 ? true : false;
                             const isWeb = d.type_medium === 6 ? true : false;
-                            const isHdtv = infoText.includes("HDTV");
                             const isInternal = d.type_origin === 1 ? true : false;
                             const isDoco = d.type_category === 3 ? true : false;
                             const isTv = d.type_category === 2 ? true : false;
@@ -2590,7 +2592,7 @@
                                 if (d.freeleech === "yes") {
                                     discountText = "Freeleech";
                                 } else {
-                                    if (isInternal || isRemux || isDisc || isCapture || isHdtv || isTv || isMiniSeriesFromSpan || isDoco) {
+                                    if (isInternal || isRemux || isDisc || isCapture ||  isTv || isDoco) {
                                     discountText = "50% Freeleech";
                                     }
                                   else if (isWeb && isInternal) {
