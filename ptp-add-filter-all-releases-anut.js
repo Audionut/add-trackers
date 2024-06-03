@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.6.3-A
+// @version      3.6.4-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -655,14 +655,17 @@
                 "Silence QxR",
                 "0xC0",
                 "r00t QxR",
-                "AI-Raws"
+                "AI-Raws",
+                "3L",
+                "3DAccess"
                 //"ExampleText3"
             ];
         };
 
         const badGroups = () => {
             return [
-                "NOGRP"
+                "NOGRP",
+                "nogroup"
                 //"ExampleText2",
                 //"ExampleText3"
             ];
@@ -3436,12 +3439,12 @@
             else if (lower.includes("hdr10 / dv")) return "Dolby Vision / HDR10 / ";
             else if (lower.includes("hdr / dv")) return "Dolby Vision / HDR10 / ";
             else if (lower.includes("hdr dv")) return "Dolby Vision / HDR10 / ";
-            else if (lower.includes(" dv ")) return "Dolby Vision / "; // Need spaces or else DVD suddenly has Dolby Vision.
             else if (lower.includes("dovi hdr10+")) return "Dolby Vision / HDR10+ / ";
             else if (lower.includes("dovi hdr10")) return "Dolby Vision / HDR10 / ";
             else if (lower.includes("dovi hdr")) return "Dolby Vision / HDR10 / ";
             else if (lower.includes("dovi")) return "Dolby Vision / ";
             else if (lower.includes("dolby vision")) return "Dolby Vision / ";
+            else if (lower.includes(" dv ")) return "Dolby Vision / "; // Need spaces or else DVD suddenly has Dolby Vision.
             else if (lower.includes("hdr10+")) return "HDR10+ / ";
             else if (lower.includes("hdr10")) return "HDR10 / ";
             else if (lower.includes("hdr")) return "HDR10 / ";
@@ -3469,35 +3472,36 @@
             if (lower.includes("directors cut")) bonuses.push("Directors Cut");
             if (lower.includes("director's cut")) bonuses.push("Directors Cut");
             if (lower.includes("pan & scan")) bonuses.push("Pan & Scan");
-            if (lower.includes("repack2")) bonuses.push("Repack2");
-            else if (lower.includes("repack")) bonuses.push("Repack");
             if (lower.includes("hybrid")) bonuses.push("Hybrid");
             if (lower.includes("proper")) bonuses.push("Proper");
             if (lower.includes("skynet edition")) bonuses.push("Skynet Edition");
             if (lower.includes("ultimate cut")) bonuses.push("Ultimate Cut");
             if (lower.includes("ultimate edition")) bonuses.push("Ultimate Edition");
-            if (lower.includes("extended edition")) bonuses.push("Extended Edition");
-            else if (lower.includes("extended")) bonuses.push("Extended Edition");
             if (lower.includes("remastered")) bonuses.push("Remastered");
             if (lower.includes("commentary")) bonuses.push("Commentary");
             if (lower.includes("10bit")) bonuses.push("10bit");
             if (lower.includes("35mm")) bonuses.push("35mm");
-            if (lower.includes("half-sbs") || lower.includes("half sbs")) {
+            if (lower.includes("hfr")) bonuses.push("High Frame-rate");
+            if (lower.includes("dcp")) bonuses.push("Digital Cinema Package");
+            if (lower.includes("open matte")) bonuses.push("Open Matte");
+            if (lower.includes("audio only track")) bonuses.push("Audio Only Track");
+            if (lower.includes("repack2")) bonuses.push("Repack2");
+            if (lower.includes("extended edition")) bonuses.push("Extended Edition");
+            else if (lower.includes("extended")) bonuses.push("Extended Edition");
+            else if (lower.includes("repack")) bonuses.push("Repack");
+            else if (lower.includes("half-sbs") || lower.includes("half sbs")) {
                 bonuses.push("3D Half SBS");
             }
             else if (lower.includes("half-ou") || lower.includes("half ou")) {
                 bonuses.push("3D Half OU");
             }
             else if (lower.includes("3d")) bonuses.push("3D Edition");
-            if (lower.includes("hfr")) bonuses.push("High Frame-rate");
-            if (lower.includes("dcp")) bonuses.push("Digital Cinema Package");
-            if (lower.includes("open matte")) bonuses.push("Open Matte");
 
             return bonuses.length > 0 ? bonuses.join(" / ") + " / " : null;
         };
 
         const get_country = (normal, torrent) => {
-            const exceptions = ["AVC", "DDP", "DTS", "PAL", "VHS", "WEB", "DVD", "HDR", "GLK", "UHD", "AKA", "TMT", "HDT", "ABC", "MKV", "AVI", "MP4", "VOB", "MAX", "HFR", "SDR", "DCP", "MVC"]; // Add any other exceptions as needed
+            const exceptions = ["AVC", "DDP", "DTS", "PAL", "VHS", "WEB", "DVD", "HDR", "GLK", "UHD", "AKA", "TMT", "HDT", "ABC", "MKV", "AVI", "MP4", "VOB", "MAX", "HFR", "SDR", "DCP", "MVC", "SBS", "CUT"]; // Add any other exceptions as needed
             const countryCodeMatch = normal.match(/\b[A-Z]{3}\b/g);
             if (countryCodeMatch) {
                 const filteredCodes = countryCodeMatch.filter(code => !exceptions.includes(code));
