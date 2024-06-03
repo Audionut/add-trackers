@@ -3170,9 +3170,18 @@
                         const mediaInfo = element.attributes.media_info;
                         if (mediaInfo) {
                             let isHdr10Plus = mediaInfo.includes("HDR10+");
+                            let isHdr10 = mediaInfo.includes("HDR10");
                             let isCommentary = mediaInfo.includes("Commentary");
                             if (isHdr10Plus) {
                                 updatedInfoText = updatedInfoText.replace("HDR", "HDR10+");
+                            }
+                            if (isHdr10) {
+                                updatedInfoText = updatedInfoText.replace("HDR", "HDR10");
+                            }
+                            if (improved_tags) {
+                                if (!updatedInfoText.includes("HDR")) {
+                                    updatedInfoText = updatedInfoText += "HDR10";
+                                }
                             }
                             if (improved_tags) {
                                 if (isCommentary) {
