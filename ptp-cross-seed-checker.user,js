@@ -1,0 +1,488 @@
+// ==UserScript==
+// @name         PTP Cross-Seed Checker
+// @version      0.0.7
+// @author       Ignacio (additions by Audionut)
+// @description  Find cross-seedable and Add cross-seed markers to non-ptp releases
+// @match        https://passthepopcorn.me/torrents.php*
+// @grant        GM_setValue
+// @grant        GM_getValue
+// @grant        GM_registerMenuCommand
+// @run-at       document-start
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    let dnum = GM_getValue('dnumlimit', 5); // Size tolerance
+    let pnum = GM_getValue('pnumlimit', 10);
+    let size = GM_getValue('rowhtsize', 8); // Empty row height
+    let pcs = GM_getValue('pcscheckbox', true); // Optional partial cross-seedable releases recognition
+
+    let defaultdnum = 5;
+    let defaultpnum = 10;
+    let defaultsize = 8;
+    let defaultpcs = true;
+
+    function settingsmenu() {
+        const settingsDialog = document.createElement('div');
+        settingsDialog.id = 'cs_settingsDialog';
+        settingsDialog.innerHTML = `
+        <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 9999; background: #f5f5f5; padding: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); max-width: 400px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="margin: 0; font-weight: bold; color: #333; text-decoration: underline;">Settings</h2>
+                <button id="cs_closeSettings" style="background: none; border: none; font-size: 20px; color: darkred; cursor: pointer;">&times;</button>
+            </div>
+            <div style="display: flex; flex-direction: column;">
+                <div style="display: flex; flex-direction: row; margin-bottom: 10px; justify-content: space-between;">
+                    <label for="dnumLimit" style="font-weight: bold; margin-bottom: 5px; margin-right: 10px; align-self: center; color: #001f3f;">Tolerance Size limit (MiB) TCS:</label>
+                    <input type="number" id="dnumLimit" value="${dnum}" style="padding: 8px; border-radius: 5px; border: 1px solid #ccc; width: 125px;">
+                </div>
+                <div style="display: flex; flex-direction: row; margin-bottom: 10px; justify-content: space-between;">
+                    <label for="pnumLimit" style="font-weight: bold; margin-bottom: 5px; margin-right: 10px; align-self: center; color: #001f3f;">Tolerance Size limit (MiB) PCS:</label>
+                    <input type="number" id="pnumLimit" value="${pnum}" style="padding: 8px; border-radius: 5px; border: 1px solid #ccc; width: 125px;">
+                </div>
+                <div style="display: flex; flex-direction: row; margin-bottom: 10px; justify-content: space-between;">
+                    <label for="rowhtSize" style="font-weight: bold; margin-bottom: 5px; margin-right: 10px; align-self: center; color: #001f3f;">Empty Row Height (px):</label>
+                    <input type="number" id="rowhtSize" value="${size}" style="padding: 8px; border-radius: 5px; border: 1px solid #ccc; width: 125px;">
+                </div>
+                <div style="display: flex; flex-direction: row; margin-bottom: 10px;">
+                    <label for="pcsCheckbox" style="font-weight: bold; margin-bottom: 5px; margin-right: 10px; align-self: center; color: #001f3f;">Show Partial Cross-Seedable:</label>
+                    <input type="checkbox" id="pcsCheckbox" ${pcs ? 'checked' : ''} style="align-self: center;">
+                </div>
+            </div>
+            <div style="margin-top: 20px; display: flex; justify-content: space-between;">
+                <button id="cs_resetSettings" style="background-color: #FF5733; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">Reset</button>
+                <button id="cs_saveSettings" style="background-color: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">Save</button>
+            </div>
+        </div>
+    `;
+
+        document.body.appendChild(settingsDialog);
+
+        document.getElementById('cs_resetSettings').addEventListener('click', function() {
+            document.getElementById('dnumLimit').value = dnum;
+            document.getElementById('pnumLimit').value = pnum;
+            document.getElementById('rowhtSize').value = size;
+            document.getElementById('pcsCheckbox').checked = pcs;
+
+            GM_setValue('dnumlimit', defaultdnum);
+            GM_setValue('pnumlimit', defaultpnum);
+            GM_setValue('rowhtsize', defaultsize);
+            GM_setValue('pcscheckbox', defaultpcs);
+
+            alert('Settings reset to defaults and saved successfully!');
+
+            document.getElementById('cs_settingsDialog').style.display = 'none';
+        });
+
+        document.getElementById('cs_saveSettings').addEventListener('click', function() {
+            const newDnumLimit = parseInt(document.getElementById('dnumLimit').value, 10);
+            const newPnumLimit = parseInt(document.getElementById('pnumLimit').value, 10);
+            const newRowhtSize = parseInt(document.getElementById('rowhtSize').value, 10);
+            const newPcsCheckbox = document.getElementById('pcsCheckbox').checked;
+
+            dnum = newDnumLimit;
+            pnum = newPnumLimit;
+            size = newRowhtSize;
+            pcs = newPcsCheckbox;
+
+            GM_setValue('dnumlimit', newDnumLimit);
+            GM_setValue('pnumlimit', newPnumLimit);
+            GM_setValue('rowhtsize', newRowhtSize);
+            GM_setValue('pcscheckbox', newPcsCheckbox);
+
+            alert('Settings saved successfully!');
+
+            document.getElementById('cs_settingsDialog').style.display = 'none';
+        });
+
+        document.getElementById('cs_closeSettings').addEventListener('click', function() {
+            settingsDialog.style.display = 'none';
+        });
+
+    }
+
+    GM_registerMenuCommand('Open Settings', function() {
+        let settingsDialog = document.getElementById('cs_settingsDialog');
+        if (!settingsDialog) {
+            settingsmenu();
+            settingsDialog = document.getElementById('cs_settingsDialog');
+        }
+        settingsDialog.style.display = 'block';
+    });
+    function rowSorter(pcs = false, dnum, pnum) {
+        return new Promise((resolve, reject) => {
+            try {
+                const allRows = document.querySelectorAll('.torrent_table tr.group_torrent.group_torrent_header');
+                const regex = /ptp_\d+/;
+                const { ptpRows, otherRows } = classifyRows(allRows, regex);
+                const ptpRowsData = parsePtpRowsData(ptpRows);
+                const otherRowsData = parseOtherRowsData(otherRows);
+
+                matchRows(ptpRows, ptpRowsData, otherRowsData, pcs, dnum, pnum);
+
+                resolve("Rows sorted successfully");
+            } catch (error) {
+                reject("Error in row sorter: " + error);
+            }
+        });
+    }
+
+
+    function classifyRows(rows, regex) {
+        const ptpRows = [];
+        const otherRows = [];
+
+        rows.forEach(row => {
+            if (Array.from(row.classList).some(className => regex.test(className))) {
+                ptpRows.push(row);
+            } else {
+                otherRows.push(row);
+            }
+        });
+
+        return { ptpRows, otherRows };
+    }
+
+    function parsePtpRowsData(ptpRows) {
+        return Array.from(ptpRows).map(row => {
+            const group = row.getAttribute('data-releasegroup') || '';
+            const NameEl = row.querySelector('.torrent-info-link') || '';
+            const rawName = NameEl ? NameEl.textContent : '';
+            const sizeEl = row.querySelector('.nobr span[title]');
+            const rawSize = sizeEl ? sizeEl.getAttribute('title') : '';
+            const size = rawSize ? parseInt(rawSize.replace(/[^0-9]/g, '')) : 0;
+            const { pl, dl } = actionElsparser(row);
+            return { group, size, pl, dl, rawName };
+        });
+    }
+
+    function actionElsparser(row) {
+        const actionSpan = row.querySelector('.basic-movie-list__torrent__action');
+        const plEl = actionSpan ? actionSpan.querySelector('a[title="Permalink"]') : null;
+        const pl = plEl ? plEl.getAttribute('href') : '';
+        const dlEl = actionSpan ? actionSpan.querySelector('a[title="Download"]') : null;
+        const dl = dlEl ? dlEl.getAttribute('href') : '';
+        return { pl, dl };
+    }
+
+    function parseOtherRowsData(otherRows) {
+        return Array.from(otherRows).map(row => {
+            const rawGroup = row.getAttribute('data-releasegroup') || '';
+            const NameEl = row.querySelector('.torrent-info-link') || '';
+            const rawName = NameEl ? NameEl.textContent : '';
+            const sizeEl = row.querySelector('.nobr .size-span');
+            const rawSize = sizeEl ? sizeEl.getAttribute('title') : '';
+            const size = rawSize ? parseInt(rawSize.replace(/[^0-9]/g, '')) : 0;
+            const classList = Array.from(row.classList);
+            const classid = classList.length > 0 ? classList[classList.length - 1] : '';
+            return { group: rawGroup, size, classid, rawName };
+        });
+    }
+
+    function matchRows(ptpRows, ptpRowsData, otherRowsData, enablePCS, dnum, pnum) {
+        otherRowsData.forEach(otherRow => {
+            const matchingPTPRow = TCSfinder(ptpRowsData, otherRow, dnum);
+
+            if (matchingPTPRow) {
+                const tcsLink = createLink('TCS', matchingPTPRow.pl, 'Total Cross-Seed compatibility - Identical Release', 'greenyellow');
+                const infoLink = createInfoLink();
+
+                actionSpnupdater(otherRow, tcsLink, infoLink);
+                infoLinklistener(infoLink, ptpRows, matchingPTPRow);
+            } else if (enablePCS && otherRow.size) {
+                const matchingPTPRowPCS = PCSfinder(ptpRowsData, otherRow, pnum);
+
+                if (matchingPTPRowPCS) {
+                    const pcsLink = createLink('PCS', matchingPTPRowPCS.pl, 'Partial Cross-Seed compatibility - Re-verify File/Folder Structure', 'orange');
+                    const infoLinkPCS = createInfoLink();
+
+                    actionSpnupdater(otherRow, pcsLink, infoLinkPCS);
+                    infoLinklistener(infoLinkPCS, ptpRows, matchingPTPRowPCS);
+                }
+            }
+        });
+    }
+
+    function TCSfinder(ptpRowsData, otherRow, num) {
+        const toleranceBytes = num * 1024 * 1024;
+        return ptpRowsData.find(ptpRow =>
+            ptpRow.group.toLowerCase() === otherRow.group.toLowerCase() &&
+            Math.abs(ptpRow.size - otherRow.size) <= toleranceBytes
+        );
+    }
+
+    function PCSfinder(ptpRowsData, otherRow, pnum) {
+        const toleranceBytes = pnum * 1024 * 1024; // Convert MiB to bytes
+
+        if (otherRow.rawName.includes("Audio Only Track")) {
+            return null;
+        }
+
+        // Find a match with the same "DV" status
+        const otherRowHasDV = otherRow.rawName.includes("DV");
+
+        // Find a match with the same "HDR" status
+        const otherRowHasHDR = /HDR/i.test(otherRow.rawName);
+
+        return ptpRowsData.find(ptpRow => {
+            const ptpRowHasDV = ptpRow.rawName.includes("DV");
+            const ptpRowHasHDR = /HDR/i.test(ptpRow.rawName);
+
+            return (
+                (otherRow.group.length === 0 || ptpRow.group.toLowerCase() === otherRow.group.toLowerCase()) &&
+                Math.abs(ptpRow.size - otherRow.size) <= toleranceBytes && // Size within PCS tolerance
+                !(ptpRow.group.toLowerCase() === otherRow.group.toLowerCase() && Math.abs(ptpRow.size - otherRow.size) <= (dnum * 1024 * 1024)) && // Ensure not a TCS match
+                otherRowHasDV === ptpRowHasDV && // Ensure DV matches
+                otherRowHasHDR === ptpRowHasHDR // Ensure HDR matches
+            );
+        });
+    }
+    function createLink(text, href, title, color) {
+        const link = document.createElement('a');
+        link.href = href;
+        link.className = 'link_2';
+        link.title = title;
+        link.textContent = text;
+        link.style.color = color;
+        link.style.textShadow = '0 0 5px ' + color;
+        return link;
+    }
+
+    function createInfoLink() {
+        const infoLink = document.createElement('a');
+        infoLink.href = '#';
+        infoLink.className = 'torrent-info-link.link4';
+        infoLink.textContent = 'INFO';
+        infoLink.style.color = '#ff1493';
+        infoLink.style.textShadow = '0 0 5px #ff1493';
+        return infoLink;
+    }
+
+    function actionSpnupdater(otherRow, mainLink, infoLink) {
+        const otherRowElement = document.querySelector(`.${otherRow.classid}`);
+        const existingActionSpan = otherRowElement ? otherRowElement.querySelector('.basic-movie-list__torrent__action') : null;
+
+        if (existingActionSpan) {
+            // Check if the mainLink already exists
+            const existingLinks = Array.from(existingActionSpan.querySelectorAll('a'));
+            const mainLinkExists = existingLinks.some(link => link.href === mainLink.href);
+
+            if (!mainLinkExists) {
+                const existingDownloadLink = existingActionSpan.querySelector('a[title="Download"]');
+                if (existingDownloadLink) {
+                    existingActionSpan.removeChild(existingActionSpan.lastChild);
+                    existingActionSpan.appendChild(document.createTextNode('| '));
+                    existingActionSpan.appendChild(mainLink);
+                    existingActionSpan.appendChild(document.createTextNode(' | '));
+                    existingActionSpan.appendChild(infoLink);
+                    existingActionSpan.appendChild(document.createTextNode(' ]'));
+                }
+            }
+        }
+    }
+
+    function infoLinklistener(infoLink, ptpRows) {
+        infoLink.addEventListener('click', function(event) {
+            event.preventDefault();
+            const linkHref = this.parentNode.querySelector('a.link_2').href;
+            const ptpRow = ptpRows.find(row => {
+                const plAnc = row.querySelector('a[title="Permalink"]');
+                return plAnc && plAnc.href === linkHref;
+            });
+            if (ptpRow) {
+                const infoAnc = ptpRow.querySelector('.torrent-info-link');
+                if (infoAnc) {
+                    infoAnc.click();
+                    this.focus();
+                }
+            }
+        });
+    }
+
+    function rearranger(size) {
+        let spx = `${size}px`;
+
+        return new Promise((resolve, reject) => {
+            try {
+                function getRowsWithTextContent(content) {
+                    const allRows = document.querySelectorAll('.torrent_table tr.group_torrent.group_torrent_header');
+                    const filteredRows = Array.from(allRows).filter(row => {
+                        const link = row.querySelector('a.link_2');
+                        return link && (link.textContent.toLowerCase() === content.toLowerCase());
+                    });
+                    return filteredRows;
+                }
+
+                function getRowsWithPLAnchors() {
+                    const allRows = document.querySelectorAll('.torrent_table tr.group_torrent.group_torrent_header');
+                    const filteredRows = Array.from(allRows).filter(row => {
+                        const plAnchor = row.querySelector('a[title="Permalink"]');
+                        return plAnchor !== null;
+                    });
+                    return filteredRows;
+                }
+
+                function getRowsWithPCS() {
+                    const allRows = document.querySelectorAll('.torrent_table tr.group_torrent.group_torrent_header');
+                    const filteredRows = Array.from(allRows).filter(row => {
+                        const link = row.querySelector('a.link_2');
+                        return link && (link.textContent.toLowerCase() === 'pcs');
+                    });
+                    return filteredRows;
+                }
+
+                const rowsWithTCS = getRowsWithTextContent('tcs');
+                const rowsWithPCS = getRowsWithPCS();
+                const rowsWithPLAnchors = getRowsWithPLAnchors();
+
+                rowsWithPLAnchors.forEach(plRow => {
+                    const plAnchor = plRow.querySelector('a[title="Permalink"]');
+                    if (plAnchor) {
+                        const plHref = plAnchor.getAttribute('href');
+                        // console.log("PL anchor href:", plHref);
+                        const matchingTCSRows = rowsWithTCS.filter(tcsRow => {
+                            const tcsAnchor = tcsRow.querySelector('a.link_2');
+                            return tcsAnchor && tcsAnchor.getAttribute('href') === plHref;
+                        });
+                        const matchingPCSRows = rowsWithPCS.filter(pcsRow => {
+                            const pcsAnchor = pcsRow.querySelector('a.link_2');
+                            return pcsAnchor && pcsAnchor.getAttribute('href') === plHref;
+                        });
+                        // console.log("Matching TCS rows:", matchingTCSRows);
+                        // console.log("Matching PCS rows:", matchingPCSRows);
+                        const combinedRows = [...matchingPCSRows, ...matchingTCSRows];
+
+                        combinedRows.forEach((combinedRow, index) => {
+                            let emptyRowAbovePl = plRow.previousElementSibling;
+                            if (!emptyRowAbovePl || !emptyRowAbovePl.classList.contains('empty-row')) {
+                                emptyRowAbovePl = document.createElement('tr');
+                                emptyRowAbovePl.className = 'empty-row';
+                                emptyRowAbovePl.style.height = spx;
+                                plRow.parentNode.insertBefore(emptyRowAbovePl, plRow);
+                            }
+
+                            let siblingRow = plRow.nextElementSibling;
+                            while (siblingRow && !siblingRow.classList.contains('torrent_info_row')) {
+                                siblingRow = siblingRow.nextElementSibling;
+                            }
+
+                            if (siblingRow) {
+                                plRow.parentNode.insertBefore(combinedRow, siblingRow.nextSibling);
+                            } else {
+                                plRow.parentNode.insertBefore(combinedRow, plRow.nextSibling);
+                            }
+
+                            if (index === 0) {
+                                const emptyRowAfterFirstCombined = document.createElement('tr');
+                                emptyRowAfterFirstCombined.className = 'empty-row';
+                                emptyRowAfterFirstCombined.style.height = spx;
+                                plRow.parentNode.insertBefore(emptyRowAfterFirstCombined, combinedRow.nextSibling);
+                            }
+                        });
+                    }
+                });
+                resolve();
+            } catch (error) {
+                reject("Error in rearranger: " + error);
+            }
+        });
+    }
+
+    function cleaner() {
+        return new Promise((resolve, reject) => {
+            try {
+                const allRows = document.querySelectorAll('.torrent_table tr');
+
+                const featureFilmRows = Array.from(allRows).filter(row => {
+                    const spanElements = row.querySelectorAll('span');
+                    return Array.from(spanElements).some(span =>
+                        span.textContent.includes('Feature Film') || span.textContent.includes('Miniseries') || span.textContent.includes('Short Film') || span.textContent.includes('Stand-up Comedy') || span.textContent.includes('Live Performance') || span.textContent.includes('Movie Collection')
+                    );
+                });
+
+                featureFilmRows.forEach(featureFilmRow => {
+                    let prevSibling = featureFilmRow.previousElementSibling;
+                    while (prevSibling && prevSibling.classList.contains('empty-row')) {
+                        featureFilmRow.parentNode.removeChild(prevSibling);
+                        prevSibling = featureFilmRow.previousElementSibling;
+                    }
+
+                    let nxtSibling = featureFilmRow.nextElementSibling;
+                    while (nxtSibling && nxtSibling.classList.contains('empty-row')) {
+                        featureFilmRow.parentNode.removeChild(nxtSibling);
+                        nxtSibling = featureFilmRow.nextElementSibling;
+                    }
+                });
+
+                const updatedAllRows = document.querySelectorAll('.torrent_table tr');
+                let previousRowWasEmpty = false;
+                Array.from(updatedAllRows).forEach(row => {
+                    if (row.classList.contains('empty-row')) {
+                        if (previousRowWasEmpty) {
+                            row.parentNode.removeChild(row);
+                        } else {
+                            previousRowWasEmpty = true;
+                        }
+                    } else {
+                        previousRowWasEmpty = false;
+                    }
+                });
+                resolve();
+            } catch (error) {
+                reject("Error in cleaner: " + error);
+            }
+        });
+    }
+
+    function recleaner() {
+        return new Promise((resolve, reject) => {
+            try {
+                const allRows = document.querySelectorAll('.torrent_table tr');
+                const lastRow = allRows[allRows.length - 1];
+
+                if (lastRow && lastRow.classList.contains('empty-row')) {
+                    lastRow.remove();
+                    resolve();
+                } else {
+                    resolve();
+                }
+            } catch (error) {
+                reject("Error in recleaner: " + error);
+            }
+        });
+    }
+
+
+    document.addEventListener('PTPAddReleasesFromOtherTrackersComplete', function(event) {
+        rowSorter(pcs, dnum, pnum)
+            .then(() => {
+                return rearranger(size);
+            })
+            .then(() => {
+                return cleaner();
+            })
+            .then(() => {
+                return recleaner();
+            })
+            .catch(error => {
+                console.error('An error occurred:', error);
+            });
+    });
+    document.addEventListener('SortingComplete', function(event) {
+        rowSorter(pcs, dnum, pnum)
+            .then(() => {
+                return rearranger(size);
+            })
+            .then(() => {
+                return cleaner();
+            })
+            .then(() => {
+                return recleaner();
+            })
+            .catch(error => {
+                console.error('An error occurred:', error);
+            });
+    });
+
+})();
