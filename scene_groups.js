@@ -34,7 +34,7 @@ const sceneGroups = [
     "GETiT", "GFW", "GHOULS", "GiMBAP", "GiMCHi", "GL", "GM4F", "GMB", "Goatlove", "GOOGLE", "GORE", 
     "GreenBlade", "GUACAMOLE", "GUYLiAN", "GZP", "GGWP", "GGEZ", "GLHF",
     "HACO", "HAGGiS", "HAFVCD", "HALCYON", "HANNIBAL", "HCA", "HD_Leaks", "HD1080", "HD4U", 
-    "HDCLASSiCS", "HDCP", "HDEX", "HDi", "HDMI", "HDpure", "HiFi (DVDs)", "HLS", "HooKah", "HiVE", 
+    "HDCLASSiCS", "HDCP", "HDEX", "HDi", "HDMI", "HDpure", "HiFi", "HLS", "HooKah", "HiVE", 
     "HYGGE", "HTO", "hV", "HYBRiS", "HyDe",
     "iFN", "iFPD", "iGNiTE", "iGNiTiON", "IGUANA", "iHATE", "iKA", "iLG", "iLLUSiON", "iLS", "iMBT", 
     "IMMERSE", "iMMORTALS", "iMOVANE", "iNCiTE", "iNCLUSION", "iNFAMOUS", "iNGOT", "iNjECTiON", 
