@@ -88,3 +88,5 @@ const sceneGroups = [
     "YCDV", "YELLOWBiRD", "YesTV",
     "ZEST", "ZZGtv"
 ];
+
+export default sceneGroups;
