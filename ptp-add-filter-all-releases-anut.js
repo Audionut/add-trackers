@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.6.7-A
+// @version      3.6.8-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -14,6 +14,7 @@
 // @grant        GM.setValue
 // @grant        GM.registerMenuCommand
 // @require      https://cdn.jsdelivr.net/gh/sizzlemctwizzle/GM_config@43fd0fe4de1166f343883511e53546e87840aeaf/gm_config.js
+// @require      https://github.com/Audionut/add-trackers/raw/main/scene_groups.js
 // ==/UserScript==
 
 (function () {
@@ -2919,6 +2920,13 @@
 
                                       return tempText;
                                   };
+                                  let updatedText = replaceFullStops(cleanTheText);
+                                  const extension = d.Container;
+                                  if (improved_tags) {
+                                      if (extension) {
+                                          updatedText = `${updatedText} ${extension}`;
+                                      }
+                                  }
                                   const id = d.GroupID;
                                   const tid = d.TorrentID;
                                   const pageURL = 'https://broadcasthe.net/torrents.php?id=';
@@ -2927,7 +2935,7 @@
                                       api_size: api_size,
                                       datasetRelease: originalInfoText,
                                       size: size,
-                                      info_text: replaceFullStops(cleanTheText),
+                                      info_text: updatedText,
                                       tracker: tracker,
                                       site: tracker,
                                       snatch: parseInt(d.Snatched) || 0,
@@ -3527,10 +3535,10 @@
             if (lower.includes("open matte")) bonuses.push("Open Matte");
             if (lower.includes("audio only track")) bonuses.push("Audio Only Track");
             if (lower.includes("repack2")) bonuses.push("Repack2");
+            else if (lower.includes("repack")) bonuses.push("Repack");
             if (lower.includes("extended edition")) bonuses.push("Extended Edition");
             else if (lower.includes("extended")) bonuses.push("Extended Edition");
-            else if (lower.includes("repack")) bonuses.push("Repack");
-            else if (lower.includes("half-sbs") || lower.includes("half sbs")) {
+            if (lower.includes("half-sbs") || lower.includes("half sbs")) {
                 bonuses.push("3D Half SBS");
             }
             else if (lower.includes("half-ou") || lower.includes("half ou")) {
@@ -3719,12 +3727,18 @@
                     }
                 }
                 if (improved_tags) {
+                    const torrentInfoLink = cln.querySelector(".torrent-info-link");
+
                     if (torrent.discount === "Freeleech" || torrent.discount === "Golden") {
-                        cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__download-modifier torrent-info__download-modifier--free'>Freeleech!</span>";
+                        torrentInfoLink.innerHTML += " / <span class='torrent-info__download-modifier torrent-info__download-modifier--free'>Freeleech!</span>";
                     } else if (torrent.discount === "50% Freeleech" || torrent.discount === "Bronze") {
-                        cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__download-modifier torrent-info__download-modifier--half'>Half-leech!</span>";
+                        torrentInfoLink.innerHTML += " / <span class='torrent-info__download-modifier torrent-info__download-modifier--half'>Half-leech!</span>";
                     } else if (torrent.discount != "None") {
-                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__download-mod'>${torrent.discount}!</span>`;
+                        torrentInfoLink.innerHTML += ` / <span class='torrent-info__download-mod'>${torrent.discount}!</span>`;
+                    }
+
+                    if (sceneGroups.includes(torrent.groupId)) {
+                        torrentInfoLink.innerHTML += " / <span class='torrent-info__scene'>Scene</span>";
                     }
                 } else {
                     if (torrent.discount != "None") {
