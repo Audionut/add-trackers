@@ -2557,6 +2557,8 @@
                             const pageURL = 'https://hdbits.org/details.php?id=';
                             const torrent = d.filename;
                             const releaseName = d.filename.replace(/\.torrent$/, "");
+                            const pullExtention = releaseName.match(/[^.]+$/);
+                            const extention = pullExtention ? pullExtention[0] : null;
 
                             // Check if web.dl, web-dl, or webdl is present in the infoText
                             const isWebDL = /web.dl|web-dl|webdl/i.test(infoText);
@@ -2590,13 +2592,21 @@
                                     finalReleaseName = `${tags} ${releaseName}`;
                                 }
                             }
-                            const bdType = get_blu_ray_disc_type(d.size);
-                            if (improved_tags && infoText.includes("Blu-ray") && (infoText.includes("1080p") || infoText.includes("2160p"))) {
-                                infoText = `${bdType} ${infoText}`;
-                            }
-                            const isAudioOnly = d.type_category === 6 ? true : false;
-                            if (isAudioOnly) {
-                                infoText = infoText += "Audio Only Track";
+                            if (improved_tags) {
+                                const bdType = get_blu_ray_disc_type(d.size);
+                                if (improved_tags && infoText.includes("Blu-ray") && (infoText.includes("1080p") || infoText.includes("2160p"))) {
+                                    infoText = `${bdType} ${infoText}`;
+                                }
+                                const isAudioOnly = d.type_category === 6 ? true : false;
+                                if (isAudioOnly) {
+                                    infoText = infoText += "Audio Only Track";
+                                }
+                                if (extention) {
+                                    infoText = `${infoText} ${extention}`;
+                                }
+                                if (releaseName && releaseName.includes("Blu-ray") && (!infoText.includes("Blu-ray"))) {
+                                    infoText = infoText += "Blu-ray";
+                                }
                             }
                             const isRemux = d.type_medium === 5 ? true : false;
                             const isDisc = d.type_medium === 1 ? true : false;
