@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.6.8-A
+// @version      3.6.9-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -1749,6 +1749,10 @@
                     torrent_obj.size = size;
 
                     let releaseName = d.querySelector("div.col-md-8.col-xl-8 a.font-weight-bold")?.textContent.trim() || "";
+                    let res = d.querySelector("div.col-md-8.col-xl-8 a.d-inline-block")?.textContent.trim() || "";
+                    if (res) {
+                        releaseName = `${releaseName} ${res}`;
+                    }
 
                     torrent_obj.datasetRelease = releaseName;
                     let groupText = "";
@@ -3188,22 +3192,23 @@
                         const mediaInfo = element.attributes.media_info;
                         if (mediaInfo) {
                             let isHdr10Plus = mediaInfo.includes("HDR10+");
-                            let isHdr10 = mediaInfo.includes("HDR10");
+                            let isHdr10 = mediaInfo.includes("HDR10 compatible") || mediaInfo.includes("HDR10");
                             let isCommentary = mediaInfo.includes("Commentary");
-                            if (isHdr10Plus) {
-                                updatedInfoText = updatedInfoText.replace("HDR", "HDR10+");
-                            }
-                            if (isHdr10) {
-                                updatedInfoText = updatedInfoText.replace("HDR", "HDR10");
-                                if (improved_tags) {
-                                    if (!updatedInfoText.includes("HDR")) {
-                                        updatedInfoText = updatedInfoText += "HDR10";
+                            if (improved_tags) {
+                                if (isHdr10Plus) {
+                                    if (!updatedInfoText.includes("HDR10+")) {
+                                        updatedInfoText = "HDR10+ " + updatedInfoText.replace("HDR", "").trim();
+                                    }
+                                } else if (isHdr10) {
+                                    if (!updatedInfoText.includes("HDR10")) {
+                                        updatedInfoText = "HDR10 " + updatedInfoText.replace("HDR", "").trim();
+                                    } else if (!updatedInfoText.includes("HDR")) {
+                                        updatedInfoText = "HDR10 " + updatedInfoText;
                                     }
                                 }
-                            }
-                            if (improved_tags) {
-                                if (isCommentary) {
-                                    updatedInfoText = updatedInfoText += "Commentary";
+
+                                if (isCommentary && !updatedInfoText.includes("Commentary")) {
+                                    updatedInfoText = "Commentary " + updatedInfoText;
                                 }
                             }
                         }
