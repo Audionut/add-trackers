@@ -89,4 +89,6 @@ const sceneGroups = [
     "ZEST", "ZZGtv"
 ];
 
-export default sceneGroups;
+if (typeof window !== 'undefined') {
+    window.sceneGroups = sceneGroups;
+}
