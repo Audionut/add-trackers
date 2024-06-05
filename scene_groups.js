@@ -35,7 +35,7 @@ const sceneGroups = [
     "GreenBlade", "GUACAMOLE", "GUYLiAN", "GZP", "GGWP", "GGEZ", "GLHF",
     "HACO", "HAGGiS", "HAFVCD", "HALCYON", "HANNIBAL", "HCA", "HD_Leaks", "HD1080", "HD4U", 
     "HDCLASSiCS", "HDCP", "HDEX", "HDi", "HDMI", "HDpure", "HiFi", "HLS", "HooKah", "HiVE", 
-    "HYGGE", "HTO", "hV", "HYBRiS", "HyDe",
+    "HYGGE", "HTO", "hV", "HYBRiS", "HyDe", "IAMABLE",
     "iFN", "iFPD", "iGNiTE", "iGNiTiON", "IGUANA", "iHATE", "iKA", "iLG", "iLLUSiON", "iLS", "iMBT", 
     "IMMERSE", "iMMORTALS", "iMOVANE", "iNCiTE", "iNCLUSION", "iNFAMOUS", "iNGOT", "iNjECTiON", 
     "INSECTS", "iNSPiRE", "iNSPiRED", "iNTiMiD", "iNVANDRAREN", "INVEST", "iSG", "iTWASNTME", "iVL",
