@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.7.1-A
+// @version      3.7.2-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -72,7 +72,6 @@
         "tracker_by_default": {"label": "Only these sites by default", "type": "text", "default": "", "tooltip": "Show only these sites by default. Comma separated. PTP, BHD, ANT, etc"},
         "res_by_default": {"label": "Only these resolutions by default", "type": "text", "default": "", "tooltip": "Show only these resolutions by default. Comma separated, with valued values. SD, 480p, 576p, 720p, 1080p, 2160p"},
         "hideBlankLinks": {"label": "How to display download link", "type": "select", "options": ["DL", "Download", "Spaced"], "default": "DL", "tooltip": "Choose how to display the download links: DL (original method), DOWNLOAD, or Spaced. Other methods help with some stylesheets."},
-        "cache_tracker_icons": {"label": "Cache tracker icons (weeks)", "type": "int", "default": 4, "tooltip": "Set the duration for caching tracker icons, in weeks"},
         "timer": {"label": "Error timeout (seconds)", "type": "int", "default": 4, "tooltip": "Set the error timeout duration in seconds to skip slow/dead trackers"},
         "timerDuration": {"label": "Error display duration (seconds)", "type": "int", "default": 2, "tooltip": "Set the duration for displaying errors in seconds"}
     };
@@ -570,55 +569,27 @@
         };
 
         const get_tracker_icon = (tracker) => {
-            const cacheDurationInWeeks = GM_config.get("cache_tracker_icons"); // Retrieve the cache duration in weeks
-            const cacheDurationInMilliseconds = cacheDurationInWeeks * 7 * 24 * 60 * 60 * 1000; // Convert weeks to milliseconds
-            const currentTime = new Date().getTime(); // Current timestamp in milliseconds
-
-            // First, try to retrieve the cached URL and timestamp from localStorage
-            const cachedData = localStorage.getItem(tracker + "_icon_data");
-            if (cachedData) {
-                const { iconURL, timestamp } = JSON.parse(cachedData);
-                if (currentTime - timestamp < cacheDurationInMilliseconds) {
-                    return iconURL; // Use cached data if within cache duration
-                }
-            }
-
-            // Define the URLs if not found in cache or data is old
-            const icons = {
-                "BHD": "https://beyond-hd.me/favicon.ico",
-                "BLU": "https://blutopia.cc/favicon.ico",
-                "Aither": "https://aither.cc/favicon.ico",
-                "RFX": "https://reelflix.xyz/favicon.ico",
-                "OE": "https://onlyencodes.cc/favicon.ico",
-                "CG": "https://cinemageddon.net/favicon.ico",
-                "FL": "https://filelist.io/favicon.ico",
-                "AvistaZ": "https://avistaz.to/images/avistaz-favicon.png",
-                "PHD": "https://privatehd.to/images/privatehd-favicon.png",
-                "CinemaZ": "https://cinemaz.to/images/cinemaz-favicon.png",
-                "HDB": "https://hdbits.org/pic/favicon/favicon.ico",
-                "PxHD": "https://pixelhd.me/favicon.ico",
-                "KG": "https://karagarga.in/favicon.ico",
-                "TIK": "https://cinematik.net/favicon.ico",
-                "MTV": "https://www.morethantv.me/favicon.ico",
-                "ANT": "https://anthelion.me/favicon.ico",
-                "HUNO": "https://hawke.uno/favicon.ico",
-                "BTN": "https://broadcasthe.net/favicon.ico",
-                "TVV": "https://tv-vault.me/favicon.ico",
-                "NBL": "https://nebulance.io/favicon.ico",
-                "RTF": "https://retroflix.club/favicon.ico"
-            };
-
-            // Get the URL from the icons object
-            const iconURL = icons[tracker];
-            if (iconURL) {
-                // Cache the URL and the current timestamp in localStorage
-                const dataToStore = JSON.stringify({ iconURL, timestamp: currentTime });
-                localStorage.setItem(tracker + "_icon_data", dataToStore);
-                console.log("Updating cache for:", tracker);
-            }
-
-            return iconURL;
-        };
+            if (tracker === "BHD") return "https://beyond-hd.me/favicon.ico";
+            else if (tracker === "BLU") return "https://blutopia.cc/favicon.ico";
+            else if (tracker === "Aither") return "https://aither.cc/favicon.ico";
+            else if (tracker === "RFX") return "https://reelflix.xyz/favicon.ico";
+            else if (tracker === "OE") return "https://onlyencodes.cc/favicon.ico";
+            else if (tracker === "CG") return "https://cinemageddon.net/favicon.ico";
+            else if (tracker === "FL") return "https://filelist.io/favicon.ico";
+            else if (tracker === "AvistaZ") return "https://avistaz.to/images/avistaz-favicon.png";
+            else if (tracker === "PHD") return "https://privatehd.to/images/privatehd-favicon.png";
+            else if (tracker === "CinemaZ") return "https://cinemaz.to/images/cinemaz-favicon.png";
+            else if (tracker === "HDB") return "https://raw.githubusercontent.com/Audionut/add-trackers/39879120862a1436ddfa4b6cdb8286d93a9b60f0/favicon.ico";
+            else if (tracker === "PxHD") return "https://pixelhd.me/favicon.ico";
+            else if (tracker === "KG") return "https://karagarga.in/favicon.ico";
+            else if (tracker === "TIK") return "https://cinematik.net/favicon.ico";
+            else if (tracker === "MTV") return "https://www.morethantv.me/favicon.ico";
+            else if (tracker === "ANT") return "https://anthelion.me/favicon.ico";
+            else if (tracker === "HUNO") return "https://hawke.uno/favicon.ico";
+            else if (tracker === "BTN") return "https://broadcasthe.net/favicon.ico";
+            else if (tracker === "TVV") return "https://tv-vault.me/favicon.ico";
+            else if (tracker === "NBL") return "https://nebulance.io/favicon.ico";
+        }
 
         const use_api_instead = (tracker) => {
             if (
