@@ -3614,16 +3614,16 @@
 
             const parts = [];
 
+            if (disc) parts.push(disc.trim());
             if (codec) parts.push(codec.trim());
             if (container) parts.push(container.trim());
             if (source) parts.push(source.trim());
             if (res) parts.push(res.trim());
             if (audio) parts.push(audio.trim());
+            if (scene) parts.push(scene.trim());
             if (hdr) parts.push(hdr.trim());
             if (bonus) parts.push(bonus.trim());
             if (country) parts.push(country.trim());
-            if (disc) parts.push(disc.trim());
-            if (scene) parts.push(scene.trim());
 
             // Use a Set to filter out duplicates
             const uniqueParts = [...new Set(parts)];
