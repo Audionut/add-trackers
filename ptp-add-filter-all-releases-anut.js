@@ -666,7 +666,8 @@
         const badGroups = () => {
             return [
                 "NOGRP",
-                "nogroup"
+                "nogroup",
+                "VC-1"
                 //"ExampleText2",
                 //"ExampleText3"
             ];
@@ -1751,7 +1752,7 @@
                     let releaseName = d.querySelector("div.col-md-8.col-xl-8 a.font-weight-bold")?.textContent.trim() || "";
                     let res = d.querySelector("div.col-md-8.col-xl-8 a.d-inline-block")?.textContent.trim() || "";
                     if (res) {
-                        releaseName = `${releaseName} ${res}`;
+                        releaseName = `${res} ${releaseName}`;
                     }
 
                     torrent_obj.datasetRelease = releaseName;
@@ -2608,7 +2609,7 @@
                                 if (extention) {
                                     infoText = `${infoText} ${extention}`;
                                 }
-                                if (releaseName && releaseName.includes("Blu-ray") && (!infoText.includes("Blu-ray"))) {
+                                if (releaseName && releaseName.includes("Blu-ray") || releaseName.includes("BluRay") && (!infoText.includes("Blu-ray"))) {
                                     infoText = infoText += "Blu-ray";
                                 }
                             }
@@ -3197,11 +3198,11 @@
                             if (improved_tags) {
                                 if (isHdr10Plus) {
                                     if (!updatedInfoText.includes("HDR10+")) {
-                                        updatedInfoText = "HDR10+ " + updatedInfoText.replace("HDR", "").trim();
+                                        updatedInfoText = "HDR10+ " + updatedInfoText.replace("HDR", "HDR10+").trim();
                                     }
                                 } else if (isHdr10) {
                                     if (!updatedInfoText.includes("HDR10")) {
-                                        updatedInfoText = "HDR10 " + updatedInfoText.replace("HDR", "").trim();
+                                        updatedInfoText = "HDR10 " + updatedInfoText.replace("HDR", "HDR10").trim();
                                     } else if (!updatedInfoText.includes("HDR")) {
                                         updatedInfoText = "HDR10 " + updatedInfoText;
                                     }
@@ -3750,7 +3751,7 @@
                         } else if (torrent.discount === "50% Freeleech" || torrent.discount === "Bronze") {
                             torrentInfoLink.innerHTML += " / <span class='torrent-info__download-modifier torrent-info__download-modifier--half'>Half-leech!</span>";
                         } else if (torrent.discount != "None") {
-                            torrentInfoLink.innerHTML += ` / <span class='torrent-info__download-mod'>${torrent.discount}!</span>`;
+                            torrentInfoLink.innerHTML += ` / <span class='torrent-info__download-modifier'>${torrent.discount}!</span>`;
                         }
 
                         if (sceneGroups.includes(torrent.groupId)) {
