@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.7.0-A
+// @version      3.7.1-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -3100,8 +3100,44 @@
                 tracker === "TIK"
             ) {
                 torrent_objs = json.data.map((element) => {
-                    // Mapping element attributes to a torrent object
-                    const originalInfoText = tracker === "HUNO" ? element.attributes.name.replace(/[()]/g, "") : element.attributes.name;
+                    let originalInfoText;
+
+                    if (tracker === "HUNO") {
+                      originalInfoText = element.attributes.name ? element.attributes.name.replace(/[()]/g, "") : null;
+                    } else if (tracker === "TIK") {
+                      originalInfoText = element.attributes.bd_info ? element.attributes.bd_info : (element.attributes.name ? element.attributes.name : null);
+                    } else {
+                      originalInfoText = element.attributes.name ? element.attributes.name : null;
+                    }
+
+                    const parseDiscLabel = (text) => {
+                      if (!text) {
+                        throw new Error('Input text is null or undefined');
+                      }
+
+                      // Regular expression to match "Disc Label" line
+                      const discLabelRegex = /Disc Label:\s*(.*)/;
+                      // Extract the "Disc Label" line
+                      const match = text.match(discLabelRegex);
+
+                      if (match && match[1]) {
+                        return match[1].trim();
+                      } else {
+                        console.error('Disc Label line not found in text:', text);
+                        throw new Error('Disc Label line not found');
+                      }
+                    };
+
+                    if (tracker === "TIK") {
+                      try {
+                        if (!originalInfoText) {
+                          throw new Error('originalInfoText is null or undefined');
+                        }
+                        originalInfoText = parseDiscLabel(originalInfoText);
+                      } catch (error) {
+                        console.error('Error parsing Disc Label:', error.message);
+                      }
+                    }
                     let getRelease = originalInfoText;
                     let infoText = originalInfoText;
 
