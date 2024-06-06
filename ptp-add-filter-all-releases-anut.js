@@ -3111,10 +3111,6 @@
                     }
 
                     const parseDiscLabel = (text) => {
-                      if (!text) {
-                        throw new Error('Input text is null or undefined');
-                      }
-
                       // Regular expression to match "Disc Label" line
                       const discLabelRegex = /Disc Label:\s*(.*)/;
                       // Extract the "Disc Label" line
@@ -3122,20 +3118,18 @@
 
                       if (match && match[1]) {
                         return match[1].trim();
-                      } else {
-                        console.error('Disc Label line not found in text:', text);
-                        throw new Error('Disc Label line not found');
                       }
+                      return null;
                     };
 
                     if (tracker === "TIK") {
-                      try {
-                        if (!originalInfoText) {
-                          throw new Error('originalInfoText is null or undefined');
+                      if (originalInfoText) {
+                        const parsedText = parseDiscLabel(originalInfoText);
+                        if (parsedText) {
+                          originalInfoText = parsedText;
+                        } else {
+                          originalInfoText = element.attributes.name ? element.attributes.name : originalInfoText;
                         }
-                        originalInfoText = parseDiscLabel(originalInfoText);
-                      } catch (error) {
-                        console.error('Error parsing Disc Label:', error.message);
                       }
                     }
                     let getRelease = originalInfoText;
@@ -3248,6 +3242,18 @@
                                     updatedInfoText = "Commentary " + updatedInfoText;
                                 }
                             }
+                        }
+                        if (tracker === "TIK") {
+                          let tikQuality = element.attributes.type;
+                          if (tikQuality) {
+                            if (tikQuality.includes("UHD")) {
+                              updatedInfoText = "2160p" + updatedInfoText;
+                            } else if (tikQuality.includes("BD")) {
+                              updatedInfoText = "1080p" + updatedInfoText;
+                            } else {
+                              updatedInfoText = "SD" + updatedInfoText;
+                            }
+                          }
                         }
                         const torrentObj = {
                             api_size: parseInt(element.attributes.size),
