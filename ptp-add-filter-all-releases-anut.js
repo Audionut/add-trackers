@@ -3671,7 +3671,13 @@
                     ref_div = get_ref_div(torrent, sd_ptp_torrents);
                     group_torrents = sd_ptp_torrents;
                 }
-
+                if (improved_tags) {
+                    if (typeof sceneGroups !== 'undefined') {
+                        if (sceneGroups.includes(torrent.groupId)) {
+                            torrent.info_text = "Scene / " + torrent.info_text;
+                        }
+                    }
+                }
                 let cln = line_example.cloneNode(true);
 
                 if (improved_tags && show_tracker_name) {
@@ -3755,21 +3761,15 @@
                         }
                     }
                 }
-                if (typeof sceneGroups !== 'undefined') {
-                    if (improved_tags) {
-                        const torrentInfoLink = cln.querySelector(".torrent-info-link");
+                if (improved_tags) {
+                    const torrentInfoLink = cln.querySelector(".torrent-info-link");
 
-                        if (torrent.discount === "Freeleech" || torrent.discount === "Golden") {
-                            torrentInfoLink.innerHTML += " / <span class='torrent-info__download-modifier torrent-info__download-modifier--free'>Freeleech!</span>";
-                        } else if (torrent.discount === "50% Freeleech" || torrent.discount === "Bronze") {
-                            torrentInfoLink.innerHTML += " / <span class='torrent-info__download-modifier torrent-info__download-modifier--half'>Half-leech!</span>";
-                        } else if (torrent.discount != "None") {
-                            torrentInfoLink.innerHTML += ` / <span class='torrent-info__download-modifier'>${torrent.discount}!</span>`;
-                        }
-
-                        if (sceneGroups.includes(torrent.groupId)) {
-                            torrentInfoLink.innerHTML += " / <span class='torrent-info__scene'>Scene</span>";
-                        }
+                    if (torrent.discount === "Freeleech" || torrent.discount === "Golden") {
+                        torrentInfoLink.innerHTML += " / <span class='torrent-info__download-modifier torrent-info__download-modifier--free'>Freeleech!</span>";
+                    } else if (torrent.discount === "50% Freeleech" || torrent.discount === "Bronze") {
+                        torrentInfoLink.innerHTML += " / <span class='torrent-info__download-modifier torrent-info__download-modifier--half'>Half-leech!</span>";
+                    } else if (torrent.discount != "None") {
+                        torrentInfoLink.innerHTML += ` / <span class='torrent-info__download-modifier'>${torrent.discount}!</span>`;
                     }
                 } else {
                     if (torrent.discount != "None") {
