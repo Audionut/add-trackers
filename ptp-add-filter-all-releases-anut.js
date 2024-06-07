@@ -791,7 +791,12 @@
                         } else {
                             torrent_obj.discount = "None";
                         }
-
+                        const statusFind = torrent.querySelector('seeders[currentseed="true"]');
+                        if (statusFind) {
+                            torrent_obj.status = "seeding";
+                        } else {
+                            torrent_obj.status = "default";
+                        }
                         torrent_objs.push(torrent_obj);
                     });
                 } catch (error) {
