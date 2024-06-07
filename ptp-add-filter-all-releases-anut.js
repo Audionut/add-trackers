@@ -936,6 +936,13 @@
                                     return tempText;
                                 };
                             let formatted = replaceFullStops(cleanTheText);
+                            if (groupText && groupText.includes("FraMeSToR")) {
+                                if (formatted.includes("DV")) {
+                                    if (improved_tags) {
+                                        formatted = formatted.replace("DV", "DV HDR");
+                                    }
+                                }
+                            }
                             let files = parseInt(torrent.querySelector('files').textContent);
 
                             if (formatted.includes("BluRay") && (!isMiniSeriesFromSpan) && torrent_obj.size && files > 10) {
