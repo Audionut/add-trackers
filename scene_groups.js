@@ -8,7 +8,7 @@ const sceneGroups = [
     "AzNiNVASiAN", "AZuRRaY", "BaCKToRG", "BaCo", "BAJSKORV", "BAKED", "BaLD", "BALLS", "BAMBOOZLE", 
     "BAND1D0S", "BARGE", "BATV", "BAVARiA", "BAWLS", "BBDvDR", "BDA", "BDDK", "BDGRP", "BDMV", "BDP", 
     "BestHD", "BeStDivX", "BETAMAX", "BFF", "BiA", "BiEN", "BiERBUiKEN", "BiFOS", "BiGBruv", "BiGFiL", 
-    "BiPOLAR", "BiRDHOUSE", "BLooDWeiSeR", "BountyHunters", "BOSSLiKE", "BOW", "BRASTEMP", "BRDC", 
+    "BiPOLAR", "BiRDHOUSE", "BLooDWeiSeR", "B0MBARDiERS", "BountyHunters", "BOSSLiKE", "BOW", "BRASTEMP", "BRDC", 
     "BREiN", "BrG", "BRICKSQUaD", "BRiGANDBiL", "BRMP", "BRUTUS", "BTVG", "BULLDOZER", "BURGER", "BWB",
     "c0nFuSed", "C4TV", "CADAVER", "CAELUM", "CAFFiNE", "CAMELOT", "CAMERA", "CarVeR", "CBGB", "CCAT", 
     "CCT", "CDP", "Centropy", "CFE", "CFH", "CG", "Chakra", "CHaWiN", "CHECKMATE", "CHRONO", "CiA", 

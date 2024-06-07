@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.7.3-A
+// @version      3.7.4-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -629,7 +629,8 @@
                 "r00t QxR",
                 "AI-Raws",
                 "3L",
-                "3DAccess"
+                "3DAccess",
+                "CultFilms"
                 //"ExampleText3"
             ];
         };
