@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.7.5-A
+// @version      3.7.6-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -41,6 +41,8 @@
         "huno": {"label": "HUNO *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "huno_api": {"label": "HUNO_API_TOKEN", "type": "text", "default": ""},
         "kg": {"label": "KG", "type": "checkbox", "default": false},
+        "lst": {"label": "LST *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
+        "lst_api": {"label": "LST_API_TOKEN", "type": "text", "default": ""},
         "mtv": {"label": "MTV *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "mtv_api": {"label": "MTV_API_TOKEN", "type": "text", "default": ""},
         "nbl": {"label": "NBL *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
@@ -158,6 +160,7 @@
                     "blu": GM_config.fields.blu.node,
                     "btn": GM_config.fields.btn.node,
                     "hdb": GM_config.fields.hdb.node,
+                    "lst": GM_config.fields.lst.node,
                     "mtv": GM_config.fields.mtv.node,
                     "nbl": GM_config.fields.nbl.node,
                     "huno": GM_config.fields.huno.node,
@@ -223,6 +226,7 @@
             "CinemaZ": GM_config.get("cinemaz"),
             "PHD": GM_config.get("phd"),
             "RTF": GM_config.get("rtf"),
+            "LST": GM_config.get("lst"),
         };
 
         const movie_only_dict = {
@@ -303,6 +307,7 @@
         const NBL_API_TOKEN = GM_config.get("nbl_api");
         const BTN_API_TOKEN = GM_config.get("btn_api");
         const MTV_API_TOKEN = GM_config.get("mtv_api");
+        const LST_API_TOKEN = GM_config.get("lst_api");
 
         // We need to use XML resposne with TVV and have to define some parameters for it to work correctly.
         const TVV_AUTH_KEY = GM_config.get("tvv_auth"); // If you want to use TVV - find your authkey from a torrent download link
@@ -504,7 +509,7 @@
         }
 
         const get_discount_text = (div, tracker) => {
-            if (["BLU", "Aither", "RFX", "OE", "TIK", "HUNO"].includes(tracker)) {
+            if (["BLU", "Aither", "RFX", "OE", "TIK", "HUNO", "LST"].includes(tracker)) {
                 return true;
             }
             else if (tracker === "FL") {
@@ -590,6 +595,7 @@
             else if (tracker === "TVV") return "https://tv-vault.me/favicon.ico";
             else if (tracker === "NBL") return "https://nebulance.io/favicon.ico";
             else if (tracker === "RTF") return "https://retroflix.club/favicon.ico";
+            else if (tracker === "LST") return "https://lst.gg/favicon.ico";
         }
 
         const use_api_instead = (tracker) => {
@@ -599,7 +605,8 @@
                 (tracker === "RFX") ||
                 (tracker === "OE") ||
                 (tracker === "HUNO") ||
-                (tracker === "TIK")
+                (tracker === "TIK") ||
+                (tracker === "LST")
             )
                 return true;
             else return false;
@@ -1940,7 +1947,7 @@
             else if (tracker === "BHD") {
                     return true;
             }
-            else if (tracker === "BLU" || tracker === "Aither" || tracker === "RFX" || tracker === "OE" || tracker === "HUNO" || tracker === "TIK") {
+            else if (tracker === "BLU" || tracker === "Aither" || tracker === "RFX" || tracker === "OE" || tracker === "HUNO" || tracker === "TIK" || tracker === "LST") {
                 if (html.querySelector(".torrent-search--list__no-result") === null) return true;
                 else return false;
             }
@@ -2208,6 +2215,12 @@
                         imdb_id.split("tt")[1] +
                         "&categories[0]=2&categories[1]=1&api_token=" +
                         HUNO_API_TOKEN;
+                } else if (tracker === "LST") {
+                    api_query_url =
+                        "https://lst.gg/api/torrents/filter?imdbId=" +
+                        imdb_id.split("tt")[1] +
+                        "&categories[0]=1&categories[1]=2&categories[2]=6&categories[3]=8&api_token=" +
+                        LST_API_TOKEN;
                 }
                 else if (tracker === "TVV") {
                     query_url = "https://tv-vault.me/xmlsearch.php?query=get&torrent_pass=" + TVV_TORR_PASS + "&imdbid=" + imdb_id + "&xmladd-x-currentseed=1";
@@ -3088,7 +3101,8 @@
                 tracker === "RFX" ||
                 tracker === "OE" ||
                 tracker === "HUNO" ||
-                tracker === "TIK"
+                tracker === "TIK" ||
+                tracker === "LST"
             ) {
                 torrent_objs = json.data.map((element) => {
                     let originalInfoText;
@@ -3746,7 +3760,7 @@
                         if (torrent.site === "MTV") {
                             torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__tags torrent-info__tags--internal'>Internal</span>" : false;
                         }
-                        if (torrent.site === "BLU" || torrent.site === "Aither" || torrent.site === "RFX" || torrent.site === "OE" || torrent.site === "HUNO") {
+                        if (torrent.site === "BLU" || torrent.site === "Aither" || torrent.site === "RFX" || torrent.site === "OE" || torrent.site === "HUNO" || torrent.site === "LST") {
                             get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__tags torrent-info__tags--internal'>Internal</span>") : false;
                             get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__download-modifier'>DU</span>") : false;
                             get_api_featured(torrent.featured) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__download-modifier'>Featured</span>") : false;
@@ -3777,7 +3791,7 @@
                         if (torrent.site === "MTV") {
                             torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
                         }
-                        if (torrent.site === "BLU" || torrent.site === "Aither" || torrent.site === "RFX" || torrent.site === "OE" || torrent.site === "HUNO") {
+                        if (torrent.site === "BLU" || torrent.site === "Aither" || torrent.site === "RFX" || torrent.site === "OE" || torrent.site === "HUNO" || torrent.site === "LST") {
                             get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #baaf92'>Internal</span>") : false;
                             get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__DU' style='font-weight: bold; color: #279d29'>DU</span>") : false;
                             get_api_featured(torrent.featured) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__Featured' style='font-weight: bold; color: #997799'>Featured</span>") : false;
@@ -3860,7 +3874,7 @@
 
                 cln.querySelector(".size-span").textContent = ptp_format_size;
 
-                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV"];
+                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV", "LST"];
                 if (byteSizedTrackers.includes(torrent.site)) {
                     cln.querySelector(".size-span").setAttribute("title", api_sized);
                 } else {
