@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.7.4-A
+// @version      3.7.5-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -579,7 +579,7 @@
             else if (tracker === "AvistaZ") return "https://avistaz.to/images/avistaz-favicon.png";
             else if (tracker === "PHD") return "https://privatehd.to/images/privatehd-favicon.png";
             else if (tracker === "CinemaZ") return "https://cinemaz.to/images/cinemaz-favicon.png";
-            else if (tracker === "HDB") return "https://raw.githubusercontent.com/Audionut/add-trackers/39879120862a1436ddfa4b6cdb8286d93a9b60f0/favicon.ico";
+            else if (tracker === "HDB") return "https://hdbits.org/favicon.ico";
             else if (tracker === "PxHD") return "https://pixelhd.me/favicon.ico";
             else if (tracker === "KG") return "https://karagarga.in/favicon.ico";
             else if (tracker === "TIK") return "https://cinematik.net/favicon.ico";
@@ -589,6 +589,7 @@
             else if (tracker === "BTN") return "https://broadcasthe.net/favicon.ico";
             else if (tracker === "TVV") return "https://tv-vault.me/favicon.ico";
             else if (tracker === "NBL") return "https://nebulance.io/favicon.ico";
+            else if (tracker === "RTF") return "https://retroflix.club/favicon.ico";
         }
 
         const use_api_instead = (tracker) => {
