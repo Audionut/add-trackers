@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.7.6-A
+// @version      3.7.7-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -443,7 +443,7 @@
         console.log("Excluded trackers:", excludedTrackers.map(e => `${e.tracker} - ${e.reason}`));
 
         let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "40% Bonus", "30% Bonus", "25% Freeleech", "Copper", "Bronze", "Silver", "Golden", "Refundable", "Rewind", "Rescuable", "Pollination", "None"];
-        let qualities = ["SD", "480p", "576p", "720p", "1080p", "2160p"];
+        let qualities = ["SD", "480p", "576p", "720p", "1080p", "2160p", "3D", "Other"];
         let filters = {
             "trackers": trackers.map((e) => {
                 return ({ "name": e, "status": "default" });
@@ -461,9 +461,11 @@
         const TIMEOUT_DURATION = 10000;
 
         const dom_get_quality = (text) => {
-            if (text.includes("720p")) return "720p";
-            else if (text.includes("1080p")) return "1080p";
+            if (text.includes("3D") || text.includes("over under") || text.includes("half-sbs") || text.includes("half sbs") || text.includes("full-sbs") || text.includes("full sbs")) return "3D";
+            else if (text.includes("Other") || text.includes("Rifftrax") || text.includes("Extras")) return "Other";
             else if (text.includes("2160p")) return "2160p";
+            else if (text.includes("1080p")) return "1080p";
+            else if (text.includes("720p")) return "720p";
             else if (text.includes("576p")) return "576p";
             else if (text.includes("480p")) return "480p";
             else return "SD";
@@ -503,10 +505,6 @@
         };
 
         get_default_doms();
-
-        function insertAfter(newNode, referenceNode) {
-            referenceNode.parentNode.insertBefore(newNode, referenceNode.nextSibling);
-        }
 
         const get_discount_text = (div, tracker) => {
             if (["BLU", "Aither", "RFX", "OE", "TIK", "HUNO", "LST"].includes(tracker)) {
@@ -3309,68 +3307,95 @@
             }
         };
 
-        const get_filtered_torrents = (quality) => {
-            let all_trs = [...document.querySelectorAll("tr.group_torrent")];
+        const get_filtered_torrents = (quality, criteria = null) => {
+            const all_trs = [...document.querySelectorAll("tr.group_torrent, tr.torrent_info_row.hidden")];
+            const qualityMap = {
+                "SD": "Standard Definition",
+                "HD": "High Definition",
+                "UHD": "Ultra High Definition",
+                "3D": "3D",
+                "Other": "Other"
+            };
             let filtered_torrents = [];
 
-            if (quality === "SD") {
-                let first_idx = all_trs.findIndex((a) => a.textContent.includes("Standard Definition"));
-                let sliced = all_trs.slice(first_idx + 1, all_trs.length);
-
-                let last_idx = sliced.findIndex((a) => a.className === "group_torrent");
-                if (last_idx === -1) last_idx = all_trs.length;
-                filtered_torrents = sliced.slice(0, last_idx);
-            }
-            else if (quality === "HD") {
-                let first_idx = all_trs.findIndex((a) => a.textContent.includes("High Definition") && !a.textContent.includes("Ultra High Definition"));
-                let sliced = all_trs.slice(first_idx + 1, all_trs.length);
-
-                let last_idx = sliced.findIndex((a) => a.className === "group_torrent");
-                if (last_idx === -1) last_idx = all_trs.length;
-                filtered_torrents = sliced.slice(0, last_idx);
-            }
-            else if (quality === "UHD") {
-                let first_idx = all_trs.findIndex((a) => a.textContent.includes("Ultra High Definition"));
-                let sliced = all_trs.slice(first_idx + 1, all_trs.length);
-
-                let last_idx = sliced.findIndex((a) => a.className === "group_torrent");
-                if (last_idx === -1) last_idx = all_trs.length;
-                filtered_torrents = sliced.slice(0, last_idx);
+            // Return empty array if the quality is invalid
+            if (!qualityMap[quality]) {
+                console.error("Invalid quality:", quality);
+                return filtered_torrents;
             }
 
-            // part 2 !
-            let group_torrent_objs = [];
+            console.log("Looking for quality:", quality, "which maps to:", qualityMap[quality]);
 
-            filtered_torrents.forEach((t) => {
+            // Find the starting index based on quality
+            let first_idx = all_trs.findIndex(tr => {
+                const subElement = tr.querySelector(".basic-movie-list__torrent-edition__sub");
+                return subElement && subElement.textContent === qualityMap[quality];
+            });
+
+            console.log("Found starting index for quality:", quality, "at index:", first_idx);
+
+            // Return empty array if no matching torrents found
+            if (first_idx === -1) return filtered_torrents;
+
+            // Find the last index to limit the slice
+            let last_idx = all_trs.slice(first_idx + 1).findIndex(tr => {
+                const subElement = tr.querySelector(".basic-movie-list__torrent-edition__sub");
+                return subElement && Object.values(qualityMap).includes(subElement.textContent);
+            });
+
+            if (last_idx === -1) {
+                last_idx = all_trs.length; // Include all remaining elements
+            } else {
+                last_idx = first_idx + 1 + last_idx; // Adjust index relative to original array
+            }
+
+            console.log("Sliced array from index:", first_idx + 1, "to index:", last_idx);
+
+            // Slice the array from the found index
+            filtered_torrents = all_trs.slice(first_idx + 1, last_idx).filter(tr => !tr.classList.contains("group_torrent_header"));
+
+            console.log("Filtered torrents count before criteria:", filtered_torrents.length);
+
+            // Filter based on additional criteria if provided
+            if (criteria) {
+                filtered_torrents = filtered_torrents.filter(tr => tr.textContent.includes(criteria));
+                console.log("Filtered torrents count after criteria:", filtered_torrents.length);
+            }
+
+            // Part 2: Process filtered torrents to extract size information
+            const group_torrent_objs = filtered_torrents.map(t => {
                 try {
-                    // Find the first span with a title that includes " bytes" and extract its title
+                    // Find the span with title containing " bytes"
                     let sizeSpan = [...t.querySelectorAll("span")].find(s => s.title && s.title.includes(" bytes"));
                     if (!sizeSpan) {
                         console.log("No size information found for torrent.");
-                        return; // Skip this iteration if no relevant span is found
+                        return null;
                     }
-                    let sizeText = sizeSpan.title;
 
-                    // Remove commas for conversion and split by " bytes" then convert to integer
+                    // Extract size in bytes
+                    let sizeText = sizeSpan.title;
                     let sizeInBytes = parseInt(sizeText.replace(/,/g, '').split(" bytes")[0]);
+
                     if (isNaN(sizeInBytes)) {
                         console.error("Failed to parse size from text: ", sizeText);
-                        return; // Skip this iteration if parsing fails
+                        return null;
                     }
 
-                    // Convert from bytes to MiB
+                    // Convert size to MiB
                     let sizeInMiB = Math.floor(sizeInBytes / 1024 / 1024);
 
-                    // Add the torrent info to the array
-                    group_torrent_objs.push({
+                    return {
                         dom_path: t,
                         size: sizeInMiB
-                    });
+                    };
 
                 } catch (e) {
                     console.error("An error has occurred during processing a torrent: ", e);
+                    return null;
                 }
-            });
+            }).filter(t => t !== null); // Filter out any null values due to errors
+
+            console.log("Final group torrent objects count:", group_torrent_objs.length);
 
             return group_torrent_objs;
         };
@@ -3380,22 +3405,36 @@
 
             let text = torrent.info_text.toLowerCase();
 
+            if (text.includes("3d") || text.includes("half-ou") || text.includes("half ou") || text.includes("half-sbs") || text.includes("half sbs")) return "3D";
+            if (text.includes("pdf") || text.includes("ebook") || text.includes("vinyl") || text.includes("rifftrax") || text.includes("extras") || text.includes("special features") || text.includes("audio only track") || text.includes("audio and subtitles pack")) return "Other";
             if (text.includes("2160p")) return "UHD";
-            else if (text.includes("1080p") || text.includes("720p") || text.includes("1080i") || text.includes("720i")) return "HD";
-            else return "SD";
+            if (text.includes("1080p") || text.includes("720p") || text.includes("1080i") || text.includes("720i")) return "HD";
+            return "SD";
         };
 
         const get_ref_div = (torrent, ptp_torrent_group) => {
             let my_size = torrent.size;
+            let referenceDiv = null;
+
+            console.log("Finding reference div for torrent:", torrent.info_text, "with size:", my_size);
 
             try {
-                // dont add after this div, add it after the hidden div !
-                let div = ptp_torrent_group.find(e => e.size < my_size).dom_path;
-                let selector_id = "torrent_" + div.id.split("header_")[1];
-                return document.getElementById(selector_id);
+                // Find the appropriate reference div in the sorted group
+                let smallerTorrent = ptp_torrent_group.find(e => e.size < my_size);
+
+                if (smallerTorrent) {
+                    referenceDiv = smallerTorrent.dom_path;
+                    console.log("Reference div found:", referenceDiv.id, "for torrent:", torrent.info_text);
+                } else {
+                    console.log("No smaller size found for torrent:", torrent.info_text, ". Placing it at the top of the group.");
+                    referenceDiv = false; // Indicates to place at the top of the group
+                }
             } catch (e) {
-                return false; // the size is too small, put it at the top of the group.
+                console.error("An error occurred while finding the reference div:", e);
+                referenceDiv = false; // Default to top if an error occurs
             }
+
+            return referenceDiv;
         };
 
         const get_ptp_format_size = (size) => {
@@ -3430,18 +3469,33 @@
             return bytes.toLocaleString() + " Bytes";
         };
 
-        const add_as_first = (div, quality) => { // puts 2gb 1080p at the top of the pack.
-            let all_trs = [...document.querySelectorAll("tr.group_torrent")];
+        const add_as_first = (div, quality) => { // puts 2GB 1080p at the top of the pack.
+            const all_trs = [...document.querySelectorAll("tr.group_torrent")];
+            const qualityMap = {
+                "SD": "Standard Definition",
+                "HD": "High Definition",
+                "UHD": "Ultra High Definition",
+                "3D": "3D",
+                "Other": "Other"
+            };
+
+            // Return early if invalid quality
+            if (!qualityMap[quality]) {
+                console.error("Invalid quality specified.");
+                return;
+            }
+
             let first_idx;
 
-            if (quality === "SD") {
-                first_idx = all_trs.findIndex((a) => a.textContent.includes("Standard Definition"));
+            if (quality === "HD") {
+                first_idx = all_trs.findIndex(a => a.textContent.includes(qualityMap[quality]) && !a.textContent.includes(qualityMap["UHD"]));
+            } else {
+                first_idx = all_trs.findIndex(a => a.textContent.includes(qualityMap[quality]));
             }
-            else if (quality === "HD") {
-                first_idx = all_trs.findIndex((a) => a.textContent.includes("High Definition") && !a.textContent.includes("Ultra High Definition"));
-            }
-            else if (quality === "UHD") {
-                first_idx = all_trs.findIndex((a) => a.textContent.includes("Ultra High Definition"));
+
+            if (first_idx === -1) {
+                console.error("No matching quality found in torrents.");
+                return;
             }
 
             insertAfter(div, all_trs[first_idx]);
@@ -3687,11 +3741,13 @@
 
         const add_external_torrents = (external_torrents) => {
             const existing_torrent_sizes = Array.from(document.querySelectorAll("span[style='float: left;']")).map(x => x.textContent);
-            // console.log(existing_torrent_sizes);
+            console.log("Existing torrent sizes:", existing_torrent_sizes);
 
             let sd_ptp_torrents = get_filtered_torrents("SD").sort((a, b) => a.size < b.size ? 1 : -1);
             let hd_ptp_torrents = get_filtered_torrents("HD").sort((a, b) => a.size < b.size ? 1 : -1);
             let uhd_ptp_torrents = get_filtered_torrents("UHD").sort((a, b) => a.size < b.size ? 1 : -1);
+            let three_d_ptp_torrents = get_filtered_torrents("3D").sort((a, b) => a.size < b.size ? 1 : -1);
+            let other_ptp_torrents = get_filtered_torrents("Other").sort((a, b) => a.size < b.size ? 1 : -1);
 
             create_needed_groups(external_torrents);
 
@@ -3705,9 +3761,15 @@
                 let dom_id = tracker + "_" + i;
                 const group_id = torrent.groupId;
 
-                if (torrent.quality === "UHD") {
+                if (torrent.quality === "3D") {
+                    ref_div = get_ref_div(torrent, three_d_ptp_torrents);
+                    group_torrents = three_d_ptp_torrents;
+                } else if (torrent.quality === "Other") {
+                    ref_div = get_ref_div(torrent, other_ptp_torrents);
+                    group_torrents = other_ptp_torrents;
+                } else if (torrent.quality === "UHD") {
                     ref_div = get_ref_div(torrent, uhd_ptp_torrents);
-                    group_torrents = uhd_ptp_torrents; // needed just in case ref returns false/if its smallest
+                    group_torrents = uhd_ptp_torrents;
                 } else if (torrent.quality === "HD") {
                     ref_div = get_ref_div(torrent, hd_ptp_torrents);
                     group_torrents = hd_ptp_torrents;
@@ -3715,6 +3777,8 @@
                     ref_div = get_ref_div(torrent, sd_ptp_torrents);
                     group_torrents = sd_ptp_torrents;
                 }
+
+                console.log("Reference div for torrent", torrent.info_text, ":", ref_div);
                 if (improved_tags) {
                     if (typeof sceneGroups !== 'undefined') {
                         if (sceneGroups.includes(torrent.groupId)) {
@@ -3915,9 +3979,14 @@
                     cln.querySelector("img").title = torrent.site;
                 }
 
-                if (ref_div != false) insertAfter(cln, ref_div);
-                else {
-                    add_as_first(cln, torrent.quality);
+                if (ref_div !== null) {
+                    if (ref_div !== false) {
+                        insertAfter(cln, ref_div);
+                    } else {
+                        add_as_first(cln, torrent.quality);
+                    }
+                } else {
+                    console.error("Reference node is null, cannot insert new node.");
                 }
 
                 let dom_path = cln;
@@ -3946,59 +4015,47 @@
             }
         };
 
-        const insert_group = (quality, header_div) => {
-            let all_trs = [...document.querySelector("#torrent-table > tbody").querySelectorAll("tr.group_torrent")];
-            let tbody = document.querySelector("#torrent-table > tbody");
-
-            if (quality === "HD") {
-                let idx = -2; // add_after_this_index
-
-                for (let i = 0; i < all_trs.length; i++) {
-                    if (all_trs[i].textContent.includes("Other") || all_trs[i].textContent.includes("Ultra High Definition")) {
-                        idx = i - 1;
-                        break;
-                    }
-                }
-                if (idx === -2) {
-                    tbody.appendChild(header_div); // nothing to stop me
-                } else {
-                    insertAfter(header_div, all_trs[idx]);
-                }
-            }
-            else if (quality === "UHD") {
-                let idx = -2; // add_after_this_index
-
-                for (let i = 0; i < all_trs.length; i++) {
-                    if (all_trs[i].textContent.includes("Other")) {
-                        idx = i - 1;
-                        break;
-                    }
-                }
-
-                if (idx === -2) {
-                    tbody.appendChild(header_div); // nothing to stop me
-                } else {
-                    insertAfter(header_div, all_trs[idx]);
-                }
+        // Helper function to insert an element after a reference element
+        const insertAfter = (newNode, referenceNode) => {
+            if (referenceNode) {
+                referenceNode.parentNode.insertBefore(newNode, referenceNode.nextSibling);
+            } else {
+                console.error("Reference node is null, cannot insert new node.");
             }
         };
 
         const create_needed_groups = (torrents) => {
-            let all_trs = [...document.querySelector("#torrent-table > tbody").querySelectorAll("tr.group_torrent")];
-            let tbody = document.querySelector("#torrent-table > tbody");
+            const all_trs = [...document.querySelector("#torrent-table > tbody").querySelectorAll("tr.group_torrent")];
+            const tbody = document.querySelector("#torrent-table > tbody");
 
-            if (torrents.find(e => e.quality === "SD") != undefined && all_trs.find(d => d.textContent.includes("Standard Definition")) === undefined) {
-                group_header_example.querySelector(".basic-movie-list__torrent-edition__sub").textContent = "Standard Definition";
-                tbody.insertBefore(group_header_example, document.querySelector("#torrent-table > tbody").firstChild);
+            if (torrents.some(t => t.quality === "3D") && !all_trs.some(tr => tr.textContent.includes("3D"))) {
+                let group_header_3d = group_header_example.cloneNode(true);
+                group_header_3d.querySelector(".basic-movie-list__torrent-edition__sub").textContent = "3D";
+                tbody.appendChild(group_header_3d);
             }
-            if (torrents.find(e => e.quality === "HD") != undefined &&
-                all_trs.find(d => d.textContent.includes("High Definition") && !d.textContent.includes("Ultra High Definition")) === undefined) {
-                group_header_example.querySelector(".basic-movie-list__torrent-edition__sub").textContent = "High Definition";
-                insert_group("HD", group_header_example);
+
+            if (torrents.some(t => t.quality === "Other") && !all_trs.some(tr => tr.textContent.includes("Other"))) {
+                let group_header_other = group_header_example.cloneNode(true);
+                group_header_other.querySelector(".basic-movie-list__torrent-edition__sub").textContent = "Other";
+                tbody.appendChild(group_header_other);
             }
-            if (torrents.find(e => e.quality === "UHD") != undefined && all_trs.find(d => d.textContent.includes("Ultra High Definition")) === undefined) {
-                group_header_example.querySelector(".basic-movie-list__torrent-edition__sub").textContent = "Ultra High Definition";
-                insert_group("UHD", group_header_example);
+
+            if (torrents.some(t => t.quality === "SD") && !all_trs.some(tr => tr.textContent.includes("Standard Definition"))) {
+                let group_header_sd = group_header_example.cloneNode(true);
+                group_header_sd.querySelector(".basic-movie-list__torrent-edition__sub").textContent = "Standard Definition";
+                tbody.insertBefore(group_header_sd, tbody.firstChild);
+            }
+
+            if (torrents.some(t => t.quality === "HD") && !all_trs.some(tr => tr.textContent.includes("High Definition") && !tr.textContent.includes("Ultra High Definition"))) {
+                let group_header_hd = group_header_example.cloneNode(true);
+                group_header_hd.querySelector(".basic-movie-list__torrent-edition__sub").textContent = "High Definition";
+                tbody.appendChild(group_header_hd);
+            }
+
+            if (torrents.some(t => t.quality === "UHD") && !all_trs.some(tr => tr.textContent.includes("Ultra High Definition"))) {
+                let group_header_uhd = group_header_example.cloneNode(true);
+                group_header_uhd.querySelector(".basic-movie-list__torrent-edition__sub").textContent = "Ultra High Definition";
+                tbody.appendChild(group_header_uhd);
             }
         };
 
@@ -4020,7 +4077,7 @@
                 let inc_value = undefined;
                 let exc_value = undefined;
 
-                let status = filters.trackers.find(d => d.name === e.tracker).status;
+                let status = filters.trackers.find(d => d.name === e.tracker)?.status;
 
                 if (status === "include") inc_value = true;
                 else if (status === "exclude") exc_value = true;
@@ -4029,7 +4086,7 @@
                 else if (exc_value === true) tracker_constraint = false;
                 else {
                     tracker_constraint = true;
-                    if (filters.trackers.filter(e => e.status === "include").length > 0) tracker_constraint = false;
+                    if (filters.trackers.some(e => e.status === "include")) tracker_constraint = false;
                 }
 
                 if (tracker_constraint === false) {
@@ -4043,7 +4100,7 @@
                 let inc_value_2 = undefined;
                 let exc_value_2 = undefined;
 
-                let status_2 = filters.discounts.find(d => d.name === e.discount).status;
+                let status_2 = filters.discounts.find(d => d.name === e.discount)?.status;
 
                 if (status_2 === "include") inc_value_2 = true;
                 else if (status_2 === "exclude") exc_value_2 = true;
@@ -4052,7 +4109,7 @@
                 else if (exc_value_2 === true) discount_constraint = false;
                 else {
                     discount_constraint = true;
-                    if (filters.discounts.filter(e => e.status === "include").length > 0) discount_constraint = false;
+                    if (filters.discounts.some(e => e.status === "include")) discount_constraint = false;
                 }
 
                 if (discount_constraint === false) {
@@ -4066,7 +4123,7 @@
                 let inc_value_3 = undefined;
                 let exc_value_3 = undefined;
 
-                let status_3 = filters.qualities.find(d => d.name === e.quality).status;
+                let status_3 = filters.qualities.find(d => d.name === e.quality)?.status;
 
                 if (status_3 === "include") inc_value_3 = true;
                 else if (status_3 === "exclude") exc_value_3 = true;
@@ -4075,7 +4132,7 @@
                 else if (exc_value_3 === true) quality_constraint = false;
                 else {
                     quality_constraint = true;
-                    if (filters.qualities.filter(e => e.status === "include").length > 0) quality_constraint = false;
+                    if (filters.qualities.some(e => e.status === "include")) quality_constraint = false;
                 }
 
                 if (quality_constraint === false) {
@@ -4090,7 +4147,7 @@
                     let must_include_words = torrentSearchElement.value.split(" ").map((w) => w.toLowerCase());
 
                     for (let word of must_include_words) {
-                        if (e.info_text.toLowerCase().includes(word) === false) {
+                        if (!e.info_text.toLowerCase().includes(word)) {
                             text_constraint = false;
                             break;
                         }
@@ -4160,11 +4217,14 @@
             filter_torrents(); // Applies the filters to the page
         }
 
-        const update_filter_box_status = (object_key, value, dom_path) => { // object_key = tracker/quality/discount || value = BHD, HDB, 50% Freeleech, 720p etc...
-            // let all_values = ["default", "include", "exclude"];
+        const update_filter_box_status = (object_key, value, dom_path) => {
+            // object_key = tracker/quality/discount
+            // value = BHD, HDB, 50% Freeleech, 720p, etc.
+
+            let current_status;
 
             if (object_key === "trackers") {
-                let current_status = filters.trackers.find(e => e.name === value).status;
+                current_status = filters.trackers.find(e => e.name === value).status;
 
                 if (current_status === "default") {
                     filters.trackers.find(e => e.name === value).status = "include";
@@ -4181,7 +4241,7 @@
                 }
             }
             else if (object_key === "discounts") {
-                let current_status = filters.discounts.find(e => e.name === value).status;
+                current_status = filters.discounts.find(e => e.name === value).status;
 
                 if (current_status === "default") {
                     filters.discounts.find(e => e.name === value).status = "include";
@@ -4198,7 +4258,7 @@
                 }
             }
             else if (object_key === "qualities") {
-                let current_status = filters.qualities.find(e => e.name === value).status;
+                current_status = filters.qualities.find(e => e.name === value).status;
 
                 if (current_status === "default") {
                     filters.qualities.find(e => e.name === value).status = "include";
@@ -4215,7 +4275,8 @@
                 }
             }
 
-            filter_torrents(); // big update
+            // Trigger filter update
+            filter_torrents();
         };
 
         const fix_ptp_names = () => {
@@ -4389,7 +4450,6 @@
                 div.style.color = "#eee";
                 div.style.display = "inline-block";
                 div.style.cursor = "pointer";
-                // div.style.width = "40px"
                 div.style.border = "1px dashed #606060";
                 div.style.fontSize = "1em";
                 div.style.textAlign = "center";
@@ -4451,7 +4511,6 @@
             let qualityContents = document.createElement("div");
 
             qualities.forEach((quality_name) => {
-
                 let quality = document.createElement("div");
                 quality.className = "filter-box";
                 quality.textContent = quality_name;
@@ -4543,10 +4602,7 @@
 
             panel.append(panelHeading, div);
 
-
             addBeforeThis.insertAdjacentElement("beforeBegin", panel);
-
-            // done.
         };
 
         const get_example_div = () => {
@@ -4665,14 +4721,14 @@
             let arr = [];
 
             qualities.forEach(q => {
-
                 if (q === "SD") arr.push({ "value": 0, "name": q });
                 else if (q === "480p") arr.push({ "value": 1, "name": q });
                 else if (q === "576p") arr.push({ "value": 2, "name": q });
                 else if (q === "720p") arr.push({ "value": 3, "name": q });
                 else if (q === "1080p") arr.push({ "value": 4, "name": q });
                 else if (q === "2160p") arr.push({ "value": 5, "name": q });
-
+                else if (q === "3D") arr.push({ "value": 6, "name": q });
+                else if (q === "Other") arr.push({ "value": 7, "name": q });
             });
 
             return arr.sort((a, b) => (a.value > b.value) ? 1 : -1).map(e => e.name);
@@ -4724,6 +4780,9 @@
 
         const get_reduced_qualities = (doms) => {
             let lst = [];
+
+            // Define all possible qualities
+            const qualities = ["SD", "480p", "576p", "720p", "1080p", "2160p", "3D", "Other"];
 
             qualities.forEach(q => {
                 for (let i = 0; i < doms.length; i++) {
