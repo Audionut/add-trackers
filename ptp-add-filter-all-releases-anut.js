@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.7.6-A
+// @version      3.7.7-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -1051,48 +1051,7 @@
                                     if (titleText) {
                                         infoTextParts.push(titleText);
                                     }
-                                    let groupText = "";
-                                    const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
-                                    const badGroupsList = badGroups(); // Get the list of bad group names
-                                    let matchedGroup = null;
-                                    let badGroupFound = false;
-
-                                    // Check for bad groups
-                                    for (const badGroup of badGroupsList) {
-                                        if (infoTextParts.includes(badGroup)) {
-                                            badGroupFound = true;
-                                            infoTextParts = infoTextParts.replace(badGroup, '').trim(); // Remove the bad group text
-                                            groupText = ""; // Set groupText to an empty string
-                                            break;
-                                        }
-                                    }
-
-                                    if (!badGroupFound) {
-                                        // Check for good groups if no bad group was found
-                                        for (const group of groups) {
-                                            if (infoTextParts.includes(group)) {
-                                                matchedGroup = group;
-                                                break;
-                                            }
-                                        }
-
-                                        if (matchedGroup) {
-                                            groupText = matchedGroup;
-                                            if (improved_tags) {
-                                                infoTextParts = infoTextParts.replace(groupText, '').trim();
-                                            }
-                                        } else {
-                                            const match = infoTextParts.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
-                                            if (match) {
-                                                groupText = match[1]; // Use match[1] to get the capturing group
-                                                groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                                                if (improved_tags) {
-                                                    infoTextParts = infoTextParts.replace(`-${match[1]}`, '').trim();
-                                                }
-                                            }
-                                        }
-                                    }
-                                    torrent_obj.groupId = groupText;
+                                    torrent_obj.groupId = "";
                                     const strongElements = titleElement.querySelectorAll("strong.torrent_label");
                                     strongElements.forEach((strong, index) => {
                                         const text = strong.textContent.trim();
