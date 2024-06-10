@@ -74,6 +74,7 @@
         "tracker_by_default": {"label": "Only these sites by default", "type": "text", "default": "", "tooltip": "Show only these sites by default. Comma separated. PTP, BHD, ANT, etc"},
         "res_by_default": {"label": "Only these resolutions by default", "type": "text", "default": "", "tooltip": "Show only these resolutions by default. Comma separated, with valued values. SD, 480p, 576p, 720p, 1080p, 2160p"},
         "hideBlankLinks": {"label": "How to display download link", "type": "select", "options": ["DL", "Download", "Spaced"], "default": "DL", "tooltip": "Choose how to display the download links: DL (original method), DOWNLOAD, or Spaced. Other methods help with some stylesheets."},
+        "btnsearchmethod": {"label": "BTN search method", "type": "select", "options": ["Series", "Search", "Name"], "default": "Search", "tooltip": "Choose the BTN API search parameter. Series probably has the least false positivies. Search will find related movies."},
         "timer": {"label": "Error timeout (seconds)", "type": "int", "default": 4, "tooltip": "Set the error timeout duration in seconds to skip slow/dead trackers"},
         "timerDuration": {"label": "Error display duration (seconds)", "type": "int", "default": 2, "tooltip": "Set the duration for displaying errors in seconds"}
     };
@@ -327,6 +328,7 @@
         const timerDuration = GM_config.get("timerDuration") * 1000; // Convert to milliseconds
         let ptp_release_name = GM_config.get("ptp_name"); // true = show release name - false = original PTP release style. Ignored if Improved Tags  = true
         let improved_tags = GM_config.get("funky_tags"); // true = Change display to work fully with PTP Improved Tags from jmxd.
+        const btnSearchMethod = GM_config.get("btnsearchmethod");
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -2136,22 +2138,48 @@
                 else if (tracker === "BTN") {
                     try {
                         post_query_url = "https://api.broadcasthe.net/";
-                        postData = {
-                            jsonrpc: "2.0",
-                            id: generateGUID().substring(0, 8),
-                            method: "getTorrentsSearch",
-                            params: [
-                                BTN_API_TOKEN,
-                                {
-                                    //imdb_id: parseInt(imdb_id.split("tt")[1])
-                                    //series: show_name
-                                    search: show_name
-                                    //name: show_name
-                                },
-                                20, // Results per page
-                                //0   // Page number
-                            ]
-                        };
+                        if (btnSearchMethod === "Series") {
+                            postData = {
+                                jsonrpc: "2.0",
+                                id: generateGUID().substring(0, 8),
+                                method: "getTorrentsSearch",
+                                params: [
+                                    BTN_API_TOKEN,
+                                    {
+                                        series: show_name
+                                    },
+                                    20, // Results per page
+                                ]
+                            };
+                        }
+                        else if (btnSearchMethod === "Name") {
+                            postData = {
+                                jsonrpc: "2.0",
+                                id: generateGUID().substring(0, 8),
+                                method: "getTorrentsSearch",
+                                params: [
+                                    BTN_API_TOKEN,
+                                    {
+                                        name: show_name
+                                    },
+                                    20,
+                                ]
+                            };
+                        }
+                        else if (btnSearchMethod === "Search") {
+                            postData = {
+                                jsonrpc: "2.0",
+                                id: generateGUID().substring(0, 8),
+                                method: "getTorrentsSearch",
+                                params: [
+                                    BTN_API_TOKEN,
+                                    {
+                                        search: show_name
+                                    },
+                                    20,
+                                ]
+                            };
+                        }
                     } catch (error) {
                         console.error(`Error setting up NBL query: ${error.message}`);
                         resolve([]); // Resolve with an empty array if there's an error
