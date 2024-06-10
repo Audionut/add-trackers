@@ -3386,7 +3386,7 @@
                     let sizeSpan = [...t.querySelectorAll("span")].find(s => s.title && s.title.includes(" bytes"));
                     if (!sizeSpan) {
                         console.log("No size information found for torrent.");
-                        return null;
+                        return { dom_path: t, size: -1, quality: quality };
                     }
 
                     // Extract size in bytes
@@ -3395,7 +3395,7 @@
 
                     if (isNaN(sizeInBytes)) {
                         console.error("Failed to parse size from text: ", sizeText);
-                        return null;
+                        return { dom_path: t, size: -1, quality: quality };
                     }
 
                     // Convert size to MiB
@@ -3409,7 +3409,7 @@
 
                 } catch (e) {
                     console.error("An error has occurred during processing a torrent: ", e);
-                    return null;
+                    return { dom_path: t, size: -1, quality: quality };
                 }
             }).filter(t => t !== null); // Filter out any null values due to errors
             console.log("Final group torrent objects count:", group_torrent_objs.length);
@@ -3766,6 +3766,17 @@
             }
         };
 
+        const fix_doms = () => {
+            doms.forEach((d) => {
+                // Find the element with class 'group_torrent' that also has a class matching d.dom_id
+                const targetElement = [...document.querySelectorAll(".group_torrent")].find(e =>
+                    e.classList.contains(d.dom_id)
+                );
+                // Update the dom_path property
+                d.dom_path = targetElement;
+            });
+        };
+
         const add_external_torrents = (external_torrents) => {
             const existing_torrent_sizes = Array.from(document.querySelectorAll("span[style='float: left;']")).map(x => x.textContent);
             console.log("Existing torrent sizes:", existing_torrent_sizes);
@@ -3803,6 +3814,9 @@
                 // Find the correct position to insert the torrent within its quality group based on size
                 let insert_position = group_torrents.findIndex(ptp_torrent => ptp_torrent.size < torrent.size);
                 if (insert_position === -1) insert_position = group_torrents.length;
+
+                // Log the position where the torrent will be inserted
+                console.log(`Inserting ${torrent.site} torrent of size ${torrent.size} at position ${insert_position} in ${torrent.quality} group`);
 
                 // Create a clone of the line example and populate it with the torrent data
                 let cln = line_example.cloneNode(true);
@@ -4012,7 +4026,6 @@
                     add_as_first(cln, torrent.quality);
                 }
 
-                // Update the group_torrents array to include the new torrent
                 group_torrents.splice(insert_position, 0, { dom_path: cln, size: torrent.size });
 
                 let dom_path = cln;
@@ -4033,6 +4046,8 @@
             three_d_ptp_torrents = get_filtered_torrents("3D").sort((a, b) => a.size < b.size ? 1 : -1);
             other_ptp_torrents = get_filtered_torrents("Other").sort((a, b) => a.size < b.size ? 1 : -1);
 
+            fix_doms();
+
             console.log("Finished processing for other scripts");
             const event = new CustomEvent('PTPAddReleasesFromOtherTrackersComplete');
             document.dispatchEvent(event);
@@ -4043,20 +4058,8 @@
 
             if (!hide_filters_div) {
                 add_filters_div(reduced_trackers, reduced_discounts, reduced_qualities);
-                // disable_highlight()
                 add_sort_listeners();
             }
-        };
-
-        const fix_doms = () => {
-            doms.forEach((d) => {
-                // Find the element with class 'group_torrent' that also has a class matching d.dom_id
-                const targetElement = [...document.querySelectorAll(".group_torrent")].find(e =>
-                    e.classList.contains(d.dom_id)
-                );
-                // Update the dom_path property
-                d.dom_path = targetElement;
-            });
         };
 
         const filter_torrents = () => {
