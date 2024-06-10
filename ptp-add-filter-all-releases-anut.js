@@ -3266,15 +3266,16 @@
             }
         };
 
+        const qualityMap = {
+            "SD": "Standard Definition",
+            "HD": "High Definition",
+            "UHD": "Ultra High Definition",
+            "3D": "3D",
+            "Other": "Other"
+        };
+
         const get_filtered_torrents = (quality, criteria = null) => {
             const all_trs = [...document.querySelectorAll("tr.group_torrent")];
-            const qualityMap = {
-                "SD": "Standard Definition",
-                "HD": "High Definition",
-                "UHD": "Ultra High Definition",
-                "3D": "3D",
-                "Other": "Other"
-            };
             let filtered_torrents = [];
 
             // Return empty array if the quality is invalid
@@ -3400,13 +3401,6 @@
 
         const add_as_first = (div, quality) => { // puts 2GB 1080p at the top of the pack.
             const all_trs = [...document.querySelectorAll("tr.group_torrent")];
-            const qualityMap = {
-                "SD": "Standard Definition",
-                "HD": "High Definition",
-                "UHD": "Ultra High Definition",
-                "3D": "3D",
-                "Other": "Other"
-            };
 
             // Return early if invalid quality
             if (!qualityMap[quality]) {
@@ -3666,6 +3660,46 @@
             else if (discount === "50% Freeleech") return "inherit";
             else if (discount === "25% Freeleech") return "inherit";
             else return "inherit";
+        };
+
+        // Helper function to insert an element after a reference element
+        const insertAfter = (newNode, referenceNode) => {
+            referenceNode.parentNode.insertBefore(newNode, referenceNode.nextSibling);
+        };
+
+        const create_needed_groups = (torrents) => {
+            const all_trs = [...document.querySelector("#torrent-table > tbody").querySelectorAll("tr.group_torrent")];
+            const tbody = document.querySelector("#torrent-table > tbody");
+
+            if (torrents.some(t => t.quality === "3D") && !all_trs.some(tr => tr.textContent.includes("3D"))) {
+                let group_header_3d = group_header_example.cloneNode(true);
+                group_header_3d.querySelector(".basic-movie-list__torrent-edition__sub").textContent = "3D";
+                tbody.appendChild(group_header_3d);
+            }
+
+            if (torrents.some(t => t.quality === "Other") && !all_trs.some(tr => tr.textContent.includes("Other"))) {
+                let group_header_other = group_header_example.cloneNode(true);
+                group_header_other.querySelector(".basic-movie-list__torrent-edition__sub").textContent = "Other";
+                tbody.appendChild(group_header_other);
+            }
+
+            if (torrents.some(t => t.quality === "SD") && !all_trs.some(tr => tr.textContent.includes("Standard Definition"))) {
+                let group_header_sd = group_header_example.cloneNode(true);
+                group_header_sd.querySelector(".basic-movie-list__torrent-edition__sub").textContent = "Standard Definition";
+                tbody.insertBefore(group_header_sd, tbody.firstChild);
+            }
+
+            if (torrents.some(t => t.quality === "HD") && !all_trs.some(tr => tr.textContent.includes("High Definition") && !tr.textContent.includes("Ultra High Definition"))) {
+                let group_header_hd = group_header_example.cloneNode(true);
+                group_header_hd.querySelector(".basic-movie-list__torrent-edition__sub").textContent = "High Definition";
+                tbody.appendChild(group_header_hd);
+            }
+
+            if (torrents.some(t => t.quality === "UHD") && !all_trs.some(tr => tr.textContent.includes("Ultra High Definition"))) {
+                let group_header_uhd = group_header_example.cloneNode(true);
+                group_header_uhd.querySelector(".basic-movie-list__torrent-edition__sub").textContent = "Ultra High Definition";
+                tbody.appendChild(group_header_uhd);
+            }
         };
 
         const add_external_torrents = (external_torrents) => {
@@ -3934,46 +3968,6 @@
                 add_filters_div(reduced_trackers, reduced_discounts, reduced_qualities);
                 // disable_highlight()
                 add_sort_listeners();
-            }
-        };
-
-        // Helper function to insert an element after a reference element
-        const insertAfter = (newNode, referenceNode) => {
-            referenceNode.parentNode.insertBefore(newNode, referenceNode.nextSibling);
-        };
-
-        const create_needed_groups = (torrents) => {
-            const all_trs = [...document.querySelector("#torrent-table > tbody").querySelectorAll("tr.group_torrent")];
-            const tbody = document.querySelector("#torrent-table > tbody");
-
-            if (torrents.some(t => t.quality === "3D") && !all_trs.some(tr => tr.textContent.includes("3D"))) {
-                let group_header_3d = group_header_example.cloneNode(true);
-                group_header_3d.querySelector(".basic-movie-list__torrent-edition__sub").textContent = "3D";
-                tbody.appendChild(group_header_3d);
-            }
-
-            if (torrents.some(t => t.quality === "Other") && !all_trs.some(tr => tr.textContent.includes("Other"))) {
-                let group_header_other = group_header_example.cloneNode(true);
-                group_header_other.querySelector(".basic-movie-list__torrent-edition__sub").textContent = "Other";
-                tbody.appendChild(group_header_other);
-            }
-
-            if (torrents.some(t => t.quality === "SD") && !all_trs.some(tr => tr.textContent.includes("Standard Definition"))) {
-                let group_header_sd = group_header_example.cloneNode(true);
-                group_header_sd.querySelector(".basic-movie-list__torrent-edition__sub").textContent = "Standard Definition";
-                tbody.insertBefore(group_header_sd, tbody.firstChild);
-            }
-
-            if (torrents.some(t => t.quality === "HD") && !all_trs.some(tr => tr.textContent.includes("High Definition") && !tr.textContent.includes("Ultra High Definition"))) {
-                let group_header_hd = group_header_example.cloneNode(true);
-                group_header_hd.querySelector(".basic-movie-list__torrent-edition__sub").textContent = "High Definition";
-                tbody.appendChild(group_header_hd);
-            }
-
-            if (torrents.some(t => t.quality === "UHD") && !all_trs.some(tr => tr.textContent.includes("Ultra High Definition"))) {
-                let group_header_uhd = group_header_example.cloneNode(true);
-                group_header_uhd.querySelector(".basic-movie-list__torrent-edition__sub").textContent = "Ultra High Definition";
-                tbody.appendChild(group_header_uhd);
             }
         };
 
