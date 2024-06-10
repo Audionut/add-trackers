@@ -1064,7 +1064,7 @@
                                     let formattedText = infoTextParts.join(' / ')
                                         .replace(/\/+/g, '/')
                                         .replace(/\s*\/\s*/g, ' / ');
-                                    if (formattedText.includes("Blu-ray") && torrent_obj.size) {
+                                    if (formattedText.includes("m2ts") && torrent_obj.size) {
                                         const bdType = get_bd_type(torrent_obj.size);
                                         formattedText = `${bdType} ${formattedText}`;
                                     }
@@ -1103,6 +1103,49 @@
                                 } else {
                                     torrent_obj.datasetRelease = antname;
                                     antname = antname.replace(/\.[^.]*$/, "").replace(/\./g, " ");
+                                    let infoText = antname.replace(/\.[^.]*$/, "").replace(/\./g, " ");
+                                    let groupText = "";
+                                    const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
+                                    const badGroupsList = badGroups(); // Get the list of bad group names
+                                    let matchedGroup = null;
+                                    let badGroupFound = false;
+        
+                                    // Check for bad groups
+                                    for (const badGroup of badGroupsList) {
+                                        if (infoText.includes(badGroup)) {
+                                            badGroupFound = true;
+                                            infoText = infoText.replace(badGroup, '').trim(); // Remove the bad group text
+                                            groupText = ""; // Set groupText to an empty string
+                                            break;
+                                        }
+                                    }
+        
+                                    if (!badGroupFound) {
+                                        // Check for good groups if no bad group was found
+                                        for (const group of groups) {
+                                            if (infoText.includes(group)) {
+                                                matchedGroup = group;
+                                                break;
+                                            }
+                                        }
+        
+                                        if (matchedGroup) {
+                                            groupText = matchedGroup;
+                                            if (improved_tags) {
+                                                infoText = infoText.replace(groupText, '').trim();
+                                            }
+                                        } else {
+                                            const match = infoText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
+                                            if (match) {
+                                                groupText = match[1]; // Use match[1] to get the capturing group
+                                                groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                                if (improved_tags) {
+                                                    infoText = infoText.replace(`-${match[1]}`, '').trim();
+                                                }
+                                            }
+                                        }
+                                    }
+                                    torrent_obj.groupId = groupText;
                                     torrent_obj.info_text = antname;
                                 }
                             }
