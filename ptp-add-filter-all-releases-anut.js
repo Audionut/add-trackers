@@ -1107,7 +1107,7 @@
                                     let formattedText = infoTextParts.join(' / ')
                                         .replace(/\/+/g, '/')
                                         .replace(/\s*\/\s*/g, ' / ');
-                                    if (formattedText.includes("Blu-ray") && torrent_obj.size) {
+                                    if (formattedText.includes("m2ts") && torrent_obj.size) {
                                         const bdType = get_bd_type(torrent_obj.size);
                                         formattedText = `${bdType} ${formattedText}`;
                                     }
@@ -3341,11 +3341,11 @@
         };
 
         const qualityMap = {
-            "SD": "Standard Definition",
-            "HD": "High Definition",
-            "UHD": "Ultra High Definition",
+            "Other": "Other",
             "3D": "3D",
-            "Other": "Other"
+            "UHD": "Ultra High Definition",
+            "HD": "High Definition",
+            "SD": "Standard Definition"
         };
 
         const get_filtered_torrents = (quality, criteria = null) => {
@@ -3379,12 +3379,6 @@
             filtered_torrents = sliced.slice(0, last_idx);
             console.log("Filtered torrents count before criteria:", filtered_torrents.length);
 
-            // Filter based on additional criteria if provided
-            if (criteria) {
-                filtered_torrents = filtered_torrents.filter(tr => tr.textContent.includes(criteria));
-                console.log("Filtered torrents count after criteria:", filtered_torrents.length);
-            }
-
             // Part 2: Process filtered torrents to extract size information
             const group_torrent_objs = filtered_torrents.map(t => {
                 try {
@@ -3409,7 +3403,8 @@
 
                     return {
                         dom_path: t,
-                        size: sizeInMiB
+                        size: sizeInMiB,
+                        quality: quality // Tag the torrent with its quality
                     };
 
                 } catch (e) {
@@ -3432,21 +3427,6 @@
             if (text.includes("2160p")) return "UHD";
             if (text.includes("1080p") || text.includes("720p") || text.includes("1080i") || text.includes("720i")) return "HD";
             return "SD";
-        };
-
-        const get_ref_div = (torrent, ptp_torrent_group) => {
-            let my_size = torrent.size;
-            console.log("Finding reference div for torrent:", torrent.info_text, "with size:", my_size);
-
-            try {
-                // dont add after this div, add it after the hidden div !
-                let div = ptp_torrent_group.find(e => e.size < my_size).dom_path;
-                console.log("dom path", div);
-                let selector_id = "torrent_" + div.id.split("header_")[1];
-                return document.getElementById(selector_id);
-            } catch (e) {
-                return false; // the size is too small, put it at the top of the group.
-            }
         };
 
         const get_ptp_format_size = (size) => {
@@ -3799,32 +3779,34 @@
             create_needed_groups(external_torrents);
 
             external_torrents.forEach((torrent, i) => {
-            console.log("external torrent sizes", get_ptp_format_size(torrent.size));
+                console.log("external torrent sizes", get_ptp_format_size(torrent.size));
                 let seeders = parseInt(torrent.seed);
                 if (hide_dead_external_torrents && parseInt(seeders) === 0) return;
 
-                let group_torrents;
-                let ref_div;
                 let tracker = torrent.site;
                 let dom_id = tracker + "_" + i;
                 const group_id = torrent.groupId;
 
+                let group_torrents;
                 if (torrent.quality === "3D") {
-                    ref_div = get_ref_div(torrent, three_d_ptp_torrents);
                     group_torrents = three_d_ptp_torrents;
                 } else if (torrent.quality === "Other") {
-                    ref_div = get_ref_div(torrent, other_ptp_torrents);
                     group_torrents = other_ptp_torrents;
                 } else if (torrent.quality === "UHD") {
-                    ref_div = get_ref_div(torrent, uhd_ptp_torrents);
                     group_torrents = uhd_ptp_torrents;
                 } else if (torrent.quality === "HD") {
-                    ref_div = get_ref_div(torrent, hd_ptp_torrents);
                     group_torrents = hd_ptp_torrents;
                 } else {
-                    ref_div = get_ref_div(torrent, sd_ptp_torrents);
                     group_torrents = sd_ptp_torrents;
                 }
+
+                // Find the correct position to insert the torrent within its quality group based on size
+                let insert_position = group_torrents.findIndex(ptp_torrent => ptp_torrent.size < torrent.size);
+                if (insert_position === -1) insert_position = group_torrents.length;
+
+                // Create a clone of the line example and populate it with the torrent data
+                let cln = line_example.cloneNode(true);
+
                 if (improved_tags) {
                     if (typeof sceneGroups !== 'undefined') {
                         if (sceneGroups.includes(torrent.groupId)) {
@@ -3832,7 +3814,6 @@
                         }
                     }
                 }
-                let cln = line_example.cloneNode(true);
 
                 if (improved_tags && show_tracker_name) {
                     cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] / ` + get_simplified_title(torrent.info_text);
@@ -4025,10 +4006,14 @@
                     cln.querySelector("img").title = torrent.site;
                 }
 
-                if (ref_div != false) insertAfter(cln, ref_div);
-                else {
+                if (insert_position < group_torrents.length) {
+                    insertAfter(cln, group_torrents[insert_position].dom_path);
+                } else {
                     add_as_first(cln, torrent.quality);
                 }
+
+                // Update the group_torrents array to include the new torrent
+                group_torrents.splice(insert_position, 0, { dom_path: cln, size: torrent.size });
 
                 let dom_path = cln;
                 let quality = dom_get_quality(torrent.info_text);
@@ -4040,6 +4025,13 @@
 
                 doms.push({ tracker, dom_path, quality, discount, info_text, group_id, seeders, leechers, snatchers, dom_id, size });
             });
+
+            // After inserting torrents, update the group arrays with new positions
+            sd_ptp_torrents = get_filtered_torrents("SD").sort((a, b) => a.size < b.size ? 1 : -1);
+            hd_ptp_torrents = get_filtered_torrents("HD").sort((a, b) => a.size < b.size ? 1 : -1);
+            uhd_ptp_torrents = get_filtered_torrents("UHD").sort((a, b) => a.size < b.size ? 1 : -1);
+            three_d_ptp_torrents = get_filtered_torrents("3D").sort((a, b) => a.size < b.size ? 1 : -1);
+            other_ptp_torrents = get_filtered_torrents("Other").sort((a, b) => a.size < b.size ? 1 : -1);
 
             console.log("Finished processing for other scripts");
             const event = new CustomEvent('PTPAddReleasesFromOtherTrackersComplete');
