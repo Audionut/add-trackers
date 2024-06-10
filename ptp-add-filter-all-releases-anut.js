@@ -636,7 +636,9 @@
                 "AI-Raws",
                 "3L",
                 "3DAccess",
-                "CultFilms"
+                "CultFilms",
+                "BluDragon",
+                "AdBlue"
                 //"ExampleText3"
             ];
         };
@@ -1035,6 +1037,49 @@
                         if (nextRow) {
                             let antname = nextRow.querySelector('.row > td').textContent.trim();
                             torrent_obj.datasetRelease = antname;
+                            let infoText = antname.replace(/\.[^.]*$/, "").replace(/\./g, " ");
+                            let groupText = "";
+                            const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
+                            const badGroupsList = badGroups(); // Get the list of bad group names
+                            let matchedGroup = null;
+                            let badGroupFound = false;
+
+                            // Check for bad groups
+                            for (const badGroup of badGroupsList) {
+                                if (infoText.includes(badGroup)) {
+                                    badGroupFound = true;
+                                    infoText = infoText.replace(badGroup, '').trim(); // Remove the bad group text
+                                    groupText = ""; // Set groupText to an empty string
+                                    break;
+                                }
+                            }
+
+                            if (!badGroupFound) {
+                                // Check for good groups if no bad group was found
+                                for (const group of groups) {
+                                    if (infoText.includes(group)) {
+                                        matchedGroup = group;
+                                        break;
+                                    }
+                                }
+
+                                if (matchedGroup) {
+                                    groupText = matchedGroup;
+                                    if (improved_tags) {
+                                        infoText = infoText.replace(groupText, '').trim();
+                                    }
+                                } else {
+                                    const match = infoText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
+                                    if (match) {
+                                        groupText = match[1]; // Use match[1] to get the capturing group
+                                        groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                        if (improved_tags) {
+                                            infoText = infoText.replace(`-${match[1]}`, '').trim();
+                                        }
+                                    }
+                                }
+                            }
+                            torrent_obj.groupId = groupText;
                             let mediaInfo = nextRow.querySelector('.mediainfo > tbody > tr > td:nth-child(2) > table > tbody > tr:nth-child(2) > td:nth-child(2)').textContent.trim();
                             if (improved_tags) {
                                 const titleElement = d.querySelector("td:nth-child(1) > a");
@@ -2555,14 +2600,15 @@
                                     finalReleaseName = `${tags} ${releaseName}`;
                                 }
                             }
+                            // tag this in release name view also
+                            const isAudioOnly = d.type_category === 6 ? true : false;
+                            if (isAudioOnly) {
+                                infoText = infoText += " - Audio Only Track";
+                            }
                             if (improved_tags) {
                                 const bdType = get_blu_ray_disc_type(d.size);
                                 if (improved_tags && infoText.includes("Blu-ray") && (infoText.includes("1080p") || infoText.includes("2160p"))) {
                                     infoText = `${bdType} ${infoText}`;
-                                }
-                                const isAudioOnly = d.type_category === 6 ? true : false;
-                                if (isAudioOnly) {
-                                    infoText = infoText += "Audio Only Track";
                                 }
                                 if (extention) {
                                     infoText = `${infoText} ${extention}`;
@@ -3280,6 +3326,7 @@
 
             // Return empty array if the quality is invalid
             if (!qualityMap[quality]) return filtered_torrents;
+            console.log("Looking for quality:", quality, "which maps to:", qualityMap[quality]);
 
             // Find the starting index based on quality
             let first_idx = all_trs.findIndex(a => {
@@ -3288,6 +3335,7 @@
                 }
                 return a.textContent.includes(qualityMap[quality]);
             });
+            console.log("Found starting index for quality:", quality, "at index:", first_idx);
 
             // Return empty array if no matching torrents found
             if (first_idx === -1) return filtered_torrents;
@@ -3298,12 +3346,15 @@
             // Find the last index to limit the slice
             let last_idx = sliced.findIndex(a => a.className === "group_torrent");
             if (last_idx === -1) last_idx = sliced.length;
+            console.log("Sliced array from index:", first_idx + 1, "to index:", last_idx);
 
             filtered_torrents = sliced.slice(0, last_idx);
+            console.log("Filtered torrents count before criteria:", filtered_torrents.length);
 
             // Filter based on additional criteria if provided
             if (criteria) {
                 filtered_torrents = filtered_torrents.filter(tr => tr.textContent.includes(criteria));
+                console.log("Filtered torrents count after criteria:", filtered_torrents.length);
             }
 
             // Part 2: Process filtered torrents to extract size information
@@ -3338,6 +3389,7 @@
                     return null;
                 }
             }).filter(t => t !== null); // Filter out any null values due to errors
+            console.log("Final group torrent objects count:", group_torrent_objs.length);
 
             return group_torrent_objs;
         };
@@ -3348,7 +3400,7 @@
             let text = torrent.info_text.toLowerCase();
 
             if (text.includes("3d") || text.includes("half-ou") || text.includes("half ou") || text.includes("half-sbs") || text.includes("half sbs")) return "3D";
-            if (text.includes("pdf") || text.includes("ebook") || text.includes("vinyl") || text.includes("rifftrax") || text.includes("extras") || text.includes("special features") || text.includes("audio only track") || text.includes("audio and subtitles pack")) return "Other";
+            if (text.includes("pdf") || text.includes("ebook") || text.includes("vinyl") || text.includes("rifftrax") || text.includes("extras") || text.includes("special features") || text.includes("audio only track") || text.includes("audio and subtitles pack") || text.includes("cd audio") || text.includes("vhsrip/other]")) return "Other";
             if (text.includes("2160p")) return "UHD";
             if (text.includes("1080p") || text.includes("720p") || text.includes("1080i") || text.includes("720i")) return "HD";
             return "SD";
@@ -3356,10 +3408,12 @@
 
         const get_ref_div = (torrent, ptp_torrent_group) => {
             let my_size = torrent.size;
+            console.log("Finding reference div for torrent:", torrent.info_text, "with size:", my_size);
 
             try {
                 // dont add after this div, add it after the hidden div !
                 let div = ptp_torrent_group.find(e => e.size < my_size).dom_path;
+                console.log("dom path", div);
                 let selector_id = "torrent_" + div.id.split("header_")[1];
                 return document.getElementById(selector_id);
             } catch (e) {
@@ -3578,10 +3632,12 @@
             if (lower.includes("commentary")) bonuses.push("Commentary");
             if (lower.includes("10bit")) bonuses.push("10bit");
             if (lower.includes("35mm")) bonuses.push("35mm");
+            if (lower.includes("full frame")) bonuses.push("Full Frame");
             if (lower.includes("hfr")) bonuses.push("High Frame-rate");
             if (lower.includes("dcp")) bonuses.push("Digital Cinema Package");
             if (lower.includes("open matte")) bonuses.push("Open Matte");
             if (lower.includes("audio only track")) bonuses.push("Audio Only Track");
+            if (lower.includes("regrade")) bonuses.push("Regrade");
             if (lower.includes("repack2")) bonuses.push("Repack2");
             else if (lower.includes("repack")) bonuses.push("Repack");
             if (lower.includes("extended edition")) bonuses.push("Extended Edition");
@@ -3704,7 +3760,7 @@
 
         const add_external_torrents = (external_torrents) => {
             const existing_torrent_sizes = Array.from(document.querySelectorAll("span[style='float: left;']")).map(x => x.textContent);
-            // console.log(existing_torrent_sizes);
+            console.log("Existing torrent sizes:", existing_torrent_sizes);
 
             let sd_ptp_torrents = get_filtered_torrents("SD").sort((a, b) => a.size < b.size ? 1 : -1);
             let hd_ptp_torrents = get_filtered_torrents("HD").sort((a, b) => a.size < b.size ? 1 : -1);
@@ -3715,6 +3771,7 @@
             create_needed_groups(external_torrents);
 
             external_torrents.forEach((torrent, i) => {
+            console.log("external torrent sizes", get_ptp_format_size(torrent.size));
                 let seeders = parseInt(torrent.seed);
                 if (hide_dead_external_torrents && parseInt(seeders) === 0) return;
 
