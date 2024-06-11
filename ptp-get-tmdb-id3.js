@@ -4,6 +4,7 @@
 // @description Fetch TVDB ID using IMDb ID on PTP torrent pages and dispatch an event with the result.
 // @match      https://passthepopcorn.me/torrents.php?*id=*
 // @namespace  https://github.com/Audionut/add-trackers
+// @require    https://cdn.jsdelivr.net/gh/sizzlemctwizzle/GM_config@43fd0fe4de1166f343883511e53546e87840aeaf/gm_config.js
 // @grant      GM_xmlHttpRequest
 // @grant      GM.registerMenuCommand
 // ==/UserScript==
