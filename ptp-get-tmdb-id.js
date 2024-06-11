@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name       PTP - Get TMDB ID from IMDb ID
+// @name       PTP - Get TVDB ID from IMDb ID
 // @version    1.0
-// @description Fetch TMDB ID using IMDb ID on PTP torrent pages and dispatch an event with the result.
+// @description Fetch TVDB ID using IMDb ID on PTP torrent pages and dispatch an event with the result.
 // @match      https://passthepopcorn.me/torrents.php?*id=*
 // @namespace  https://github.com/Audionut/add-trackers
 // @grant      GM.xmlHttpRequest
@@ -30,12 +30,34 @@ function getApiKey() {
 
 // TMDB API configuration
 const TMDB_SEARCH_URL = 'https://api.themoviedb.org/3/find/';
+const TMDB_EXTERNAL_IDS_URL = 'https://api.themoviedb.org/3/';
 
-// Function to store TMDB ID and dispatch event
-function storeTmdbIdAndDispatchEvent(ptpId, tmdbId) {
-    localStorage.setItem(`tmdb_id_${ptpId}`, tmdbId);
-    const event = new CustomEvent('tmdbIdFetched', { detail: { ptpId, tmdbId } });
+// Function to store TVDB ID and dispatch event
+function storeTvdbIdAndDispatchEvent(ptpId, tvdbId) {
+    localStorage.setItem(`tvdb_id_${ptpId}`, tvdbId);
+    const event = new CustomEvent('tvdbIdFetched', { detail: { ptpId, tvdbId } });
     document.dispatchEvent(event);
+}
+
+// Function to fetch TVDB ID using TMDB ID
+function fetchTvdbIdFromTmdb(apiKey, tmdbId, ptpId, mediaType) {
+    const url = `${TMDB_EXTERNAL_IDS_URL}${mediaType}/${tmdbId}/external_ids?api_key=${apiKey}`;
+
+    GM.xmlHttpRequest({
+        method: "GET",
+        url: url,
+        onload: function(response) {
+            const data = JSON.parse(response.responseText);
+            if (data && data.tvdb_id) {
+                storeTvdbIdAndDispatchEvent(ptpId, data.tvdb_id);
+            } else {
+                console.error("TVDB ID not found in TMDB external IDs response.");
+            }
+        },
+        onerror: function() {
+            console.error("Failed to fetch TVDB ID from TMDB API.");
+        }
+    });
 }
 
 // Function to fetch TMDB ID using IMDb ID
@@ -49,10 +71,10 @@ function fetchTmdbId(apiKey, imdbId, ptpId) {
             const data = JSON.parse(response.responseText);
             if (data && data.movie_results && data.movie_results.length > 0) {
                 const tmdbId = data.movie_results[0].id;
-                storeTmdbIdAndDispatchEvent(ptpId, tmdbId);
+                fetchTvdbIdFromTmdb(apiKey, tmdbId, ptpId, 'movie');
             } else if (data && data.tv_results && data.tv_results.length > 0) {
                 const tmdbId = data.tv_results[0].id;
-                storeTmdbIdAndDispatchEvent(ptpId, tmdbId);
+                fetchTvdbIdFromTmdb(apiKey, tmdbId, ptpId, 'tv');
             } else {
                 console.error("TMDB ID not found in response.");
             }
