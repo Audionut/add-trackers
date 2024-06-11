@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name       PTP - Get TVDB ID from IMDb ID
-// @version    1.0
+// @version    1.1
 // @description Fetch TVDB ID using IMDb ID on PTP torrent pages and dispatch an event with the result.
 // @match      https://passthepopcorn.me/torrents.php?*id=*
 // @namespace  https://github.com/Audionut/add-trackers
@@ -9,15 +9,32 @@
 
 'use strict';
 
+// Function to prompt for API key
+function promptForApiKey() {
+    const apiKey = prompt("Please enter your TVDB API key:", "");
+    if (apiKey) {
+        localStorage.setItem('tvdb_api_key', apiKey);
+    }
+    return apiKey;
+}
+
+// Function to get the API key from localStorage or prompt for it
+function getApiKey() {
+    let apiKey = localStorage.getItem('tvdb_api_key');
+    if (!apiKey) {
+        apiKey = promptForApiKey();
+    }
+    return apiKey;
+}
+
 // TVDB API configuration
-const TVDB_API_KEY = 'YOUR_TVDB_API_KEY';
 const TVDB_LOGIN_URL = 'https://api.thetvdb.com/login';
 const TVDB_SEARCH_URL = 'https://api.thetvdb.com/search/series?imdbId=';
 
 // Function to get JWT token from TVDB
-function getTvdbToken(callback) {
+function getTvdbToken(apiKey, callback) {
     const loginData = {
-        apikey: TVDB_API_KEY,
+        apikey: apiKey,
     };
 
     GM.xmlHttpRequest({
@@ -73,6 +90,9 @@ function fetchTvdbId(token, imdbId, ptpId) {
     });
 }
 
+// Add menu command to set API key
+GM_registerMenuCommand("Set TVDB API Key", promptForApiKey);
+
 // Initialize script
 (function init() {
     const ptpId = new URL(window.location.href).searchParams.get("id");
@@ -84,8 +104,11 @@ function fetchTvdbId(token, imdbId, ptpId) {
     }
 
     const imdbId = imdbLinkElement.href.match(/title\/(tt\d+)\//)[1];
+    const apiKey = getApiKey();
 
-    getTvdbToken(function(token) {
-        fetchTvdbId(token, imdbId, ptpId);
-    });
+    if (apiKey) {
+        getTvdbToken(apiKey, function(token) {
+            fetchTvdbId(token, imdbId, ptpId);
+        });
+    }
 })();
