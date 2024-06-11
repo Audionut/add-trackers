@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.8.2-A
+// @version      3.8.3-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -15,7 +15,7 @@
 // @grant        GM.registerMenuCommand
 // @require      https://cdn.jsdelivr.net/gh/sizzlemctwizzle/GM_config@43fd0fe4de1166f343883511e53546e87840aeaf/gm_config.js
 // @require      https://github.com/Audionut/add-trackers/raw/main/scene_groups.js
-// @require      https://raw.githubusercontent.com/Audionut/add-trackers/main/ptp-get-tvdb-id.js
+// @require      https://raw.githubusercontent.com/Audionut/add-trackers/main/ptp-get-tvdb-id1.js
 // ==/UserScript==
 
 (function () {
