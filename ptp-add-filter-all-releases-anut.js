@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.7.8-A
+// @version      3.7.9-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -640,7 +640,9 @@
                 "AI-Raws",
                 "3L",
                 "3DAccess",
-                "CultFilms"
+                "CultFilms",
+                "BluDragon",
+                "AdBlue"
                 //"ExampleText3"
             ];
         };
@@ -1103,49 +1105,6 @@
                                 } else {
                                     torrent_obj.datasetRelease = antname;
                                     antname = antname.replace(/\.[^.]*$/, "").replace(/\./g, " ");
-                                    let infoText = antname.replace(/\.[^.]*$/, "").replace(/\./g, " ");
-                                    let groupText = "";
-                                    const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
-                                    const badGroupsList = badGroups(); // Get the list of bad group names
-                                    let matchedGroup = null;
-                                    let badGroupFound = false;
-        
-                                    // Check for bad groups
-                                    for (const badGroup of badGroupsList) {
-                                        if (infoText.includes(badGroup)) {
-                                            badGroupFound = true;
-                                            infoText = infoText.replace(badGroup, '').trim(); // Remove the bad group text
-                                            groupText = ""; // Set groupText to an empty string
-                                            break;
-                                        }
-                                    }
-        
-                                    if (!badGroupFound) {
-                                        // Check for good groups if no bad group was found
-                                        for (const group of groups) {
-                                            if (infoText.includes(group)) {
-                                                matchedGroup = group;
-                                                break;
-                                            }
-                                        }
-        
-                                        if (matchedGroup) {
-                                            groupText = matchedGroup;
-                                            if (improved_tags) {
-                                                infoText = infoText.replace(groupText, '').trim();
-                                            }
-                                        } else {
-                                            const match = infoText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
-                                            if (match) {
-                                                groupText = match[1]; // Use match[1] to get the capturing group
-                                                groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                                                if (improved_tags) {
-                                                    infoText = infoText.replace(`-${match[1]}`, '').trim();
-                                                }
-                                            }
-                                        }
-                                    }
-                                    torrent_obj.groupId = groupText;
                                     torrent_obj.info_text = antname;
                                 }
                             }
@@ -1161,6 +1120,47 @@
                             torrent_obj.internal = d.querySelector('strong.torrent_label.tooltip.internal') ? true : false;
                             torrent_obj.trumpable = d.querySelector(".torrent_table#torrent_details .torrent_label.tl_trumpable.tooltip") ? true : false;
                             torrent_obj.reported = d.querySelector(".torrent_table#torrent_details .torrent_label.tl_reported.tooltip") ? true : false;
+                            let infoText = antname.replace(/\.[^.]*$/, "").replace(/\./g, " ");
+                            let groupText = "";
+                            const groups = goodGroups();
+                            const badGroupsList = badGroups();
+                            let matchedGroup = null;
+                            let badGroupFound = false;
+
+                            for (const badGroup of badGroupsList) {
+                                if (infoText.includes(badGroup)) {
+                                    badGroupFound = true;
+                                    infoText = infoText.replace(badGroup, '').trim();
+                                    groupText = "";
+                                    break;
+                                }
+                            }
+
+                            if (!badGroupFound) {
+                                for (const group of groups) {
+                                    if (infoText.includes(group)) {
+                                        matchedGroup = group;
+                                        break;
+                                    }
+                                }
+
+                                if (matchedGroup) {
+                                    groupText = matchedGroup;
+                                    if (improved_tags) {
+                                        infoText = infoText.replace(groupText, '').trim();
+                                    }
+                                } else {
+                                    const match = infoText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
+                                    if (match) {
+                                        groupText = match[1];
+                                        groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                        if (improved_tags) {
+                                            infoText = infoText.replace(`-${match[1]}`, '').trim();
+                                        }
+                                    }
+                                }
+                            }
+                            torrent_obj.groupId = groupText;
                             torrent_objs.push(torrent_obj);
                         }
                     }
