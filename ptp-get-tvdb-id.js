@@ -5,7 +5,7 @@
 // @match      https://passthepopcorn.me/torrents.php?*id=*
 // @namespace  https://github.com/Audionut/add-trackers
 // @grant      GM.xmlHttpRequest
-// @grant      GM_registerMenuCommand
+// @grant      GM.registerMenuCommand
 // ==/UserScript==
 
 'use strict';
