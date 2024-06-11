@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name       PTP - Get TVDB ID from IMDb ID using Sonarr API
-// @version    1.1
+// @version    1.2
 // @description Fetch TVDB ID using IMDb ID on PTP torrent pages and dispatch an event with the result using Sonarr API.
 // @match      https://passthepopcorn.me/torrents.php?*id=*
 // @namespace  https://github.com/Audionut/add-trackers
@@ -42,6 +42,13 @@ function storeTvdbIdAndDispatchEvent(ptpId, tvdbId) {
     document.dispatchEvent(event);
 }
 
+// Function to handle errors gracefully
+function handleError(message) {
+    console.error(message);
+    const event = new CustomEvent('tvdbIdFetchError', { detail: { message } });
+    document.dispatchEvent(event);
+}
+
 // Function to fetch TVDB ID using Sonarr API
 function fetchTvdbIdFromSonarr(apiKey, apiUrl, imdbId, ptpId) {
     const url = `${apiUrl}/api/v3/series/lookup?term=imdb:${imdbId}`;
@@ -58,11 +65,11 @@ function fetchTvdbIdFromSonarr(apiKey, apiUrl, imdbId, ptpId) {
                 const tvdbId = data[0].tvdbId;
                 storeTvdbIdAndDispatchEvent(ptpId, tvdbId);
             } else {
-                console.error("TVDB ID not found in Sonarr response.");
+                handleError("TVDB ID not found in Sonarr response.");
             }
         },
         onerror: function() {
-            console.error("Failed to fetch TVDB ID from Sonarr API.");
+            handleError("Failed to fetch TVDB ID from Sonarr API.");
         }
     });
 }
@@ -76,7 +83,7 @@ GM.registerMenuCommand("Set Sonarr API Key and URL", promptForSonarrConfig);
 
     const imdbLinkElement = document.getElementById("imdb-title-link");
     if (!imdbLinkElement) {
-        console.warn("No IMDb ID found, aborting.");
+        handleError("No IMDb ID found, aborting.");
         return;
     }
 
@@ -85,5 +92,7 @@ GM.registerMenuCommand("Set Sonarr API Key and URL", promptForSonarrConfig);
 
     if (apiKey && apiUrl) {
         fetchTvdbIdFromSonarr(apiKey, apiUrl, imdbId, ptpId);
+    } else {
+        handleError("Sonarr API key and URL are not configured.");
     }
 })();
