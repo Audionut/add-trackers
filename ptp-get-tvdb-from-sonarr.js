@@ -1,10 +1,13 @@
 // ==UserScript==
 // @name       PTP - Get TVDB ID from IMDb ID using Sonarr API
-// @version    1.0
+// @version    1.1
 // @description Fetch TVDB ID using IMDb ID on PTP torrent pages and dispatch an event with the result using Sonarr API.
 // @match      https://passthepopcorn.me/torrents.php?*id=*
 // @namespace  https://github.com/Audionut/add-trackers
 // @grant      GM.xmlHttpRequest
+// @grant      GM.registerMenuCommand
+// @grant      GM.setValue
+// @grant      GM.getValue
 // ==/UserScript==
 
 'use strict';
@@ -14,16 +17,16 @@ function promptForSonarrConfig() {
     const apiKey = prompt("Please enter your Sonarr API key:", "");
     const apiUrl = prompt("Please enter your Sonarr URL:", "http://localhost:8989");
     if (apiKey && apiUrl) {
-        localStorage.setItem('sonarr_api_key', apiKey);
-        localStorage.setItem('sonarr_api_url', apiUrl);
+        GM.setValue('sonarr_api_key', apiKey);
+        GM.setValue('sonarr_api_url', apiUrl);
     }
     return { apiKey, apiUrl };
 }
 
-// Function to get Sonarr config from localStorage or prompt for it
-function getSonarrConfig() {
-    let apiKey = localStorage.getItem('sonarr_api_key');
-    let apiUrl = localStorage.getItem('sonarr_api_url');
+// Function to get Sonarr config from GM storage or prompt for it
+async function getSonarrConfig() {
+    let apiKey = await GM.getValue('sonarr_api_key');
+    let apiUrl = await GM.getValue('sonarr_api_url');
     if (!apiKey || !apiUrl) {
         const config = promptForSonarrConfig();
         apiKey = config.apiKey;
@@ -34,7 +37,7 @@ function getSonarrConfig() {
 
 // Function to store TVDB ID and dispatch event
 function storeTvdbIdAndDispatchEvent(ptpId, tvdbId) {
-    localStorage.setItem(`tvdb_id_${ptpId}`, tvdbId);
+    GM.setValue(`tvdb_id_${ptpId}`, tvdbId);
     const event = new CustomEvent('tvdbIdFetched', { detail: { ptpId, tvdbId } });
     document.dispatchEvent(event);
 }
@@ -64,8 +67,11 @@ function fetchTvdbIdFromSonarr(apiKey, apiUrl, imdbId, ptpId) {
     });
 }
 
+// Add menu command to set Sonarr API key and URL
+GM.registerMenuCommand("Set Sonarr API Key and URL", promptForSonarrConfig);
+
 // Initialize script
-(function init() {
+(async function init() {
     const ptpId = new URL(window.location.href).searchParams.get("id");
 
     const imdbLinkElement = document.getElementById("imdb-title-link");
@@ -75,7 +81,7 @@ function fetchTvdbIdFromSonarr(apiKey, apiUrl, imdbId, ptpId) {
     }
 
     const imdbId = imdbLinkElement.href.match(/title\/(tt\d+)\//)[1];
-    const { apiKey, apiUrl } = getSonarrConfig();
+    const { apiKey, apiUrl } = await getSonarrConfig();
 
     if (apiKey && apiUrl) {
         fetchTvdbIdFromSonarr(apiKey, apiUrl, imdbId, ptpId);
