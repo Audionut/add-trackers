@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.7.9-A
+// @version      3.8.0-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
 // @match        *://passthepopcorn.me/*threadid=44047*
 // @icon         https://passthepopcorn.me/favicon.ico
-// @downloadURL  https://github.com/Audionut/add-trackers/raw/main/ptp-add-filter-all-releases-anut.js
-// @updateURL    https://github.com/Audionut/add-trackers/raw/main/ptp-add-filter-all-releases-anut.js
+// @downloadURL  https://github.com/Audionut/add-trackers/raw/tvdbid-test/ptp-add-filter-all-releases-anut.js
+// @updateURL    https://github.com/Audionut/add-trackers/raw/tvdbid-test/ptp-add-filter-all-releases-anut.js
 // @grant        GM_xmlhttpRequest
 // @grant        GM.getValue
 // @grant        GM.setValue
