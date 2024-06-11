@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name       PTP - Get TVDB ID from IMDb ID
-// @version    1.1
+// @version    1.2
 // @description Fetch TVDB ID using IMDb ID on PTP torrent pages and dispatch an event with the result.
 // @match      https://passthepopcorn.me/torrents.php?*id=*
 // @namespace  https://github.com/Audionut/add-trackers
