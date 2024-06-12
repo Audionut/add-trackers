@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.8.2-A
+// @version      3.8.3-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -327,7 +327,6 @@
         const timerDuration = GM_config.get("timerDuration") * 1000; // Convert to milliseconds
         let ptp_release_name = GM_config.get("ptp_name"); // true = show release name - false = original PTP release style. Ignored if Improved Tags  = true
         let improved_tags = GM_config.get("funky_tags"); // true = Change display to work fully with PTP Improved Tags from jmxd.
-        const btnSearchMethod = ["TVBDB ID"];
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -2032,7 +2031,8 @@
                 if (response.status === 200) {
                     return JSON.parse(response.responseText);
                 } else {
-                    console.error(`Error: HTTP ${response.status} Error.`);
+                    console.error(`Error: ${tracker} HTTP ${response.status} Error.`);
+                    displayAlert(`${tracker} API seems unresponsive`);
                     return null;  // Allow other processing to continue by returning null
                 }
             } catch (error) {
@@ -2137,7 +2137,7 @@
                 else if (tracker === "BTN") {
                     try {
                         post_query_url = "https://api.broadcasthe.net/";
-                        if (btnSearchMethod === "TVDB ID" && tvdbId) {
+                        if (tvdbId) {
                             postData = {
                                 jsonrpc: "2.0",
                                 id: generateGUID().substring(0, 8),
@@ -2295,7 +2295,16 @@
                                 if (result) {
                                     if (result.results && tracker === "BHD") {
                                         resolve(get_post_torrent_objects(tracker, result));
-                                    } else if (result.data && tracker === "HDB") {
+                                    } else if (result?.data && tracker === "HDB") {
+                                        if (result.status === 1) {
+                                            console.log("HDB: Failure (something bad happened)");
+                                        }
+                                        else if (result.status === 4) {
+                                            console.log("HDB: Auth data missing");
+                                        }
+                                        else if (result.status === 5) {
+                                            console.log("HDB: Auth failed (incorrect username / password)");
+                                        }
                                         resolve(get_post_torrent_objects(tracker, result));
                                     } else if (result.result && tracker === "NBL") {
                                         if (result) {
@@ -4961,7 +4970,7 @@
             }
 
             let tvdbId;
-            if (btnSearchMethod === "TVDB ID" && trackers.includes("BTN")) {
+            if (trackers.includes("BTN")) {
                 try {
                     tvdbId = getTvdbId();
                     if (!tvdbId) {
