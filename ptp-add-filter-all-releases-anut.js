@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.8.1-A
+// @version      3.8.2-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -74,7 +74,6 @@
         "tracker_by_default": {"label": "Only these sites by default", "type": "text", "default": "", "tooltip": "Show only these sites by default. Comma separated. PTP, BHD, ANT, etc"},
         "res_by_default": {"label": "Only these resolutions by default", "type": "text", "default": "", "tooltip": "Show only these resolutions by default. Comma separated, with valued values. SD, 480p, 576p, 720p, 1080p, 2160p"},
         "hideBlankLinks": {"label": "How to display download link", "type": "select", "options": ["DL", "Download", "Spaced"], "default": "DL", "tooltip": "Choose how to display the download links: DL (original method), DOWNLOAD, or Spaced. Other methods help with some stylesheets."},
-        "btnsearchmethod": {"label": "BTN search method", "type": "select", "options": ["Series", "Search", "Name"], "default": "Search", "tooltip": "Choose the BTN API search parameter. Series probably has the least false positivies. Search will find related movies."},
         "timer": {"label": "Error timeout (seconds)", "type": "int", "default": 4, "tooltip": "Set the error timeout duration in seconds to skip slow/dead trackers"},
         "timerDuration": {"label": "Error display duration (seconds)", "type": "int", "default": 2, "tooltip": "Set the duration for displaying errors in seconds"}
     };
@@ -328,7 +327,7 @@
         const timerDuration = GM_config.get("timerDuration") * 1000; // Convert to milliseconds
         let ptp_release_name = GM_config.get("ptp_name"); // true = show release name - false = original PTP release style. Ignored if Improved Tags  = true
         let improved_tags = GM_config.get("funky_tags"); // true = Change display to work fully with PTP Improved Tags from jmxd.
-        const btnSearchMethod = GM_config.get("btnsearchmethod");
+        const btnSearchMethod = ["TVBDB ID"];
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -1949,7 +1948,7 @@
                 else return true;
             }
             else if (tracker === "BHD") {
-                    return true;
+                return true;
             }
             else if (tracker === "BLU" || tracker === "Aither" || tracker === "RFX" || tracker === "OE" || tracker === "HUNO" || tracker === "TIK" || tracker === "LST") {
                 if (html.querySelector(".torrent-search--list__no-result") === null) return true;
@@ -2106,7 +2105,7 @@
             });
         };
 
-        const fetch_tracker = async (tracker, imdb_id, show_name, show_nbl_name, timeout = timer) => {
+        const fetch_tracker = async (tracker, imdb_id, show_name, show_nbl_name, tvdbId, timeout = timer) => {
             return new Promise((resolve, reject) => {
                 const timer = setTimeout(() => {
                     console.error(`Request timed out for ${tracker}`);
@@ -2138,7 +2137,7 @@
                 else if (tracker === "BTN") {
                     try {
                         post_query_url = "https://api.broadcasthe.net/";
-                        if (btnSearchMethod === "Series") {
+                        if (btnSearchMethod === "TVDB ID" && tvdbId) {
                             postData = {
                                 jsonrpc: "2.0",
                                 id: generateGUID().substring(0, 8),
@@ -2146,27 +2145,13 @@
                                 params: [
                                     BTN_API_TOKEN,
                                     {
-                                        series: show_name
+                                        tvdb: tvdbId
                                     },
                                     20, // Results per page
                                 ]
                             };
-                        }
-                        else if (btnSearchMethod === "Name") {
-                            postData = {
-                                jsonrpc: "2.0",
-                                id: generateGUID().substring(0, 8),
-                                method: "getTorrentsSearch",
-                                params: [
-                                    BTN_API_TOKEN,
-                                    {
-                                        name: show_name
-                                    },
-                                    20,
-                                ]
-                            };
-                        }
-                        else if (btnSearchMethod === "Search") {
+                        } else {
+                            // Fallback to search method if TVDB ID is not available
                             postData = {
                                 jsonrpc: "2.0",
                                 id: generateGUID().substring(0, 8),
@@ -2181,7 +2166,7 @@
                             };
                         }
                     } catch (error) {
-                        console.error(`Error setting up NBL query: ${error.message}`);
+                        console.error(`Error setting up BTN query: ${error.message}`);
                         resolve([]); // Resolve with an empty array if there's an error
                         return;
                     }
@@ -2268,7 +2253,7 @@
                             params: [
                                 NBL_API_TOKEN,
                                 {
-                                    //imdb: parseInt(imdb_id.split("tt")[1])
+                                    //tvmaze: nbl_test
                                     series: show_nbl_name
                                 },
                                 20, // Results per page
@@ -2313,6 +2298,12 @@
                                     } else if (result.data && tracker === "HDB") {
                                         resolve(get_post_torrent_objects(tracker, result));
                                     } else if (result.result && tracker === "NBL") {
+                                        if (result) {
+                                            const extractedText = result.result;
+                                            if (extractedText.includes("NBL API is down at the moment")) {
+                                                displayAlert('NBL API is down');
+                                            }
+                                        }
                                         resolve(get_post_torrent_objects(tracker, result));
                                     } else if (tracker === "BTN" && result.result) {
                                         resolve(get_post_torrent_objects(tracker, result));
@@ -4900,6 +4891,51 @@
             }, timerDuration);
         }
 
+        // Function to get TVDB ID from localStorage
+        function getTvdbIdFromStorage(ptpId) {
+            return localStorage.getItem(`tvdb_id_${ptpId}`);
+        }
+
+        // Function to get TVDB ID
+        function getTvdbId() {
+            const ptpId = new URL(window.location.href).searchParams.get("id");
+            let tvdbId = getTvdbIdFromStorage(ptpId);
+            return tvdbId;
+        }
+
+        // Function to wait for TVDB ID
+        function waitForTvdbId() {
+            return new Promise((resolve, reject) => {
+                // Check if the TVDB ID is already in localStorage
+                let tvdbId = getTvdbId();
+                if (tvdbId) {
+                    resolve(tvdbId);
+                } else {
+                    // Add event listener for TVDB ID
+                    const onTvdbIdFetched = (event) => {
+                        const { tvdbId: fetchedTvdbId } = event.detail;
+                        resolve(fetchedTvdbId);
+                        cleanup();
+                    };
+
+                    // Add event listener for TVDB ID fetch errors
+                    const onTvdbIdFetchError = (event) => {
+                        const { message } = event.detail;
+                        reject(new Error(message));
+                        cleanup();
+                    };
+
+                    const cleanup = () => {
+                        document.removeEventListener('tvdbIdFetched', onTvdbIdFetched);
+                        document.removeEventListener('tvdbIdFetchError', onTvdbIdFetchError);
+                    };
+
+                    document.addEventListener('tvdbIdFetched', onTvdbIdFetched);
+                    document.addEventListener('tvdbIdFetchError', onTvdbIdFetchError);
+                }
+            });
+        }
+
         const mainFunc = async () => {
             if (show_tracker_name || improved_tags || ptp_release_name) {
                 fix_ptp_names();
@@ -4920,6 +4956,24 @@
                         .split("/")[0];
                 } catch (fallbackError) {
                     console.log("Failed to extract IMDb ID using fallback method:", fallbackError);
+                    return; // Exit if both attempts fail
+                }
+            }
+
+            let tvdbId;
+            if (btnSearchMethod === "TVDB ID" && trackers.includes("BTN")) {
+                try {
+                    tvdbId = getTvdbId();
+                    if (!tvdbId) {
+                        tvdbId = await waitForTvdbId();
+                    }
+                    if (tvdbId) {
+                        console.log(`TVDB ID is ${tvdbId}`);
+                    } else {
+                        console.log('TVDB ID not found yet.');
+                    }
+                } catch (error) {
+                    console.log('TVDB error:', error.message);
                 }
             }
 
@@ -4945,7 +4999,7 @@
             show_nbl_name = show_nbl_name.trim().replace(/[\s:]+$/, '');
 
             let promises = [];
-            trackers.forEach(t => promises.push(fetch_tracker(t, imdb_id, show_name, show_nbl_name)));
+            trackers.forEach(t => promises.push(fetch_tracker(t, imdb_id, show_name, show_nbl_name, tvdbId)));
 
             Promise.all(promises)
                 .then(torrents_lists => {

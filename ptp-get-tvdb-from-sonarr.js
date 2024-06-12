@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name       PTP - Get TVDB ID from IMDb ID using Sonarr API
-// @version    1.2
+// @version    1.3
 // @description Fetch TVDB ID using IMDb ID on PTP torrent pages and dispatch an event with the result using Sonarr API.
 // @match      https://passthepopcorn.me/torrents.php?*id=*
 // @namespace  https://github.com/Audionut/add-trackers
@@ -42,8 +42,8 @@ function storeTvdbIdAndDispatchEvent(ptpId, tvdbId) {
     document.dispatchEvent(event);
 }
 
-// Function to handle errors gracefully
-function handleError(message) {
+// Function to handle configuration errors
+function handleConfigError(message) {
     console.error(message);
     const event = new CustomEvent('tvdbIdFetchError', { detail: { message } });
     document.dispatchEvent(event);
@@ -65,11 +65,13 @@ function fetchTvdbIdFromSonarr(apiKey, apiUrl, imdbId, ptpId) {
                 const tvdbId = data[0].tvdbId;
                 storeTvdbIdAndDispatchEvent(ptpId, tvdbId);
             } else {
-                handleError("TVDB ID not found in Sonarr response.");
+                const event = new CustomEvent('tvdbIdFetchError', { detail: { message: "TVDB ID not found in Sonarr response." } });
+                document.dispatchEvent(event);
             }
         },
         onerror: function() {
-            handleError("Failed to fetch TVDB ID from Sonarr API.");
+            const event = new CustomEvent('tvdbIdFetchError', { detail: { message: "Failed to fetch TVDB ID from Sonarr API." } });
+            document.dispatchEvent(event);
         }
     });
 }
@@ -83,7 +85,6 @@ GM.registerMenuCommand("Set Sonarr API Key and URL", promptForSonarrConfig);
 
     const imdbLinkElement = document.getElementById("imdb-title-link");
     if (!imdbLinkElement) {
-        handleError("No IMDb ID found, aborting.");
         return;
     }
 
@@ -93,6 +94,6 @@ GM.registerMenuCommand("Set Sonarr API Key and URL", promptForSonarrConfig);
     if (apiKey && apiUrl) {
         fetchTvdbIdFromSonarr(apiKey, apiUrl, imdbId, ptpId);
     } else {
-        handleError("Sonarr API key and URL are not configured.");
+        handleConfigError("Sonarr API key and URL are not configured.");
     }
 })();
