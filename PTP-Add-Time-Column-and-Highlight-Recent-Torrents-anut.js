@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add Time Column and Highlight Recent Torrents
 // @namespace    PTP-Add-Time-Column-and-Highlight-Recent-Torrents
-// @version      0.4.9
+// @version      0.5.0
 // @description  Add a Time column to the Torrent Group Page, Collage Page,
 //               Artist Page, and Bookmark Page.
 //               Highlight recent and latest torrent within a group.
@@ -29,14 +29,13 @@
     const HIGHLIGHT_RECENT_BACKGROUND_COLOR = 'gainsboro';
     const HIGHLIGHT_RECENT_FONT_WEIGHT = 'bold';
     const RECENT_DAYS_IN_MILLIS = 7 * 24 * 60 * 60 * 1000;
-    const LOAD_DELAY = 7000;
     const UTC_STRING = ' UTC';
 
     function main() {
         if (isIgnoredTorrentsPage()) return;
 
         if (isTorrentsGroupPage()) {
-            addTimeColumn('.torrent_table thead tr th:nth(0)', '.group_torrent_header', '.group_torrent td.basic-movie-list__torrent-edition', '.torrent_info_row td');
+            addTimeColumn('.torrent_table thead tr', '.group_torrent_header', '.group_torrent td.basic-movie-list__torrent-edition', '.torrent_info_row td');
         } else if (isTorrentsPage()) {
             processTorrentsPage();
         } else if (isCollageSubscriptionsPage()) {
@@ -47,25 +46,30 @@
     }
 
     function addTimeColumn(headerSelector, rowSelector, editionSelector, infoSelector) {
-        $(headerSelector).after($('<th>Time</th>'));
-        $(editionSelector).attr('colspan', (i, val) => +val + 1);
-        $(infoSelector).attr('colspan', (i, val) => +val + 1);
+        // Check if the "Time" column already exists
+        if (!$(headerSelector).find('th:contains("Time")').length) {
+            $(headerSelector).find('th:nth-child(2)').after($('<th>Time</th>'));
+            $(editionSelector).attr('colspan', (i, val) => +val + 1);
+            $(infoSelector).attr('colspan', (i, val) => +val + 1);
+        }
 
         const times = [];
         $(rowSelector).each(function() {
             const torrentRow = $(this);
-            const time = torrentRow.next().find('span.time').first().clone();
-            times.push(time.attr('title'));
-            $(time).addClass('nobr');
-            const timeCell = $('<td></td>').append(time);
-            const unixTimestamp = new Date(time.attr('title') + UTC_STRING).getTime() / 1000;
+            if (!torrentRow.find('td.time-cell').length) {
+                const time = torrentRow.next().find('span.time').first().clone();
+                times.push(time.attr('title'));
+                $(time).addClass('nobr');
+                const timeCell = $('<td class="time-cell"></td>').append(time);
+                const unixTimestamp = new Date(time.attr('title') + UTC_STRING).getTime() / 1000;
 
-            if (TIME_FORMAT === 'rounded-relative') {
-                formatRoundedRelative(time);
-            } else if (TIME_FORMAT !== 'relative') {
-                time.html(moment.unix(unixTimestamp).format(TIME_FORMAT));
+                if (TIME_FORMAT === 'rounded-relative') {
+                    formatRoundedRelative(time);
+                } else if (TIME_FORMAT !== 'relative') {
+                    time.html(moment.unix(unixTimestamp).format(TIME_FORMAT));
+                }
+                torrentRow.find('td:nth-child(2)').after(timeCell);
             }
-            torrentRow.find('td:nth(0)').after(timeCell);
         });
 
         highlightTimes(times);
@@ -105,7 +109,7 @@
     }
 
     function processArtistAndBookmarksAndCollagesPage() {
-        addTimeColumn('.torrent_table:visible thead tr th:nth(1)', '.basic-movie-list__torrent-row', '.torrent_table:visible td.basic-movie-list__torrent-edition', '.basic-movie-list__details-row td:nth(1)');
+        addTimeColumn('.torrent_table:visible thead tr', '.basic-movie-list__torrent-row', '.torrent_table:visible td.basic-movie-list__torrent-edition', '.basic-movie-list__details-row td:nth-child(2)');
         processJsonData(coverViewJsonData);
     }
 
@@ -198,5 +202,9 @@
         });
     }
 
-    setTimeout(main, LOAD_DELAY);
+    main();
+    document.addEventListener('PTPAddReleasesFromOtherTrackersComplete', () => {
+        console.log("Rerunning Time Column to fix added releases");
+        main(); // Run the script again
+    });
 })();
