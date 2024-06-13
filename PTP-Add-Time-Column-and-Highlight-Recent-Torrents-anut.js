@@ -11,8 +11,8 @@
 // @match        https://passthepopcorn.me/artist.php?*
 // @match        https://passthepopcorn.me/bookmarks.php*
 // @require      https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.27.0/moment.js
-// @downloadURL  https://github.com/Audionut/add-trackers/raw/main/PTP-Add-Time-Column-and-Highlight-Recent-Torrents-anut.js
-// @updateURL    https://github.com/Audionut/add-trackers/raw/main/PTP-Add-Time-Column-and-Highlight-Recent-Torrents-anut.js
+// @downloadURL  https://github.com/Audionut/add-trackers/raw/dev-environment/PTP-Add-Time-Column-and-Highlight-Recent-Torrents-anut.js
+// @updateURL    https://github.com/Audionut/add-trackers/raw/dev-environment/PTP-Add-Time-Column-and-Highlight-Recent-Torrents-anut.js
 // ==/UserScript==
 /* globals $, moment, coverViewJsonData, ungroupedCoverViewJsonData */
 

@@ -3,8 +3,8 @@
 // @version      0.0.7
 // @author       Ignacio (additions by Audionut)
 // @description  Find cross-seedable and Add cross-seed markers to non-ptp releases
-// downloadURL   https://github.com/Audionut/add-trackers/raw/main/ptp-cross-seed-checker.user,js
-// updateURL     https://github.com/Audionut/add-trackers/raw/main/ptp-cross-seed-checker.user,js
+// downloadURL   https://github.com/Audionut/add-trackers/raw/dev-environment/ptp-cross-seed-checker.user,js
+// updateURL     https://github.com/Audionut/add-trackers/raw/dev-environment/ptp-cross-seed-checker.user,js
 // @match        https://passthepopcorn.me/torrents.php*
 // @grant        GM_setValue
 // @grant        GM_getValue
