@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add Time Column and Highlight Recent Torrents
 // @namespace    PTP-Add-Time-Column-and-Highlight-Recent-Torrents
-// @version      0.5.3
+// @version      0.5.4
 // @description  Add a Time column to the Torrent Group Page, Collage Page,
 //               Artist Page, and Bookmark Page.
 //               Highlight recent and latest torrent within a group.

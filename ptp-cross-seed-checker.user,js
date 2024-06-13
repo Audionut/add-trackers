@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Cross-Seed Checker
-// @version      0.0.7
+// @version      0.0.8
 // @author       Ignacio (additions by Audionut)
 // @description  Find cross-seedable and Add cross-seed markers to non-ptp releases
 // downloadURL   https://github.com/Audionut/add-trackers/raw/dev-environment/ptp-cross-seed-checker.user,js
