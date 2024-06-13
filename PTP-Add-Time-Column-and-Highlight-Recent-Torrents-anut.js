@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add Time Column and Highlight Recent Torrents
 // @namespace    PTP-Add-Time-Column-and-Highlight-Recent-Torrents
-// @version      0.5.0
+// @version      0.5.2
 // @description  Add a Time column to the Torrent Group Page, Collage Page,
 //               Artist Page, and Bookmark Page.
 //               Highlight recent and latest torrent within a group.
@@ -10,8 +10,6 @@
 // @match        https://passthepopcorn.me/collages.php?*
 // @match        https://passthepopcorn.me/artist.php?*
 // @match        https://passthepopcorn.me/bookmarks.php*
-// @grant        GM_setValue
-// @grant        GM_getValue
 // @require      https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.27.0/moment.js
 // @downloadURL  https://github.com/Audionut/add-trackers/raw/main/PTP-Add-Time-Column-and-Highlight-Recent-Torrents-anut.js
 // @updateURL    https://github.com/Audionut/add-trackers/raw/main/PTP-Add-Time-Column-and-Highlight-Recent-Torrents-anut.js
@@ -32,100 +30,100 @@
     const UTC_STRING = ' UTC';
 
     function main() {
-        if (isIgnoredTorrentsPage()) return;
-
-        if (isTorrentsGroupPage()) {
-            addTimeColumn('.torrent_table thead tr', '.group_torrent_header', '.group_torrent td.basic-movie-list__torrent-edition', '.torrent_info_row td');
+        if (isIgnoredTorrentsPage()) {
+            return;
+        } else if (isTorrentsGroupPage()) {
+            torrentsGroupPage();
         } else if (isTorrentsPage()) {
-            processTorrentsPage();
+            torrentsPage();
         } else if (isCollageSubscriptionsPage()) {
-            processCollageSubscriptionsPage();
+            collageSubscriptionsPage();
         } else if (isCollagesPage() || isArtistPage() || isBookmarksPage()) {
-            processArtistAndBookmarksAndCollagesPage();
+            artistAndBookmarksAndCollagesPage();
         }
     }
 
-    function addTimeColumn(headerSelector, rowSelector, editionSelector, infoSelector) {
-        // Check if the "Time" column already exists
-        if (!$(headerSelector).find('th:contains("Time")').length) {
-            $(headerSelector).find('th:nth-child(2)').after($('<th>Time</th>'));
-            $(editionSelector).attr('colspan', (i, val) => +val + 1);
-            $(infoSelector).attr('colspan', (i, val) => +val + 1);
+    function torrentsGroupPage() {
+        if (!$('.torrent_table thead tr th:contains("Time")').length) {
+            $('.torrent_table thead tr th:nth(0)').after($('<th>Time</th>'));
         }
+        $('.group_torrent td.basic-movie-list__torrent-edition').each((i, edition) => {
+            $(edition).attr('colspan', parseInt($(edition).attr('colspan')) + 1);
+        });
+        $('.torrent_info_row td').each((i, info) => {
+            $(info).attr('colspan', parseInt($(info).attr('colspan')) + 1);
+        });
 
-        const times = [];
-        $(rowSelector).each(function() {
-            const torrentRow = $(this);
+        let times = [];
+        $('.group_torrent_header').each(function(i, element) {
+            const torrentRow = $(element);
             if (!torrentRow.find('td.time-cell').length) {
                 const time = torrentRow.next().find('span.time').first().clone();
                 times.push(time.attr('title'));
                 $(time).addClass('nobr');
                 const timeCell = $('<td class="time-cell"></td>').append(time);
-                const unixTimestamp = new Date(time.attr('title') + UTC_STRING).getTime() / 1000;
-
+                const unixTimestamp = new Date(time.attr('title') + ' UTC').getTime() / 1000;
                 if (TIME_FORMAT === 'rounded-relative') {
                     formatRoundedRelative(time);
                 } else if (TIME_FORMAT !== 'relative') {
                     time.html(moment.unix(unixTimestamp).format(TIME_FORMAT));
                 }
-                torrentRow.find('td:nth-child(2)').after(timeCell);
+                torrentRow.find('td:nth(0)').after(timeCell);
             }
         });
-
-        highlightTimes(times);
-    }
-
-    function formatRoundedRelative(time) {
-        const relativeTimeText = time.html();
-        if (relativeTimeText !== undefined) {
-            const relativeTimeParts = relativeTimeText.split(' ');
-            if (relativeTimeText !== 'Just now') {
-                time.html(`${relativeTimeParts[0]} ${relativeTimeParts[1].replace(',', '')} ago`);
-            }
-        } else {
-            time.html('Undefined');
-        }
-    }
-
-    function highlightTimes(times) {
         times.sort(descendingDate);
-        const nowMillis = Date.now();
-        times.forEach(time => {
-            if (nowMillis - new Date(time + UTC_STRING).getTime() < RECENT_DAYS_IN_MILLIS) {
-                highlightTime(time, '.group_torrent_header', HIGHLIGHT_RECENT_TEXT_COLOR, HIGHLIGHT_RECENT_BACKGROUND_COLOR, HIGHLIGHT_RECENT_FONT_WEIGHT);
+
+        const nowMillis = new Date().getTime();
+        for (let i in times) {
+            const time = times[i];
+            if (nowMillis - new Date(time + ' UTC').getTime() < RECENT_DAYS_IN_MILLIS) {
+                highlightRecentTime(time, '.group_torrent_header');
             }
-        });
+        }
 
         if (times.length > 1) {
-            highlightTime(times[0], '.group_torrent_header', HIGHLIGHT_LATEST_TEXT_COLOR, HIGHLIGHT_LATEST_BACKGROUND_COLOR, HIGHLIGHT_LATEST_FONT_WEIGHT);
+            highlightLatestTime(times[0], '.group_torrent_header');
         }
     }
 
-    function processTorrentsPage() {
-        $('.torrent_table tbody').each(function() {
-            let times = collectTimes(this);
-            highlightTimes(times);
+    function torrentsPage() {
+        $('.torrent_table tbody').each(function(i, group) {
+            let times = collectTimes(group);
+            times.sort(descendingDate);
+
+            const nowMillis = new Date().getTime();
+            for (let i in times) {
+                const time = times[i];
+                if (nowMillis - new Date(time + ' UTC').getTime() < RECENT_DAYS_IN_MILLIS) {
+                    highlightRecentTime(time, '.basic-movie-list__torrent-row', group);
+                }
+            }
+
+            highlightLatestTime(times[0], '.basic-movie-list__torrent-row', group);
         });
     }
 
-    function processArtistAndBookmarksAndCollagesPage() {
-        addTimeColumn('.torrent_table:visible thead tr', '.basic-movie-list__torrent-row', '.torrent_table:visible td.basic-movie-list__torrent-edition', '.basic-movie-list__details-row td:nth-child(2)');
-        processJsonData(coverViewJsonData);
-    }
+    function artistAndBookmarksAndCollagesPage() {
+        if (!$('.torrent_table:visible thead tr th:contains("Time")').length) {
+            $('.torrent_table:visible thead tr th:nth(1)').after($('<th>Time</th>'));
+        }
+        $('.torrent_table:visible td.basic-movie-list__torrent-edition').each((i, edition) => {
+            $(edition).attr('colspan', parseInt($(edition).attr('colspan')) + 1);
+        });
+        $('.basic-movie-list__details-row').each((i, detailsRow) => {
+            const detailsCell = $(detailsRow).find('td:nth(1)');
+            detailsCell.attr('colspan', parseInt(detailsCell.attr('colspan')) + 1);
+        });
 
-    function processCollageSubscriptionsPage() {
-        processJsonData(coverViewJsonData);
-    }
-
-    function processJsonData(jsonData) {
         const torrentGroupTimes = {};
         const torrentIdToTime = {};
-
-        $(jsonData).each((_, data) => {
-            $(data.Movies).each((_, movieGroup) => {
+        const torrentGroups = new Set();
+        $(coverViewJsonData).each((i, data) => {
+            $(data.Movies).each((j, movieGroup) => {
                 const groupId = movieGroup.GroupId;
-                $(movieGroup.GroupingQualities).each((_, edition) => {
-                    $(edition.Torrents).each((_, torrent) => {
+                torrentGroups.add(groupId);
+                $(movieGroup.GroupingQualities).each((k, edition) => {
+                    $(edition.Torrents).each((m, torrent) => {
                         if (!torrentGroupTimes[groupId]) {
                             torrentGroupTimes[groupId] = [];
                         }
@@ -136,22 +134,75 @@
             });
         });
 
-        highlightTimesInGroups(torrentGroupTimes, torrentIdToTime);
-    }
-
-    function highlightTimesInGroups(torrentGroupTimes, torrentIdToTime) {
-        const nowMillis = Date.now();
-        Object.values(torrentGroupTimes).forEach(times => {
-            times.sort(descendingDate);
-            times.forEach(time => {
-                if (nowMillis - new Date(time + UTC_STRING).getTime() < RECENT_DAYS_IN_MILLIS) {
-                    highlightTime(time, '.basic-movie-list__torrent-row', HIGHLIGHT_RECENT_TEXT_COLOR, HIGHLIGHT_RECENT_BACKGROUND_COLOR, HIGHLIGHT_RECENT_FONT_WEIGHT);
-                }
-            });
-            if (times.length > 1) {
-                highlightTime(times[0], '.basic-movie-list__torrent-row', HIGHLIGHT_LATEST_TEXT_COLOR, HIGHLIGHT_LATEST_BACKGROUND_COLOR, HIGHLIGHT_LATEST_FONT_WEIGHT);
+        $('.basic-movie-list__torrent-row .basic-movie-list__torrent__action').each((i, element) => {
+            const parent = $(element).parent();
+            if (!parent.find('td.time-cell').length) {
+                const href = parent.find('a.torrent-info-link').attr('href');
+                const hrefParts = href.match(/torrents.php\?id=([0-9]+)&torrentid=([0-9]+)/);
+                const groupId = hrefParts[1];
+                const torrentId = hrefParts[2];
+                parent.after($('<td class="nobr time-cell">' + torrentIdToTime[torrentId] + '</td>'));
             }
         });
+
+        torrentGroups.forEach(groupId => {
+            torrentGroupTimes[groupId] = torrentGroupTimes[groupId].sort(descendingDate);
+        });
+
+        const nowMillis = new Date().getTime();
+        for (const i in torrentGroupTimes) {
+            const times = torrentGroupTimes[i];
+            for (const j in times) {
+                const time = times[j];
+                if (nowMillis - new Date(time + ' UTC').getTime() < RECENT_DAYS_IN_MILLIS) {
+                    highlightRecentTime(time, '.basic-movie-list__torrent-row');
+                }
+            }
+
+            if (times.length > 1) {
+                highlightLatestTime(times[0], '.basic-movie-list__torrent-row');
+            }
+        }
+    }
+
+    function collageSubscriptionsPage() {
+        const torrentGroupTimes = {};
+        const torrentIdToTime = {};
+        const torrentGroups = new Set();
+        $(coverViewJsonData).each((j, jsonData) => {
+            $(jsonData.Movies).each((i, movieGroup) => {
+                const groupId = movieGroup.GroupId;
+                torrentGroups.add(groupId);
+                $(movieGroup.GroupingQualities).each((j, edition) => {
+                    $(edition.Torrents).each((k, torrent) => {
+                        if (!torrentGroupTimes[groupId]) {
+                            torrentGroupTimes[groupId] = [];
+                        }
+                        torrentGroupTimes[groupId].push($(torrent.Time).attr('title'));
+                        torrentIdToTime[torrent.TorrentId] = torrent.Time;
+                    });
+                });
+            });
+        });
+
+        torrentGroups.forEach(groupId => {
+            torrentGroupTimes[groupId] = torrentGroupTimes[groupId].sort(descendingDate);
+        });
+
+        const nowMillis = new Date().getTime();
+        for (const i in torrentGroupTimes) {
+            const times = torrentGroupTimes[i];
+            for (const j in times) {
+                const time = times[j];
+                if (nowMillis - new Date(time + ' UTC').getTime() < RECENT_DAYS_IN_MILLIS) {
+                    highlightRecentTime(time, '.basic-movie-list__torrent-row');
+                }
+            }
+
+            if (times.length > 1) {
+                highlightLatestTime(times[0], '.basic-movie-list__torrent-row');
+            }
+        }
     }
 
     function isArtistPage() {
@@ -163,7 +214,10 @@
     }
 
     function isCollageSubscriptionsPage() {
-        return window.location.pathname === '/collages.php' && window.location.search.includes('action=subscriptions');
+        return (
+            window.location.pathname === '/collages.php' &&
+            window.location.search.includes('action=subscriptions')
+        );
     }
 
     function isCollagesPage() {
@@ -179,30 +233,74 @@
     }
 
     function isIgnoredTorrentsPage() {
-        return isTorrentsPage() && ['type=downloaded', 'type=uploaded', 'type=leeching', 'type=snatched', 'type=seeding'].some(type => window.location.search.includes(type));
+        return (
+            isTorrentsPage() &&
+            (
+                window.location.search.includes('type=downloaded') ||
+                window.location.search.includes('type=uploaded') ||
+                window.location.search.includes('type=leeching') ||
+                window.location.search.includes('type=snatched') ||
+                window.location.search.includes('type=seeding')
+            )
+        );
     }
 
     function collectTimes(group) {
-        const times = [];
-        $(group).find('.basic-movie-list__torrent-row td span.time').each((_, span) => {
-            times.push($(span).attr('title'));
+        let times = [];
+        $(group).find('.basic-movie-list__torrent-row').each(function(i, torrentRow) {
+            const spanTime = $(torrentRow).find('td span.time');
+            if (spanTime && spanTime.length > 0) times.push(spanTime.attr('title'));
         });
         return times;
     }
 
     function descendingDate(a, b) {
-        return new Date(b) - new Date(a);
+        const aDate = new Date(a);
+        const bDate = new Date(b);
+        if (aDate === bDate) return 0;
+        return aDate > bDate ? -1 : 1;
     }
 
-    function highlightTime(time, rowClassName, textColor, backgroundColor, fontWeight) {
-        $(rowClassName + " span.time[title|='" + time + "']").each((_, span) => {
-            if (textColor) $(span).css('color', textColor);
-            if (backgroundColor) $(span).parent().css('background-color', backgroundColor);
-            if (fontWeight) $(span).css('font-weight', fontWeight);
-        });
+    function highlightLatestTime(time, rowClassName, group) {
+        return highlightTime(time, rowClassName, group, HIGHLIGHT_LATEST_TEXT_COLOR, HIGHLIGHT_LATEST_BACKGROUND_COLOR, HIGHLIGHT_LATEST_FONT_WEIGHT);
+    }
+
+    function highlightRecentTime(time, rowClassName, group) {
+        return highlightTime(time, rowClassName, group, HIGHLIGHT_RECENT_TEXT_COLOR, HIGHLIGHT_RECENT_BACKGROUND_COLOR, HIGHLIGHT_RECENT_FONT_WEIGHT);
+    }
+
+    function highlightTime(time, rowClassName, group, textColor, backgroundColor, fontWeight) {
+        if (group) {
+            $(group).find(rowClassName + " span.time[title|='" + time + "']").each(function(i, span) {
+                highlightSpan(span, textColor, backgroundColor, fontWeight);
+            });
+        } else {
+            $(rowClassName + " span.time[title|='" + time + "']").each(function(i, span) {
+                highlightSpan(span, textColor, backgroundColor, fontWeight);
+            });
+        }
+    }
+
+    function highlightSpan(span, textColor, backgroundColor, fontWeight) {
+        if (textColor) $(span).css('color', textColor);
+        if (backgroundColor) $(span).parent().css('background-color', backgroundColor);
+        if (fontWeight) $(span).css('font-weight', fontWeight);
+    }
+
+    function formatRoundedRelative(time) {
+        const relativeTimeText = time.html();
+        if (relativeTimeText !== undefined) {
+            const relativeTimeParts = relativeTimeText.split(' ');
+            if (relativeTimeText !== 'Just now') {
+                time.html(`${relativeTimeParts[0]} ${relativeTimeParts[1].replace(',', '')} ago`);
+            }
+        } else {
+            time.html('Undefined');
+        }
     }
 
     main();
+
     document.addEventListener('PTPAddReleasesFromOtherTrackersComplete', () => {
         console.log("Rerunning Time Column to fix added releases");
         main(); // Run the script again
