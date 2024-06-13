@@ -1,22 +1,17 @@
 // ==UserScript==
 // @name         PTP - Add Time Column and Highlight Recent Torrents
 // @namespace    PTP-Add-Time-Column-and-Highlight-Recent-Torrents
-// @version      0.5.0
-// @description  Add a Time column to the Torrent Group Page, Collage Page,
-//               Artist Page, and Bookmark Page.
-//               Highlight recent and latest torrent within a group.
+// @version      0.5.1
+// @description  Add a Time column to the Torrent Group Page
 // @author       mcnellis (additions by Audionut)
 // @match        https://passthepopcorn.me/torrents.php*
-// @match        https://passthepopcorn.me/collages.php?*
-// @match        https://passthepopcorn.me/artist.php?*
-// @match        https://passthepopcorn.me/bookmarks.php*
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @require      https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.27.0/moment.js
 // @downloadURL  https://github.com/Audionut/add-trackers/raw/main/PTP-Add-Time-Column-and-Highlight-Recent-Torrents-anut.js
 // @updateURL    https://github.com/Audionut/add-trackers/raw/main/PTP-Add-Time-Column-and-Highlight-Recent-Torrents-anut.js
 // ==/UserScript==
-/* globals $, moment, coverViewJsonData, ungroupedCoverViewJsonData */
+/* globals $, moment */
 
 (function() {
     'use strict';
@@ -38,10 +33,6 @@
             addTimeColumn('.torrent_table thead tr', '.group_torrent_header', '.group_torrent td.basic-movie-list__torrent-edition', '.torrent_info_row td');
         } else if (isTorrentsPage()) {
             processTorrentsPage();
-        } else if (isCollageSubscriptionsPage()) {
-            processCollageSubscriptionsPage();
-        } else if (isCollagesPage() || isArtistPage() || isBookmarksPage()) {
-            processArtistAndBookmarksAndCollagesPage();
         }
     }
 
@@ -106,68 +97,6 @@
             let times = collectTimes(this);
             highlightTimes(times);
         });
-    }
-
-    function processArtistAndBookmarksAndCollagesPage() {
-        addTimeColumn('.torrent_table:visible thead tr', '.basic-movie-list__torrent-row', '.torrent_table:visible td.basic-movie-list__torrent-edition', '.basic-movie-list__details-row td:nth-child(2)');
-        processJsonData(coverViewJsonData);
-    }
-
-    function processCollageSubscriptionsPage() {
-        processJsonData(coverViewJsonData);
-    }
-
-    function processJsonData(jsonData) {
-        const torrentGroupTimes = {};
-        const torrentIdToTime = {};
-
-        $(jsonData).each((_, data) => {
-            $(data.Movies).each((_, movieGroup) => {
-                const groupId = movieGroup.GroupId;
-                $(movieGroup.GroupingQualities).each((_, edition) => {
-                    $(edition.Torrents).each((_, torrent) => {
-                        if (!torrentGroupTimes[groupId]) {
-                            torrentGroupTimes[groupId] = [];
-                        }
-                        torrentGroupTimes[groupId].push($(torrent.Time).attr('title'));
-                        torrentIdToTime[torrent.TorrentId] = torrent.Time;
-                    });
-                });
-            });
-        });
-
-        highlightTimesInGroups(torrentGroupTimes, torrentIdToTime);
-    }
-
-    function highlightTimesInGroups(torrentGroupTimes, torrentIdToTime) {
-        const nowMillis = Date.now();
-        Object.values(torrentGroupTimes).forEach(times => {
-            times.sort(descendingDate);
-            times.forEach(time => {
-                if (nowMillis - new Date(time + UTC_STRING).getTime() < RECENT_DAYS_IN_MILLIS) {
-                    highlightTime(time, '.basic-movie-list__torrent-row', HIGHLIGHT_RECENT_TEXT_COLOR, HIGHLIGHT_RECENT_BACKGROUND_COLOR, HIGHLIGHT_RECENT_FONT_WEIGHT);
-                }
-            });
-            if (times.length > 1) {
-                highlightTime(times[0], '.basic-movie-list__torrent-row', HIGHLIGHT_LATEST_TEXT_COLOR, HIGHLIGHT_LATEST_BACKGROUND_COLOR, HIGHLIGHT_LATEST_FONT_WEIGHT);
-            }
-        });
-    }
-
-    function isArtistPage() {
-        return window.location.pathname === '/artist.php';
-    }
-
-    function isBookmarksPage() {
-        return window.location.pathname === '/bookmarks.php';
-    }
-
-    function isCollageSubscriptionsPage() {
-        return window.location.pathname === '/collages.php' && window.location.search.includes('action=subscriptions');
-    }
-
-    function isCollagesPage() {
-        return window.location.pathname === '/collages.php';
     }
 
     function isTorrentsPage() {
