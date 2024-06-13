@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.8.5-A
+// @version      3.8.6-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -2979,6 +2979,7 @@
                 }
             } else if (tracker === "BTN") {
                 try {
+                    let season2 = false;
                     if (postData.result && postData.result.torrents) {
                         torrent_objs = Object.values(postData.result.torrents).map(d => {
                             const size = parseInt(d.Size / (1024 * 1024)); // Convert size to MiB
@@ -3093,6 +3094,10 @@
                                       return tempText;
                                   };
                                   let updatedText = replaceFullStops(cleanTheText);
+                                  console.log("updated text", updatedText);
+                                  if (updatedText.includes("S02")) {
+                                      season2 = true;
+                                  }
                                   const extension = d.Container;
                                   if (improved_tags) {
                                       if (extension) {
@@ -3124,6 +3129,7 @@
                                       status: "default",
                                       groupId: groupText,
                                       time: time,
+                                      season2: season2,
                                   };
 
                                   const mappedObj = {
@@ -3918,8 +3924,9 @@
                         }
                         if (torrent.site === "BTN") {
                             torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__tags torrent-info__tags--internal'>Internal</span>" : false;
-                            torrent.season2 ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__tags torrent-info__tags--season2'>Season 2</span>" : false;
-                            torrent.extras ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__tags torrent-info__tags--season2'>Extras</span>" : false;
+                            // enforce styling because it's important
+                            torrent.season2 ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__tags torrent-info__tags--season2' style='font-weight: bold; color: #FF0000'>Season 2</span>" : false;
+                            torrent.extras ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__tags torrent-info__tags--extras'>Extras</span>" : false;
                         }
                         if (torrent.site === "ANT") {
                             torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__tags torrent-info__tags--internal'>Internal</span>" : false;
