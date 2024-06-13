@@ -3094,7 +3094,6 @@
                                       return tempText;
                                   };
                                   let updatedText = replaceFullStops(cleanTheText);
-                                  console.log("updated text", updatedText);
                                   if (updatedText.includes("S02")) {
                                       season2 = true;
                                   }
