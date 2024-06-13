@@ -44,23 +44,26 @@
     }
 
     function torrentsGroupPage() {
-        if (!$('.torrent_table thead tr th:contains("Time")').length) {
-            $('.torrent_table thead tr th:nth(0)').after($('<th>Time</th>'));
+        const torrentTableHead = $('.torrent_table thead tr th');
+        if (!torrentTableHead.filter(':contains("Time")').length) {
+            torrentTableHead.eq(0).after($('<th>Time</th>'));
         }
-        $('.group_torrent td.basic-movie-list__torrent-edition').each((i, edition) => {
-            $(edition).attr('colspan', parseInt($(edition).attr('colspan')) + 1);
+        const torrentEditions = $('.group_torrent td.basic-movie-list__torrent-edition');
+        const torrentInfos = $('.torrent_info_row td');
+        torrentEditions.add(torrentInfos).each((i, element) => {
+            const el = $(element);
+            const colspan = parseInt(el.attr('colspan'));
+            el.attr('colspan', colspan + 1);
         });
-        $('.torrent_info_row td').each((i, info) => {
-            $(info).attr('colspan', parseInt($(info).attr('colspan')) + 1);
-        });
-
+    
         handleExistingTorrents();
         handleNewTorrents();
     }
-
+    
     function handleExistingTorrents() {
         let times = [];
-        $('.group_torrent_header').each(function(i, element) {
+        const torrentHeaders = $('.group_torrent_header');
+        torrentHeaders.each(function(i, element) {
             const torrentRow = $(element);
             if (!torrentRow.find('td.time-cell').length) {
                 let time = torrentRow.next().find('span.time').first();
@@ -71,8 +74,8 @@
                         const formattedTime = formatTime(moment.unix(unixTimestamp));
                         time.html(formattedTime);
                         times.push(timeTitle);
-
-                        $(time).addClass('nobr');
+    
+                        time.addClass('nobr');
                         const timeCell = $('<td class="time-cell"></td>').append(time);
                         torrentRow.find('td:nth(0)').after(timeCell);
                     }
@@ -81,10 +84,11 @@
         });
         highlightTimes(times);
     }
-
+    
     function handleNewTorrents() {
         let times = [];
-        $('.group_torrent_header').each(function(i, element) {
+        const torrentHeaders = $('.group_torrent_header');
+        torrentHeaders.each(function(i, element) {
             const torrentRow = $(element);
             if (!torrentRow.find('td.time-cell').length) {
                 let time = torrentRow.find('span.release.time').first();
@@ -93,15 +97,8 @@
                     if (!isNaN(unixTimestamp)) {
                         const formattedTime = formatTime(moment.unix(unixTimestamp));
                         time.html(formattedTime);
-                        times.push(time.attr('title'));
-
-                        $(time).addClass('nobr');
-                        const timeCell = $('<td class="time-cell"></td>').append(time);
-                        torrentRow.find('td:nth(0)').after(timeCell);
+                        times.push(unixTimestamp);
                     }
-                } else {
-                    const timeCell = $('<td class="time-cell"></td>').append($('<span>').addClass('nobr'));
-                    torrentRow.find('td:nth(0)').after(timeCell);
                 }
             }
         });
