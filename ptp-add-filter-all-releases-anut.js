@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.8.3-A
+// @version      3.8.4-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -2980,6 +2980,11 @@
                                   const tid = d.TorrentID;
                                   const pageURL = 'https://broadcasthe.net/torrents.php?id=';
 
+                                  const time = parseInt(d.Time);
+                                  if (isNaN(time)) {
+                                      return null;
+                                  }
+
                                   const torrentObj = {
                                       api_size: api_size,
                                       datasetRelease: originalInfoText,
@@ -2995,6 +3000,7 @@
                                       discount: "None",
                                       status: "default",
                                       groupId: groupText,
+                                      time: time,
                                   };
 
                                   const mappedObj = {
@@ -3856,6 +3862,13 @@
                     }
                     if (torrent.trumpable != null && torrent.trumpable != false) {
                         cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__trumpable'>Trumpable</span>`;
+                    }
+                }
+
+                if (torrent.time && torrent.time !== "None") {
+                    const groupTorrent = cln.querySelector('.torrent-info-link');
+                    if (groupTorrent) {
+                        groupTorrent.outerHTML += `<span class='release time' title="${torrent.time}"></span>`;
                     }
                 }
 
