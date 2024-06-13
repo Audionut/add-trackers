@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.8.4-A
+// @version      3.8.5-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -442,6 +442,74 @@
         console.log("Active trackers:", trackers);
         console.log("Excluded trackers:", excludedTrackers.map(e => `${e.tracker} - ${e.reason}`));
 
+        function toUnixTime(dateString) {
+            // Check if the date string is in the ISO 8601 format (ends with 'Z')
+            if (dateString.endsWith('Z')) {
+                return Math.floor(new Date(dateString).getTime() / 1000);
+            }
+
+            // Check if the date string is in 'YYYY-MM-DD HH:MM:SS' format
+            else if (dateString.includes('-') && dateString.includes(':')) {
+                return Math.floor(new Date(dateString.replace(' ', 'T') + 'Z').getTime() / 1000);
+            }
+
+            // Check if the date string is in the format "Sat, 20 Jun 2015 01:58:58 +0000"
+            else if (Date.parse(dateString)) {
+                return Math.floor(new Date(dateString).getTime() / 1000);
+            }
+
+            // Parse relative time strings
+            else {
+                const now = new Date();
+                const regex = /(\d+)\s*(years?|months?|weeks?|days?|hours?|mins?|minutes?|secs?|seconds?)/g;
+                let match;
+
+                while ((match = regex.exec(dateString)) !== null) {
+                    const value = parseInt(match[1], 10);
+                    const unit = match[2].toLowerCase();
+
+                    switch (unit) {
+                        case 'year':
+                        case 'years':
+                            now.setFullYear(now.getFullYear() - value);
+                            break;
+                        case 'month':
+                        case 'months':
+                            now.setMonth(now.getMonth() - value);
+                            break;
+                        case 'week':
+                        case 'weeks':
+                            now.setDate(now.getDate() - (value * 7));
+                            break;
+                        case 'day':
+                        case 'days':
+                            now.setDate(now.getDate() - value);
+                            break;
+                        case 'hour':
+                        case 'hours':
+                            now.setHours(now.getHours() - value);
+                            break;
+                        case 'min':
+                        case 'mins':
+                        case 'minute':
+                        case 'minutes':
+                            now.setMinutes(now.getMinutes() - value);
+                            break;
+                        case 'sec':
+                        case 'secs':
+                        case 'second':
+                        case 'seconds':
+                            now.setSeconds(now.getSeconds() - value);
+                            break;
+                        default:
+                            break;
+                    }
+                }
+
+                return Math.floor(now.getTime() / 1000);
+            }
+        }
+
         let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "40% Bonus", "30% Bonus", "25% Freeleech", "Copper", "Bronze", "Silver", "Golden", "Refundable", "Rewind", "Rescuable", "Pollination", "None"];
         let qualities = ["SD", "480p", "576p", "720p", "1080p", "2160p"];
         let filters = {
@@ -808,6 +876,14 @@
                         } else {
                             torrent_obj.status = "default";
                         }
+                        const inputTimeElement = parseInt(torrent.querySelector('date[type="UNIX"]').textContent);
+                        if (inputTimeElement) {
+                            let time = inputTimeElement;
+                            if (isNaN(time)) {
+                                return null;
+                            }
+                            torrent_obj.time = time;
+                        }
                         torrent_objs.push(torrent_obj);
                     });
                 } catch (error) {
@@ -989,6 +1065,15 @@
                             } else {
                                 torrent_obj.discount = "None";
                             }
+                            const inputTimeElement = torrent.querySelector('pubDate');
+                            if (inputTimeElement) {
+                                const inputTime = inputTimeElement.textContent.trim();
+                                let time = toUnixTime(inputTime);
+                                if (isNaN(time)) {
+                                    return null;
+                                }
+                                torrent_obj.time = time;
+                            }
 
                             torrent_objs.push(torrent_obj);
                         };
@@ -1039,6 +1124,16 @@
                         if (nextRow) {
                             let antname = nextRow.querySelector('.row > td').textContent.trim();
                             torrent_obj.datasetRelease = antname;
+
+                            const inputTimeElement = nextRow.querySelector('div > blockquote > span.time.tooltip');
+                            if (inputTimeElement) {
+                                const inputTime = inputTimeElement.textContent.trim();
+                                let time = toUnixTime(inputTime);
+                                if (isNaN(time)) {
+                                    return null;
+                                }
+                                torrent_obj.time = time;
+                            }
                             let mediaInfo = nextRow.querySelector('.mediainfo > tbody > tr > td:nth-child(2) > table > tbody > tr:nth-child(2) > td:nth-child(2)').textContent.trim();
                             if (improved_tags) {
                                 const titleElement = d.querySelector("td:nth-child(1) > a");
@@ -1881,6 +1976,15 @@
                     torrent_obj.status = d.querySelectorAll("span.tag_seeding").length > 0 ? "seeding" : "default";
                     torrent_obj.discount = "None";
 
+                    const timeElement = d.querySelector('div.col-4.col-xl-2.text-center span');
+                    if (timeElement) {
+                        const relativeTime = timeElement.textContent.trim();
+                        let time = toUnixTime(relativeTime);
+                        if (isNaN(time)) {
+                            return null;
+                        }
+                    torrent_obj.time = time;
+                    }
                     torrent_objs.push(torrent_obj);
 
                 });
@@ -2501,6 +2605,12 @@
                                 discounted = "None";
                             }
 
+                            const inputTime = d.created_at;
+                            let time = toUnixTime(inputTime);
+                            if (isNaN(time)) {
+                                return null;
+                            }
+
                             const torrentObj = {
                                 api_size: api_size,
                                 datasetRelease: originalInfoText,
@@ -2522,6 +2632,7 @@
                                 imdb_rating: d.imdb_rating,
                                 year: d.year,
                                 type: d.type,
+                                time: time,
                             };
 
                             // Map additional properties if necessary
@@ -2672,6 +2783,11 @@
                             }
                             const status = d.torrent_status || "default";
 
+                            const time = parseInt(d.utadded);
+                            if (isNaN(time)) {
+                                return null;
+                            }
+
                             const torrentObj = {
                                 api_size: api_size,
                                 datasetRelease: finalReleaseName,
@@ -2689,6 +2805,7 @@
                                 exclusive: d.type_exclusive === 1 ? true : false,
                                 status: status,
                                 groupId: groupText,
+                                time: time,
                             };
 
                             const mappedObj = {
@@ -2819,6 +2936,12 @@
 
                                 const id = d.group_id;
                                 const pageURL = 'https://nebulance.io/details.php?id=';
+
+                                const inputTime = d.rls_utc;
+                                let time = toUnixTime(inputTime);
+                                if (isNaN(time)) {
+                                    return null;
+                                }
 
                                 const torrentObj = {
                                     api_size: api_size,
@@ -3300,6 +3423,13 @@
                             }
                           }
                         }
+
+                        const inputTime = element.attributes.created_at;
+                        let time = toUnixTime(inputTime);
+                        if (isNaN(time)) {
+                            return null;
+                        }
+
                         const torrentObj = {
                             api_size: parseInt(element.attributes.size),
                             datasetRelease: getRelease,
@@ -3329,6 +3459,7 @@
                             groupId: groupText,
                             distributor: element.attributes.distributor,
                             region: element.attributes.region,
+                            time: time,
                         };
                         // Mapping additional properties and logging the final torrent objects
                         const mappedObj = { ...torrentObj, "quality": get_torrent_quality(torrentObj), "discount": get_api_discount(torrentObj.discount, torrentObj.refundable, tracker), "internal": get_api_internal(torrentObj.internal), "Featured": get_api_featured(torrentObj.featured) };
