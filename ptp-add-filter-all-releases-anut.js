@@ -2034,7 +2034,8 @@
                  return true;
             }
             else if (tracker === "MTV") {
-                return true;
+                if (html.querySelector('item') === null) return false;
+                else return true;
             }
             else if (tracker === "ANT") {
                 if (html.querySelector(".head").textContent.includes("Basic Search (")) return false;
