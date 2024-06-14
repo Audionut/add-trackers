@@ -5197,7 +5197,10 @@
         if (!run_by_default) {
             addLink();
         } else {
+            const t0 = performance.now();
             mainFunc();
+            const t1 = performance.now();
+            console.log(`Call to main took ${t1 - t0} milliseconds.`);
         }
     }
 })();
