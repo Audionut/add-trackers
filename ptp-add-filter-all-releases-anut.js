@@ -3856,7 +3856,7 @@
             else if (discount === "25% Freeleech") return "inherit";
             else return "inherit";
         };
-
+        
         const add_external_torrents = (external_torrents) => {
             const existing_torrent_sizes = Array.from(document.querySelectorAll("span[style='float: left;']")).map(x => x.textContent);
             // console.log(existing_torrent_sizes);
@@ -5158,12 +5158,17 @@
             show_nbl_name = show_nbl_name.trim().replace(/[\s:]+$/, '');
 
             let promises = [];
+            const t2 = performance.now();
             trackers.forEach(t => promises.push(fetch_tracker(t, imdb_id, show_name, show_nbl_name, tvdbId)));
-
             Promise.all(promises)
                 .then(torrents_lists => {
+                    const t3 = performance.now();
+                    console.log(`Call to fetch_tracker took ${t3 - t2} milliseconds.`);
                     var all_torrents = [].concat.apply([], torrents_lists).sort((a, b) => a.size < b.size ? 1 : -1);
+                    const t4 = performance.now();
                     add_external_torrents(all_torrents);
+                    const t5 = performance.now();
+                    console.log(`Call to add_external_torrents took ${t5 - t4} milliseconds.`);
                     document.querySelectorAll(".basic-movie-list__torrent__action").forEach(d => { d.style.marginLeft = "12px"; });
                     original_table = document.querySelector("table.torrent_table").cloneNode(true);
 
@@ -5197,10 +5202,7 @@
         if (!run_by_default) {
             addLink();
         } else {
-            const t0 = performance.now();
             mainFunc();
-            const t1 = performance.now();
-            console.log(`Call to main took ${t1 - t0} milliseconds.`);
         }
     }
 })();
