@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add Time Column and Highlight Recent Torrents
 // @namespace    PTP-Add-Time-Column-and-Highlight-Recent-Torrents
-// @version      0.5.5
+// @version      0.5.6
 // @description  Add a Time column to the Torrent Group Page, Collage Page,
 //               Artist Page, and Bookmark Page.
 //               Highlight recent and latest torrent within a group.
@@ -374,9 +374,10 @@
             return momentTime.format(TIME_FORMAT);
         }
     }
-
+    const t0 = performance.now();
     main();
-
+    const t1 = performance.now();
+    console.log(`Call to main took ${t1 - t0} milliseconds.`);
     document.addEventListener('PTPAddReleasesFromOtherTrackersComplete', () => {
         console.log("Rerunning Time Column to fix added releases");
         handleNewTorrents(); // Run the script again for new torrents
