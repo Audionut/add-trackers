@@ -1135,6 +1135,7 @@
                                 torrent_obj.time = time;
                             }
                             let mediaInfo = nextRow.querySelector('.mediainfo > tbody > tr > td:nth-child(2) > table > tbody > tr:nth-child(2) > td:nth-child(2)').textContent.trim();
+                            let mediainfoRaw = nextRow.querySelector('.mediainfoRaw').textContent.trim();
                             if (improved_tags) {
                                 const titleElement = d.querySelector("td:nth-child(1) > a");
                                 if (titleElement) {
@@ -1165,6 +1166,15 @@
                                     }
                                     if (mediaInfo.includes("HDR10+")) {
                                         formattedText = formattedText.replace("HDR10", "HDR10+");
+                                    }
+                                    if (mediainfoRaw.includes("DTS:X")) {
+                                        formattedText = formattedText.replace("DTS", "DTS:X");
+                                    }
+                                    if (mediainfoRaw.includes("Proper")) {
+                                        formattedText += "Proper";
+                                    }
+                                    if (mediainfoRaw.includes("Repack")) {
+                                        formattedText += "Repack";
                                     }
                                     torrent_obj.info_text = formattedText;
                                 }
@@ -2168,7 +2178,7 @@
             });
         };
 
-        const fetch_tracker = async (tracker, imdb_id, show_name, show_nbl_name, tvdbId, elapsedTime, timeout = timer) => {
+        const fetch_tracker = async (tracker, imdb_id, show_name, show_nbl_name, tvdbId, timeout = timer) => {
             return new Promise(async (resolve, reject) => {
                 const timer = setTimeout(() => {
                     console.error(`Error fetching data from ${tracker}`);
