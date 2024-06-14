@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.8.6-A
+// @version      3.8.7-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -1996,14 +1996,7 @@
         };
 
         const is_movie_exist = (tracker, html) => { // true or false
-            if (tracker === "PTP") {
-                if (html.querySelector("#no_results_message > div") === null) return true;
-                else return false;
-            }
-            else if (tracker === "HDB") {
-                return true;
-            }
-            else if (tracker === "TVV") {
+            if (tracker === "TVV") {
                 if (html.querySelector('NoResults') !== null) {
                     return false;
                 } else if (html.querySelector('SearchError[value="1"]') !== null) {
@@ -2040,18 +2033,12 @@
             else if (tracker === "NBL") {
                  return true;
             }
-            else if (tracker === "BTN") {
-                  return true;
-            }
             else if (tracker === "MTV") {
                 return true;
             }
             else if (tracker === "ANT") {
                 if (html.querySelector(".head").textContent.includes("Basic Search (")) return false;
                 else return true;
-            }
-            else if (tracker === "BHD") {
-                return true;
             }
             else if (tracker === "BLU" || tracker === "Aither" || tracker === "RFX" || tracker === "OE" || tracker === "HUNO" || tracker === "TIK" || tracker === "LST") {
                 if (html.querySelector(".torrent-search--list__no-result") === null) return true;
@@ -2096,109 +2083,80 @@
             }
         };
 
-        const post_json = async (post_query_url, tracker, postData, timeout = timer) => {
-            let timer;
-            try {
-                const response = await new Promise((resolve, reject) => {
-                    timer = setTimeout(() => {
-                        console.error(`Request timed out for ${tracker} at URL: ${post_query_url}`);
-                        displayAlert(`Request timed out for ${tracker}`);
-                        reject(new Error('Request timed out'));
-                    }, timeout);
+        const post_json = async (post_query_url, tracker, postData) => {
+            const response = await new Promise((resolve, reject) => {
 
-                    GM_xmlhttpRequest({
-                        url: post_query_url,
-                        method: "POST",
-                        data: JSON.stringify(postData),
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        onload: (res) => {
-                            clearTimeout(timer);
-                            resolve(res);
-                        },
-                        onerror: (err) => {
-                            clearTimeout(timer);
-                            reject(err);
-                        },
-                        onabort: (err) => {
-                            clearTimeout(timer);
-                            reject(err);
-                        },
-                        ontimeout: (err) => {
-                            clearTimeout(timer);
-                            reject(err);
-                        },
-                    });
+                GM_xmlhttpRequest({
+                    url: post_query_url,
+                    method: "POST",
+                    data: JSON.stringify(postData),
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    onload: (res) => {
+                        resolve(res);
+                    },
+                    onerror: (err) => {
+                        reject(err);
+                    },
+                    onabort: (err) => {
+                        reject(err);
+                    },
+                    ontimeout: (err) => {
+                        reject(err);
+                    },
                 });
+            });
 
-                if (response.status === 200) {
-                    return JSON.parse(response.responseText);
-                } else {
-                    console.error(`Error: ${tracker} HTTP ${response.status} Error.`);
-                    displayAlert(`${tracker} API seems unresponsive`);
-                    return null;  // Allow other processing to continue by returning null
-                }
-            } catch (error) {
-                console.error(`Error fetching URL from ${tracker}: ${error.message}`);
-                return null;  // Return null to allow continuation of other operations
+            if (response.status === 200) {
+                return JSON.parse(response.responseText);
+            } else {
+                console.error(`Error: ${tracker} HTTP ${response.status} Error.`);
+                displayAlert(`${tracker} returned not ok`);
+                return null;  // Allow other processing to continue by returning null
             }
         };
 
-        const fetch_url = async (query_url, tracker, timeout = timer) => {
-            let timer;
-            try {
-                const response = await new Promise((resolve, reject) => {
-                    timer = setTimeout(() => {
-                        console.error(`Request timed out for ${tracker} at URL: ${query_url}`);
-                        displayAlert(`Request timed out for ${tracker}`);
-                        reject(new Error('Request timed out'));
-                    }, timeout);
+        const fetch_url = async (query_url, tracker) => {
+            const response = await new Promise((resolve, reject) => {
 
-                    GM_xmlhttpRequest({
-                        url: query_url,
-                        method: "GET",
-                        onload: (res) => {
-                            clearTimeout(timer);
-                            resolve(res);
-                        },
-                        onerror: (err) => {
-                            clearTimeout(timer);
-                            reject(err);
-                        },
-                        onabort: (err) => {
-                            clearTimeout(timer);
-                            reject(err);
-                        },
-                        ontimeout: (err) => {
-                            clearTimeout(timer);
-                            reject(err);
-                        },
-                    });
+                GM_xmlhttpRequest({
+                    url: query_url,
+                    method: "GET",
+                    onload: (res) => {
+                        resolve(res);
+                    },
+                    onerror: (err) => {
+                        reject(err);
+                    },
+                    onabort: (err) => {
+                        reject(err);
+                    },
+                    ontimeout: (err) => {
+                        reject(err);
+                    },
                 });
+            });
 
-                if (response.status === 200) {
-                    const contentType = response.responseHeaders.match(/content-type: ([^;]+)/i)[1].toLowerCase();
-                    const parser = new DOMParser();
-                    let result;
+            if (response.status === 200) {
+                const contentType = response.responseHeaders.match(/content-type: ([^;]+)/i)[1].toLowerCase();
+                const parser = new DOMParser();
+                let result;
 
-                    if (contentType.includes("xml")) {
-                        result = parser.parseFromString(response.responseText, "text/xml");
-                    } else {
-                        result = parser.parseFromString(response.responseText, "text/html").body;
-                    }
-
-                    return result;
-                } else if (response.status === 100) {
-                    console.log(`Notice: HTTP ${response.status} Too soon after last search.`);
-                    return null;  // Return null to indicate that the data shouldn't be processed further but doesn't halt other processing
+                if (contentType.includes("xml")) {
+                    result = parser.parseFromString(response.responseText, "text/xml");
                 } else {
-                    console.error(`Error: HTTP ${response.status} Error.`);
-                    return null;  // Similar to the 100 case, allow other processing to continue by returning null
+                    result = parser.parseFromString(response.responseText, "text/html").body;
                 }
-            } catch (error) {
-                console.error(`Error fetching URL from ${tracker}: ${error.message}`);
-                return null;  // Return null to allow continuation of other operations
+
+                return result;
+            } else if (response.status === 100) {
+                console.log(`Notice: HTTP ${response.status} Too soon after last search.`);
+                return null;  // Return null to indicate that the data shouldn't be processed further but doesn't halt other processing
+            } else {
+                console.error(`Error: HTTP ${response.status} Error.`);
+                displayAlert(`${tracker} returned not ok`);
+                return null;  // Similar to the 100 case, allow other processing to continue by returning null
             }
         };
 
@@ -2209,11 +2167,11 @@
             });
         };
 
-        const fetch_tracker = async (tracker, imdb_id, show_name, show_nbl_name, tvdbId, timeout = timer) => {
-            return new Promise((resolve, reject) => {
+        const fetch_tracker = async (tracker, imdb_id, show_name, show_nbl_name, tvdbId, elapsedTime, timeout = timer) => {
+            return new Promise(async (resolve, reject) => {
                 const timer = setTimeout(() => {
-                    console.error(`Request timed out for ${tracker}`);
-                    displayAlert(`Request timed out for ${tracker}`);
+                    console.error(`Error fetching data from ${tracker}`);
+                    displayAlert(`Error fetching data from ${tracker}`);
                     resolve([]);
                 }, timeout);
                 let query_url = "";
@@ -2221,58 +2179,43 @@
                 let post_query_url = "";
                 let postData = {};
 
-                if (tracker === "PTP") {
-                    query_url = "https://passthepopcorn.me/torrents.php?imdb=" + imdb_id;
-                }
-                else if (tracker === "HDB") {
-                  try {
-                      post_query_url = "https://hdbits.org/api/torrents";
-                      postData = {
-                      username: HDB_USER_NAME,
-                      passkey: HDB_PASS_KEY,
-                      imdb: { id: imdb_id.split("tt")[1] }
-                      };
-                    } catch (error) {
-                        console.error(`Error setting up HDB query: ${error.message}`);
-                        resolve([]); // Resolve with an empty array if there's an error
-                        return;
-                    }
+                if (tracker === "HDB") {
+                    post_query_url = "https://hdbits.org/api/torrents";
+                    postData = {
+                    username: HDB_USER_NAME,
+                    passkey: HDB_PASS_KEY,
+                    imdb: { id: imdb_id.split("tt")[1] }
+                    };
                 }
                 else if (tracker === "BTN") {
-                    try {
-                        post_query_url = "https://api.broadcasthe.net/";
-                        if (tvdbId) {
-                            postData = {
-                                jsonrpc: "2.0",
-                                id: generateGUID().substring(0, 8),
-                                method: "getTorrentsSearch",
-                                params: [
-                                    BTN_API_TOKEN,
-                                    {
-                                        tvdb: tvdbId
-                                    },
-                                    20, // Results per page
-                                ]
-                            };
-                        } else {
-                            // Fallback to search method if TVDB ID is not available
-                            postData = {
-                                jsonrpc: "2.0",
-                                id: generateGUID().substring(0, 8),
-                                method: "getTorrentsSearch",
-                                params: [
-                                    BTN_API_TOKEN,
-                                    {
-                                        search: show_name
-                                    },
-                                    20,
-                                ]
-                            };
-                        }
-                    } catch (error) {
-                        console.error(`Error setting up BTN query: ${error.message}`);
-                        resolve([]); // Resolve with an empty array if there's an error
-                        return;
+                    post_query_url = "https://api.broadcasthe.net/";
+                    if (tvdbId) {
+                        postData = {
+                            jsonrpc: "2.0",
+                            id: generateGUID().substring(0, 8),
+                            method: "getTorrentsSearch",
+                            params: [
+                                BTN_API_TOKEN,
+                                {
+                                    tvdb: tvdbId
+                                },
+                                20, // Results per page
+                            ]
+                        };
+                    } else {
+                        // Fallback to search method if TVDB ID is not available
+                        postData = {
+                            jsonrpc: "2.0",
+                            id: generateGUID().substring(0, 8),
+                            method: "getTorrentsSearch",
+                            params: [
+                                BTN_API_TOKEN,
+                                {
+                                    search: show_name
+                                },
+                                20,
+                            ]
+                        };
                     }
                 }
                 else if (tracker === "MTV") {
@@ -2281,18 +2224,12 @@
                 else if (tracker === "ANT") {
                     query_url = "https://anthelion.me/torrents.php?searchstr=" + imdb_id + "&order_by=time&order_way=desc&group_results=1&action=basic&searchsubmit=1";
                 } else if (tracker === "BHD") {
-                    try {
-                        post_query_url = "https://beyond-hd.me/api/torrents/" + BHD_API_TOKEN;
-                        postData = {
-                            action: "search",
-                            rsskey: BHD_RSS_KEY,
-                            imdb_id: imdb_id.split("tt")[1]
-                        };
-                    } catch (error) {
-                        console.error(`Error setting up BHD query: ${error.message}`);
-                        resolve([]); // Resolve with an empty array if there's an error
-                        return;
-                    }
+                    post_query_url = "https://beyond-hd.me/api/torrents/" + BHD_API_TOKEN;
+                    postData = {
+                        action: "search",
+                        rsskey: BHD_RSS_KEY,
+                        imdb_id: imdb_id.split("tt")[1]
+                    };
                 } else if (tracker === "BLU") {
                     api_query_url =
                         "https://blutopia.cc/api/torrents/filter?imdbId=" +
@@ -2348,27 +2285,21 @@
                     query_url = "https://retroflix.club/browse?years%5B%5D=1890&years%5B%5D=2024&includingDead=1&promotionType=&bookmarked=&search=" + imdb_id + "&searchIn=4&termMatchKind=2&submit=";
                 }
                 else if (tracker === "NBL") {
-                    try {
-                        post_query_url = "https://nebulance.io/api.php";
-                        postData = {
-                            jsonrpc: "2.0",
-                            id: generateGUID().substring(0, 8),
-                            method: "getTorrents",
-                            params: [
-                                NBL_API_TOKEN,
-                                {
-                                    //tvmaze: nbl_test
-                                    series: show_nbl_name
-                                },
-                                20, // Results per page
-                                0   // Page number
-                            ]
-                        };
-                    } catch (error) {
-                        console.error(`Error setting up NBL query: ${error.message}`);
-                        resolve([]); // Resolve with an empty array if there's an error
-                        return;
-                    }
+                    post_query_url = "https://nebulance.io/api.php";
+                    postData = {
+                        jsonrpc: "2.0",
+                        id: generateGUID().substring(0, 8),
+                        method: "getTorrents",
+                        params: [
+                            NBL_API_TOKEN,
+                            {
+                                //tvmaze: nbl_test
+                                series: show_nbl_name
+                            },
+                            20, // Results per page
+                            0   // Page number
+                        ]
+                    };
                 }
                 else if (tracker === "AvistaZ") {
                     query_url = "https://avistaz.to/movies?search=&imdb=" + imdb_id + "&view=lists";
@@ -2397,50 +2328,73 @@
                             .then(result => {
                                 clearTimeout(timer); // Clear the timer on successful fetch
                                 if (result) {
-                                    if (result.results && tracker === "BHD") {
-                                        resolve(get_post_torrent_objects(tracker, result));
+                                    if (result?.results && tracker === "BHD") {
+                                        if (result.status_code !== 1) {
+                                            console.log("BHD returned a failed status code");
+                                            resolve([]);
+                                        }
+                                        if (result.total_results === 0) {
+                                            console.log("BHD reached successfully but no results were returned");
+                                            resolve([]);
+                                        } else {
+                                            console.log("Data fetched successfully from BHD");
+                                            resolve(get_post_torrent_objects(tracker, result));
+                                        }
                                     } else if (result?.data && tracker === "HDB") {
-                                        if (result.status === 1) {
-                                            console.log("HDB: Failure (something bad happened)");
+                                        switch (result.status) {
+                                            case 1:
+                                                console.log("HDB: Failure (something bad happened)");
+                                                resolve([]);
+                                                break;
+                                            case 4:
+                                                console.log("HDB: Auth data missing");
+                                                resolve([]);
+                                                break;
+                                            case 5:
+                                                console.log("HDB: Auth failed (incorrect username / password)");
+                                                resolve([]);
+                                                break;
+                                            default:
+                                                if (result.data.length === 0) {
+                                                    console.log("HDB reached successfully but no results were returned");
+                                                    resolve([]);
+                                                } else {
+                                                    console.log("Data fetched successfully from HDB");
+                                                    resolve(get_post_torrent_objects(tracker, result));
+                                                }
                                         }
-                                        else if (result.status === 4) {
-                                            console.log("HDB: Auth data missing");
-                                        }
-                                        else if (result.status === 5) {
-                                            console.log("HDB: Auth failed (incorrect username / password)");
-                                        }
-                                        resolve(get_post_torrent_objects(tracker, result));
                                     } else if (result.result && tracker === "NBL") {
                                         if (result) {
                                             const extractedText = result.result;
                                             if (extractedText.includes("NBL API is down at the moment")) {
-                                                displayAlert('NBL API is down');
+                                                displayAlert('NBL API is down at the moment');
                                             }
                                         }
                                         resolve(get_post_torrent_objects(tracker, result));
-                                    } else if (tracker === "BTN" && result.result) {
-                                        resolve(get_post_torrent_objects(tracker, result));
-                                    } else {
-                                        console.log(`${tracker} reached successfully but no valid results found`);
-                                        resolve([]);
+                                    } else if (tracker === "BTN" && result?.result) {
+                                        if (result.result.results === "0") {
+                                            console.log("BTN reached successfully but no results were returned");
+                                            resolve([]);
+                                        }
+                                        else {
+                                            console.log("Data fetched successfully from BTN");
+                                            resolve(get_post_torrent_objects(tracker, result));
+                                        }
                                     }
-                                } else {
-                                    console.log(`${tracker} reached successfully but no results found`);
-                                    resolve([]);
                                 }
                             })
                             .catch(error => {
-                                console.error(`Error fetching data from ${tracker}:`, error);
-                                displayAlert(`Error fetching data from ${tracker}`);
+                                console.error(`Error fetching data from ${tracker}`);
+                                //displayAlert(`Error fetching data from ${tracker}`);
                                 resolve([]);
                             });
                     } else if (use_api_instead(tracker) === false) {
-                        fetch_url(query_url)
+                        fetch_url(query_url, tracker)
                             .then(result => {
                                 clearTimeout(timer); // Clear the timer on successful fetch
                                 let movie_exist = is_movie_exist(tracker, result);
                                 if (movie_exist === false) {
-                                    console.log(`${tracker} reached successfully`);
+                                    console.log(`${tracker} reached successfully but no results were returned`);
                                     resolve([]);
                                 } else {
                                     console.log(`Data fetched successfully from ${tracker}`);
@@ -2448,8 +2402,8 @@
                                 }
                             })
                             .catch(error => {
-                                console.error(`Error fetching data from ${tracker}:`, error);
-                                displayAlert(`Error fetching data from ${tracker}`);
+                                console.error(`Error fetching data from ${tracker}:`);
+                                //displayAlert(`Error fetching data from ${tracker}`);
                                 resolve([]); // Resolve with an empty array if there's an error
                             });
                     } else {
@@ -2461,15 +2415,15 @@
                             })
                             .then(data => {
                                 if (data.data.length === 0) {
-                                    console.log(`${tracker} reached successfully`);
+                                    console.log(`${tracker} reached successfully but no results were returned`);
                                 } else {
                                     console.log(`Data fetched successfully from ${tracker}`);
                                 }
                                 resolve(get_api_torrent_objects(tracker, data));
                             })
                             .catch(error => {
-                                console.error(`Error fetching data from ${tracker}:`, error);
-                                displayAlert(`Error fetching data from ${tracker}`);
+                                console.error(`Error fetching data from ${tracker}:`);
+                                //displayAlert(`Error fetching data from ${tracker}`);
                                 resolve([]);
                             });
                     }
@@ -5159,7 +5113,6 @@
 
             let promises = [];
             trackers.forEach(t => promises.push(fetch_tracker(t, imdb_id, show_name, show_nbl_name, tvdbId)));
-
             Promise.all(promises)
                 .then(torrents_lists => {
                     var all_torrents = [].concat.apply([], torrents_lists).sort((a, b) => a.size < b.size ? 1 : -1);
