@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add Time Column and Highlight Recent Torrents
 // @namespace    PTP-Add-Time-Column-and-Highlight-Recent-Torrents
-// @version      0.5.3
+// @version      0.5.4
 // @description  Add a Time column to the Torrent Group Page, Collage Page,
 //               Artist Page, and Bookmark Page.
 //               Highlight recent and latest torrent within a group.
@@ -69,11 +69,14 @@
                     const unixTimestamp = moment(timeTitle, "MMM DD YYYY, HH:mm").unix();
                     if (!isNaN(unixTimestamp)) {
                         const formattedTime = formatTime(moment.unix(unixTimestamp));
-                        time.html(formattedTime);
                         times.push(timeTitle);
 
-                        $(time).addClass('nobr');
-                        const timeCell = $('<td class="time-cell"></td>').append(time);
+                        const clonedTime = time.clone().html(formattedTime).addClass('nobr');
+                        const timeCell = $('<td class="time-cell"></td>').append(clonedTime);
+                        torrentRow.find('td:nth(0)').after(timeCell);
+                    } else {
+                        console.error('Invalid date:', timeTitle);
+                        const timeCell = $('<td class="time-cell"></td>').append($('<span>').addClass('nobr').text('Invalid date'));
                         torrentRow.find('td:nth(0)').after(timeCell);
                     }
                 }
@@ -325,9 +328,7 @@
 
     function highlightTime(time, rowClassName, textColor, backgroundColor, fontWeight) {
         $(rowClassName + " span.time[title='" + time + "'], " + rowClassName + " span.release.time[title='" + time + "']").each(function(i, span) {
-            if ($(span).parent().css('background-color') !== backgroundColor) {
-                highlightSpan(span, textColor, backgroundColor, fontWeight);
-            }
+            highlightSpan(span, textColor, backgroundColor, fontWeight);
         });
     }
 
