@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.8.7-A
+// @version      3.8.8-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -526,7 +526,6 @@
             }),
         };
         let doms = [];
-        const TIMEOUT_DURATION = 10000;
 
         const dom_get_quality = (text) => {
             if (text.includes("720p")) return "720p";
@@ -641,30 +640,86 @@
             return "None";
         };
 
+        const trackerIcons = {
+            "BHD": "https://beyond-hd.me/favicon.ico",
+            "BLU": "https://blutopia.cc/favicon.ico",
+            "Aither": "https://aither.cc/favicon.ico",
+            "RFX": "https://reelflix.xyz/favicon.ico",
+            "OE": "https://onlyencodes.cc/favicon.ico",
+            "CG": "https://cinemageddon.net/favicon.ico",
+            "FL": "https://filelist.io/favicon.ico",
+            "AvistaZ": "https://avistaz.to/images/avistaz-favicon.png",
+            "PHD": "https://privatehd.to/images/privatehd-favicon.png",
+            "CinemaZ": "https://cinemaz.to/images/cinemaz-favicon.png",
+            "HDB": "https://hdbits.org/favicon.ico",
+            "PxHD": "https://pixelhd.me/favicon.ico",
+            "KG": "https://karagarga.in/favicon.ico",
+            "TIK": "https://cinematik.net/favicon.ico",
+            "MTV": "https://www.morethantv.me/favicon.ico",
+            "ANT": "https://anthelion.me/favicon.ico",
+            "HUNO": "https://hawke.uno/favicon.ico",
+            "BTN": "https://broadcasthe.net/favicon.ico",
+            "TVV": "https://tv-vault.me/favicon.ico",
+            "NBL": "https://nebulance.io/favicon.ico",
+            "RTF": "https://retroflix.club/favicon.ico",
+            "LST": "https://lst.gg/favicon.ico"
+        };
+
         const get_tracker_icon = (tracker) => {
-            if (tracker === "BHD") return "https://beyond-hd.me/favicon.ico";
-            else if (tracker === "BLU") return "https://blutopia.cc/favicon.ico";
-            else if (tracker === "Aither") return "https://aither.cc/favicon.ico";
-            else if (tracker === "RFX") return "https://reelflix.xyz/favicon.ico";
-            else if (tracker === "OE") return "https://onlyencodes.cc/favicon.ico";
-            else if (tracker === "CG") return "https://cinemageddon.net/favicon.ico";
-            else if (tracker === "FL") return "https://filelist.io/favicon.ico";
-            else if (tracker === "AvistaZ") return "https://avistaz.to/images/avistaz-favicon.png";
-            else if (tracker === "PHD") return "https://privatehd.to/images/privatehd-favicon.png";
-            else if (tracker === "CinemaZ") return "https://cinemaz.to/images/cinemaz-favicon.png";
-            else if (tracker === "HDB") return "https://hdbits.org/favicon.ico";
-            else if (tracker === "PxHD") return "https://pixelhd.me/favicon.ico";
-            else if (tracker === "KG") return "https://karagarga.in/favicon.ico";
-            else if (tracker === "TIK") return "https://cinematik.net/favicon.ico";
-            else if (tracker === "MTV") return "https://www.morethantv.me/favicon.ico";
-            else if (tracker === "ANT") return "https://anthelion.me/favicon.ico";
-            else if (tracker === "HUNO") return "https://hawke.uno/favicon.ico";
-            else if (tracker === "BTN") return "https://broadcasthe.net/favicon.ico";
-            else if (tracker === "TVV") return "https://tv-vault.me/favicon.ico";
-            else if (tracker === "NBL") return "https://nebulance.io/favicon.ico";
-            else if (tracker === "RTF") return "https://retroflix.club/favicon.ico";
-            else if (tracker === "LST") return "https://lst.gg/favicon.ico";
-        }
+            return trackerIcons[tracker] || "https://default-favicon.ico"; // Provide a default favicon URL
+        };
+
+        const fetchAndStoreIcon = async (tracker, url) => {
+            try {
+                const response = await fetch(url);
+                const blob = await response.blob();
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    localStorage.setItem(`icon_${tracker}`, reader.result);
+                    console.log(`Fetched and stored icon for tracker ${tracker}`);
+                };
+                reader.readAsDataURL(blob);
+            } catch (error) {
+                console.error(`Error fetching icon for tracker ${tracker}:`, error);
+            }
+        };
+
+        const storeAllIcons = () => {
+            Object.entries(trackerIcons).forEach(([tracker, url]) => {
+                fetchAndStoreIcon(tracker, url);
+            });
+        };
+
+        const getStoredIcon = (tracker) => {
+            const storedIcon = localStorage.getItem(`icon_${tracker}`);
+            if (storedIcon) {
+                console.log(`Retrieved icon for tracker ${tracker} from local storage`);
+                return storedIcon;
+            } else {
+                console.log(`No stored icon found for tracker ${tracker}, using default icon`);
+                return "https://default-favicon.ico";
+            }
+        };
+
+        const oneWeek = 7 * 24 * 60 * 60 * 1000; // One week in milliseconds
+
+        const checkAndUpdateIcons = () => {
+            const lastUpdate = localStorage.getItem('lastUpdate');
+
+            if (!lastUpdate || (Date.now() - new Date(lastUpdate).getTime()) > oneWeek) {
+                console.log('Updating icons as a week has passed or no last update found');
+                storeAllIcons();
+                localStorage.setItem('lastUpdate', new Date().toISOString());
+            } else {
+                console.log('Icons are up to date');
+            }
+        };
+
+        // Initial check
+        checkAndUpdateIcons();
+
+        // Set interval to check every week
+        setInterval(checkAndUpdateIcons, oneWeek);
 
         const use_api_instead = (tracker) => {
             if (
