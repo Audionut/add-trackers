@@ -227,11 +227,11 @@
             "PHD": GM_config.get("phd"),
             "RTF": GM_config.get("rtf"),
             "LST": GM_config.get("lst"),
+            "ANT": GM_config.get("ant"),
+            "CG": GM_config.get("cg"),
         };
 
         const movie_only_dict = {
-            "ANT": GM_config.get("ant"),
-            "CG": GM_config.get("cg"),
         };
 
         const tv_dict = {
