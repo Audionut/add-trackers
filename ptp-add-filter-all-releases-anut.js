@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.8.9-A
+// @version      3.9.0-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -526,10 +526,11 @@
             }),
         };
         let doms = [];
+        const TIMEOUT_DURATION = 10000;
 
         const dom_get_quality = (text) => {
             if (text.includes("720p")) return "720p";
-            else if (text.includes("1080p")) return "1080p";
+            else if (text.includes("1080p") || text.includes("1080i")) return "1080p";
             else if (text.includes("2160p")) return "2160p";
             else if (text.includes("576p")) return "576p";
             else if (text.includes("480p")) return "480p";
@@ -806,6 +807,9 @@
                                 }
                                 if (documentTitle.includes("(1080p)")) {
                                     infoText += " 1080p";
+                                }
+                                if (documentTitle.includes("(1080i)")) {
+                                    infoText += " 1080i";
                                 }
                                 if (documentTitle.includes("(2160p)")) {
                                     infoText += " 2160p";
@@ -1411,6 +1415,17 @@
                             }
                         }
                     }
+                    const inputTimeElement = d.querySelector('.torrenttable > tbody > tr > td:nth-child(4)');
+                    if (inputTimeElement) {
+                        let inputTime = inputTimeElement.innerHTML.trim();
+                        inputTime = inputTime.replace('<br>', ' ');
+                        inputTime = inputTime.replace(/<\/?nobr>/g, '');
+                        let time = toUnixTime(inputTime);
+                        if (isNaN(time)) {
+                            return null;
+                        }
+                        torrent_obj.time = time;
+                    }
                     torrent_obj.info_text = releaseName;
                     torrent_obj.groupId = groupText;
                     torrent_obj.site = "CG";
@@ -2014,19 +2029,22 @@
                 if (html.querySelector('NoResults') !== null) {
                     return false;
                 } else if (html.querySelector('SearchError[value="1"]') !== null) {
-                    console.error("TVV authorization missing");
+                    console.warn("TVV authorization missing");
                     return false;
                 } else if (html.querySelector('SearchError[value="2"]') !== null) {
-                    console.error("TVV authorization invalid or account disabled");
+                    console.warn("TVV authorization invalid or account disabled");
                     return false;
                 } else if (html.querySelector('SearchError[value="3"]') !== null) {
-                    console.error("Not enough privileges for this TVV search");
+                    console.warn("Not enough privileges for this TVV search");
                     return false;
                 } else if (html.querySelector('SearchError[value="100"]') !== null) {
-                    console.error("Searching TVV too soon");
+                    console.warn("Searching TVV too soon");
+                    return false;
+                } else if (html.querySelector('SearchError[value="101"]') !== null) {
+                    console.warn("Searching TVV too soon");
                     return false;
                 } else if (html.querySelector('SearchError') !== null) {
-                    console.error("Some issue with TVV searching");
+                    console.warn("Some issue with TVV searching");
                     return false;
                 } else {
                     return true;
@@ -2043,9 +2061,6 @@
                 } else {
                     return true;
                 }
-            }
-            else if (tracker === "NBL") {
-                 return true;
             }
             else if (tracker === "MTV") {
                 if (html.querySelector('item') === null) return false;
@@ -2099,7 +2114,7 @@
         };
 
         const post_json = async (post_query_url, tracker, postData) => {
-            const response = await new Promise((resolve, reject) => {
+            const response = await new Promise(async (resolve, reject) => {
 
                 GM_xmlhttpRequest({
                     url: post_query_url,
@@ -2126,14 +2141,14 @@
             if (response.status === 200) {
                 return JSON.parse(response.responseText);
             } else {
-                console.error(`Error: ${tracker} HTTP ${response.status} Error.`);
+                console.warn(`Error: ${tracker} HTTP ${response.status} Error.`);
                 displayAlert(`${tracker} returned not ok`);
                 return null;  // Allow other processing to continue by returning null
             }
         };
 
         const fetch_url = async (query_url, tracker) => {
-            const response = await new Promise((resolve, reject) => {
+            const response = await new Promise(async (resolve, reject) => {
 
                 GM_xmlhttpRequest({
                     url: query_url,
@@ -2165,11 +2180,8 @@
                 }
 
                 return result;
-            } else if (response.status === 100) {
-                console.log(`Notice: HTTP ${response.status} Too soon after last search.`);
-                return null;  // Return null to indicate that the data shouldn't be processed further but doesn't halt other processing
             } else {
-                console.error(`Error: HTTP ${response.status} Error.`);
+                console.warn(`Error: HTTP ${response.status} Error.`);
                 displayAlert(`${tracker} returned not ok`);
                 return null;  // Similar to the 100 case, allow other processing to continue by returning null
             }
@@ -2185,7 +2197,7 @@
         const fetch_tracker = async (tracker, imdb_id, show_name, show_nbl_name, tvdbId, timeout = timer) => {
             return new Promise(async (resolve, reject) => {
                 const timer = setTimeout(() => {
-                    console.error(`Error fetching data from ${tracker}`);
+                    console.warn(`Error fetching data from ${tracker}`);
                     displayAlert(`Error fetching data from ${tracker}`);
                     resolve([]);
                 }, timeout);
@@ -2383,6 +2395,7 @@
                                             const extractedText = result.result;
                                             if (extractedText.includes("NBL API is down at the moment")) {
                                                 displayAlert('NBL API is down at the moment');
+                                                console.warn("NBL API is down at the moment");
                                             }
                                         }
                                         resolve(get_post_torrent_objects(tracker, result));
@@ -2399,7 +2412,7 @@
                                 }
                             })
                             .catch(error => {
-                                console.error(`Error fetching data from ${tracker}`);
+                                console.warn(`Error fetching data from ${tracker}`);
                                 //displayAlert(`Error fetching data from ${tracker}`);
                                 resolve([]);
                             });
@@ -2417,7 +2430,7 @@
                                 }
                             })
                             .catch(error => {
-                                console.error(`Error fetching data from ${tracker}:`);
+                                console.warn(`Error fetching data from ${tracker}:`);
                                 //displayAlert(`Error fetching data from ${tracker}`);
                                 resolve([]); // Resolve with an empty array if there's an error
                             });
@@ -2437,7 +2450,7 @@
                                 resolve(get_api_torrent_objects(tracker, data));
                             })
                             .catch(error => {
-                                console.error(`Error fetching data from ${tracker}:`);
+                                console.warn(`Error fetching data from ${tracker}:`);
                                 //displayAlert(`Error fetching data from ${tracker}`);
                                 resolve([]);
                             });
@@ -2940,8 +2953,6 @@
                               return null;
                             }
                         }).filter(obj => obj !== null); // Filter out any null objects
-                    } else {
-                        console.log("No items found in the response from NBL");
                     }
                 } catch (error) {
                     console.error("An error occurred while processing NBL tracker:", error);
@@ -3111,8 +3122,6 @@
                               return null;
                             }
                         }).filter(obj => obj !== null); // Filter out any null objects
-                    } else {
-                        console.log("No torrents found in the response from BTN");
                     }
                 } catch (error) {
                     console.error("An error occurred while processing BTN tracker:", error);
