@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.9.1-A
+// @version      3.9.2-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -2113,6 +2113,10 @@
                     return true; // Element not found
                 }
             }
+            else if (tracker === "PTP") {
+                if (html.querySelector("#no_results_message > div") === null) return true;
+                else return false;
+            }
         };
 
         const post_json = async (post_query_url, tracker, postData) => {
@@ -2350,6 +2354,9 @@
                 }
                 else if (tracker === "PxHD") {
                     query_url = "https://pixelhd.me/torrents.php?groupname=&year=&tmdbover=&tmdbunder=&tmdbid=&imdbover=&imdbunder=&imdbid=" + imdb_id + "&order_by=time&order_way=desc&taglist=&tags_type=1&filter_cat%5B1%5D=1&filterTorrentsButton=Filter+Torrents";
+                }
+                else if (tracker === "PTP") {
+                    query_url = "https://passthepopcorn.me/torrents.php?imdb=" + imdb_id;
                 }
                 const performRequest = () => {
                     if (use_post_instead(tracker) === true) {
