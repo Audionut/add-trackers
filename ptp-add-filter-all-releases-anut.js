@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.9.0-A
+// @version      3.9.1-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -71,6 +71,7 @@
         "run_default": {"label": "Run by default?", "type": "checkbox", "default": true, "tooltip": "Run this script by default on page load, else click Other Trackers under title to run the script"},
         "ptp_name": {"label": "Show release name", "type": "checkbox", "default": true, "tooltip": "Display the PTP release (file) name instead of the default display"},
         "funky_tags": {"label": "Improved Tags", "type": "checkbox", "default": false, "tooltip": "Work with jmxd' PTP Improved Tags script"},
+        "btntimer": {"label": "Timer for BTN TVDB ID searches via Sonarr (ms)", "type": "int", "default": 800, "tooltip": "If you don't use Sonarr you can set this very low, but the main script delay is overall site response, not this response"},
         "tracker_by_default": {"label": "Only these sites by default", "type": "text", "default": "", "tooltip": "Show only these sites by default. Comma separated. PTP, BHD, ANT, etc"},
         "res_by_default": {"label": "Only these resolutions by default", "type": "text", "default": "", "tooltip": "Show only these resolutions by default. Comma separated, with valued values. SD, 480p, 576p, 720p, 1080p, 2160p"},
         "hideBlankLinks": {"label": "How to display download link", "type": "select", "options": ["DL", "Download", "Spaced"], "default": "DL", "tooltip": "Choose how to display the download links: DL (original method), DOWNLOAD, or Spaced. Other methods help with some stylesheets."},
@@ -327,6 +328,7 @@
         const timerDuration = GM_config.get("timerDuration") * 1000; // Convert to milliseconds
         let ptp_release_name = GM_config.get("ptp_name"); // true = show release name - false = original PTP release style. Ignored if Improved Tags  = true
         let improved_tags = GM_config.get("funky_tags"); // true = Change display to work fully with PTP Improved Tags from jmxd.
+        const btnTimer = GM_config.get("btntimer");
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -5040,8 +5042,8 @@
             return tvdbId;
         }
 
-        // Function to wait for TVDB ID
-        function waitForTvdbId() {
+        // Function to wait for TVDB ID with a timeout
+        function waitForTvdbId(timeout = btnTimer) {
             return new Promise((resolve, reject) => {
                 // Check if the TVDB ID is already in localStorage
                 let tvdbId = getTvdbId();
@@ -5062,13 +5064,21 @@
                         cleanup();
                     };
 
+                    // Cleanup function to remove event listeners
                     const cleanup = () => {
+                        clearTimeout(timeoutId);
                         document.removeEventListener('tvdbIdFetched', onTvdbIdFetched);
                         document.removeEventListener('tvdbIdFetchError', onTvdbIdFetchError);
                     };
 
                     document.addEventListener('tvdbIdFetched', onTvdbIdFetched);
                     document.addEventListener('tvdbIdFetchError', onTvdbIdFetchError);
+
+                    // Set a timeout to reject the promise if neither event is triggered
+                    const timeoutId = setTimeout(() => {
+                        reject(new Error("TVDB ID fetch timed out."));
+                        cleanup();
+                    }, timeout);
                 }
             });
         }
