@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add Time Column and Highlight Recent Torrents
 // @namespace    PTP-Add-Time-Column-and-Highlight-Recent-Torrents
-// @version      0.5.4
+// @version      0.5.5
 // @description  Add a Time column to the Torrent Group Page, Collage Page,
 //               Artist Page, and Bookmark Page.
 //               Highlight recent and latest torrent within a group.
@@ -27,7 +27,6 @@
     const HIGHLIGHT_RECENT_BACKGROUND_COLOR = 'gainsboro';
     const HIGHLIGHT_RECENT_FONT_WEIGHT = 'bold';
     const RECENT_DAYS_IN_MILLIS = 7 * 24 * 60 * 60 * 1000;
-    const UTC_STRING = ' UTC';
 
     function main() {
         if (isIgnoredTorrentsPage()) {
@@ -66,7 +65,7 @@
                 let time = torrentRow.next().find('span.time').first();
                 if (time.length) {
                     const timeTitle = time.attr('title');
-                    const unixTimestamp = moment(timeTitle, "MMM DD YYYY, HH:mm").unix();
+                    const unixTimestamp = moment.utc(timeTitle, "MMM DD YYYY, HH:mm").unix();
                     if (!isNaN(unixTimestamp)) {
                         const formattedTime = formatTime(moment.unix(unixTimestamp));
                         times.push(timeTitle);
@@ -121,7 +120,7 @@
                 const time = times[i];
                 let timeMillis;
                 if (isNaN(time)) {
-                    timeMillis = new Date(time + ' UTC').getTime();
+                    timeMillis = moment.utc(time + ' UTC').valueOf();
                 } else {
                     timeMillis = parseInt(time) * 1000;
                 }
@@ -144,7 +143,7 @@
             const nowMillis = new Date().getTime();
             for (let i in times) {
                 const time = times[i];
-                if (nowMillis - new Date(time + ' UTC').getTime() < RECENT_DAYS_IN_MILLIS) {
+                if (nowMillis - moment.utc(time + ' UTC').valueOf() < RECENT_DAYS_IN_MILLIS) {
                     highlightRecentTime(time, '.basic-movie-list__torrent-row', group);
                 }
             }
@@ -178,7 +177,7 @@
                             torrentGroupTimes[groupId] = [];
                         }
                         const timeTitle = $(torrent.Time).attr('title');
-                        const unixTimestamp = moment(timeTitle, "MMM DD YYYY, HH:mm").unix();
+                        const unixTimestamp = moment.utc(timeTitle, "MMM DD YYYY, HH:mm").unix();
                         if (!isNaN(unixTimestamp)) {
                             torrentGroupTimes[groupId].push(timeTitle);
                             torrentIdToTime[torrent.TorrentId] = formatTime(moment.unix(unixTimestamp));
@@ -212,7 +211,7 @@
             const times = torrentGroupTimes[i];
             for (const j in times) {
                 const time = times[j];
-                if (nowMillis - new Date(time + ' UTC').getTime() < RECENT_DAYS_IN_MILLIS) {
+                if (nowMillis - moment.utc(time + ' UTC').valueOf() < RECENT_DAYS_IN_MILLIS) {
                     highlightRecentTime(time, '.basic-movie-list__torrent-row');
                 }
             }
@@ -237,7 +236,7 @@
                             torrentGroupTimes[groupId] = [];
                         }
                         const timeTitle = $(torrent.Time).attr('title');
-                        const unixTimestamp = moment(timeTitle, "MMM DD YYYY, HH:mm").unix();
+                        const unixTimestamp = moment.utc(timeTitle, "MMM DD YYYY, HH:mm").unix();
                         if (!isNaN(unixTimestamp)) {
                             torrentGroupTimes[groupId].push(timeTitle);
                             torrentIdToTime[torrent.TorrentId] = formatTime(moment.unix(unixTimestamp));
@@ -259,7 +258,7 @@
             const times = torrentGroupTimes[i];
             for (const j in times) {
                 const time = times[j];
-                if (nowMillis - new Date(time + ' UTC').getTime() < RECENT_DAYS_IN_MILLIS) {
+                if (nowMillis - moment.utc(time + ' UTC').valueOf() < RECENT_DAYS_IN_MILLIS) {
                     highlightRecentTime(time, '.basic-movie-list__torrent-row');
                 }
             }
