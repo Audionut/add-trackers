@@ -8,20 +8,32 @@
 // @grant       GM_registerMenuCommand
 // @downloadURL  https://github.com/Audionut/add-trackers/raw/main/ptp-torrent-row-group-toggle.js
 // @updateURL    https://github.com/Audionut/add-trackers/raw/main/ptp-torrent-row-group-toggle.js
-// @version     1.0
+// @version     1.1
 // @icon        https://passthepopcorn.me/favicon.ico
 // @require     https://cdn.jsdelivr.net/gh/sizzlemctwizzle/GM_config@43fd0fe4de1166f343883511e53546e87840aeaf/gm_config.js
 // ==/UserScript==
 
 function toggleRowGroup(startRow, hide) {
-  let row = startRow.nextElementSibling;
-  while (row && !row.querySelector('.basic-movie-list__torrent-edition__sub') && row.tagName !== 'TBODY') {
-    if (!row.classList.contains('initially-hidden')) {
-      row.classList.toggle('hidden', hide);
+    let row = startRow.nextElementSibling;
+    while (row && !row.querySelector('.basic-movie-list__torrent-edition__sub') && row.tagName !== 'TBODY') {
+      if (!row.classList.contains('initially-hidden')) {
+        if (hide) {
+          if (row.style.display === 'table-row') {
+            row.dataset.originalDisplay = 'table-row';
+            row.style.display = '';
+          }
+          row.classList.add('hidden');
+        } else {
+          row.classList.remove('hidden');
+          if (row.dataset.originalDisplay) {
+            row.style.display = row.dataset.originalDisplay;
+            delete row.dataset.originalDisplay;
+          }
+        }
+      }
+      row = row.nextElementSibling;
     }
-    row = row.nextElementSibling;
   }
-}
 
 function addRowGroupToggleButtons() {
   const rowGroups = document.querySelectorAll('.basic-movie-list__torrent-edition__sub');
@@ -207,5 +219,14 @@ function initializeScript() {
       addRowGroupToggleButtons();
       applySettings();
     }, 100);
+  });
+
+  document.addEventListener('AddReleasesStatusChanged', () => {
+    console.log('AddReleasesStatusChanged event triggered');
+    setTimeout(() => {
+      createSettingsMenu();
+      addRowGroupToggleButtons();
+      applySettings();
+    }, 50);
   });
 })();
