@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add Time Column and Highlight Recent Torrents
 // @namespace    PTP-Add-Time-Column-and-Highlight-Recent-Torrents
-// @version      0.5.5
+// @version      0.5.6
 // @description  Add a Time column to the Torrent Group Page, Collage Page,
 //               Artist Page, and Bookmark Page.
 //               Highlight recent and latest torrent within a group.
@@ -65,9 +65,11 @@
                 let time = torrentRow.next().find('span.time').first();
                 if (time.length) {
                     const timeTitle = time.attr('title');
-                    const unixTimestamp = moment.utc(timeTitle, "MMM DD YYYY, HH:mm").unix();
-                    if (!isNaN(unixTimestamp)) {
-                        const formattedTime = formatTime(moment.unix(unixTimestamp));
+                    const parsedDate = moment.utc(timeTitle, "MMM DD YYYY, HH:mm");
+
+                    if (parsedDate.isValid()) {
+                        const isoString = parsedDate.toISOString();
+                        const formattedTime = formatTime(parsedDate);
                         times.push(timeTitle);
 
                         const clonedTime = time.clone().html(formattedTime).addClass('nobr');
@@ -120,7 +122,7 @@
                 const time = times[i];
                 let timeMillis;
                 if (isNaN(time)) {
-                    timeMillis = moment.utc(time + ' UTC').valueOf();
+                    timeMillis = moment.utc(time, "MMM DD YYYY, HH:mm [UTC]").valueOf();
                 } else {
                     timeMillis = parseInt(time) * 1000;
                 }
@@ -143,12 +145,15 @@
             const nowMillis = new Date().getTime();
             for (let i in times) {
                 const time = times[i];
-                if (nowMillis - moment.utc(time + ' UTC').valueOf() < RECENT_DAYS_IN_MILLIS) {
+                const parsedDate = moment.utc(time, "MMM DD YYYY, HH:mm");
+                if (parsedDate.isValid() && nowMillis - parsedDate.valueOf() < RECENT_DAYS_IN_MILLIS) {
                     highlightRecentTime(time, '.basic-movie-list__torrent-row', group);
                 }
             }
 
-            highlightLatestTime(times[0], '.basic-movie-list__torrent-row', group);
+            if (times.length > 0) {
+                highlightLatestTime(times[0], '.basic-movie-list__torrent-row', group);
+            }
         });
     }
 
@@ -177,10 +182,10 @@
                             torrentGroupTimes[groupId] = [];
                         }
                         const timeTitle = $(torrent.Time).attr('title');
-                        const unixTimestamp = moment.utc(timeTitle, "MMM DD YYYY, HH:mm").unix();
-                        if (!isNaN(unixTimestamp)) {
-                            torrentGroupTimes[groupId].push(timeTitle);
-                            torrentIdToTime[torrent.TorrentId] = formatTime(moment.unix(unixTimestamp));
+                        const parsedDate = moment.utc(timeTitle, "MMM DD YYYY, HH:mm");
+                        if (parsedDate.isValid()) {
+                            torrentGroupTimes[groupId].push(parsedDate.toISOString());
+                            torrentIdToTime[torrent.TorrentId] = formatTime(parsedDate);
                         } else {
                             console.error('Invalid date:', timeTitle);
                             torrentIdToTime[torrent.TorrentId] = 'Invalid date';
@@ -211,7 +216,7 @@
             const times = torrentGroupTimes[i];
             for (const j in times) {
                 const time = times[j];
-                if (nowMillis - moment.utc(time + ' UTC').valueOf() < RECENT_DAYS_IN_MILLIS) {
+                if (nowMillis - moment.utc(time).valueOf() < RECENT_DAYS_IN_MILLIS) {
                     highlightRecentTime(time, '.basic-movie-list__torrent-row');
                 }
             }
@@ -313,7 +318,10 @@
         let times = [];
         $(group).find('.basic-movie-list__torrent-row').each(function (i, torrentRow) {
             const spanTime = $(torrentRow).find('td span.time');
-            if (spanTime && spanTime.length > 0) times.push(spanTime.attr('title'));
+            if (spanTime && spanTime.length > 0) {
+                const timeTitle = spanTime.attr('title');
+                times.push(moment.utc(timeTitle, "MMM DD YYYY, HH:mm").toISOString());
+            }
         });
         return times;
     }
