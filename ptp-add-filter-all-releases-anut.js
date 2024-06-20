@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.9.2-A
+// @version      3.9.3-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -4181,99 +4181,87 @@
         };
 
         const filter_torrents = () => {
+            let any_include = false;
+            let any_exclude = false;
+
             doms.forEach((e, i) => {
-                let tracker_constraint = false;
+                let include_tracker = false;
+                let include_discount = false;
+                let include_quality = false;
+                let include_text = true;
 
-                let inc_value = undefined;
-                let exc_value = undefined;
+                let status = filters.trackers.find(d => d.name === e.tracker)?.status;
 
-                let status = filters.trackers.find(d => d.name === e.tracker).status;
-
-                if (status === "include") inc_value = true;
-                else if (status === "exclude") exc_value = true;
-
-                if (inc_value === true) tracker_constraint = true;
-                else if (exc_value === true) tracker_constraint = false;
-                else {
-                    tracker_constraint = true;
-                    if (filters.trackers.filter(e => e.status === "include").length > 0) tracker_constraint = false;
+                if (status === "include") {
+                    include_tracker = true;
+                    any_include = true;
+                } else if (status === "exclude") {
+                    include_tracker = false;
+                    any_exclude = true;
+                    e.dom_path.style.removeProperty('display');
+                    e.dom_path.classList.add("hidden", "initially-hidden");
+                    return;  // Skip further checks as this element is excluded
+                } else {
+                    include_tracker = filters.trackers.filter(d => d.status === "include").length === 0;
                 }
 
-                if (tracker_constraint === false) {
-                    e.dom_path.style.display = "none";
-                    return;
+                let status_2 = filters.discounts.find(d => d.name === e.discount)?.status;
+
+                if (status_2 === "include") {
+                    include_discount = true;
+                    any_include = true;
+                } else if (status_2 === "exclude") {
+                    include_discount = false;
+                    any_exclude = true;
+                    e.dom_path.style.removeProperty('display');
+                    e.dom_path.classList.add("hidden", "initially-hidden");
+                    return;  // Skip further checks as this element is excluded
+                } else {
+                    include_discount = filters.discounts.filter(d => d.status === "include").length === 0;
                 }
 
-                ////////////////////
-                let discount_constraint = false;
+                let status_3 = filters.qualities.find(d => d.name === e.quality)?.status;
 
-                let inc_value_2 = undefined;
-                let exc_value_2 = undefined;
-
-                let status_2 = filters.discounts.find(d => d.name === e.discount).status;
-
-                if (status_2 === "include") inc_value_2 = true;
-                else if (status_2 === "exclude") exc_value_2 = true;
-
-                if (inc_value_2 === true) discount_constraint = true;
-                else if (exc_value_2 === true) discount_constraint = false;
-                else {
-                    discount_constraint = true;
-                    if (filters.discounts.filter(e => e.status === "include").length > 0) discount_constraint = false;
+                if (status_3 === "include") {
+                    include_quality = true;
+                    any_include = true;
+                } else if (status_3 === "exclude") {
+                    include_quality = false;
+                    any_exclude = true;
+                    e.dom_path.style.removeProperty('display');
+                    e.dom_path.classList.add("hidden", "initially-hidden");
+                    return;  // Skip further checks as this element is excluded
+                } else {
+                    include_quality = filters.qualities.filter(d => d.status === "include").length === 0;
                 }
 
-                if (discount_constraint === false) {
-                    e.dom_path.style.display = "none";
-                    return;
-                }
-
-                /////////////////////////////////
-                let quality_constraint = false;
-
-                let inc_value_3 = undefined;
-                let exc_value_3 = undefined;
-
-                let status_3 = filters.qualities.find(d => d.name === e.quality).status;
-
-                if (status_3 === "include") inc_value_3 = true;
-                else if (status_3 === "exclude") exc_value_3 = true;
-
-                if (inc_value_3 === true) quality_constraint = true;
-                else if (exc_value_3 === true) quality_constraint = false;
-                else {
-                    quality_constraint = true;
-                    if (filters.qualities.filter(e => e.status === "include").length > 0) quality_constraint = false;
-                }
-
-                if (quality_constraint === false) {
-                    e.dom_path.style.display = "none";
-                    return;
-                }
-
-                //////////////////////
-                let text_constraint = true;
                 const torrentSearchElement = document.querySelector(".torrent-search");
                 if (torrentSearchElement) {
                     let must_include_words = torrentSearchElement.value.split(" ").map((w) => w.toLowerCase());
+                    include_text = must_include_words.every(word => e.info_text.toLowerCase().includes(word));
+                }
 
-                    for (let word of must_include_words) {
-                        if (e.info_text.toLowerCase().includes(word) === false) {
-                            text_constraint = false;
-                            break;
-                        }
+                if (include_tracker && include_discount && include_quality && include_text) {
+                    if (status === "include" || status_2 === "include" || status_3 === "include") {
+                        e.dom_path.style.display = "table-row";
+                        e.dom_path.classList.remove("hidden", "initially-hidden");
+                    } else {
+                        e.dom_path.style.removeProperty('display');
+                        e.dom_path.classList.remove("hidden", "initially-hidden");
                     }
                 } else {
-                    console.log("No element with class 'torrent-search' found.");
+                    e.dom_path.style.removeProperty('display');
+                    e.dom_path.classList.add("hidden", "initially-hidden");
                 }
-
-                if (text_constraint === false) {
-                    e.dom_path.style.display = "none";
-                    return;
-                }
-
-                // congrats!
-                e.dom_path.style.display = "table-row";
             });
+
+            if (!any_include) {
+                doms.forEach((e, i) => {
+                    if (!any_exclude || !e.dom_path.classList.contains("hidden")) {
+                        e.dom_path.classList.remove("hidden", "initially-hidden");
+                    }
+                });
+            }
         };
 
         function apply_default_filters() {
@@ -4327,9 +4315,7 @@
             filter_torrents(); // Applies the filters to the page
         }
 
-        const update_filter_box_status = (object_key, value, dom_path) => { // object_key = tracker/quality/discount || value = BHD, HDB, 50% Freeleech, 720p etc...
-            // let all_values = ["default", "include", "exclude"];
-
+        const update_filter_box_status = (object_key, value, dom_path) => {
             if (object_key === "trackers") {
                 let current_status = filters.trackers.find(e => e.name === value).status;
 
