@@ -3,9 +3,10 @@
 // @version      0.0.7
 // @author       Ignacio (additions by Audionut)
 // @description  Find cross-seedable and Add cross-seed markers to non-ptp releases
+// @match        https://passthepopcorn.me/torrents.php*
+// @icon         https://passthepopcorn.me/favicon.ico
 // downloadURL   https://github.com/Audionut/add-trackers/raw/main/ptp-cross-seed-checker.user.js
 // updateURL     https://github.com/Audionut/add-trackers/raw/main/ptp-cross-seed-checker.user.js
-// @match        https://passthepopcorn.me/torrents.php*
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_registerMenuCommand
@@ -150,7 +151,9 @@
         return Array.from(ptpRows).map(row => {
             const group = row.getAttribute('data-releasegroup') || '';
             const NameEl = row.querySelector('.torrent-info-link') || '';
-            const rawName = NameEl ? NameEl.textContent : '';
+            //const NameEl = row.getAttribute('data-releasename') || '';
+            //const rawName = NameEl ? NameEl.textContent : '';
+            const rawName = row.getAttribute('data-releasename') || '';
             const sizeEl = row.querySelector('.nobr span[title]');
             const rawSize = sizeEl ? sizeEl.getAttribute('title') : '';
             const size = rawSize ? parseInt(rawSize.replace(/[^0-9]/g, '')) : 0;
@@ -172,7 +175,8 @@
         return Array.from(otherRows).map(row => {
             const rawGroup = row.getAttribute('data-releasegroup') || '';
             const NameEl = row.querySelector('.torrent-info-link') || '';
-            const rawName = NameEl ? NameEl.textContent : '';
+            //const rawName = NameEl ? NameEl.textContent : '';
+            const rawName = row.getAttribute('data-releasename') || '';
             const sizeEl = row.querySelector('.nobr .size-span');
             const rawSize = sizeEl ? sizeEl.getAttribute('title') : '';
             const size = rawSize ? parseInt(rawSize.replace(/[^0-9]/g, '')) : 0;
@@ -486,5 +490,4 @@
                 console.error('An error occurred:', error);
             });
     });
-
 })();
