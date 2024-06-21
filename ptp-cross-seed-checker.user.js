@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Cross-Seed Checker
-// @version      0.0.7
+// @version      0.0.8
 // @author       Ignacio (additions by Audionut)
 // @description  Find cross-seedable and Add cross-seed markers to non-ptp releases
 // @match        https://passthepopcorn.me/torrents.php*
@@ -25,6 +25,173 @@
     let defaultpnum = 10;
     let defaultsize = 8;
     let defaultpcs = true;
+
+    function releasenameparser(name) {
+        var EventEmitter = function() {
+            this.events = {};
+        };
+
+        EventEmitter.prototype.on = function(event, listener) {
+            if (!this.events[event]) {
+                this.events[event] = [];
+            }
+            this.events[event].push(listener);
+        };
+
+        EventEmitter.prototype.emit = function(event, data) {
+            if (this.events[event]) {
+                this.events[event].forEach(function(listener) {
+                    listener(data);
+                });
+            }
+        };
+
+        var Core = function() {
+            EventEmitter.call(this);
+            var parts;
+            this.getParts = function() {
+                return parts;
+            };
+            this.on('setup', function() {
+                parts = {};
+            });
+            this.on('part', function(part) {
+                parts[part.name] = part.clean;
+            });
+        };
+
+        Core.prototype = Object.create(EventEmitter.prototype);
+        Core.prototype.constructor = EventEmitter;
+        Core.prototype.exec = function(name) {
+            this.emit('setup', { name: name });
+            this.emit('start');
+            this.emit('end');
+            return this.getParts();
+        };
+
+        var core = new Core();
+
+        var patterns = {
+            season: /([Ss]?([0-9]{1,2}))[Eex]|((?<=[\.\- ])[Ss]{1}([0-9]{1,2})(?=[\.\- ]))/,
+            episode: /([Eex]{1}([0-9]{2})(?:[^0-9]|$))/,
+            format: /NTSC|PAL|SECAM/,
+            year: /([\[\(]?((?:19[0-9]|20[012])[0-9])[\]\)]?)/,
+            resolution: /(([0-9]{3,4}p))[^M]/,
+            quality: /(?:PPV.)?[HP]DTV|(?:HD)?CAM|B[rR]Rip|(?:PPV )?WEB-?DL(?: DVDRip)?|TS|H[dD]Rip|DVDRip|DVDRiP|DVDRIP|DVD[.\- ]?(?:5|9|10)?|CamRip|W[EB]B[rR]ip|WEB|[Bb]lu[Rr]ay|DvDScr|hdtv/,
+            codec: /xvid|x264|x265|h.?264|AVC/i,
+            audio: /MP3|DDP?[+\.]?[57].?1|DD2.?0|Dual[- ]Audio|LiNE|DTS(?:[.\- ]?)?(?:[Hh][Dd][.\- ]?)?(?:[Mm][Aa][.\- ]?)?(?:[567].1)?|AAC(?:.?2.0)?|FLAC(?:.?2.0)?|AC3(?:.5.1)?|(?:True[Hh][Dd].)?Atmos[. ]?(?:[579]\.1)?/,
+            transcoding: /REMUX/i,
+            container: /[\. ](MKV|AVI)[ $]?/i,
+            region: /R[0-9]/,
+            extended: /EXTENDED/,
+            hardcoded: /HC/,
+            proper: /PROPER/,
+            repack: /REPACK/,
+            widescreen: /WS/,
+            website: /^(\[ ?([^\]]+?) ?\])/,
+            language: /rus.eng|FRENCH|RUSSIAN|SPANISH|JAPANESE|ENGLISH|KOREAN|PORTUGUESE|SWEDISH|VIETNAMESE|FINNISH|GERMAN|CHINESE|DANISH|ITALIAN/,
+            platform: /DSNP|AMZN|NF|HMAX|CRITERION/,
+            garbage: /1400Mb|3rd Nov| ((Rip))/,
+            sub: /ENGSUB/,
+        };
+        var types = {
+            season: 'integer',
+            episode: 'integer',
+            year: 'integer',
+            extended: 'boolean',
+            hardcoded: 'boolean',
+            proper: 'boolean',
+            repack: 'boolean',
+            widescreen: 'boolean'
+        };
+        var torrent;
+
+        core.on('setup', function(data) {
+            torrent = data;
+        });
+
+        core.on('start', function() {
+            var key, match, index, clean, part;
+            for (key in patterns) {
+                if (!(match = torrent.name.match(patterns[key]))) {
+                    continue;
+                }
+                index = {
+                    raw: match[1] ? 1 : 0,
+                    clean: match[1] ? 2 : 0
+                };
+                if (key === 'container' && !match[index.clean]) {
+                    index.clean = index.raw;
+                }
+                if (types[key] && types[key] === 'boolean') {
+                    clean = true;
+                } else {
+                    clean = match[index.clean];
+                    if (types[key] && types[key] === 'integer') {
+                        if (key === 'season' && clean[0].match(/[Ss]/)) {
+                            clean = clean.slice(1);
+                        }
+                        clean = parseInt(clean, 10);
+                    }
+                }
+                part = {
+                    name: key,
+                    match: match,
+                    raw: match[index.raw],
+                    clean: clean
+                };
+                if (key === 'episode') {
+                    core.emit('map', torrent.name.replace(part.raw, '{episode}'));
+                }
+                core.emit('part', part);
+            }
+            core.emit('common');
+        });
+
+        core.on('common', function() {
+            var raw = torrent.name;
+            var clean = raw.replace(/^ -/, '');
+            if (clean.indexOf(' ') === -1 && clean.indexOf('.') !== -1) {
+                clean = clean.replace(/\./g, ' ');
+            }
+            clean = clean.replace(/_/g, ' ');
+            clean = clean.replace(/([\(_]|- )$/, '').trim();
+            core.emit('part', {
+                name: 'title',
+                raw: raw,
+                clean: clean
+            });
+        });
+
+        core.on('end', function() {
+            var clean, groupPattern, episodeNamePattern;
+            clean = torrent.name.replace(/(^[-\. ]+)|([-\. ]+$)/g, '');
+            clean = clean.replace(/[\(\)\/]/g, ' ');
+            clean = clean.split(/\.\.+| +/).filter(Boolean);
+            if (clean.length !== 0) {
+                if (torrent.map && clean[0]) {
+                    episodeNamePattern = '{episode}' + clean[0].replace(/_+$/, '');
+                    if (torrent.map.match(new RegExp(episodeNamePattern))) {
+                        core.emit('late', {
+                            name: 'episodeName',
+                            clean: clean.shift()
+                        });
+                    }
+                }
+            }
+            if (clean.length !== 0) {
+                core.emit('part', {
+                    name: 'excess',
+                    raw: torrent.name,
+                    clean: clean.length === 1 ? clean[0] : clean
+                });
+            }
+        });
+
+        return function(name) {
+            return core.exec(name);
+        };
+    }
 
     function settingsmenu() {
         const settingsDialog = document.createElement('div');
@@ -113,6 +280,7 @@
         }
         settingsDialog.style.display = 'block';
     });
+
     function rowSorter(pcs = false, dnum, pnum) {
         return new Promise((resolve, reject) => {
             try {
@@ -130,7 +298,6 @@
             }
         });
     }
-
 
     function classifyRows(rows, regex) {
         const ptpRows = [];
@@ -150,15 +317,13 @@
     function parsePtpRowsData(ptpRows) {
         return Array.from(ptpRows).map(row => {
             const group = row.getAttribute('data-releasegroup') || '';
-            const NameEl = row.querySelector('.torrent-info-link') || '';
-            //const NameEl = row.getAttribute('data-releasename') || '';
-            //const rawName = NameEl ? NameEl.textContent : '';
             const rawName = row.getAttribute('data-releasename') || '';
+            const parsedName = releasenameparser(rawName) || {};
             const sizeEl = row.querySelector('.nobr span[title]');
             const rawSize = sizeEl ? sizeEl.getAttribute('title') : '';
             const size = rawSize ? parseInt(rawSize.replace(/[^0-9]/g, '')) : 0;
             const { pl, dl } = actionElsparser(row);
-            return { group, size, pl, dl, rawName };
+            return { group, size, pl, dl, rawName, parsedName };
         });
     }
 
@@ -174,15 +339,14 @@
     function parseOtherRowsData(otherRows) {
         return Array.from(otherRows).map(row => {
             const rawGroup = row.getAttribute('data-releasegroup') || '';
-            const NameEl = row.querySelector('.torrent-info-link') || '';
-            //const rawName = NameEl ? NameEl.textContent : '';
             const rawName = row.getAttribute('data-releasename') || '';
+            const parsedName = releasenameparser(rawName) || {};
             const sizeEl = row.querySelector('.nobr .size-span');
             const rawSize = sizeEl ? sizeEl.getAttribute('title') : '';
             const size = rawSize ? parseInt(rawSize.replace(/[^0-9]/g, '')) : 0;
             const classList = Array.from(row.classList);
             const classid = classList.length > 0 ? classList[classList.length - 1] : '';
-            return { group: rawGroup, size, classid, rawName };
+            return { group: rawGroup, size, classid, rawName, parsedName };
         });
     }
 
@@ -218,32 +382,36 @@
         );
     }
 
-    function PCSfinder(ptpRowsData, otherRow, pnum) {
-        const toleranceBytes = pnum * 1024 * 1024; // Convert MiB to bytes
+function PCSfinder(ptpRowsData, otherRow, pnum) {
+    const toleranceBytes = pnum * 1024 * 1024; // Convert MiB to bytes
 
-        if (otherRow.rawName.includes("Audio Only Track")) {
-            return null;
-        }
-
-        // Find a match with the same "DV" status
-        const otherRowHasDV = otherRow.rawName.includes("DV");
-
-        // Find a match with the same "HDR" status
-        const otherRowHasHDR = /HDR/i.test(otherRow.rawName);
-
-        return ptpRowsData.find(ptpRow => {
-            const ptpRowHasDV = ptpRow.rawName.includes("DV");
-            const ptpRowHasHDR = /HDR/i.test(ptpRow.rawName);
-
-            return (
-                (otherRow.group.length === 0 || ptpRow.group.toLowerCase() === otherRow.group.toLowerCase()) &&
-                Math.abs(ptpRow.size - otherRow.size) <= toleranceBytes && // Size within PCS tolerance
-                !(ptpRow.group.toLowerCase() === otherRow.group.toLowerCase() && Math.abs(ptpRow.size - otherRow.size) <= (dnum * 1024 * 1024)) && // Ensure not a TCS match
-                otherRowHasDV === ptpRowHasDV && // Ensure DV matches
-                otherRowHasHDR === ptpRowHasHDR // Ensure HDR matches
-            );
-        });
+    if (otherRow.rawName.includes("Audio Only Track")) {
+        return null;
     }
+
+    const otherRowTitle = otherRow.parsedName.title || "";
+    const otherRowResolution = otherRow.parsedName.resolution || "";
+    const otherRowHasDV = otherRowTitle.includes("DV");
+    const otherRowHasHDR = /HDR/i.test(otherRowTitle);
+
+    return ptpRowsData.find(ptpRow => {
+        const ptpRowTitle = ptpRow.parsedName.title || "";
+        const ptpRowResolution = ptpRow.parsedName.resolution || "";
+        const ptpRowHasDV = ptpRowTitle.includes("DV");
+        const ptpRowHasHDR = /HDR/i.test(ptpRowTitle);
+
+        return (
+            (otherRow.group.length === 0 || ptpRow.group.toLowerCase() === otherRow.group.toLowerCase()) &&
+            ptpRowTitle === otherRowTitle &&
+            ptpRowResolution === otherRowResolution &&
+            Math.abs(ptpRow.size - otherRow.size) <= toleranceBytes && // Size within PCS tolerance
+            !(ptpRow.group.toLowerCase() === otherRow.group.toLowerCase() && Math.abs(ptpRow.size - otherRow.size) <= (dnum * 1024 * 1024)) && // Ensure not a TCS match
+            otherRowHasDV === ptpRowHasDV && // Ensure DV matches
+            otherRowHasHDR === ptpRowHasHDR // Ensure HDR matches
+        );
+    });
+}
+
     function createLink(text, href, title, color) {
         const link = document.createElement('a');
         link.href = href;
@@ -270,7 +438,6 @@
         const existingActionSpan = otherRowElement ? otherRowElement.querySelector('.basic-movie-list__torrent__action') : null;
 
         if (existingActionSpan) {
-            // Check if the mainLink already exists
             const existingLinks = Array.from(existingActionSpan.querySelectorAll('a'));
             const mainLinkExists = existingLinks.some(link => link.href === mainLink.href);
 
@@ -346,7 +513,6 @@
                     const plAnchor = plRow.querySelector('a[title="Permalink"]');
                     if (plAnchor) {
                         const plHref = plAnchor.getAttribute('href');
-                        // console.log("PL anchor href:", plHref);
                         const matchingTCSRows = rowsWithTCS.filter(tcsRow => {
                             const tcsAnchor = tcsRow.querySelector('a.link_2');
                             return tcsAnchor && tcsAnchor.getAttribute('href') === plHref;
@@ -355,8 +521,6 @@
                             const pcsAnchor = pcsRow.querySelector('a.link_2');
                             return pcsAnchor && pcsAnchor.getAttribute('href') === plHref;
                         });
-                        // console.log("Matching TCS rows:", matchingTCSRows);
-                        // console.log("Matching PCS rows:", matchingPCSRows);
                         const combinedRows = [...matchingPCSRows, ...matchingTCSRows];
 
                         combinedRows.forEach((combinedRow, index) => {
@@ -458,7 +622,6 @@
             }
         });
     }
-
 
     document.addEventListener('PTPAddReleasesFromOtherTrackersComplete', function(event) {
         rowSorter(pcs, dnum, pnum)
