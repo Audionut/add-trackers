@@ -1132,7 +1132,8 @@
 
                         const nextRow = rows[index + 1];
                         if (nextRow) {
-                            let antname = nextRow.querySelector('.row > td').textContent.trim();
+                            let element = nextRow.querySelector('.spoilerButton');
+                            let antname = element.value;
                             torrent_obj.datasetRelease = antname;
 
                             const inputTimeElement = nextRow.querySelector('div > blockquote > span.time.tooltip');
