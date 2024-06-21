@@ -1132,7 +1132,7 @@
 
                         const nextRow = rows[index + 1];
                         if (nextRow) {
-                            let element = nextRow.querySelector('.spoilerButton');
+                            let element = nextRow.querySelector('input.spoilerButton');
                             let antname = element.value;
                             torrent_obj.datasetRelease = antname;
 
