@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         PTP Cross-Seed Checker
-// @version      0.0.8
+// @version      0.0.9
 // @author       Ignacio (additions by Audionut)
-// @description  Find cross-seedable and Add cross-seed markers to non-ptp releases
+// @description  Find cross-seedable and add cross-seed markers to non-ptp releases
 // @match        https://passthepopcorn.me/torrents.php*
 // @icon         https://passthepopcorn.me/favicon.ico
 // downloadURL   https://github.com/Audionut/add-trackers/raw/main/ptp-cross-seed-checker.user.js
@@ -26,172 +26,151 @@
     let defaultsize = 8;
     let defaultpcs = true;
 
-    function releasenameparser(name) {
-        var EventEmitter = function() {
-            this.events = {};
-        };
+function releasenameparser(name) {
+    var EventEmitter = function() {
+        this.events = {};
+    };
 
-        EventEmitter.prototype.on = function(event, listener) {
-            if (!this.events[event]) {
-                this.events[event] = [];
+    EventEmitter.prototype.on = function(event, listener) {
+        if (!this.events[event]) {
+            this.events[event] = [];
+        }
+        this.events[event].push(listener);
+    };
+
+    EventEmitter.prototype.emit = function(event, data) {
+        if (this.events[event]) {
+            this.events[event].forEach(function(listener) {
+                listener(data);
+            });
+        }
+    };
+
+    var Core = function() {
+        EventEmitter.call(this);
+        var parts;
+        this.getParts = function() {
+            return parts;
+        };
+        this.on('setup', function() {
+            parts = {};
+        });
+        this.on('part', function(part) {
+            parts[part.name] = part.clean;
+        });
+    };
+
+    Core.prototype = Object.create(EventEmitter.prototype);
+    Core.prototype.constructor = EventEmitter;
+    Core.prototype.exec = function(name) {
+        this.emit('setup', { name: name });
+        this.emit('start');
+        this.emit('end');
+        return this.getParts();
+    };
+
+    var core = new Core();
+
+    var patterns = {
+        season: /([Ss]?([0-9]{1,2}))[Eex]|((?<=[\.\- ])[Ss]{1}([0-9]{1,2})(?=[\.\- ]))/,
+        episode: /([Eex]{1}([0-9]{2})(?:[^0-9]|$))/,
+        format: /NTSC|PAL|SECAM/,
+        year: /([\[\(]?((?:19[0-9]|20[012])[0-9])[\]\)]?)/,
+        resolution: /(([0-9]{3,4}p))[^M]/,
+        quality: /(?:PPV.)?[HP]DTV|(?:HD)?CAM|B[rR]Rip|(?:PPV )?WEB-?DL(?: DVDRip)?|TS|H[dD]Rip|DVDRip|DVDRiP|DVDRIP|DVD[.\- ]?(?:5|9|10)?|CamRip|W[EB]B[rR]ip|WEB|[Bb]lu[Rr]ay|DvDScr|hdtv/,
+        codec: /xvid|x264|x265|h.?264|AVC/i,
+        audio: /MP3|DDP?[+\.]?[57].?1|DD2.?0|Dual[- ]Audio|LiNE|DTS(?:[.\- ]?)?(?:[Hh][Dd][.\- ]?)?(?:[Mm][Aa][.\- ]?)?(?:[567].1)?|AAC(?:.?2.0)?|FLAC(?:.?2.0)?|AC3(?:.5.1)?|(?:True[Hh][Dd].)?Atmos[. ]?(?:[579]\.1)?/,
+        transcoding: /REMUX/i,
+        region: /R[0-9]/,
+        extended: /EXTENDED/,
+        hardcoded: /HC/,
+        proper: /PROPER/,
+        repack: /REPACK/,
+        widescreen: /WS/,
+        website: /^(\[ ?([^\]]+?) ?\])/,
+        language: /rus.eng|FRENCH|RUSSIAN|SPANISH|JAPANESE|ENGLISH|KOREAN|PORTUGUESE|SWEDISH|VIETNAMESE|FINNISH|GERMAN|CHINESE|DANISH|ITALIAN/,
+        platform: /DSNP|AMZN|NF|HMAX|CRITERION/,
+        garbage: /1400Mb|3rd Nov| ((Rip))/,
+        sub: /ENGSUB/,
+    };
+
+    var types = {
+        season: 'integer',
+        episode: 'integer',
+        year: 'integer',
+        extended: 'boolean',
+        hardcoded: 'boolean',
+        proper: 'boolean',
+        repack: 'boolean',
+        widescreen: 'boolean'
+    };
+
+    var torrent;
+
+    core.on('setup', function(data) {
+        torrent = data;
+    });
+
+    core.on('start', function() {
+        var key, match, index, clean, part;
+        for (key in patterns) {
+            if (!(match = torrent.name.match(patterns[key]))) {
+                continue;
             }
-            this.events[event].push(listener);
-        };
-
-        EventEmitter.prototype.emit = function(event, data) {
-            if (this.events[event]) {
-                this.events[event].forEach(function(listener) {
-                    listener(data);
-                });
-            }
-        };
-
-        var Core = function() {
-            EventEmitter.call(this);
-            var parts;
-            this.getParts = function() {
-                return parts;
+            index = {
+                raw: match[1] ? 1 : 0,
+                clean: match[1] ? 2 : 0
             };
-            this.on('setup', function() {
-                parts = {};
-            });
-            this.on('part', function(part) {
-                parts[part.name] = part.clean;
-            });
-        };
-
-        Core.prototype = Object.create(EventEmitter.prototype);
-        Core.prototype.constructor = EventEmitter;
-        Core.prototype.exec = function(name) {
-            this.emit('setup', { name: name });
-            this.emit('start');
-            this.emit('end');
-            return this.getParts();
-        };
-
-        var core = new Core();
-
-        var patterns = {
-            season: /([Ss]?([0-9]{1,2}))[Eex]|((?<=[\.\- ])[Ss]{1}([0-9]{1,2})(?=[\.\- ]))/,
-            episode: /([Eex]{1}([0-9]{2})(?:[^0-9]|$))/,
-            format: /NTSC|PAL|SECAM/,
-            year: /([\[\(]?((?:19[0-9]|20[012])[0-9])[\]\)]?)/,
-            resolution: /(([0-9]{3,4}p))[^M]/,
-            quality: /(?:PPV.)?[HP]DTV|(?:HD)?CAM|B[rR]Rip|(?:PPV )?WEB-?DL(?: DVDRip)?|TS|H[dD]Rip|DVDRip|DVDRiP|DVDRIP|DVD[.\- ]?(?:5|9|10)?|CamRip|W[EB]B[rR]ip|WEB|[Bb]lu[Rr]ay|DvDScr|hdtv/,
-            codec: /xvid|x264|x265|h.?264|AVC/i,
-            audio: /MP3|DDP?[+\.]?[57].?1|DD2.?0|Dual[- ]Audio|LiNE|DTS(?:[.\- ]?)?(?:[Hh][Dd][.\- ]?)?(?:[Mm][Aa][.\- ]?)?(?:[567].1)?|AAC(?:.?2.0)?|FLAC(?:.?2.0)?|AC3(?:.5.1)?|(?:True[Hh][Dd].)?Atmos[. ]?(?:[579]\.1)?/,
-            transcoding: /REMUX/i,
-            container: /[\. ](MKV|AVI)[ $]?/i,
-            region: /R[0-9]/,
-            extended: /EXTENDED/,
-            hardcoded: /HC/,
-            proper: /PROPER/,
-            repack: /REPACK/,
-            widescreen: /WS/,
-            website: /^(\[ ?([^\]]+?) ?\])/,
-            language: /rus.eng|FRENCH|RUSSIAN|SPANISH|JAPANESE|ENGLISH|KOREAN|PORTUGUESE|SWEDISH|VIETNAMESE|FINNISH|GERMAN|CHINESE|DANISH|ITALIAN/,
-            platform: /DSNP|AMZN|NF|HMAX|CRITERION/,
-            garbage: /1400Mb|3rd Nov| ((Rip))/,
-            sub: /ENGSUB/,
-        };
-        var types = {
-            season: 'integer',
-            episode: 'integer',
-            year: 'integer',
-            extended: 'boolean',
-            hardcoded: 'boolean',
-            proper: 'boolean',
-            repack: 'boolean',
-            widescreen: 'boolean'
-        };
-        var torrent;
-
-        core.on('setup', function(data) {
-            torrent = data;
-        });
-
-        core.on('start', function() {
-            var key, match, index, clean, part;
-            for (key in patterns) {
-                if (!(match = torrent.name.match(patterns[key]))) {
-                    continue;
-                }
-                index = {
-                    raw: match[1] ? 1 : 0,
-                    clean: match[1] ? 2 : 0
-                };
-                if (key === 'container' && !match[index.clean]) {
-                    index.clean = index.raw;
-                }
-                if (types[key] && types[key] === 'boolean') {
-                    clean = true;
-                } else {
-                    clean = match[index.clean];
-                    if (types[key] && types[key] === 'integer') {
-                        if (key === 'season' && clean[0].match(/[Ss]/)) {
-                            clean = clean.slice(1);
-                        }
-                        clean = parseInt(clean, 10);
+            if (types[key] && types[key] === 'boolean') {
+                clean = true;
+            } else {
+                clean = match[index.clean];
+                if (types[key] && types[key] === 'integer') {
+                    if (key === 'season' && clean[0].match(/[Ss]/)) {
+                        clean = clean.slice(1);
                     }
+                    clean = parseInt(clean, 10);
                 }
-                part = {
-                    name: key,
-                    match: match,
-                    raw: match[index.raw],
-                    clean: clean
-                };
-                if (key === 'episode') {
-                    core.emit('map', torrent.name.replace(part.raw, '{episode}'));
-                }
-                core.emit('part', part);
             }
-            core.emit('common');
-        });
-
-        core.on('common', function() {
-            var raw = torrent.name;
-            var clean = raw.replace(/^ -/, '');
-            if (clean.indexOf(' ') === -1 && clean.indexOf('.') !== -1) {
-                clean = clean.replace(/\./g, ' ');
-            }
-            clean = clean.replace(/_/g, ' ');
-            clean = clean.replace(/([\(_]|- )$/, '').trim();
-            core.emit('part', {
-                name: 'title',
-                raw: raw,
+            part = {
+                name: key,
+                match: match,
+                raw: match[index.raw],
                 clean: clean
-            });
-        });
-
-        core.on('end', function() {
-            var clean, groupPattern, episodeNamePattern;
-            clean = torrent.name.replace(/(^[-\. ]+)|([-\. ]+$)/g, '');
-            clean = clean.replace(/[\(\)\/]/g, ' ');
-            clean = clean.split(/\.\.+| +/).filter(Boolean);
-            if (clean.length !== 0) {
-                if (torrent.map && clean[0]) {
-                    episodeNamePattern = '{episode}' + clean[0].replace(/_+$/, '');
-                    if (torrent.map.match(new RegExp(episodeNamePattern))) {
-                        core.emit('late', {
-                            name: 'episodeName',
-                            clean: clean.shift()
-                        });
-                    }
-                }
+            };
+            if (key === 'episode') {
+                core.emit('map', torrent.name.replace(part.raw, '{episode}'));
             }
-            if (clean.length !== 0) {
-                core.emit('part', {
-                    name: 'excess',
-                    raw: torrent.name,
-                    clean: clean.length === 1 ? clean[0] : clean
-                });
-            }
-        });
+            core.emit('part', part);
+        }
+        core.emit('common');
+    });
 
-        return function(name) {
-            return core.exec(name);
-        };
-    }
+    core.on('late', function(part) {
+        if (part.name === 'episodeName') {
+            part.clean = part.clean.replace(/[\._]/g, ' ');
+            part.clean = part.clean.replace(/_+$/, '').trim();
+            core.emit('part', part);
+        }
+    });
+
+    core.on('common', function() {
+        var raw = torrent.name.replace(/\.mkv$/, ''); // Remove .mkv extension if present
+        var clean = raw.replace(/^ -/, '');
+        if (clean.indexOf(' ') === -1 && clean.indexOf('.') !== -1) {
+            clean = clean.replace(/\./g, ' ');
+        }
+        clean = clean.replace(/_/g, ' ');
+        clean = clean.replace(/([\(_]|- )$/, '').trim();
+        core.emit('part', {
+            name: 'title',
+            raw: raw,
+            clean: clean
+        });
+    });
+
+    return core.exec(name);
+}
 
     function settingsmenu() {
         const settingsDialog = document.createElement('div');
@@ -389,13 +368,13 @@ function PCSfinder(ptpRowsData, otherRow, pnum) {
         return null;
     }
 
-    const otherRowTitle = otherRow.parsedName.title || "";
+    const otherRowTitle = normalizeTitle(otherRow.parsedName.title || "");
     const otherRowResolution = otherRow.parsedName.resolution || "";
     const otherRowHasDV = otherRowTitle.includes("DV");
     const otherRowHasHDR = /HDR/i.test(otherRowTitle);
 
     return ptpRowsData.find(ptpRow => {
-        const ptpRowTitle = ptpRow.parsedName.title || "";
+        const ptpRowTitle = normalizeTitle(ptpRow.parsedName.title || "");
         const ptpRowResolution = ptpRow.parsedName.resolution || "";
         const ptpRowHasDV = ptpRowTitle.includes("DV");
         const ptpRowHasHDR = /HDR/i.test(ptpRowTitle);
@@ -410,6 +389,16 @@ function PCSfinder(ptpRowsData, otherRow, pnum) {
             otherRowHasHDR === ptpRowHasHDR // Ensure HDR matches
         );
     });
+}
+
+function normalizeTitle(title) {
+    // Define a set of common container formats to be removed
+    const containers = ["mkv", "avi", "mp4", "mov", "m2ts"];
+    containers.forEach(container => {
+        const regex = new RegExp(`\\b${container}\\b`, 'gi');
+        title = title.replace(regex, '');
+    });
+    return title.replace(/[\.\-_]/g, ' ').toLowerCase().trim();
 }
 
     function createLink(text, href, title, color) {

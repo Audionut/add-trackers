@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.9.4-A
+// @version      3.9.5-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -715,7 +715,8 @@
                 "CultFilms",
                 "BluDragon",
                 "AdBlue",
-                "EML HDTeam"
+                "EML HDTeam",
+                "FTW-HD"
                 //"ExampleText3"
             ];
         };
@@ -1133,8 +1134,18 @@
                         const nextRow = rows[index + 1];
                         if (nextRow) {
                             let element = nextRow.querySelector('input.spoilerButton');
-                            let antname = element.value;
-                            torrent_obj.datasetRelease = antname;
+                            let antname;
+
+                            if (element) {
+                                antname = element.value;
+                                if (antname) {
+                                    antname = antname.replace("Show", "");
+                                    torrent_obj.datasetRelease = antname;
+                                }
+                            } else {
+                                antname = nextRow.querySelector('.row > td').textContent.trim();
+                                torrent_obj.datasetRelease = antname;
+                            }
 
                             const inputTimeElement = nextRow.querySelector('div > blockquote > span.time.tooltip');
                             if (inputTimeElement) {
@@ -2695,7 +2706,10 @@
                             const baseURL = 'https://hdbits.org/download.php/';
                             const pageURL = 'https://hdbits.org/details.php?id=';
                             const torrent = d.filename;
-                            const releaseName = d.filename.replace(/\.torrent$/, "");
+                            let releaseName = d.filename.replace(/\.torrent$/, "");
+                            if (releaseName.length < 20) {
+                                releaseName = d.name;
+                            }
                             const pullExtention = releaseName.match(/[^.]+$/);
                             const extention = pullExtention ? pullExtention[0] : null;
 
@@ -2744,7 +2758,10 @@
                                     infoText = `${infoText} ${extention}`;
                                 }
                                 if (!extention && releaseName.includes("Blu-ray") || releaseName.includes("BluRay") || releaseName.includes("BLURAY")) {
+                                    let lower = releaseName.toLowerCase();
+                                    if (!lower.includes("remux")) {
                                     infoText = "m2ts" + infoText;
+                                    }
                                 }
                                 if (releaseName && releaseName.includes("Blu-ray") || releaseName.includes("BluRay") || releaseName.includes("BLURAY") && (!infoText.includes("Blu-ray"))) {
                                     infoText = infoText += "Blu-ray";
@@ -3724,7 +3741,7 @@
             else if (lower.includes("hdr10+")) return "HDR10+ / ";
             else if (lower.includes("hdr10")) return "HDR10 / ";
             else if (lower.includes("hdr")) return "HDR10 / ";
-            else if (lower.includes("pq10")) return "10bit / ";
+            //else if (lower.includes("pq10")) return "10bit / ";
             else if (lower.includes("sdr")) return "SDR / ";
 
             return null;
@@ -3761,7 +3778,7 @@
             if (lower.includes("commentary")) bonuses.push("Commentary");
             if (lower.includes("10bit")) bonuses.push("10bit");
             if (lower.includes("35mm")) bonuses.push("35mm");
-            if (lower.includes("hfr")) bonuses.push("High Frame-rate");
+            if (lower.includes("hfr")) bonuses.push("HFR");
             if (lower.includes("dcp")) bonuses.push("Digital Cinema Package");
             if (lower.includes("open matte")) bonuses.push("Open Matte");
             if (lower.includes("audio only track")) bonuses.push("Audio Only Track");
