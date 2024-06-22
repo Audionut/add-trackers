@@ -19,11 +19,13 @@
     let pnum = GM_getValue('pnumlimit', 10);
     let size = GM_getValue('rowhtsize', 8); // Empty row height
     let pcs = GM_getValue('pcscheckbox', true); // Optional partial cross-seedable releases recognition
+    let others = GM_getValue('secondPassCheckbox', false);
 
     let defaultdnum = 5;
     let defaultpnum = 10;
     let defaultsize = 8;
     let defaultpcs = true;
+    let defaultsecond = false;
 
 function releasenameparser(name) {
     var EventEmitter = function() {
@@ -198,7 +200,7 @@ function settingsmenu() {
                 <input type="checkbox" id="pcsCheckbox" ${pcs ? 'checked' : ''} style="align-self: center;">
             </div>
             <div style="display: flex; flex-direction: row; margin-bottom: 10px;">
-                <label for="secondPassCheckbox" style="font-weight: bold; margin-bottom: 5px; margin-right: 10px; align-self: center; color: #001f3f;">Enable Second Pass to match remaining:</label>
+                <label for="secondPassCheckbox" style="font-weight: bold; margin-bottom: 5px; margin-right: 10px; align-self: center; color: #001f3f;">Match remaining releases from other trackers:</label>
                 <input type="checkbox" id="secondPassCheckbox" ${GM_getValue('secondPassCheckbox', true) ? 'checked' : ''} style="align-self: center;">
             </div>
         </div>
@@ -216,13 +218,13 @@ function settingsmenu() {
         document.getElementById('pnumLimit').value = pnum;
         document.getElementById('rowhtSize').value = size;
         document.getElementById('pcsCheckbox').checked = pcs;
-        document.getElementById('secondPassCheckbox').checked = true;
+        document.getElementById('secondPassCheckbox').checked = others;
 
         GM_setValue('dnumlimit', defaultdnum);
         GM_setValue('pnumlimit', defaultpnum);
         GM_setValue('rowhtsize', defaultsize);
         GM_setValue('pcscheckbox', defaultpcs);
-        GM_setValue('secondPassCheckbox', true);
+        GM_setValue('secondPassCheckbox', defaultsecond);
 
         alert('Settings reset to defaults and saved successfully!');
 
@@ -274,7 +276,6 @@ function rowSorter(pcs = false, dnum, pnum) {
             const { ptpRows, otherRows } = classifyRows(allRows, regex);
             const ptpRowsData = parsePtpRowsData(ptpRows);
             const otherRowsData = parseOtherRowsData(otherRows);
-
             const unmatchedRows = matchRows(ptpRows, ptpRowsData, otherRowsData, pcs, dnum, pnum);
 
             if (GM_getValue('secondPassCheckbox', true)) {
@@ -288,33 +289,35 @@ function rowSorter(pcs = false, dnum, pnum) {
     });
 }
 
-    function classifyRows(rows, regex) {
-        const ptpRows = [];
-        const otherRows = [];
+function classifyRows(rows, regex) {
+    const ptpRows = [];
+    const otherRows = [];
 
-        rows.forEach(row => {
-            if (Array.from(row.classList).some(className => regex.test(className))) {
-                ptpRows.push(row);
-            } else {
-                otherRows.push(row);
-            }
-        });
+    rows.forEach(row => {
+        if (Array.from(row.classList).some(className => regex.test(className))) {
+            ptpRows.push(row);
+        } else {
+            otherRows.push(row);
+        }
+    });
 
-        return { ptpRows, otherRows };
-    }
+    return { ptpRows, otherRows };
+}
 
-    function parsePtpRowsData(ptpRows) {
-        return Array.from(ptpRows).map(row => {
-            const group = row.getAttribute('data-releasegroup') || '';
-            const rawName = row.getAttribute('data-releasename') || '';
-            const parsedName = releasenameparser(rawName) || {};
-            const sizeEl = row.querySelector('.nobr span[title]');
-            const rawSize = sizeEl ? sizeEl.getAttribute('title') : '';
-            const size = rawSize ? parseInt(rawSize.replace(/[^0-9]/g, '')) : 0;
-            const { pl, dl } = actionElsparser(row);
-            return { group, size, pl, dl, rawName, parsedName };
-        });
-    }
+function parsePtpRowsData(ptpRows) {
+    const data = Array.from(ptpRows).map(row => {
+        const group = row.getAttribute('data-releasegroup') || '';
+        const rawName = row.getAttribute('data-releasename') || '';
+        const parsedName = releasenameparser(rawName) || {};
+        const sizeEl = row.querySelector('.nobr span[title]');
+        const rawSize = sizeEl ? sizeEl.getAttribute('title') : '';
+        const size = rawSize ? parseInt(rawSize.replace(/[^0-9]/g, '')) : 0;
+        const { pl, dl } = actionElsparser(row);
+        return { group, size, pl, dl, rawName, parsedName };
+    });
+
+    return data;
+}
 
     function actionElsparser(row) {
         const actionSpan = row.querySelector('.basic-movie-list__torrent__action');
@@ -325,19 +328,21 @@ function rowSorter(pcs = false, dnum, pnum) {
         return { pl, dl };
     }
 
-    function parseOtherRowsData(otherRows) {
-        return Array.from(otherRows).map(row => {
-            const rawGroup = row.getAttribute('data-releasegroup') || '';
-            const rawName = row.getAttribute('data-releasename') || '';
-            const parsedName = releasenameparser(rawName) || {};
-            const sizeEl = row.querySelector('.nobr .size-span');
-            const rawSize = sizeEl ? sizeEl.getAttribute('title') : '';
-            const size = rawSize ? parseInt(rawSize.replace(/[^0-9]/g, '')) : 0;
-            const classList = Array.from(row.classList);
-            const classid = classList.length > 0 ? classList[classList.length - 1] : '';
-            return { group: rawGroup, size, classid, rawName, parsedName };
-        });
-    }
+function parseOtherRowsData(otherRows) {
+    const data = Array.from(otherRows).map(row => {
+        const rawGroup = row.getAttribute('data-releasegroup') || '';
+        const rawName = row.getAttribute('data-releasename') || '';
+        const parsedName = releasenameparser(rawName) || {};
+        const sizeEl = row.querySelector('.nobr .size-span');
+        const rawSize = sizeEl ? sizeEl.getAttribute('title') : '';
+        const size = rawSize ? parseInt(rawSize.replace(/[^0-9]/g, '')) : 0;
+        const classList = Array.from(row.classList);
+        const classid = classList.length > 0 ? classList[classList.length - 1] : '';
+        return { group: rawGroup, size, classid, rawName, parsedName };
+    });
+
+    return data;
+}
 
 function matchRows(ptpRows, ptpRowsData, otherRowsData, enablePCS, dnum, pnum) {
     const unmatchedRows = [];
@@ -394,43 +399,78 @@ function unmatchedPass(unmatchedRows, dnum) {
     });
 }
 
-    function TCSfinder(ptpRowsData, otherRow, num) {
-        const toleranceBytes = num * 1024 * 1024;
-        return ptpRowsData.find(ptpRow =>
-            ptpRow.group.toLowerCase() === otherRow.group.toLowerCase() &&
-            Math.abs(ptpRow.size - otherRow.size) <= toleranceBytes
-        );
+function TCSfinder(ptpRowsData, otherRow, num) {
+    const toleranceBytes = num * 1024 * 1024;
+
+    // Prioritize exact size and group match
+    const exactMatch = ptpRowsData.find(ptpRow => {
+        const match = ptpRow.size === otherRow.size && ptpRow.group.toLowerCase() === otherRow.group.toLowerCase();
+        return match;
+    });
+
+    if (exactMatch) {
+        return exactMatch;
     }
 
-    function PCSfinder(ptpRowsData, otherRow, pnum) {
-        const toleranceBytes = pnum * 1024 * 1024; // Convert MiB to bytes
+    // Fallback to within tolerance size match
+    const toleranceMatch = ptpRowsData.find(ptpRow => {
+        const match = ptpRow.group.toLowerCase() === otherRow.group.toLowerCase() && Math.abs(ptpRow.size - otherRow.size) <= toleranceBytes;
+        return match;
+    });
 
-        if (otherRow.rawName.includes("Audio Only Track")) {
-            return null;
-        }
+    return toleranceMatch;
+}
 
-        const otherRowTitle = normalizeTitle(otherRow.parsedName.title || "");
-        const otherRowResolution = otherRow.parsedName.resolution || "";
-        const otherRowHasDV = otherRowTitle.includes("DV");
-        const otherRowHasHDR = /HDR/i.test(otherRowTitle);
+function PCSfinder(ptpRowsData, otherRow, pnum) {
+    const toleranceBytes = pnum * 1024 * 1024; // Convert MiB to bytes
 
-        return ptpRowsData.find(ptpRow => {
-            const ptpRowTitle = normalizeTitle(ptpRow.parsedName.title || "");
-            const ptpRowResolution = ptpRow.parsedName.resolution || "";
-            const ptpRowHasDV = ptpRowTitle.includes("DV");
-            const ptpRowHasHDR = /HDR/i.test(ptpRowTitle);
-
-            return (
-                (otherRow.group.length === 0 || ptpRow.group.toLowerCase() === otherRow.group.toLowerCase()) &&
-                ptpRowTitle === otherRowTitle &&
-                ptpRowResolution === otherRowResolution &&
-                Math.abs(ptpRow.size - otherRow.size) <= toleranceBytes && // Size within PCS tolerance
-                !(ptpRow.group.toLowerCase() === otherRow.group.toLowerCase() && Math.abs(ptpRow.size - otherRow.size) <= (dnum * 1024 * 1024)) && // Ensure not a TCS match
-                otherRowHasDV === ptpRowHasDV && // Ensure DV matches
-                otherRowHasHDR === ptpRowHasHDR // Ensure HDR matches
-            );
-        });
+    if (otherRow.rawName.includes("Audio Only Track")) {
+        return null;
     }
+
+    const otherRowTitle = normalizeTitle(otherRow.parsedName.title || "");
+    const otherRowResolution = otherRow.parsedName.resolution || "";
+    const otherRowHasDV = otherRowTitle.includes("DV");
+    const otherRowHasHDR = /HDR/i.test(otherRowTitle);
+
+    // Prioritize exact size match only
+    const exactMatch = ptpRowsData.find(ptpRow => {
+        const ptpRowTitle = normalizeTitle(ptpRow.parsedName.title || "");
+        const ptpRowResolution = ptpRow.parsedName.resolution || "";
+        const ptpRowHasDV = ptpRowTitle.includes("DV");
+        const ptpRowHasHDR = /HDR/i.test(ptpRowTitle);
+        const match = ptpRow.size === otherRow.size; //&&
+            //ptpRow.group.toLowerCase() === otherRow.group.toLowerCase() &&
+            //ptpRowTitle === otherRowTitle &&
+            //ptpRow.size === otherRow.size &&
+            //ptpRowResolution === otherRowResolution &&
+            //otherRowHasDV === ptpRowHasDV &&
+            //otherRowHasHDR === ptpRowHasHDR;
+        return match;
+    });
+
+    if (exactMatch) {
+        return exactMatch;
+    }
+
+    // Fallback to within tolerance size match
+    const toleranceMatch = ptpRowsData.find(ptpRow => {
+        const ptpRowTitle = normalizeTitle(ptpRow.parsedName.title || "");
+        const ptpRowResolution = ptpRow.parsedName.resolution || "";
+        const ptpRowHasDV = ptpRowTitle.includes("DV");
+        const ptpRowHasHDR = /HDR/i.test(ptpRowTitle);
+        const match = (otherRow.group.length === 0 || ptpRow.group.toLowerCase() === otherRow.group.toLowerCase()) &&
+            ptpRowTitle === otherRowTitle &&
+            ptpRowResolution === otherRowResolution &&
+            Math.abs(ptpRow.size - otherRow.size) <= toleranceBytes && // Size within PCS tolerance
+            !(ptpRow.group.toLowerCase() === otherRow.group.toLowerCase() && Math.abs(ptpRow.size - otherRow.size) <= (dnum * 1024 * 1024)) && // Ensure not a TCS match
+            otherRowHasDV === ptpRowHasDV && // Ensure DV matches
+            otherRowHasHDR === ptpRowHasHDR; // Ensure HDR matches
+        return match;
+    });
+
+    return toleranceMatch;
+}
 
     function normalizeTitle(title) {
         // Define a set of common container formats to be removed
