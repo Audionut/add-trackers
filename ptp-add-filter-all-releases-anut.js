@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.9.5-A
+// @version      3.9.6-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -25,6 +25,7 @@
         "aither_api": {"label": "AITHER_API_TOKEN", "type": "text", "default": ""},
         "avistaz": {"label": "Avistaz", "type": "checkbox", "default": false},
         "ant": {"label": "ANT", "type": "checkbox", "default": false},
+        "ant_api": {"label": "ANT_API_TOKEN", "type": "text", "default": ""},
         "bhd": {"label": "BHD *", "type": "checkbox", "default": false, "tooltip": "Enter API and RSS key below"},
         "bhd_api": {"label": "BHD_API_TOKEN", "type": "text", "default": ""},
         "bhd_rss": {"label": "BHD_RSS_KEY", "type": "text", "default": ""},
@@ -157,6 +158,7 @@
                 // Nodes that require API keys
                 const api_based_nodes = {
                     "aither": GM_config.fields.aither.node,
+                    "ant": GM_config.fields.ant.node,
                     "bhd": GM_config.fields.bhd.node,
                     "blu": GM_config.fields.blu.node,
                     "btn": GM_config.fields.btn.node,
@@ -309,6 +311,7 @@
         const BTN_API_TOKEN = GM_config.get("btn_api");
         const MTV_API_TOKEN = GM_config.get("mtv_api");
         const LST_API_TOKEN = GM_config.get("lst_api");
+        const ANT_API_TOKEN = GM_config.get("ant_api");
 
         // We need to use XML resposne with TVV and have to define some parameters for it to work correctly.
         const TVV_AUTH_KEY = GM_config.get("tvv_auth"); // If you want to use TVV - find your authkey from a torrent download link
@@ -445,8 +448,8 @@
         console.log("Excluded trackers:", excludedTrackers.map(e => `${e.tracker} - ${e.reason}`));
 
         function toUnixTime(dateString) {
-            // Check if the date string is in the ISO 8601 format (ends with 'Z')
-            if (dateString.endsWith('Z')) {
+            // Check if the date string is in the ISO 8601 format (ends with 'Z' or includes time zone offset)
+            if (dateString.endsWith('Z') || dateString.includes('+') || dateString.includes('-')) {
                 return Math.floor(new Date(dateString).getTime() / 1000);
             }
 
@@ -585,36 +588,6 @@
             else if (tracker === "FL") {
                 if ([...div.querySelectorAll("img")].find(e => e.alt === "FreeLeech") != undefined) return "Freeleech";
             }
-            else if (tracker === "ANT") {
-                const pollenLabel = div.querySelector(".torrent_table#torrent_details .torrent_label.tooltip.tl_pollen");
-                const freeLabel = div.querySelector(".torrent_table#torrent_details .torrent_label.tooltip.tl_free");
-                const personalFree = div.querySelector(".torrent_table#torrent_details .torrent_label.tooltip.tl_free.tl_personal");
-
-                let label;
-
-                if (pollenLabel !== null) {
-                    const labelText = pollenLabel.textContent.trim();
-                    let pollenText = labelText.split("Pollination")[1].trim();
-                    // Remove the exclamation mark if it appears after "Pollination"
-                    if (pollenText.charAt(0) === '!') {
-                        pollenText = pollenText.substring(1);
-                    }
-                    // Extract time value from pollenText
-                    const pollenTime = pollenText.match(/\(([^)]+)\)/)[1];
-                    // Remove brackets from pollenText
-                    pollenText = pollenText.replace(/\(([^)]+)\)/, "").trim();
-                    label = "Pollination";
-                } else if (personalFree !== null) {
-                    label = "Personal Freeleech";
-                } else if (freeLabel !== null) {
-                    const labelText = freeLabel.textContent.trim();
-                    const freeTime = labelText.match(/\(([^)]+)\)/)[1];
-                    const freeText = labelText.replace(/\(([^)]+)\)/, "").trim();
-                    label = "Freeleech";
-                }
-
-                return label !== undefined ? label : "None";
-            }
             else if (tracker === "CG") {
                 if ([...div.querySelectorAll("img")].find(e => e.alt === "100% bonus")) return "Freeleech";
                 else if ([...div.querySelectorAll("img")].find(e => e.alt === "30% bonus")) return "30% Bonus";
@@ -691,7 +664,8 @@
               (tracker === "BHD") ||
               (tracker === "HDB") ||
               (tracker === "NBL") ||
-              (tracker === "BTN")
+              (tracker === "BTN") ||
+              (tracker === "ANT")
               ) {
                 return true;
             } else {
@@ -725,7 +699,9 @@
             return [
                 "NOGRP",
                 "nogroup",
-                "VC-1"
+                "VC-1",
+                "MIXED",
+                "Mixed"
                 //"ExampleText2",
                 //"ExampleText3"
             ];
@@ -895,6 +871,7 @@
                             }
                             torrent_obj.time = time;
                         }
+                        torrent_obj.groupId = "";
                         torrent_objs.push(torrent_obj);
                     });
                 } catch (error) {
@@ -1092,204 +1069,6 @@
                 } catch (error) {
                     console.error("Error processing XML from MTV:", error);
                 }
-            }
-            else if (tracker === "ANT") {
-                const rows = html.querySelector(".torrent_table#torrent_details > tbody").querySelectorAll("tr:not(.colhead_dark):not(.sortGroup)");
-                rows.forEach((d, index) => {
-                    let torrent_obj = {};
-                    let size = null;
-                    const tdElements = d.querySelectorAll("td");
-                    if (tdElements.length >= 2) {
-                        size = tdElements[1].textContent.trim();
-                        if (size.includes("TiB")) {
-                            // 1 TiB = 1024 GiB = 1024 * 1024 MiB
-                            size = parseInt(parseFloat(size.split("TiB")[0]) * 1024 * 1024);
-                        } else if (size.includes("GiB")) {
-                            // 1 GiB = 1024 MiB
-                            size = parseInt(parseFloat(size.split("GiB")[0]) * 1024);
-                        } else if (size.includes("MiB")) {
-                            size = parseInt(parseFloat(size.split("MiB")[0]));
-                        }
-                    }
-                    // didn't just find the PL link. Did things the hard way instead.
-                    let torrentId = null;
-                    // pulled the torrent ID from this element
-                    const hrefElement = d.querySelector('a[data-toggle-target^="#torrent_"]');
-                    if (hrefElement) {
-                        const hrefValue = hrefElement.getAttribute('data-toggle-target');
-                        // remove everything except the actual ID number
-                        const match = hrefValue.match(/#torrent_(\d+)/);
-                        if (match) {
-                            torrentId = match[1];
-                        }
-                    }
-                    // define a base URL to work with my hacky torrent ID searching.
-                    const baseUrl = 'https://anthelion.me/torrents.php?';
-
-                    if (torrentId !== null) {
-                        // add the elements together to create the link.
-                        const torrentPageUrl = `${baseUrl}torrentid=${torrentId}`;
-                        torrent_obj.size = size;
-
-                        const nextRow = rows[index + 1];
-                        if (nextRow) {
-                            let element = nextRow.querySelector('input.spoilerButton');
-                            let antname;
-
-                            if (element) {
-                                antname = element.value;
-                                if (antname) {
-                                    antname = antname.replace("Show", "");
-                                    torrent_obj.datasetRelease = antname;
-                                }
-                            } else {
-                                antname = nextRow.querySelector('.row > td').textContent.trim();
-                                torrent_obj.datasetRelease = antname;
-                            }
-
-                            const inputTimeElement = nextRow.querySelector('div > blockquote > span.time.tooltip');
-                            if (inputTimeElement) {
-                                const inputTime = inputTimeElement.textContent.trim();
-                                let time = toUnixTime(inputTime);
-                                if (isNaN(time)) {
-                                    return null;
-                                }
-                                torrent_obj.time = time;
-                            }
-                            let mediaInfo = nextRow.querySelector('.mediainfo > tbody > tr > td:nth-child(2) > table > tbody > tr:nth-child(2) > td:nth-child(2)').textContent.trim();
-                            let mediainfoRaw = nextRow.querySelector('.mediainfoRaw').textContent.trim();
-                            if (improved_tags) {
-                                const titleElement = d.querySelector("td:nth-child(1) > a");
-                                if (titleElement) {
-                                    let infoTextParts = [];
-                                    const titleText = Array.from(titleElement.childNodes)
-                                        .filter(node => node.nodeType === Node.TEXT_NODE)
-                                        .map(node => node.textContent.trim())
-                                        .join('')
-                                        .replace(/\/+/g, '/') // Replace multiple slashes with a single slash
-                                        .replace(/\/$/, '');  // Remove the trailing slash if present
-                                    if (titleText) {
-                                        infoTextParts.push(titleText);
-                                    }
-                                    torrent_obj.groupId = "";
-                                    const strongElements = titleElement.querySelectorAll("strong.torrent_label");
-                                    strongElements.forEach((strong, index) => {
-                                        const text = strong.textContent.trim();
-                                        if (strong.classList.contains("tl_notice")) {
-                                            infoTextParts.push(text);
-                                        }
-                                    });
-                                    let formattedText = infoTextParts.join(' / ')
-                                        .replace(/\/+/g, '/')
-                                        .replace(/\s*\/\s*/g, ' / ');
-                                    if (formattedText.includes("m2ts") && torrent_obj.size) {
-                                        const bdType = get_bd_type(torrent_obj.size);
-                                        formattedText = `${bdType} ${formattedText}`;
-                                    }
-                                    if (mediaInfo.includes("HDR10+")) {
-                                        formattedText = formattedText.replace("HDR10", "HDR10+");
-                                    }
-                                    if (mediainfoRaw.includes("DTS:X")) {
-                                        formattedText = formattedText.replace("DTS", "DTS:X");
-                                    }
-                                    if (mediainfoRaw.includes("Proper")) {
-                                        formattedText += "Proper";
-                                    }
-                                    if (mediainfoRaw.includes("Repack")) {
-                                        formattedText += "Repack";
-                                    }
-                                    torrent_obj.info_text = formattedText;
-                                }
-                            } else {
-                                if (!(antname.includes(".mkv") || antname.includes(".mpg") || antname.includes(".avi") || antname.includes(".mp4"))) {
-                                    const titleElement = d.querySelector("td:nth-child(1) > a");
-                                    if (titleElement) {
-                                        let infoTextParts = [];
-                                        const titleText = Array.from(titleElement.childNodes)
-                                            .filter(node => node.nodeType === Node.TEXT_NODE)
-                                            .map(node => node.textContent.trim())
-                                            .join('');
-                                        if (titleText) {
-                                            infoTextParts.push(titleText);
-                                        }
-                                        const strongElements = titleElement.querySelectorAll("strong.torrent_label");
-                                        // more than 1 strong element.
-                                        strongElements.forEach((strong, index) => {
-                                            const text = strong.textContent.trim();
-                                            // make sure they are the correct strong element.
-                                            if (strong.classList.contains("tl_notice")) {
-                                                infoTextParts.push(text);
-                                            }
-                                        });
-                                        let otherText = infoTextParts.join(' / ')
-                                            .replace(/\/+/g, '/')
-                                            .replace(/\s*\/\s*/g, ' / ');
-                                        torrent_obj.info_text = otherText;
-                                        torrent_obj.datasetRelease = otherText;
-                                    }
-                                } else {
-                                    torrent_obj.datasetRelease = antname;
-                                    antname = antname.replace(/\.[^.]*$/, "").replace(/\./g, " ");
-                                    torrent_obj.info_text = antname;
-                                }
-                            }
-                            torrent_obj.site = "ANT";
-                            torrent_obj.download_link = [...d.querySelectorAll("a")].find(a => a.href.includes("torrents.php?action=") && !a.href.includes("&usetoken=1")).href.replace("passthepopcorn.me", "anthelion.me");
-                            torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(3)").textContent);
-                            torrent_obj.seed = parseInt(d.querySelector("td:nth-child(4)").textContent);
-                            torrent_obj.leech = parseInt(d.querySelector("td:nth-child(5)").textContent);
-                            torrent_obj.torrent_page = torrentPageUrl;
-                            torrent_obj.discount = get_discount_text(d, tracker);
-                            const elements = d.querySelectorAll('strong.torrent_label.tl_seeding.tooltip');
-                            torrent_obj.status = elements.length > 0 ? 'seeding' : 'default';
-                            torrent_obj.internal = d.querySelector('strong.torrent_label.tooltip.internal') ? true : false;
-                            torrent_obj.trumpable = d.querySelector(".torrent_table#torrent_details .torrent_label.tl_trumpable.tooltip") ? true : false;
-                            torrent_obj.reported = d.querySelector(".torrent_table#torrent_details .torrent_label.tl_reported.tooltip") ? true : false;
-                            let infoText = antname.replace(/\.[^.]*$/, "").replace(/\./g, " ");
-                            let groupText = "";
-                            const groups = goodGroups();
-                            const badGroupsList = badGroups();
-                            let matchedGroup = null;
-                            let badGroupFound = false;
-
-                            for (const badGroup of badGroupsList) {
-                                if (infoText.includes(badGroup)) {
-                                    badGroupFound = true;
-                                    infoText = infoText.replace(badGroup, '').trim();
-                                    groupText = "";
-                                    break;
-                                }
-                            }
-
-                            if (!badGroupFound) {
-                                for (const group of groups) {
-                                    if (infoText.includes(group)) {
-                                        matchedGroup = group;
-                                        break;
-                                    }
-                                }
-
-                                if (matchedGroup) {
-                                    groupText = matchedGroup;
-                                    if (improved_tags) {
-                                        infoText = infoText.replace(groupText, '').trim();
-                                    }
-                                } else {
-                                    const match = infoText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
-                                    if (match) {
-                                        groupText = match[1];
-                                        groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                                        if (improved_tags) {
-                                            infoText = infoText.replace(`-${match[1]}`, '').trim();
-                                        }
-                                    }
-                                }
-                            }
-                            torrent_obj.groupId = groupText;
-                            torrent_objs.push(torrent_obj);
-                        }
-                    }
-                });
             }
             else if (tracker === "FL") {
                 html.querySelectorAll(".torrentrow").forEach((d) => {
@@ -2080,10 +1859,6 @@
                 if (html.querySelector('item') === null) return false;
                 else return true;
             }
-            else if (tracker === "ANT") {
-                if (html.querySelector(".head").textContent.includes("Basic Search (")) return false;
-                else return true;
-            }
             else if (tracker === "BLU" || tracker === "Aither" || tracker === "RFX" || tracker === "OE" || tracker === "HUNO" || tracker === "TIK" || tracker === "LST") {
                 if (html.querySelector(".torrent-search--list__no-result") === null) return true;
                 else return false;
@@ -2132,15 +1907,34 @@
         };
 
         const post_json = async (post_query_url, tracker, postData) => {
+
+        // Define the headers mapping
+        const headersMapping = {
+            'ANT': {
+                'Content-Type': 'application/json',
+                'Accept': '*/*',
+                'Host': 'anthelion.me'
+            },
+            //'tracker2': {
+            //    'Content-Type': 'application/json',
+            //    'Accept': '*/*',
+            //    'Host': 'tracker2.com'
+            //},
+            // Add more trackers and their headers as needed
+        };
+
+        // Get the headers for the specific tracker
+        const headers = headersMapping[tracker] || {
+            'Content-Type': 'application/json'
+        };  // Default headers if tracker not found
+
             const response = await new Promise(async (resolve, reject) => {
 
                 GM_xmlhttpRequest({
                     url: post_query_url,
                     method: "POST",
                     data: JSON.stringify(postData),
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: headers,
                     onload: (res) => {
                         resolve(res);
                     },
@@ -2267,7 +2061,7 @@
                     query_url = "https://www.morethantv.me/api/torznab?t=search&apikey=" + MTV_API_TOKEN + "&imdbid=" + imdb_id;
                 }
                 else if (tracker === "ANT") {
-                    query_url = "https://anthelion.me/torrents.php?searchstr=" + imdb_id + "&order_by=time&order_way=desc&group_results=1&action=basic&searchsubmit=1";
+                    post_query_url = "https://anthelion.me/api.php?apikey=" + ANT_API_TOKEN + "&t=movie&imdbid="+ imdb_id + "&o=json";
                 } else if (tracker === "BHD") {
                     post_query_url = "https://beyond-hd.me/api/torrents/" + BHD_API_TOKEN;
                     postData = {
@@ -2279,48 +2073,48 @@
                     api_query_url =
                         "https://blutopia.cc/api/torrents/filter?imdbId=" +
                         imdb_id.split("tt")[1] +
-                        "&categories[0]=1&categories[1]=2&categories[2]=3&api_token=" +
+                        "&categories[0]=1&categories[1]=2&categories[2]=3&perPage=100&api_token=" +
                         BLU_API_TOKEN;
                 }
                 else if (tracker === "TIK") {
                     api_query_url =
                         "https://cinematik.net/api/torrents/filter?imdbId=" +
                         imdb_id.split("tt")[1] +
-                        "&categories[0]=1&categories[1]=2&categories[2]=3&categories[3]=4&categories[4]=5&categories[5]=6&api_token=" +
+                        "&categories[0]=1&categories[1]=2&categories[2]=3&categories[3]=4&categories[4]=5&categories[5]=6&perPage=100&api_token=" +
                         TIK_API_TOKEN;
                 }
                 else if (tracker === "Aither") {
                     api_query_url =
                         "https://aither.cc/api/torrents/filter?imdbId=" +
                         imdb_id.split("tt")[1] +
-                        "&categories[0]=1&categories[1]=2&api_token=" +
+                        "&categories[0]=1&categories[1]=2&perPage=100&api_token=" +
                         AITHER_API_TOKEN;
                 }
                 else if (tracker === "RFX") {
                     api_query_url =
                         "https://reelflix.xyz/api/torrents/filter?imdbId=" +
                         imdb_id.split("tt")[1] +
-                        "&categories[0]=1&api_token=" +
+                        "&categories[0]=1&perPage=100&api_token=" +
                         RFX_API_TOKEN;
                 }
                 else if (tracker === "OE") {
                     api_query_url =
                         "https://onlyencodes.cc/api/torrents/filter?imdbId=" +
                         imdb_id.split("tt")[1] +
-                        "&categories[0]=1&api_token=" +
+                        "&categories[0]=1&perPage=100&api_token=" +
                         OE_API_TOKEN;
                 }
                 else if (tracker === "HUNO") {
                     api_query_url =
                         "https://hawke.uno/api/torrents/filter?imdbId=" +
                         imdb_id.split("tt")[1] +
-                        "&categories[0]=2&categories[1]=1&api_token=" +
+                        "&categories[0]=2&categories[1]=1&perPage=100&api_token=" +
                         HUNO_API_TOKEN;
                 } else if (tracker === "LST") {
                     api_query_url =
                         "https://lst.gg/api/torrents/filter?imdbId=" +
                         imdb_id.split("tt")[1] +
-                        "&categories[0]=1&categories[1]=2&categories[2]=6&categories[3]=8&api_token=" +
+                        "&categories[0]=1&categories[1]=2&categories[2]=6&categories[3]=8&perPage=100&api_token=" +
                         LST_API_TOKEN;
                 }
                 else if (tracker === "TVV") {
@@ -2427,6 +2221,15 @@
                                         }
                                         else {
                                             console.log("Data fetched successfully from BTN");
+                                            resolve(get_post_torrent_objects(tracker, result));
+                                        }
+                                    } else if (result?.item && tracker === "ANT") {
+                                        if (result.item.length === 0) {
+                                            console.log("ANT reached successfully but no results were returned");
+                                            resolve([]);
+                                        }
+                                        else {
+                                            console.log("Data fetched successfully from ANT");
                                             resolve(get_post_torrent_objects(tracker, result));
                                         }
                                     }
@@ -3033,6 +2836,7 @@
                                           if (match) {
                                               groupText = match[1]; // Use match[1] to get the capturing group
                                               groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                              groupText = groupText.replace("Z0N3", "D-Z0N3");
                                               if (improved_tags) {
                                                   infoText = infoText.replace(`-${match[1]}`, '').trim();
                                               }
@@ -3152,6 +2956,53 @@
                     }
                 } catch (error) {
                     console.error("An error occurred while processing BTN tracker:", error);
+                }
+            }
+            else if (tracker === "ANT") {
+                try {
+                    torrent_objs = postData.item.map((d) => {
+                        const size = parseInt(d.size / (1024 * 1024)); // Convert size to MiB
+                        const api_size = parseInt(d.size); // Original size
+
+                        const originalInfoText = d.fileName;
+                        let infoText = originalInfoText;
+
+                        const inputTime = d.pubDate;
+                        let time = toUnixTime(inputTime);
+                        if (isNaN(time)) {
+                            return null;
+                        }
+
+                        let download = d.link;
+                        let cleanedLink = download.replace(/&amp;/g, '&');
+
+                            const torrentObj = {
+                                api_size: api_size,
+                                datasetRelease: infoText,
+                                size: size,
+                                info_text: infoText,
+                                tracker: tracker,
+                                site: tracker,
+                                snatch: d.grabs || 0,
+                                seed: d.seeders || 0,
+                                leech: d.leechers || 0,
+                                download_link: cleanedLink || "",
+                                torrent_page: d.guid || "",
+                                discount: "None",
+                                status: "default",
+                                groupId: d.releaseGroup,
+                                time: time,
+                            };
+
+                            // Map additional properties if necessary
+                            const mappedObj = {
+                                ...torrentObj,
+                                quality: get_torrent_quality(torrentObj),
+                            };
+                            return mappedObj;
+                    }).filter(obj => obj !== null); // Filter out any null objects
+                } catch (error) {
+                    console.error("An error occurred while processing ANT tracker:", error);
                 }
             }
             return torrent_objs;
@@ -3932,9 +3783,6 @@
                             torrent.season2 ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__tags torrent-info__tags--season2' style='font-weight: bold; color: #FF0000'>Season 2</span>" : false;
                             torrent.extras ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__tags torrent-info__tags--extras'>Extras</span>" : false;
                         }
-                        if (torrent.site === "ANT") {
-                            torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__tags torrent-info__tags--internal'>Internal</span>" : false;
-                        }
                         if (torrent.site === "MTV") {
                             torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__tags torrent-info__tags--internal'>Internal</span>" : false;
                         }
@@ -3962,9 +3810,6 @@
                             torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #00FF00'>Internal</span>" : false;
                             torrent.season2 ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__season2' style='font-weight: bold; color: #FF0000'>Season 2</span>" : false;
                             torrent.extras ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__season2' style='font-weight: bold; color: #a14989'>Extras</span>" : false;
-                        }
-                        if (torrent.site === "ANT") {
-                            torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #2CB430'>Internal</span>" : false;
                         }
                         if (torrent.site === "MTV") {
                             torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
@@ -4059,7 +3904,7 @@
 
                 cln.querySelector(".size-span").textContent = ptp_format_size;
 
-                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV", "LST"];
+                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV", "LST", "ANT"];
                 if (byteSizedTrackers.includes(torrent.site)) {
                     cln.querySelector(".size-span").setAttribute("title", api_sized);
                 } else {
@@ -4086,6 +3931,10 @@
                     cln.dataset.releasename += `[${torrent.site}] ` + torrent.info_text;
                 } else if (torrent.info_text) {
                     cln.dataset.releasename = `[${torrent.site}] ` + torrent.info_text;
+                }
+
+                if (improved_tags && cln?.dataset?.releasename) {
+                    cln.dataset.releasename = cln.dataset.releasename.replace(/\./g, ' ');
                 }
                 if (group_id && cln.dataset.releasegroup) {
                     cln.dataset.releasegroup += group_id;
