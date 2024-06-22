@@ -421,8 +421,9 @@ function TCSfinder(ptpRowsData, otherRow, num) {
     return toleranceMatch;
 }
 
-function PCSfinder(ptpRowsData, otherRow, pnum) {
+function PCSfinder(ptpRowsData, otherRow, pnum, dnum) {
     const toleranceBytes = pnum * 1024 * 1024; // Convert MiB to bytes
+    const exactToleranceBytes = dnum * 1024 * 1024; // Convert dnum to bytes for exact size match check
 
     if (otherRow.rawName.includes("Audio Only Track")) {
         return null;
@@ -432,6 +433,7 @@ function PCSfinder(ptpRowsData, otherRow, pnum) {
     const otherRowResolution = otherRow.parsedName.resolution || "";
     const otherRowHasDV = otherRowTitle.includes("DV");
     const otherRowHasHDR = /HDR/i.test(otherRowTitle);
+    const otherRowHas3D = otherRowTitle.includes("3D");
 
     // Prioritize exact size match only
     const exactMatch = ptpRowsData.find(ptpRow => {
@@ -453,19 +455,21 @@ function PCSfinder(ptpRowsData, otherRow, pnum) {
         return exactMatch;
     }
 
-    // Fallback to within tolerance size match
+    // Fallback to within tolerance size match with attributes check
     const toleranceMatch = ptpRowsData.find(ptpRow => {
         const ptpRowTitle = normalizeTitle(ptpRow.parsedName.title || "");
         const ptpRowResolution = ptpRow.parsedName.resolution || "";
         const ptpRowHasDV = ptpRowTitle.includes("DV");
         const ptpRowHasHDR = /HDR/i.test(ptpRowTitle);
+        const ptpRowHas3D = ptpRowTitle.includes("3D");
         const match = (otherRow.group.length === 0 || ptpRow.group.toLowerCase() === otherRow.group.toLowerCase()) &&
-            ptpRowTitle === otherRowTitle &&
             ptpRowResolution === otherRowResolution &&
             Math.abs(ptpRow.size - otherRow.size) <= toleranceBytes && // Size within PCS tolerance
-            !(ptpRow.group.toLowerCase() === otherRow.group.toLowerCase() && Math.abs(ptpRow.size - otherRow.size) <= (dnum * 1024 * 1024)) && // Ensure not a TCS match
+            !(ptpRow.group.toLowerCase() === otherRow.group.toLowerCase() && Math.abs(ptpRow.size - otherRow.size) <= exactToleranceBytes) && // Ensure not a TCS match
             otherRowHasDV === ptpRowHasDV && // Ensure DV matches
-            otherRowHasHDR === ptpRowHasHDR; // Ensure HDR matches
+            otherRowHas3D === ptpRowHas3D &&
+            otherRowHasHDR === ptpRowHasHDR &&
+            ptpRowTitle === otherRowTitle; // Ensure HDR matches
         return match;
     });
 
