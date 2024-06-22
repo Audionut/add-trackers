@@ -1,7 +1,6 @@
 // ==UserScript==
 // @name         PTP Cross-Seed Checker
 // @version      0.0.9
-// @author       Ignacio (additions by Audionut)
 // @description  Find cross-seedable and add cross-seed markers to non-ptp releases
 // @match        https://passthepopcorn.me/torrents.php*
 // @icon         https://passthepopcorn.me/favicon.ico
@@ -172,84 +171,91 @@ function releasenameparser(name) {
     return core.exec(name);
 }
 
-    function settingsmenu() {
-        const settingsDialog = document.createElement('div');
-        settingsDialog.id = 'cs_settingsDialog';
-        settingsDialog.innerHTML = `
-        <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 9999; background: #f5f5f5; padding: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); max-width: 400px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="margin: 0; font-weight: bold; color: #333; text-decoration: underline;">Settings</h2>
-                <button id="cs_closeSettings" style="background: none; border: none; font-size: 20px; color: darkred; cursor: pointer;">&times;</button>
+function settingsmenu() {
+    const settingsDialog = document.createElement('div');
+    settingsDialog.id = 'cs_settingsDialog';
+    settingsDialog.innerHTML = `
+    <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 9999; background: #f5f5f5; padding: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); max-width: 400px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 style="margin: 0; font-weight: bold; color: #333; text-decoration: underline;">Settings</h2>
+            <button id="cs_closeSettings" style="background: none; border: none; font-size: 20px; color: darkred; cursor: pointer;">&times;</button>
+        </div>
+        <div style="display: flex; flex-direction: column;">
+            <div style="display: flex; flex-direction: row; margin-bottom: 10px; justify-content: space-between;">
+                <label for="dnumLimit" style="font-weight: bold; margin-bottom: 5px; margin-right: 10px; align-self: center; color: #001f3f;">Tolerance Size limit (MiB) TCS:</label>
+                <input type="number" id="dnumLimit" value="${dnum}" style="padding: 8px; border-radius: 5px; border: 1px solid #ccc; width: 125px;">
             </div>
-            <div style="display: flex; flex-direction: column;">
-                <div style="display: flex; flex-direction: row; margin-bottom: 10px; justify-content: space-between;">
-                    <label for="dnumLimit" style="font-weight: bold; margin-bottom: 5px; margin-right: 10px; align-self: center; color: #001f3f;">Tolerance Size limit (MiB) TCS:</label>
-                    <input type="number" id="dnumLimit" value="${dnum}" style="padding: 8px; border-radius: 5px; border: 1px solid #ccc; width: 125px;">
-                </div>
-                <div style="display: flex; flex-direction: row; margin-bottom: 10px; justify-content: space-between;">
-                    <label for="pnumLimit" style="font-weight: bold; margin-bottom: 5px; margin-right: 10px; align-self: center; color: #001f3f;">Tolerance Size limit (MiB) PCS:</label>
-                    <input type="number" id="pnumLimit" value="${pnum}" style="padding: 8px; border-radius: 5px; border: 1px solid #ccc; width: 125px;">
-                </div>
-                <div style="display: flex; flex-direction: row; margin-bottom: 10px; justify-content: space-between;">
-                    <label for="rowhtSize" style="font-weight: bold; margin-bottom: 5px; margin-right: 10px; align-self: center; color: #001f3f;">Empty Row Height (px):</label>
-                    <input type="number" id="rowhtSize" value="${size}" style="padding: 8px; border-radius: 5px; border: 1px solid #ccc; width: 125px;">
-                </div>
-                <div style="display: flex; flex-direction: row; margin-bottom: 10px;">
-                    <label for="pcsCheckbox" style="font-weight: bold; margin-bottom: 5px; margin-right: 10px; align-self: center; color: #001f3f;">Show Partial Cross-Seedable:</label>
-                    <input type="checkbox" id="pcsCheckbox" ${pcs ? 'checked' : ''} style="align-self: center;">
-                </div>
+            <div style="display: flex; flex-direction: row; margin-bottom: 10px; justify-content: space-between;">
+                <label for="pnumLimit" style="font-weight: bold; margin-bottom: 5px; margin-right: 10px; align-self: center; color: #001f3f;">Tolerance Size limit (MiB) PCS:</label>
+                <input type="number" id="pnumLimit" value="${pnum}" style="padding: 8px; border-radius: 5px; border: 1px solid #ccc; width: 125px;">
             </div>
-            <div style="margin-top: 20px; display: flex; justify-content: space-between;">
-                <button id="cs_resetSettings" style="background-color: #FF5733; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">Reset</button>
-                <button id="cs_saveSettings" style="background-color: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">Save</button>
+            <div style="display: flex; flex-direction: row; margin-bottom: 10px; justify-content: space-between;">
+                <label for="rowhtSize" style="font-weight: bold; margin-bottom: 5px; margin-right: 10px; align-self: center; color: #001f3f;">Empty Row Height (px):</label>
+                <input type="number" id="rowhtSize" value="${size}" style="padding: 8px; border-radius: 5px; border: 1px solid #ccc; width: 125px;">
+            </div>
+            <div style="display: flex; flex-direction: row; margin-bottom: 10px;">
+                <label for="pcsCheckbox" style="font-weight: bold; margin-bottom: 5px; margin-right: 10px; align-self: center; color: #001f3f;">Show Partial Cross-Seedable:</label>
+                <input type="checkbox" id="pcsCheckbox" ${pcs ? 'checked' : ''} style="align-self: center;">
+            </div>
+            <div style="display: flex; flex-direction: row; margin-bottom: 10px;">
+                <label for="secondPassCheckbox" style="font-weight: bold; margin-bottom: 5px; margin-right: 10px; align-self: center; color: #001f3f;">Enable Second Pass to match remaining:</label>
+                <input type="checkbox" id="secondPassCheckbox" ${GM_getValue('secondPassCheckbox', true) ? 'checked' : ''} style="align-self: center;">
             </div>
         </div>
+        <div style="margin-top: 20px; display: flex; justify-content: space-between;">
+            <button id="cs_resetSettings" style="background-color: #FF5733; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">Reset</button>
+            <button id="cs_saveSettings" style="background-color: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">Save</button>
+        </div>
+    </div>
     `;
 
-        document.body.appendChild(settingsDialog);
+    document.body.appendChild(settingsDialog);
 
-        document.getElementById('cs_resetSettings').addEventListener('click', function() {
-            document.getElementById('dnumLimit').value = dnum;
-            document.getElementById('pnumLimit').value = pnum;
-            document.getElementById('rowhtSize').value = size;
-            document.getElementById('pcsCheckbox').checked = pcs;
+    document.getElementById('cs_resetSettings').addEventListener('click', function() {
+        document.getElementById('dnumLimit').value = dnum;
+        document.getElementById('pnumLimit').value = pnum;
+        document.getElementById('rowhtSize').value = size;
+        document.getElementById('pcsCheckbox').checked = pcs;
+        document.getElementById('secondPassCheckbox').checked = true;
 
-            GM_setValue('dnumlimit', defaultdnum);
-            GM_setValue('pnumlimit', defaultpnum);
-            GM_setValue('rowhtsize', defaultsize);
-            GM_setValue('pcscheckbox', defaultpcs);
+        GM_setValue('dnumlimit', defaultdnum);
+        GM_setValue('pnumlimit', defaultpnum);
+        GM_setValue('rowhtsize', defaultsize);
+        GM_setValue('pcscheckbox', defaultpcs);
+        GM_setValue('secondPassCheckbox', true);
 
-            alert('Settings reset to defaults and saved successfully!');
+        alert('Settings reset to defaults and saved successfully!');
 
-            document.getElementById('cs_settingsDialog').style.display = 'none';
-        });
+        document.getElementById('cs_settingsDialog').style.display = 'none';
+    });
 
-        document.getElementById('cs_saveSettings').addEventListener('click', function() {
-            const newDnumLimit = parseInt(document.getElementById('dnumLimit').value, 10);
-            const newPnumLimit = parseInt(document.getElementById('pnumLimit').value, 10);
-            const newRowhtSize = parseInt(document.getElementById('rowhtSize').value, 10);
-            const newPcsCheckbox = document.getElementById('pcsCheckbox').checked;
+    document.getElementById('cs_saveSettings').addEventListener('click', function() {
+        const newDnumLimit = parseInt(document.getElementById('dnumLimit').value, 10);
+        const newPnumLimit = parseInt(document.getElementById('pnumLimit').value, 10);
+        const newRowhtSize = parseInt(document.getElementById('rowhtSize').value, 10);
+        const newPcsCheckbox = document.getElementById('pcsCheckbox').checked;
+        const newSecondPassCheckbox = document.getElementById('secondPassCheckbox').checked;
 
-            dnum = newDnumLimit;
-            pnum = newPnumLimit;
-            size = newRowhtSize;
-            pcs = newPcsCheckbox;
+        dnum = newDnumLimit;
+        pnum = newPnumLimit;
+        size = newRowhtSize;
+        pcs = newPcsCheckbox;
 
-            GM_setValue('dnumlimit', newDnumLimit);
-            GM_setValue('pnumlimit', newPnumLimit);
-            GM_setValue('rowhtsize', newRowhtSize);
-            GM_setValue('pcscheckbox', newPcsCheckbox);
+        GM_setValue('dnumlimit', newDnumLimit);
+        GM_setValue('pnumlimit', newPnumLimit);
+        GM_setValue('rowhtsize', newRowhtSize);
+        GM_setValue('pcscheckbox', newPcsCheckbox);
+        GM_setValue('secondPassCheckbox', newSecondPassCheckbox);
 
-            alert('Settings saved successfully!');
+        alert('Settings saved successfully!');
 
-            document.getElementById('cs_settingsDialog').style.display = 'none';
-        });
+        document.getElementById('cs_settingsDialog').style.display = 'none';
+    });
 
-        document.getElementById('cs_closeSettings').addEventListener('click', function() {
-            settingsDialog.style.display = 'none';
-        });
-
-    }
+    document.getElementById('cs_closeSettings').addEventListener('click', function() {
+        settingsDialog.style.display = 'none';
+    });
+}
 
     GM_registerMenuCommand('Open Settings', function() {
         let settingsDialog = document.getElementById('cs_settingsDialog');
@@ -260,23 +266,27 @@ function releasenameparser(name) {
         settingsDialog.style.display = 'block';
     });
 
-    function rowSorter(pcs = false, dnum, pnum) {
-        return new Promise((resolve, reject) => {
-            try {
-                const allRows = document.querySelectorAll('.torrent_table tr.group_torrent.group_torrent_header');
-                const regex = /ptp_\d+/;
-                const { ptpRows, otherRows } = classifyRows(allRows, regex);
-                const ptpRowsData = parsePtpRowsData(ptpRows);
-                const otherRowsData = parseOtherRowsData(otherRows);
+function rowSorter(pcs = false, dnum, pnum) {
+    return new Promise((resolve, reject) => {
+        try {
+            const allRows = document.querySelectorAll('.torrent_table tr.group_torrent.group_torrent_header');
+            const regex = /ptp_\d+/;
+            const { ptpRows, otherRows } = classifyRows(allRows, regex);
+            const ptpRowsData = parsePtpRowsData(ptpRows);
+            const otherRowsData = parseOtherRowsData(otherRows);
 
-                matchRows(ptpRows, ptpRowsData, otherRowsData, pcs, dnum, pnum);
+            const unmatchedRows = matchRows(ptpRows, ptpRowsData, otherRowsData, pcs, dnum, pnum);
 
-                resolve("Rows sorted successfully");
-            } catch (error) {
-                reject("Error in row sorter: " + error);
+            if (GM_getValue('secondPassCheckbox', true)) {
+                return unmatchedPass(unmatchedRows, dnum).then(resolve).catch(reject);
+            } else {
+                resolve();
             }
-        });
-    }
+        } catch (error) {
+            reject("Error in row sorter: " + error);
+        }
+    });
+}
 
     function classifyRows(rows, regex) {
         const ptpRows = [];
@@ -329,29 +339,60 @@ function releasenameparser(name) {
         });
     }
 
-    function matchRows(ptpRows, ptpRowsData, otherRowsData, enablePCS, dnum, pnum) {
-        otherRowsData.forEach(otherRow => {
-            const matchingPTPRow = TCSfinder(ptpRowsData, otherRow, dnum);
+function matchRows(ptpRows, ptpRowsData, otherRowsData, enablePCS, dnum, pnum) {
+    const unmatchedRows = [];
+    otherRowsData.forEach(otherRow => {
+        const matchingPTPRow = TCSfinder(ptpRowsData, otherRow, dnum);
 
-            if (matchingPTPRow) {
-                const tcsLink = createLink('TCS', matchingPTPRow.pl, 'Total Cross-Seed compatibility - Identical Release', 'greenyellow');
-                const infoLink = createInfoLink();
+        if (matchingPTPRow) {
+            const tcsLink = createLink('TCS', matchingPTPRow.pl, 'Total Cross-Seed compatibility - Identical Release', 'greenyellow');
+            const infoLink = createInfoLink();
 
-                actionSpnupdater(otherRow, tcsLink, infoLink);
-                infoLinklistener(infoLink, ptpRows, matchingPTPRow);
-            } else if (enablePCS && otherRow.size) {
-                const matchingPTPRowPCS = PCSfinder(ptpRowsData, otherRow, pnum);
+            actionSpnupdater(otherRow, tcsLink, infoLink);
+            infoLinklistener(infoLink, ptpRows, matchingPTPRow);
+        } else if (enablePCS && otherRow.size) {
+            const matchingPTPRowPCS = PCSfinder(ptpRowsData, otherRow, pnum);
 
-                if (matchingPTPRowPCS) {
-                    const pcsLink = createLink('PCS', matchingPTPRowPCS.pl, 'Partial Cross-Seed compatibility - Re-verify File/Folder Structure', 'orange');
-                    const infoLinkPCS = createInfoLink();
+            if (matchingPTPRowPCS) {
+                const pcsLink = createLink('PCS', matchingPTPRowPCS.pl, 'Partial Cross-Seed compatibility - Re-verify File/Folder Structure', 'orange');
+                const infoLinkPCS = createInfoLink();
 
-                    actionSpnupdater(otherRow, pcsLink, infoLinkPCS);
-                    infoLinklistener(infoLinkPCS, ptpRows, matchingPTPRowPCS);
-                }
+                actionSpnupdater(otherRow, pcsLink, infoLinkPCS);
+                infoLinklistener(infoLinkPCS, ptpRows, matchingPTPRowPCS);
+            } else {
+                unmatchedRows.push(otherRow);
             }
-        });
-    }
+        } else {
+            unmatchedRows.push(otherRow);
+        }
+    });
+    return unmatchedRows;
+}
+
+function unmatchedPass(unmatchedRows, dnum) {
+    return new Promise((resolve, reject) => {
+        try {
+            unmatchedRows.forEach((otherRow, index) => {
+                for (let i = index + 1; i < unmatchedRows.length; i++) {
+                    const otherRowToCompare = unmatchedRows[i];
+                    const matchingOtherRow = TCSfinder([otherRow], otherRowToCompare, dnum);
+
+                    if (matchingOtherRow) {
+                        const tcsLink = createLink('TCS', '#', 'Total Cross-Seed compatibility - Identical Release', 'greenyellow');
+                        const infoLink = createInfoLink('Other');
+
+                        actionSpnupdater(otherRowToCompare, tcsLink, infoLink);
+                        infoLinklistener(infoLink, unmatchedRows, matchingOtherRow);
+                        break;
+                    }
+                }
+            });
+            resolve();
+        } catch (error) {
+            reject("Error in unmatched pass: " + error);
+        }
+    });
+}
 
     function TCSfinder(ptpRowsData, otherRow, num) {
         const toleranceBytes = num * 1024 * 1024;
@@ -361,45 +402,45 @@ function releasenameparser(name) {
         );
     }
 
-function PCSfinder(ptpRowsData, otherRow, pnum) {
-    const toleranceBytes = pnum * 1024 * 1024; // Convert MiB to bytes
+    function PCSfinder(ptpRowsData, otherRow, pnum) {
+        const toleranceBytes = pnum * 1024 * 1024; // Convert MiB to bytes
 
-    if (otherRow.rawName.includes("Audio Only Track")) {
-        return null;
+        if (otherRow.rawName.includes("Audio Only Track")) {
+            return null;
+        }
+
+        const otherRowTitle = normalizeTitle(otherRow.parsedName.title || "");
+        const otherRowResolution = otherRow.parsedName.resolution || "";
+        const otherRowHasDV = otherRowTitle.includes("DV");
+        const otherRowHasHDR = /HDR/i.test(otherRowTitle);
+
+        return ptpRowsData.find(ptpRow => {
+            const ptpRowTitle = normalizeTitle(ptpRow.parsedName.title || "");
+            const ptpRowResolution = ptpRow.parsedName.resolution || "";
+            const ptpRowHasDV = ptpRowTitle.includes("DV");
+            const ptpRowHasHDR = /HDR/i.test(ptpRowTitle);
+
+            return (
+                (otherRow.group.length === 0 || ptpRow.group.toLowerCase() === otherRow.group.toLowerCase()) &&
+                ptpRowTitle === otherRowTitle &&
+                ptpRowResolution === otherRowResolution &&
+                Math.abs(ptpRow.size - otherRow.size) <= toleranceBytes && // Size within PCS tolerance
+                !(ptpRow.group.toLowerCase() === otherRow.group.toLowerCase() && Math.abs(ptpRow.size - otherRow.size) <= (dnum * 1024 * 1024)) && // Ensure not a TCS match
+                otherRowHasDV === ptpRowHasDV && // Ensure DV matches
+                otherRowHasHDR === ptpRowHasHDR // Ensure HDR matches
+            );
+        });
     }
 
-    const otherRowTitle = normalizeTitle(otherRow.parsedName.title || "");
-    const otherRowResolution = otherRow.parsedName.resolution || "";
-    const otherRowHasDV = otherRowTitle.includes("DV");
-    const otherRowHasHDR = /HDR/i.test(otherRowTitle);
-
-    return ptpRowsData.find(ptpRow => {
-        const ptpRowTitle = normalizeTitle(ptpRow.parsedName.title || "");
-        const ptpRowResolution = ptpRow.parsedName.resolution || "";
-        const ptpRowHasDV = ptpRowTitle.includes("DV");
-        const ptpRowHasHDR = /HDR/i.test(ptpRowTitle);
-
-        return (
-            (otherRow.group.length === 0 || ptpRow.group.toLowerCase() === otherRow.group.toLowerCase()) &&
-            ptpRowTitle === otherRowTitle &&
-            ptpRowResolution === otherRowResolution &&
-            Math.abs(ptpRow.size - otherRow.size) <= toleranceBytes && // Size within PCS tolerance
-            !(ptpRow.group.toLowerCase() === otherRow.group.toLowerCase() && Math.abs(ptpRow.size - otherRow.size) <= (dnum * 1024 * 1024)) && // Ensure not a TCS match
-            otherRowHasDV === ptpRowHasDV && // Ensure DV matches
-            otherRowHasHDR === ptpRowHasHDR // Ensure HDR matches
-        );
-    });
-}
-
-function normalizeTitle(title) {
-    // Define a set of common container formats to be removed
-    const containers = ["mkv", "avi", "mp4", "mov", "m2ts"];
-    containers.forEach(container => {
-        const regex = new RegExp(`\\b${container}\\b`, 'gi');
-        title = title.replace(regex, '');
-    });
-    return title.replace(/[\.\-_]/g, ' ').toLowerCase().trim();
-}
+    function normalizeTitle(title) {
+        // Define a set of common container formats to be removed
+        const containers = ["mkv", "avi", "mp4", "mov", "m2ts"];
+        containers.forEach(container => {
+            const regex = new RegExp(`\\b${container}\\b`, 'gi');
+            title = title.replace(regex, '');
+        });
+        return title.replace(/[\.\-_]/g, ' ').toLowerCase().trim();
+    }
 
     function createLink(text, href, title, color) {
         const link = document.createElement('a');
@@ -412,11 +453,21 @@ function normalizeTitle(title) {
         return link;
     }
 
-    function createInfoLink() {
+function createInfoLink(text = 'INFO') {
+    const infoLink = document.createElement('a');
+    infoLink.href = '#';
+    infoLink.className = 'link_4';
+    infoLink.textContent = text;
+    infoLink.style.color = '#ff1493';
+    infoLink.style.textShadow = '0 0 5px #ff1493';
+    return infoLink;
+}
+
+    function createOtherLink() {
         const infoLink = document.createElement('a');
         infoLink.href = '#';
-        infoLink.className = 'torrent-info-link.link4';
-        infoLink.textContent = 'INFO';
+        infoLink.className = 'link_4';
+        infoLink.textContent = 'Other';
         infoLink.style.color = '#ff1493';
         infoLink.style.textShadow = '0 0 5px #ff1493';
         return infoLink;
@@ -612,34 +663,23 @@ function normalizeTitle(title) {
         });
     }
 
-    document.addEventListener('PTPAddReleasesFromOtherTrackersComplete', function(event) {
-        rowSorter(pcs, dnum, pnum)
-            .then(() => {
-                return rearranger(size);
-            })
-            .then(() => {
-                return cleaner();
-            })
-            .then(() => {
-                return recleaner();
-            })
-            .catch(error => {
-                console.error('An error occurred:', error);
-            });
-    });
-    document.addEventListener('SortingComplete', function(event) {
-        rowSorter(pcs, dnum, pnum)
-            .then(() => {
-                return rearranger(size);
-            })
-            .then(() => {
-                return cleaner();
-            })
-            .then(() => {
-                return recleaner();
-            })
-            .catch(error => {
-                console.error('An error occurred:', error);
-            });
-    });
+document.addEventListener('PTPAddReleasesFromOtherTrackersComplete', function(event) {
+    rowSorter(pcs, dnum, pnum)
+        .then(() => rearranger(size))
+        .then(() => cleaner())
+        .then(() => recleaner())
+        .catch(error => {
+            console.error('An error occurred:', error);
+        });
+});
+
+document.addEventListener('SortingComplete', function(event) {
+    rowSorter(pcs, dnum, pnum)
+        .then(() => rearranger(size))
+        .then(() => cleaner())
+        .then(() => recleaner())
+        .catch(error => {
+            console.error('An error occurred:', error);
+        });
+});
 })();
