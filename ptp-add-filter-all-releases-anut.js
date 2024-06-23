@@ -56,6 +56,7 @@
         "rfx": {"label": "RFX *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "rfx_api": {"label": "RFX_API_TOKEN", "type": "text", "default": ""},
         "rtf": {"label": "RTF", "type": "checkbox", "default": false},
+        "rtf_api": {"label": "RTF_API_TOKEN", "type": "text", "default": ""},
         "tik": {"label": "TIK *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "tik_api": {"label": "TIK_API_TOKEN", "type": "text", "default": ""},
         "tvv": {"label": "TVV *", "type": "checkbox", "default": false, "tooltip": "Enter auth key & torrent pass below"},
@@ -77,7 +78,6 @@
         "res_by_default": {"label": "Only these resolutions by default", "type": "text", "default": "", "tooltip": "Show only these resolutions by default. Comma separated, with valued values. SD, 480p, 576p, 720p, 1080p, 2160p"},
         "hideBlankLinks": {"label": "How to display download link", "type": "select", "options": ["DL", "Download", "Spaced"], "default": "DL", "tooltip": "Choose how to display the download links: DL (original method), DOWNLOAD, or Spaced. Other methods help with some stylesheets."},
         "timer": {"label": "Error timeout (seconds)", "type": "int", "default": 4, "tooltip": "Set the error timeout duration in seconds to skip slow/dead trackers"},
-        "timerDuration": {"label": "Error display duration (seconds)", "type": "int", "default": 2, "tooltip": "Set the duration for displaying errors in seconds"}
         "timerDuration": {"label": "Error display duration (seconds)", "type": "int", "default": 2, "tooltip": "Set the duration for displaying errors in seconds"},
         "debugging": {"label": "Enable debugging", "type": "checkbox", "default": false, "tooltip": "Enable this to help track down issues, then browse a torrent page and look in browser console"}
     };
@@ -171,6 +171,7 @@
                     "huno": GM_config.fields.huno.node,
                     "oe": GM_config.fields.oe.node,
                     "rfx": GM_config.fields.rfx.node,
+                    "rtf": GM_config.fields.rtf.node,
                     "tik": GM_config.fields.tik.node,
                     "tvv": GM_config.fields.tvv.node
                 }
@@ -314,6 +315,7 @@
         const MTV_API_TOKEN = GM_config.get("mtv_api");
         const LST_API_TOKEN = GM_config.get("lst_api");
         const ANT_API_TOKEN = GM_config.get("ant_api");
+        const RTF_API_TOKEN = GM_config.get("rtf_api");
 
         // We need to use XML resposne with TVV and have to define some parameters for it to work correctly.
         const TVV_AUTH_KEY = GM_config.get("tvv_auth"); // If you want to use TVV - find your authkey from a torrent download link
@@ -667,7 +669,8 @@
               (tracker === "HDB") ||
               (tracker === "NBL") ||
               (tracker === "BTN") ||
-              (tracker === "ANT")
+              (tracker === "ANT") ||
+              (tracker === "RTF")
               ) {
                 return true;
             } else {
@@ -1637,182 +1640,6 @@
                     }
                 });
             }
-            else if (tracker === "RTF") {
-                const rows = html.querySelectorAll("div.row.pt-2.pb-2");
-
-                rows.forEach((d) => {
-
-                    let torrent_obj = {};
-                    let sizeText = "";
-                    d.querySelectorAll("div.col-4.col-xl-2.text-center").forEach((sizeElement) => {
-                        let textContent = sizeElement.textContent.trim();
-                        if (textContent.includes("TB") || textContent.includes("GB") || textContent.includes("MB")) {
-                            sizeText = textContent;
-                        }
-                    });
-
-                    let size = 0;
-                    if (sizeText.includes("TB")) {
-                        size = parseInt(parseFloat(sizeText.split("TB")[0]) * 1024 * 1024); // Convert TB to MB
-                    } else if (sizeText.includes("GB")) {
-                        size = parseInt(parseFloat(sizeText.split("GB")[0]) * 1024); // Convert GB to MB
-                    } else if (sizeText.includes("MB")) {
-                        size = parseInt(parseFloat(sizeText.split("MB")[0]));
-                    }
-
-                    torrent_obj.size = size;
-
-                    let releaseName = d.querySelector("div.col-md-8.col-xl-8 a.font-weight-bold")?.textContent.trim() || "";
-                    let res = d.querySelector("div.col-md-8.col-xl-8 a.d-inline-block")?.textContent.trim() || "";
-                    if (res) {
-                        releaseName = `${res} ${releaseName}`;
-                    }
-
-                    torrent_obj.datasetRelease = releaseName;
-                    let groupText = "";
-                    const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
-                    const badGroupsList = badGroups(); // Get the list of bad group names
-                    let matchedGroup = null;
-                    let badGroupFound = false;
-
-                    // Check for bad groups
-                    for (const badGroup of badGroupsList) {
-                        if (releaseName.includes(badGroup)) {
-                            badGroupFound = true;
-                            releaseName = releaseName.replace(badGroup, '').trim(); // Remove the bad group text
-                            groupText = ""; // Set groupText to an empty string
-                            break;
-                        }
-                    }
-
-                    if (!badGroupFound) {
-                        // Check for good groups if no bad group was found
-                        for (const group of groups) {
-                            if (releaseName.includes(group)) {
-                                matchedGroup = group;
-                                break;
-                            }
-                        }
-
-                        if (matchedGroup) {
-                            groupText = matchedGroup;
-                            if (improved_tags) {
-                                releaseName = releaseName.replace(groupText, '').trim();
-                            }
-                        } else {
-                            const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
-                            if (match) {
-                                groupText = match[1]; // Use match[1] to get the capturing group
-                                groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                                if (improved_tags) {
-                                    releaseName = releaseName.replace(`-${match[1]}`, '').trim();
-                                }
-                            }
-                        }
-                    }
-                    torrent_obj.groupId = groupText;
-
-                            let cleanTheText = releaseName;
-                            const replaceFullStops = (text) => {
-
-                                const placeholders = new Map();
-                                let tempText = text;
-
-                                const keepPatterns = [
-                                    /\b\d\.\d\b/g,
-                                    /\bDD\d\.\d\b/g,
-                                    /\bDDP\d\.\d\b/g,
-                                    /\bDD\+\d\.\d\b/g,
-                                    /\bTrueHD \d\.\d\b/g,
-                                    /\bDTS\d\.\d\b/g,
-                                    /\bAC3\d\.\d\b/g,
-                                    /\bAAC\d\.\d\b/g,
-                                    /\bOPUS\d\.\d\b/g,
-                                    /\bMP3\d\.\d\b/g,
-                                    /\bFLAC\d\.\d\b/g,
-                                    /\bLPCM\d\.\d\b/g,
-                                    /\bH\.264\b/g,
-                                    /\bH\.265\b/g,
-                                    /\bDTS-HD MA \d\.\d\b/g,
-                                    /\bDTS-HD MA \d\.\d\b/g // Ensuring variations
-                                ];
-
-                                keepPatterns.forEach((pattern, index) => {
-                                    tempText = tempText.replace(pattern, (match) => {
-                                        const placeholder = `__PLACEHOLDER${index}__`;
-                                        placeholders.set(placeholder, match);
-                                        return placeholder;
-                                    });
-                                });
-
-                                // Replace remaining full stops not followed by a digit, not preceded by a digit, or directly following a year
-                                tempText = tempText.replace(/(?<!\d)\.(?!\d)/g, ' '); // Replace full stops not preceded by a digit
-                                tempText = tempText.replace(/\.(?!(\d))/g, ' '); // Replace full stops not followed by a digit
-                                tempText = tempText.replace(/(?<=\b\d{4})\./g, ' '); // Remove full stops directly following a year
-                                tempText = tempText.replace(/\.(?=\b\d{4}\b)/g, ' '); // Remove full stops directly before a year
-
-                                placeholders.forEach((original, placeholder) => {
-                                    tempText = tempText.replace(new RegExp(placeholder, 'g'), original);
-                                });
-
-                                tempText = tempText
-                                    .replace(/DD\+/g, 'DD+ ')
-                                    .replace(/DDP/g, 'DD+ ')
-                                    .replace(/DoVi/g, 'DV')
-                                    .replace(/\(/g, '')
-                                    .replace(/\)/g, '')
-                                    .replace(/\bhdr\b/g, 'HDR')
-                                    .replace(/\bweb\b/g, 'WEB')
-                                    .replace(/\bbluray\b/gi, 'BluRay')
-                                    .replace(/\bh254\b/g, 'H.264')
-                                    .replace(/\bh265\b/g, 'H.265')
-                                    .replace(/\b\w/g, char => char.toUpperCase())
-                                    .replace(/\bX264\b/g, 'x264')
-                                    .replace(/\bX265\b/g, 'x265')
-                                    .replace(/\b - \b/g, ' ');
-
-                                return tempText;
-                            };
-
-                    torrent_obj.info_text = replaceFullStops(cleanTheText);
-                    torrent_obj.site = "RTF";
-
-                    const downloadLinkElement = d.querySelector(".download");
-                    if (downloadLinkElement) {
-                        torrent_obj.download_link = downloadLinkElement.closest("a")?.href.replace("passthepopcorn.me", "retroflix.club");
-                    }
-
-                    const torrentPageElement = d.querySelector("div.col-md-8.col-xl-8 a.font-weight-bold");
-                    if (torrentPageElement) {
-                        torrent_obj.torrent_page = torrentPageElement.href.replace("passthepopcorn.me", "retroflix.club");
-                    }
-
-                    const snatchSpan = [...d.querySelectorAll("div.col-2.col-xl-1.text-center span")]
-                        .find(span => !span.classList.contains("text-success") && !span.classList.contains("text-muted") && !span.classList.contains("text-danger"));
-                    torrent_obj.snatch = snatchSpan ? parseInt(snatchSpan.textContent.trim()) : 0;
-
-                    const seedSpan = d.querySelector("div.col-2.col-xl-1.text-center span.text-success");
-                    torrent_obj.seed = seedSpan ? parseInt(seedSpan.textContent.trim()) : 0;
-
-                    const leechSpan = d.querySelector("div.col-2.col-xl-1.text-center span.text-muted");
-                    torrent_obj.leech = leechSpan ? parseInt(leechSpan.textContent.trim()) : 0;
-
-                    torrent_obj.status = d.querySelectorAll("span.tag_seeding").length > 0 ? "seeding" : "default";
-                    torrent_obj.discount = "None";
-
-                    const timeElement = d.querySelector('div.col-4.col-xl-2.text-center span');
-                    if (timeElement) {
-                        const relativeTime = timeElement.textContent.trim();
-                        let time = toUnixTime(relativeTime);
-                        if (isNaN(time)) {
-                            return null;
-                        }
-                    torrent_obj.time = time;
-                    }
-                    torrent_objs.push(torrent_obj);
-
-                });
-            }
             torrent_objs = torrent_objs.map(e => {
                 return { ...e, "quality": get_torrent_quality(e) };
             });
@@ -1841,18 +1668,6 @@
                 } else if (html.querySelector('SearchError') !== null) {
                     console.warn("Some issue with TVV searching");
                     return false;
-                } else {
-                    return true;
-                }
-            }
-            else if (tracker === "RTF") {
-                const element = html.querySelector("div.col-md-12 > h4")
-                if (element) {
-                    if (element.textContent.includes("No results found")) {
-                        return false;
-                    } else {
-                        return true;
-                    }
                 } else {
                     return true;
                 }
@@ -1916,11 +1731,11 @@
                 'Accept': '*/*',
                 'Host': 'anthelion.me'
             },
-            //'tracker2': {
-            //    'Content-Type': 'application/json',
-            //    'Accept': '*/*',
-            //    'Host': 'tracker2.com'
-            //},
+            'RTF': {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'Authorization': RTF_API_TOKEN,
+            },
             // Add more trackers and their headers as needed
         };
 
@@ -1929,11 +1744,17 @@
             'Content-Type': 'application/json'
         };  // Default headers if tracker not found
 
+        // Assign GET here as needed.
+        const methodMapping = {
+            'RTF': 'GET',
+        };
+        const method = methodMapping[tracker] || 'POST';
+
             const response = await new Promise(async (resolve, reject) => {
 
                 GM_xmlhttpRequest({
                     url: post_query_url,
-                    method: "POST",
+                    method: method,
                     data: JSON.stringify(postData),
                     headers: headers,
                     onload: (res) => {
@@ -2040,7 +1861,7 @@
             } else {
                 console.warn(`Error: HTTP ${response.status} Error.`);
                 displayAlert(`${tracker} returned not ok`);
-                return null; // Similar to the 100 case, allow other processing to continue by returning null
+                return null;
             }
         };
 
@@ -2166,7 +1987,7 @@
                     query_url = "https://tv-vault.me/xmlsearch.php?query=get&torrent_pass=" + TVV_TORR_PASS + "&imdbid=" + imdb_id + "&xmladd-x-currentseed=1";
                 }
                 else if (tracker === "RTF") {
-                    query_url = "https://retroflix.club/browse?years%5B%5D=1890&years%5B%5D=2024&includingDead=1&promotionType=&bookmarked=&search=" + imdb_id + "&searchIn=4&termMatchKind=2&submit=";
+                    post_query_url = "https://retroflix.club/api/torrent?imdbId=" + imdb_id + "&page=1&itemsPerPage=50&sort=torrent.createdAt&direction=desc";
                 }
                 else if (tracker === "NBL") {
                     post_query_url = "https://nebulance.io/api.php";
@@ -2229,7 +2050,7 @@
                                             resolve([]);
                                         } else {
                                             if (debug) {
-                                                console.log("BHD response",result.results);
+                                                console.log("BHD response", result.results);
                                             }
                                             console.log("Data fetched successfully from BHD");
                                             resolve(get_post_torrent_objects(tracker, result));
@@ -2254,7 +2075,7 @@
                                                     resolve([]);
                                                 } else {
                                                     if (debug) {
-                                                        console.log("HDB response",result.data);
+                                                        console.log("HDB response", result.data);
                                                     }
                                                     console.log("Data fetched successfully from HDB");
                                                     resolve(get_post_torrent_objects(tracker, result));
@@ -2269,17 +2090,16 @@
                                             }
                                         }
                                         if (debug) {
-                                            console.log("NBL response",result.result);
+                                            console.log("NBL response", result.result);
                                         }
                                         resolve(get_post_torrent_objects(tracker, result));
                                     } else if (tracker === "BTN" && result?.result) {
                                         if (result.result.results === "0") {
                                             console.log("BTN reached successfully but no results were returned");
                                             resolve([]);
-                                        }
-                                        else {
+                                        } else {
                                             if (debug) {
-                                                console.log("BTN response",result.result);
+                                                console.log("BTN response", result.result);
                                             }
                                             console.log("Data fetched successfully from BTN");
                                             resolve(get_post_torrent_objects(tracker, result));
@@ -2288,13 +2108,23 @@
                                         if (result.item.length === 0) {
                                             console.log("ANT reached successfully but no results were returned");
                                             resolve([]);
-                                        }
-                                        else {
+                                        } else {
                                             if (debug) {
-                                                console.log("ANT response",result.item);
+                                                console.log("ANT response", result.item);
                                             }
                                             console.log("Data fetched successfully from ANT");
                                             resolve(get_post_torrent_objects(tracker, result));
+                                        }
+                                    } else if (tracker === "RTF" && Array.isArray(result)) {
+                                        if (result.length === 0) {
+                                            console.log("RTF reached successfully but no results were returned");
+                                            resolve([]);
+                                        } else {
+                                            if (debug) {
+                                                console.log("RTF response", result);
+                                            }
+                                            console.log("Data fetched successfully from RTF");
+                                            resolve(get_post_torrent_objects(tracker, result)); // Resolve the result directly
                                         }
                                     }
                                 }
@@ -3087,6 +2917,93 @@
                     }).filter(obj => obj !== null); // Filter out any null objects
                 } catch (error) {
                     console.error("An error occurred while processing ANT tracker:", error);
+                }
+            }
+            else if (tracker === "RTF") {
+                try {
+                    torrent_objs = postData.map((d) => {
+
+                        const size = parseInt(d.size / (1024 * 1024)); // Convert size to MiB
+                        const api_size = parseInt(d.size); // Original size
+
+                        const inputTime = d.created_at;
+                        let time = toUnixTime(inputTime);
+                        if (isNaN(time)) {
+                            return null;
+                        }
+
+                        let infoText = d.name;
+                            let groupText = "";
+                            const groups = goodGroups();
+                            const badGroupsList = badGroups();
+                            let matchedGroup = null;
+                            let badGroupFound = false;
+
+                            for (const badGroup of badGroupsList) {
+                                if (infoText.includes(badGroup)) {
+                                    badGroupFound = true;
+                                    infoText = infoText.replace(badGroup, '').trim();
+                                    groupText = "";
+                                    break;
+                                }
+                            }
+
+                            if (!badGroupFound) {
+                                for (const group of groups) {
+                                    if (infoText.includes(group)) {
+                                        matchedGroup = group;
+                                        break;
+                                    }
+                                }
+
+                                if (matchedGroup) {
+                                    groupText = matchedGroup;
+                                    if (improved_tags) {
+                                        infoText = infoText.replace(groupText, '').trim();
+                                    }
+                                } else {
+                                    const match = infoText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
+                                    if (match) {
+                                        groupText = match[1];
+                                        groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                        if (improved_tags) {
+                                            infoText = infoText.replace(`-${match[1]}`, '').trim();
+                                        }
+                                    }
+                                }
+                            }
+                        let download = d.url;
+
+                        const torrentObj = {
+                            api_size: api_size,
+                            datasetRelease: infoText,
+                            size: size,
+                            info_text: infoText,
+                            tracker: tracker,
+                            site: tracker,
+                            snatch: d.times_completed || 0,
+                            seed: d.seeders || 0,
+                            leech: d.leechers || 0,
+                            download_link: download || "",
+                            torrent_page: d.url || "",
+                            discount: "None",
+                            status: "default",
+                            groupId: groupText,
+                            time: time,
+                        };
+
+                        const mappedObj = {
+                            ...torrentObj,
+                            quality: get_torrent_quality(torrentObj),
+                        };
+
+                        return mappedObj;
+                    }).filter(obj => obj !== null); // Filter out any null objects
+
+                    console.log("Processed RTF objects:", torrent_objs); // Log the resulting array
+
+                } catch (error) {
+                    console.error("An error occurred while processing RTF tracker:", error);
                 }
             }
             return torrent_objs;
@@ -3988,7 +3905,7 @@
 
                 cln.querySelector(".size-span").textContent = ptp_format_size;
 
-                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV", "LST", "ANT"];
+                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV", "LST", "ANT", "RTF"];
                 if (byteSizedTrackers.includes(torrent.site)) {
                     cln.querySelector(".size-span").setAttribute("title", api_sized);
                 } else {
