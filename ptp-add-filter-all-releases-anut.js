@@ -24,7 +24,7 @@
         "aither": {"label": "Aither *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "aither_api": {"label": "AITHER_API_TOKEN", "type": "text", "default": ""},
         "avistaz": {"label": "Avistaz", "type": "checkbox", "default": false},
-        "ant": {"label": "ANT", "type": "checkbox", "default": false},
+        "ant": {"label": "ANT *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "ant_api": {"label": "ANT_API_TOKEN", "type": "text", "default": ""},
         "bhd": {"label": "BHD *", "type": "checkbox", "default": false, "tooltip": "Enter API and RSS key below"},
         "bhd_api": {"label": "BHD_API_TOKEN", "type": "text", "default": ""},
@@ -55,7 +55,7 @@
         "pxhd": {"label": "PxHD", "type": "checkbox", "default": false},
         "rfx": {"label": "RFX *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "rfx_api": {"label": "RFX_API_TOKEN", "type": "text", "default": ""},
-        "rtf": {"label": "RTF", "type": "checkbox", "default": false},
+        "rtf": {"label": "RTF *", "type": "checkbox", "default": false, "tooltip": "Enter API key below. Alternatively, you can enter your details at bottom of settings to automatically grab and update API key"},
         "rtf_api": {"label": "RTF_API_TOKEN", "type": "text", "default": ""},
         "tik": {"label": "TIK *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "tik_api": {"label": "TIK_API_TOKEN", "type": "text", "default": ""},
@@ -79,7 +79,10 @@
         "hideBlankLinks": {"label": "How to display download link", "type": "select", "options": ["DL", "Download", "Spaced"], "default": "DL", "tooltip": "Choose how to display the download links: DL (original method), DOWNLOAD, or Spaced. Other methods help with some stylesheets."},
         "timer": {"label": "Error timeout (seconds)", "type": "int", "default": 4, "tooltip": "Set the error timeout duration in seconds to skip slow/dead trackers"},
         "timerDuration": {"label": "Error display duration (seconds)", "type": "int", "default": 2, "tooltip": "Set the duration for displaying errors in seconds"},
-        "debugging": {"label": "Enable debugging", "type": "checkbox", "default": false, "tooltip": "Enable this to help track down issues, then browse a torrent page and look in browser console"}
+        "debugging": {"label": "Enable debugging", "type": "checkbox", "default": false, "tooltip": "Enable this to help track down issues, then browse a torrent page and look in browser console"},
+        "rtf_login": {"label": "Get RTF API key", "type": "checkbox", "default": false, "tooltip": "Enter your RTF username and password below to automatically grab and update RTF API key"},
+        "rtf_user": {"label": "RTF Username", "type": "text", "default": ""},
+        "rtf_pass": {"label": "RTF Password", "type": "text", "default": ""}
     };
 
     function resetToDefaults() {
@@ -103,7 +106,8 @@
         const multi_auth = {
             "bhd": ["bhd_api", "bhd_rss"],
             "hdb": ["hdb_user", "hdb_pass"],
-            "tvv": ["tvv_auth", "tvv_torr"]
+            "tvv": ["tvv_auth", "tvv_torr"],
+            "rtf_login": ["rtf_user", "rtf_pass"]
         };
 
         if (key in multi_auth) {
@@ -172,6 +176,7 @@
                     "oe": GM_config.fields.oe.node,
                     "rfx": GM_config.fields.rfx.node,
                     "rtf": GM_config.fields.rtf.node,
+                    "rtf_login": GM_config.fields.rtf_login.node,
                     "tik": GM_config.fields.tik.node,
                     "tvv": GM_config.fields.tvv.node
                 }
@@ -316,6 +321,9 @@
         const LST_API_TOKEN = GM_config.get("lst_api");
         const ANT_API_TOKEN = GM_config.get("ant_api");
         const RTF_API_TOKEN = GM_config.get("rtf_api");
+        const RTF_USER = GM_config.get("rtf_user");
+        const RTF_PASS = GM_config.get("rtf_pass");
+        const RTF_LOGIN = GM_config.get("rtf_login");
 
         // We need to use XML resposne with TVV and have to define some parameters for it to work correctly.
         const TVV_AUTH_KEY = GM_config.get("tvv_auth"); // If you want to use TVV - find your authkey from a torrent download link
@@ -1661,9 +1669,12 @@
                     return false;
                 } else if (html.querySelector('SearchError[value="100"]') !== null) {
                     console.warn("Searching TVV too soon");
+                    displayAlert("Searching TVV too soon");
                     return false;
                 } else if (html.querySelector('SearchError[value="101"]') !== null) {
-                    console.warn("Searching TVV too soon");
+                    let timeValue = html.querySelector('SearchError[value="101"]').textContent;
+                    console.warn(`RTF: ${timeValue}`);
+                    displayAlert(`RTF: ${timeValue}`);
                     return false;
                 } else if (html.querySelector('SearchError') !== null) {
                     console.warn("Some issue with TVV searching");
@@ -1723,35 +1734,37 @@
         };
 
         const post_json = async (post_query_url, tracker, postData) => {
+            // Define the headers mapping
+            const headersMapping = {
+                'ANT': {
+                    'Content-Type': 'application/json',
+                    'Accept': '*/*',
+                    'Host': 'anthelion.me'
+                },
+                'RTF': {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Authorization': GM_config.get("rtf_api"),
+                },
+                // Add more trackers and their headers as needed
+            };
 
-        // Define the headers mapping
-        const headersMapping = {
-            'ANT': {
-                'Content-Type': 'application/json',
-                'Accept': '*/*',
-                'Host': 'anthelion.me'
-            },
-            'RTF': {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'Authorization': RTF_API_TOKEN,
-            },
-            // Add more trackers and their headers as needed
-        };
+            // Get the headers for the specific tracker
+            const headers = headersMapping[tracker] || {
+                'Content-Type': 'application/json'
+            };  // Default headers if tracker not found
 
-        // Get the headers for the specific tracker
-        const headers = headersMapping[tracker] || {
-            'Content-Type': 'application/json'
-        };  // Default headers if tracker not found
+            if (debug) {
+                console.log(`Headers for ${tracker}`, headers);
+            }
 
-        // Assign GET here as needed.
-        const methodMapping = {
-            'RTF': 'GET',
-        };
-        const method = methodMapping[tracker] || 'POST';
+            // Assign GET here as needed.
+            const methodMapping = {
+                'RTF': 'GET',
+            };
+            const method = methodMapping[tracker] || 'POST';
 
-            const response = await new Promise(async (resolve, reject) => {
-
+            const response = await new Promise((resolve, reject) => {
                 GM_xmlhttpRequest({
                     url: post_query_url,
                     method: method,
@@ -1774,6 +1787,13 @@
 
             if (response.status === 200) {
                 return JSON.parse(response.responseText);
+            } else if (response.status === 401) {
+                const jsonResponse = JSON.parse(response.responseText);
+                console.log(`raw response from ${tracker}`, response.responseText);
+                if (tracker === 'RTF' && jsonResponse.error && jsonResponse.message === "Invalid API token.") {
+                    displayAlert("Updating RTF API token");
+                }
+                return jsonResponse;
             } else {
                 if (debug) {
                     console.log(`Raw response from ${tracker}`, response.responseText);
@@ -1783,6 +1803,86 @@
                 return null;  // Allow other processing to continue by returning null
             }
         };
+
+        const login_json = async (login_url, RTF_LOGIN, loginData) => {
+            const headers = {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            };
+
+            const response = await new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    url: login_url,
+                    method: "POST",
+                    data: JSON.stringify(loginData),
+                    headers: headers,
+                    onload: (res) => {
+                        resolve(res);
+                    },
+                    onerror: (err) => {
+                        reject(err);
+                    },
+                    onabort: (err) => {
+                        reject(err);
+                    },
+                    ontimeout: (err) => {
+                        reject(err);
+                    },
+                });
+            });
+
+            if (response.status === 201) {
+                if (debug) {
+                    console.log(`Raw response from ${RTF_LOGIN}`, response.responseText);
+                }
+                return JSON.parse(response.responseText);
+            } else {
+                if (debug) {
+                    console.log(`Raw response from ${RTF_LOGIN}`, response.responseText);
+                }
+                console.warn(`Error: ${RTF_LOGIN} HTTP ${response.status} Error.`);
+                displayAlert(`${RTF_LOGIN} returned not ok`);
+                return null;  // Allow other processing to continue by returning null
+            }
+        };
+
+        const fetch_login = async (login_url, loginData) => {
+            try {
+                const result = await login_json(login_url, 'RTF_LOGIN', loginData);
+                if (result) {
+                    if (result.token) {
+                        return result;
+                    } else {
+                        console.log("RTF response", result);
+                        console.log("RTF data", loginData);
+                        return null;
+                    }
+                } else {
+                    return null;
+                }
+            } catch (error) {
+                console.error(`Error in fetch_login for RTF_LOGIN`, error);
+                return null;
+            }
+        };
+
+        // URL and login data
+        const login_url = "https://retroflix.club/api/login";
+        const loginData = { username: RTF_USER, password: RTF_PASS };
+
+        (async () => {
+            const result = await fetch_login(login_url, loginData);
+            if (result) {
+                const token = result.token;
+                if (debug) {
+                    console.log("Login successful", result);
+                    console.log("Extracted token:", token);
+                }
+                GM_config.set("rtf_api", token);
+            } else {
+                console.log("Login failed");
+            }
+        })();
 
         const fetch_url = async (query_url, tracker) => {
             const response = await new Promise(async (resolve, reject) => {
@@ -2999,9 +3099,6 @@
 
                         return mappedObj;
                     }).filter(obj => obj !== null); // Filter out any null objects
-
-                    console.log("Processed RTF objects:", torrent_objs); // Log the resulting array
-
                 } catch (error) {
                     console.error("An error occurred while processing RTF tracker:", error);
                 }
