@@ -1,6 +1,7 @@
 // ==UserScript==
 // @name         PTP Cross-Seed Checker
-// @version      0.0.9
+// @version      0.1.0
+// @author       Ignacio (additions by Audionut)
 // @description  Find cross-seedable and add cross-seed markers to non-ptp releases
 // @match        https://passthepopcorn.me/torrents.php*
 // @icon         https://passthepopcorn.me/favicon.ico
@@ -308,7 +309,8 @@ function parsePtpRowsData(ptpRows) {
     const data = Array.from(ptpRows).map(row => {
         const group = row.getAttribute('data-releasegroup') || '';
         const rawName = row.getAttribute('data-releasename') || '';
-        const parsedName = releasenameparser(rawName) || {};
+        const normalizedName = rawName.replace(/\./g, ' ');
+        const parsedName = releasenameparser(normalizedName) || {};
         const sizeEl = row.querySelector('.nobr span[title]');
         const rawSize = sizeEl ? sizeEl.getAttribute('title') : '';
         const size = rawSize ? parseInt(rawSize.replace(/[^0-9]/g, '')) : 0;
@@ -468,8 +470,8 @@ function PCSfinder(ptpRowsData, otherRow, pnum, dnum) {
             !(ptpRow.group.toLowerCase() === otherRow.group.toLowerCase() && Math.abs(ptpRow.size - otherRow.size) <= exactToleranceBytes) && // Ensure not a TCS match
             otherRowHasDV === ptpRowHasDV && // Ensure DV matches
             otherRowHas3D === ptpRowHas3D &&
-            otherRowHasHDR === ptpRowHasHDR &&
-            ptpRowTitle === otherRowTitle; // Ensure HDR matches
+            otherRowHasHDR === ptpRowHasHDR //&&
+            //ptpRowTitle === otherRowTitle; // Ensure HDR matches
         return match;
     });
 
