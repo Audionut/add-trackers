@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.9.6-A
+// @version      3.9.7-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -24,7 +24,7 @@
         "aither": {"label": "Aither *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "aither_api": {"label": "AITHER_API_TOKEN", "type": "text", "default": ""},
         "avistaz": {"label": "Avistaz", "type": "checkbox", "default": false},
-        "ant": {"label": "ANT", "type": "checkbox", "default": false},
+        "ant": {"label": "ANT *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "ant_api": {"label": "ANT_API_TOKEN", "type": "text", "default": ""},
         "bhd": {"label": "BHD *", "type": "checkbox", "default": false, "tooltip": "Enter API and RSS key below"},
         "bhd_api": {"label": "BHD_API_TOKEN", "type": "text", "default": ""},
@@ -55,7 +55,8 @@
         "pxhd": {"label": "PxHD", "type": "checkbox", "default": false},
         "rfx": {"label": "RFX *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "rfx_api": {"label": "RFX_API_TOKEN", "type": "text", "default": ""},
-        "rtf": {"label": "RTF", "type": "checkbox", "default": false},
+        "rtf": {"label": "RTF *", "type": "checkbox", "default": false, "tooltip": "Enter API key below. Alternatively, you can enter your details at bottom of settings to automatically grab and update API key"},
+        "rtf_api": {"label": "RTF_API_TOKEN", "type": "text", "default": ""},
         "tik": {"label": "TIK *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "tik_api": {"label": "TIK_API_TOKEN", "type": "text", "default": ""},
         "tvv": {"label": "TVV *", "type": "checkbox", "default": false, "tooltip": "Enter auth key & torrent pass below"},
@@ -77,7 +78,11 @@
         "res_by_default": {"label": "Only these resolutions by default", "type": "text", "default": "", "tooltip": "Show only these resolutions by default. Comma separated, with valued values. SD, 480p, 576p, 720p, 1080p, 2160p"},
         "hideBlankLinks": {"label": "How to display download link", "type": "select", "options": ["DL", "Download", "Spaced"], "default": "DL", "tooltip": "Choose how to display the download links: DL (original method), DOWNLOAD, or Spaced. Other methods help with some stylesheets."},
         "timer": {"label": "Error timeout (seconds)", "type": "int", "default": 4, "tooltip": "Set the error timeout duration in seconds to skip slow/dead trackers"},
-        "timerDuration": {"label": "Error display duration (seconds)", "type": "int", "default": 2, "tooltip": "Set the duration for displaying errors in seconds"}
+        "timerDuration": {"label": "Error display duration (seconds)", "type": "int", "default": 2, "tooltip": "Set the duration for displaying errors in seconds"},
+        "debugging": {"label": "Enable debugging", "type": "checkbox", "default": false, "tooltip": "Enable this to help track down issues, then browse a torrent page and look in browser console"},
+        "rtf_login": {"label": "Get RTF API key", "type": "checkbox", "default": false, "tooltip": "Enter your RTF username and password below to automatically grab and update RTF API key"},
+        "rtf_user": {"label": "RTF Username", "type": "text", "default": ""},
+        "rtf_pass": {"label": "RTF Password", "type": "text", "default": ""}
     };
 
     function resetToDefaults() {
@@ -101,7 +106,8 @@
         const multi_auth = {
             "bhd": ["bhd_api", "bhd_rss"],
             "hdb": ["hdb_user", "hdb_pass"],
-            "tvv": ["tvv_auth", "tvv_torr"]
+            "tvv": ["tvv_auth", "tvv_torr"],
+            "rtf_login": ["rtf_user", "rtf_pass"]
         };
 
         if (key in multi_auth) {
@@ -169,6 +175,8 @@
                     "huno": GM_config.fields.huno.node,
                     "oe": GM_config.fields.oe.node,
                     "rfx": GM_config.fields.rfx.node,
+                    "rtf": GM_config.fields.rtf.node,
+                    "rtf_login": GM_config.fields.rtf_login.node,
                     "tik": GM_config.fields.tik.node,
                     "tvv": GM_config.fields.tvv.node
                 }
@@ -312,6 +320,10 @@
         const MTV_API_TOKEN = GM_config.get("mtv_api");
         const LST_API_TOKEN = GM_config.get("lst_api");
         const ANT_API_TOKEN = GM_config.get("ant_api");
+        const RTF_API_TOKEN = GM_config.get("rtf_api");
+        const RTF_USER = GM_config.get("rtf_user");
+        const RTF_PASS = GM_config.get("rtf_pass");
+        const RTF_LOGIN = GM_config.get("rtf_login");
 
         // We need to use XML resposne with TVV and have to define some parameters for it to work correctly.
         const TVV_AUTH_KEY = GM_config.get("tvv_auth"); // If you want to use TVV - find your authkey from a torrent download link
@@ -332,6 +344,7 @@
         let ptp_release_name = GM_config.get("ptp_name"); // true = show release name - false = original PTP release style. Ignored if Improved Tags  = true
         let improved_tags = GM_config.get("funky_tags"); // true = Change display to work fully with PTP Improved Tags from jmxd.
         const btnTimer = GM_config.get("btntimer");
+        const debug = GM_config.get("debugging");
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -443,7 +456,6 @@
                 }
             });
         }
-
         console.log("Active trackers:", trackers);
         console.log("Excluded trackers:", excludedTrackers.map(e => `${e.tracker} - ${e.reason}`));
 
@@ -665,7 +677,8 @@
               (tracker === "HDB") ||
               (tracker === "NBL") ||
               (tracker === "BTN") ||
-              (tracker === "ANT")
+              (tracker === "ANT") ||
+              (tracker === "RTF")
               ) {
                 return true;
             } else {
@@ -1635,182 +1648,6 @@
                     }
                 });
             }
-            else if (tracker === "RTF") {
-                const rows = html.querySelectorAll("div.row.pt-2.pb-2");
-
-                rows.forEach((d) => {
-
-                    let torrent_obj = {};
-                    let sizeText = "";
-                    d.querySelectorAll("div.col-4.col-xl-2.text-center").forEach((sizeElement) => {
-                        let textContent = sizeElement.textContent.trim();
-                        if (textContent.includes("TB") || textContent.includes("GB") || textContent.includes("MB")) {
-                            sizeText = textContent;
-                        }
-                    });
-
-                    let size = 0;
-                    if (sizeText.includes("TB")) {
-                        size = parseInt(parseFloat(sizeText.split("TB")[0]) * 1024 * 1024); // Convert TB to MB
-                    } else if (sizeText.includes("GB")) {
-                        size = parseInt(parseFloat(sizeText.split("GB")[0]) * 1024); // Convert GB to MB
-                    } else if (sizeText.includes("MB")) {
-                        size = parseInt(parseFloat(sizeText.split("MB")[0]));
-                    }
-
-                    torrent_obj.size = size;
-
-                    let releaseName = d.querySelector("div.col-md-8.col-xl-8 a.font-weight-bold")?.textContent.trim() || "";
-                    let res = d.querySelector("div.col-md-8.col-xl-8 a.d-inline-block")?.textContent.trim() || "";
-                    if (res) {
-                        releaseName = `${res} ${releaseName}`;
-                    }
-
-                    torrent_obj.datasetRelease = releaseName;
-                    let groupText = "";
-                    const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
-                    const badGroupsList = badGroups(); // Get the list of bad group names
-                    let matchedGroup = null;
-                    let badGroupFound = false;
-
-                    // Check for bad groups
-                    for (const badGroup of badGroupsList) {
-                        if (releaseName.includes(badGroup)) {
-                            badGroupFound = true;
-                            releaseName = releaseName.replace(badGroup, '').trim(); // Remove the bad group text
-                            groupText = ""; // Set groupText to an empty string
-                            break;
-                        }
-                    }
-
-                    if (!badGroupFound) {
-                        // Check for good groups if no bad group was found
-                        for (const group of groups) {
-                            if (releaseName.includes(group)) {
-                                matchedGroup = group;
-                                break;
-                            }
-                        }
-
-                        if (matchedGroup) {
-                            groupText = matchedGroup;
-                            if (improved_tags) {
-                                releaseName = releaseName.replace(groupText, '').trim();
-                            }
-                        } else {
-                            const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
-                            if (match) {
-                                groupText = match[1]; // Use match[1] to get the capturing group
-                                groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                                if (improved_tags) {
-                                    releaseName = releaseName.replace(`-${match[1]}`, '').trim();
-                                }
-                            }
-                        }
-                    }
-                    torrent_obj.groupId = groupText;
-
-                            let cleanTheText = releaseName;
-                            const replaceFullStops = (text) => {
-
-                                const placeholders = new Map();
-                                let tempText = text;
-
-                                const keepPatterns = [
-                                    /\b\d\.\d\b/g,
-                                    /\bDD\d\.\d\b/g,
-                                    /\bDDP\d\.\d\b/g,
-                                    /\bDD\+\d\.\d\b/g,
-                                    /\bTrueHD \d\.\d\b/g,
-                                    /\bDTS\d\.\d\b/g,
-                                    /\bAC3\d\.\d\b/g,
-                                    /\bAAC\d\.\d\b/g,
-                                    /\bOPUS\d\.\d\b/g,
-                                    /\bMP3\d\.\d\b/g,
-                                    /\bFLAC\d\.\d\b/g,
-                                    /\bLPCM\d\.\d\b/g,
-                                    /\bH\.264\b/g,
-                                    /\bH\.265\b/g,
-                                    /\bDTS-HD MA \d\.\d\b/g,
-                                    /\bDTS-HD MA \d\.\d\b/g // Ensuring variations
-                                ];
-
-                                keepPatterns.forEach((pattern, index) => {
-                                    tempText = tempText.replace(pattern, (match) => {
-                                        const placeholder = `__PLACEHOLDER${index}__`;
-                                        placeholders.set(placeholder, match);
-                                        return placeholder;
-                                    });
-                                });
-
-                                // Replace remaining full stops not followed by a digit, not preceded by a digit, or directly following a year
-                                tempText = tempText.replace(/(?<!\d)\.(?!\d)/g, ' '); // Replace full stops not preceded by a digit
-                                tempText = tempText.replace(/\.(?!(\d))/g, ' '); // Replace full stops not followed by a digit
-                                tempText = tempText.replace(/(?<=\b\d{4})\./g, ' '); // Remove full stops directly following a year
-                                tempText = tempText.replace(/\.(?=\b\d{4}\b)/g, ' '); // Remove full stops directly before a year
-
-                                placeholders.forEach((original, placeholder) => {
-                                    tempText = tempText.replace(new RegExp(placeholder, 'g'), original);
-                                });
-
-                                tempText = tempText
-                                    .replace(/DD\+/g, 'DD+ ')
-                                    .replace(/DDP/g, 'DD+ ')
-                                    .replace(/DoVi/g, 'DV')
-                                    .replace(/\(/g, '')
-                                    .replace(/\)/g, '')
-                                    .replace(/\bhdr\b/g, 'HDR')
-                                    .replace(/\bweb\b/g, 'WEB')
-                                    .replace(/\bbluray\b/gi, 'BluRay')
-                                    .replace(/\bh254\b/g, 'H.264')
-                                    .replace(/\bh265\b/g, 'H.265')
-                                    .replace(/\b\w/g, char => char.toUpperCase())
-                                    .replace(/\bX264\b/g, 'x264')
-                                    .replace(/\bX265\b/g, 'x265')
-                                    .replace(/\b - \b/g, ' ');
-
-                                return tempText;
-                            };
-
-                    torrent_obj.info_text = replaceFullStops(cleanTheText);
-                    torrent_obj.site = "RTF";
-
-                    const downloadLinkElement = d.querySelector(".download");
-                    if (downloadLinkElement) {
-                        torrent_obj.download_link = downloadLinkElement.closest("a")?.href.replace("passthepopcorn.me", "retroflix.club");
-                    }
-
-                    const torrentPageElement = d.querySelector("div.col-md-8.col-xl-8 a.font-weight-bold");
-                    if (torrentPageElement) {
-                        torrent_obj.torrent_page = torrentPageElement.href.replace("passthepopcorn.me", "retroflix.club");
-                    }
-
-                    const snatchSpan = [...d.querySelectorAll("div.col-2.col-xl-1.text-center span")]
-                        .find(span => !span.classList.contains("text-success") && !span.classList.contains("text-muted") && !span.classList.contains("text-danger"));
-                    torrent_obj.snatch = snatchSpan ? parseInt(snatchSpan.textContent.trim()) : 0;
-
-                    const seedSpan = d.querySelector("div.col-2.col-xl-1.text-center span.text-success");
-                    torrent_obj.seed = seedSpan ? parseInt(seedSpan.textContent.trim()) : 0;
-
-                    const leechSpan = d.querySelector("div.col-2.col-xl-1.text-center span.text-muted");
-                    torrent_obj.leech = leechSpan ? parseInt(leechSpan.textContent.trim()) : 0;
-
-                    torrent_obj.status = d.querySelectorAll("span.tag_seeding").length > 0 ? "seeding" : "default";
-                    torrent_obj.discount = "None";
-
-                    const timeElement = d.querySelector('div.col-4.col-xl-2.text-center span');
-                    if (timeElement) {
-                        const relativeTime = timeElement.textContent.trim();
-                        let time = toUnixTime(relativeTime);
-                        if (isNaN(time)) {
-                            return null;
-                        }
-                    torrent_obj.time = time;
-                    }
-                    torrent_objs.push(torrent_obj);
-
-                });
-            }
             torrent_objs = torrent_objs.map(e => {
                 return { ...e, "quality": get_torrent_quality(e) };
             });
@@ -1832,25 +1669,16 @@
                     return false;
                 } else if (html.querySelector('SearchError[value="100"]') !== null) {
                     console.warn("Searching TVV too soon");
+                    displayAlert("Searching TVV too soon");
                     return false;
                 } else if (html.querySelector('SearchError[value="101"]') !== null) {
-                    console.warn("Searching TVV too soon");
+                    let timeValue = html.querySelector('SearchError[value="101"]').textContent;
+                    console.warn(`RTF: ${timeValue}`);
+                    displayAlert(`RTF: ${timeValue}`);
                     return false;
                 } else if (html.querySelector('SearchError') !== null) {
                     console.warn("Some issue with TVV searching");
                     return false;
-                } else {
-                    return true;
-                }
-            }
-            else if (tracker === "RTF") {
-                const element = html.querySelector("div.col-md-12 > h4")
-                if (element) {
-                    if (element.textContent.includes("No results found")) {
-                        return false;
-                    } else {
-                        return true;
-                    }
                 } else {
                     return true;
                 }
@@ -1901,38 +1729,45 @@
                 }
             }
             else if (tracker === "PTP") {
-                if (html.querySelector("#no_results_message > div") === null) return true;
-                else return false;
+                return true;
             }
         };
 
         const post_json = async (post_query_url, tracker, postData) => {
+            // Define the headers mapping
+            const headersMapping = {
+                'ANT': {
+                    'Content-Type': 'application/json',
+                    'Accept': '*/*',
+                    'Host': 'anthelion.me'
+                },
+                'RTF': {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Authorization': GM_config.get("rtf_api"),
+                },
+                // Add more trackers and their headers as needed
+            };
 
-        // Define the headers mapping
-        const headersMapping = {
-            'ANT': {
-                'Content-Type': 'application/json',
-                'Accept': '*/*',
-                'Host': 'anthelion.me'
-            },
-            //'tracker2': {
-            //    'Content-Type': 'application/json',
-            //    'Accept': '*/*',
-            //    'Host': 'tracker2.com'
-            //},
-            // Add more trackers and their headers as needed
-        };
+            // Get the headers for the specific tracker
+            const headers = headersMapping[tracker] || {
+                'Content-Type': 'application/json'
+            };  // Default headers if tracker not found
 
-        // Get the headers for the specific tracker
-        const headers = headersMapping[tracker] || {
-            'Content-Type': 'application/json'
-        };  // Default headers if tracker not found
+            if (debug) {
+                console.log(`Headers for ${tracker}`, headers);
+            }
 
-            const response = await new Promise(async (resolve, reject) => {
+            // Assign GET here as needed.
+            const methodMapping = {
+                'RTF': 'GET',
+            };
+            const method = methodMapping[tracker] || 'POST';
 
+            const response = await new Promise((resolve, reject) => {
                 GM_xmlhttpRequest({
                     url: post_query_url,
-                    method: "POST",
+                    method: method,
                     data: JSON.stringify(postData),
                     headers: headers,
                     onload: (res) => {
@@ -1952,16 +1787,105 @@
 
             if (response.status === 200) {
                 return JSON.parse(response.responseText);
+            } else if (response.status === 401) {
+                const jsonResponse = JSON.parse(response.responseText);
+                console.log(`raw response from ${tracker}`, response.responseText);
+                if (tracker === 'RTF' && jsonResponse.error && jsonResponse.message === "Invalid API token.") {
+                    displayAlert("Updating RTF API token");
+                }
+                return jsonResponse;
             } else {
+                if (debug) {
+                    console.log(`Raw response from ${tracker}`, response.responseText);
+                }
                 console.warn(`Error: ${tracker} HTTP ${response.status} Error.`);
                 displayAlert(`${tracker} returned not ok`);
                 return null;  // Allow other processing to continue by returning null
             }
         };
 
+        const login_json = async (login_url, RTF_LOGIN, loginData) => {
+            const headers = {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            };
+
+            const response = await new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    url: login_url,
+                    method: "POST",
+                    data: JSON.stringify(loginData),
+                    headers: headers,
+                    onload: (res) => {
+                        resolve(res);
+                    },
+                    onerror: (err) => {
+                        reject(err);
+                    },
+                    onabort: (err) => {
+                        reject(err);
+                    },
+                    ontimeout: (err) => {
+                        reject(err);
+                    },
+                });
+            });
+
+            if (response.status === 201) {
+                if (debug) {
+                    console.log(`Raw response from ${RTF_LOGIN}`, response.responseText);
+                }
+                return JSON.parse(response.responseText);
+            } else {
+                if (debug) {
+                    console.log(`Raw response from ${RTF_LOGIN}`, response.responseText);
+                }
+                console.warn(`Error: ${RTF_LOGIN} HTTP ${response.status} Error.`);
+                displayAlert(`${RTF_LOGIN} returned not ok`);
+                return null;  // Allow other processing to continue by returning null
+            }
+        };
+
+        const fetch_login = async (login_url, loginData) => {
+            try {
+                const result = await login_json(login_url, 'RTF_LOGIN', loginData);
+                if (result) {
+                    if (result.token) {
+                        return result;
+                    } else {
+                        console.log("RTF response", result);
+                        console.log("RTF data", loginData);
+                        return null;
+                    }
+                } else {
+                    return null;
+                }
+            } catch (error) {
+                console.error(`Error in fetch_login for RTF_LOGIN`, error);
+                return null;
+            }
+        };
+
+        // URL and login data
+        const login_url = "https://retroflix.club/api/login";
+        const loginData = { username: RTF_USER, password: RTF_PASS };
+
+        (async () => {
+            const result = await fetch_login(login_url, loginData);
+            if (result) {
+                const token = result.token;
+                if (debug) {
+                    console.log("Login successful", result);
+                    console.log("Extracted token:", token);
+                }
+                GM_config.set("rtf_api", token);
+            } else {
+                console.log("Login failed");
+            }
+        })();
+
         const fetch_url = async (query_url, tracker) => {
             const response = await new Promise(async (resolve, reject) => {
-
                 GM_xmlhttpRequest({
                     url: query_url,
                     method: "GET",
@@ -1986,7 +1910,49 @@
                 let result;
 
                 if (contentType.includes("xml")) {
-                    result = parser.parseFromString(response.responseText, "text/xml");
+                    const xmlDoc = parser.parseFromString(response.responseText, "text/xml");
+
+                    if (debug) {
+                    // Function to convert XML item to a JavaScript object
+                    function parseItem(item) {
+                        const getTextContent = (tagName) => item.getElementsByTagName(tagName)[0]?.textContent || "";
+
+                        const attributes = Array.from(item.getElementsByTagName('torznab:attr')).reduce((acc, attr) => {
+                            acc[attr.getAttribute('name')] = attr.getAttribute('value');
+                            return acc;
+                        }, {});
+
+                        return {
+                            title: getTextContent('title'),
+                            guid: getTextContent('guid'),
+                            link: getTextContent('link'),
+                            comments: getTextContent('comments'),
+                            pubDate: getTextContent('pubDate'),
+                            size: getTextContent('size'),
+                            files: getTextContent('files'),
+                            grabs: getTextContent('grabs'),
+                            categories: Array.from(item.getElementsByTagName('category')).map(cat => cat.textContent),
+                            description: getTextContent('description'),
+                            enclosure: {
+                                url: item.getElementsByTagName('enclosure')[0]?.getAttribute('url') || "",
+                                length: item.getElementsByTagName('enclosure')[0]?.getAttribute('length') || "",
+                                type: item.getElementsByTagName('enclosure')[0]?.getAttribute('type') || ""
+                            },
+                            torznabAttributes: attributes
+                        };
+                    }
+
+                    // Extract all <item> elements and parse them
+                    const items = Array.from(xmlDoc.getElementsByTagName('item')).map(parseItem);
+
+                    if (items.length === 0) {
+                        console.log(`No resopnse XML from ${tracker}`, response.responseText);
+                    }
+
+                    console.log(`XML array from ${tracker}`, items); // Log the items array
+                    }
+
+                    result = xmlDoc; // Return the XML document for further processing
                 } else {
                     result = parser.parseFromString(response.responseText, "text/html").body;
                 }
@@ -1995,7 +1961,7 @@
             } else {
                 console.warn(`Error: HTTP ${response.status} Error.`);
                 displayAlert(`${tracker} returned not ok`);
-                return null;  // Similar to the 100 case, allow other processing to continue by returning null
+                return null;
             }
         };
 
@@ -2121,7 +2087,7 @@
                     query_url = "https://tv-vault.me/xmlsearch.php?query=get&torrent_pass=" + TVV_TORR_PASS + "&imdbid=" + imdb_id + "&xmladd-x-currentseed=1";
                 }
                 else if (tracker === "RTF") {
-                    query_url = "https://retroflix.club/browse?years%5B%5D=1890&years%5B%5D=2024&includingDead=1&promotionType=&bookmarked=&search=" + imdb_id + "&searchIn=4&termMatchKind=2&submit=";
+                    post_query_url = "https://retroflix.club/api/torrent?imdbId=" + imdb_id + "&page=1&itemsPerPage=50&sort=torrent.createdAt&direction=desc";
                 }
                 else if (tracker === "NBL") {
                     post_query_url = "https://nebulance.io/api.php";
@@ -2168,6 +2134,10 @@
                     if (use_post_instead(tracker) === true) {
                         post_json(post_query_url, tracker, postData, timeout)
                             .then(result => {
+                                if (debug) {
+                                    console.log(`URL for ${tracker}`, post_query_url);
+                                    console.log(`Post data for ${tracker}`, postData);
+                                }
                                 clearTimeout(timer); // Clear the timer on successful fetch
                                 if (result) {
                                     if (result?.results && tracker === "BHD") {
@@ -2179,6 +2149,9 @@
                                             console.log("BHD reached successfully but no results were returned");
                                             resolve([]);
                                         } else {
+                                            if (debug) {
+                                                console.log("BHD response", result.results);
+                                            }
                                             console.log("Data fetched successfully from BHD");
                                             resolve(get_post_torrent_objects(tracker, result));
                                         }
@@ -2201,6 +2174,9 @@
                                                     console.log("HDB reached successfully but no results were returned");
                                                     resolve([]);
                                                 } else {
+                                                    if (debug) {
+                                                        console.log("HDB response", result.data);
+                                                    }
                                                     console.log("Data fetched successfully from HDB");
                                                     resolve(get_post_torrent_objects(tracker, result));
                                                 }
@@ -2213,13 +2189,18 @@
                                                 console.warn("NBL API is down at the moment");
                                             }
                                         }
+                                        if (debug) {
+                                            console.log("NBL response", result.result);
+                                        }
                                         resolve(get_post_torrent_objects(tracker, result));
                                     } else if (tracker === "BTN" && result?.result) {
                                         if (result.result.results === "0") {
                                             console.log("BTN reached successfully but no results were returned");
                                             resolve([]);
-                                        }
-                                        else {
+                                        } else {
+                                            if (debug) {
+                                                console.log("BTN response", result.result);
+                                            }
                                             console.log("Data fetched successfully from BTN");
                                             resolve(get_post_torrent_objects(tracker, result));
                                         }
@@ -2227,10 +2208,23 @@
                                         if (result.item.length === 0) {
                                             console.log("ANT reached successfully but no results were returned");
                                             resolve([]);
-                                        }
-                                        else {
+                                        } else {
+                                            if (debug) {
+                                                console.log("ANT response", result.item);
+                                            }
                                             console.log("Data fetched successfully from ANT");
                                             resolve(get_post_torrent_objects(tracker, result));
+                                        }
+                                    } else if (tracker === "RTF" && Array.isArray(result)) {
+                                        if (result.length === 0) {
+                                            console.log("RTF reached successfully but no results were returned");
+                                            resolve([]);
+                                        } else {
+                                            if (debug) {
+                                                console.log("RTF response", result);
+                                            }
+                                            console.log("Data fetched successfully from RTF");
+                                            resolve(get_post_torrent_objects(tracker, result)); // Resolve the result directly
                                         }
                                     }
                                 }
@@ -2243,12 +2237,18 @@
                     } else if (use_api_instead(tracker) === false) {
                         fetch_url(query_url, tracker)
                             .then(result => {
+                                if (debug) {
+                                    console.log(`URL for ${tracker}`, query_url);
+                                }
                                 clearTimeout(timer); // Clear the timer on successful fetch
                                 let movie_exist = is_movie_exist(tracker, result);
                                 if (movie_exist === false) {
                                     console.log(`${tracker} reached successfully but no results were returned`);
                                     resolve([]);
                                 } else {
+                                    if (debug) {
+                                        console.log(`HTML data from ${tracker}`, result);
+                                    }
                                     console.log(`Data fetched successfully from ${tracker}`);
                                     resolve(get_torrent_objs(tracker, result));
                                 }
@@ -2263,12 +2263,21 @@
                             .then(response => {
                                 clearTimeout(timer); // Clear the timer on successful fetch
                                 if (!response.ok) throw new Error('Failed to fetch data');
+                                if (debug) {
+                                    console.log(`HTML response from ${tracker}`, response);
+                                }
                                 return response.json();
                             })
                             .then(data => {
                                 if (data.data.length === 0) {
+                                    if (debug) {
+                                    console.log(`Data array from ${tracker}`, data);
+                                    }
                                     console.log(`${tracker} reached successfully but no results were returned`);
                                 } else {
+                                    if (debug) {
+                                        console.log(`Data array from ${tracker}`, data.data);
+                                    }
                                     console.log(`Data fetched successfully from ${tracker}`);
                                 }
                                 resolve(get_api_torrent_objects(tracker, data));
@@ -2964,8 +2973,13 @@
                         const size = parseInt(d.size / (1024 * 1024)); // Convert size to MiB
                         const api_size = parseInt(d.size); // Original size
 
-                        const originalInfoText = d.fileName;
-                        let infoText = originalInfoText;
+                        let infoText;
+                        let filesCount = d.fileCount;
+                        if (filesCount === 1 && d.files.length > 0) {
+                          infoText = d.files[0].name;
+                        } else {
+                          infoText = d.fileName;
+                        }
 
                         const inputTime = d.pubDate;
                         let time = toUnixTime(inputTime);
@@ -3003,6 +3017,90 @@
                     }).filter(obj => obj !== null); // Filter out any null objects
                 } catch (error) {
                     console.error("An error occurred while processing ANT tracker:", error);
+                }
+            }
+            else if (tracker === "RTF") {
+                try {
+                    torrent_objs = postData.map((d) => {
+
+                        const size = parseInt(d.size / (1024 * 1024)); // Convert size to MiB
+                        const api_size = parseInt(d.size); // Original size
+
+                        const inputTime = d.created_at;
+                        let time = toUnixTime(inputTime);
+                        if (isNaN(time)) {
+                            return null;
+                        }
+
+                        let infoText = d.name;
+                            let groupText = "";
+                            const groups = goodGroups();
+                            const badGroupsList = badGroups();
+                            let matchedGroup = null;
+                            let badGroupFound = false;
+
+                            for (const badGroup of badGroupsList) {
+                                if (infoText.includes(badGroup)) {
+                                    badGroupFound = true;
+                                    infoText = infoText.replace(badGroup, '').trim();
+                                    groupText = "";
+                                    break;
+                                }
+                            }
+
+                            if (!badGroupFound) {
+                                for (const group of groups) {
+                                    if (infoText.includes(group)) {
+                                        matchedGroup = group;
+                                        break;
+                                    }
+                                }
+
+                                if (matchedGroup) {
+                                    groupText = matchedGroup;
+                                    if (improved_tags) {
+                                        infoText = infoText.replace(groupText, '').trim();
+                                    }
+                                } else {
+                                    const match = infoText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
+                                    if (match) {
+                                        groupText = match[1];
+                                        groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                        if (improved_tags) {
+                                            infoText = infoText.replace(`-${match[1]}`, '').trim();
+                                        }
+                                    }
+                                }
+                            }
+                        let download = d.url;
+
+                        const torrentObj = {
+                            api_size: api_size,
+                            datasetRelease: infoText,
+                            size: size,
+                            info_text: infoText,
+                            tracker: tracker,
+                            site: tracker,
+                            snatch: d.times_completed || 0,
+                            seed: d.seeders || 0,
+                            leech: d.leechers || 0,
+                            download_link: download || "",
+                            torrent_page: d.url || "",
+                            discount: "None",
+                            status: "default",
+                            groupId: groupText,
+                            time: time,
+                        };
+
+                        const mappedObj = {
+                            ...torrentObj,
+                            quality: get_torrent_quality(torrentObj),
+                        };
+
+                        return mappedObj;
+                    }).filter(obj => obj !== null); // Filter out any null objects
+                } catch (error) {
+                    console.error("An error occurred while processing RTF tracker:", error);
                 }
             }
             return torrent_objs;
@@ -3904,7 +4002,7 @@
 
                 cln.querySelector(".size-span").textContent = ptp_format_size;
 
-                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV", "LST", "ANT"];
+                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV", "LST", "ANT", "RTF"];
                 if (byteSizedTrackers.includes(torrent.site)) {
                     cln.querySelector(".size-span").setAttribute("title", api_sized);
                 } else {
