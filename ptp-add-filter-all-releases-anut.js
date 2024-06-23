@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.9.6-A
+// @version      3.9.7-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -78,6 +78,8 @@
         "hideBlankLinks": {"label": "How to display download link", "type": "select", "options": ["DL", "Download", "Spaced"], "default": "DL", "tooltip": "Choose how to display the download links: DL (original method), DOWNLOAD, or Spaced. Other methods help with some stylesheets."},
         "timer": {"label": "Error timeout (seconds)", "type": "int", "default": 4, "tooltip": "Set the error timeout duration in seconds to skip slow/dead trackers"},
         "timerDuration": {"label": "Error display duration (seconds)", "type": "int", "default": 2, "tooltip": "Set the duration for displaying errors in seconds"}
+        "timerDuration": {"label": "Error display duration (seconds)", "type": "int", "default": 2, "tooltip": "Set the duration for displaying errors in seconds"},
+        "debugging": {"label": "Enable debugging", "type": "checkbox", "default": false, "tooltip": "Enable this to help track down issues, then browse a torrent page and look in browser console"}
     };
 
     function resetToDefaults() {
@@ -332,6 +334,7 @@
         let ptp_release_name = GM_config.get("ptp_name"); // true = show release name - false = original PTP release style. Ignored if Improved Tags  = true
         let improved_tags = GM_config.get("funky_tags"); // true = Change display to work fully with PTP Improved Tags from jmxd.
         const btnTimer = GM_config.get("btntimer");
+        const debug = GM_config.get("debugging");
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -443,7 +446,6 @@
                 }
             });
         }
-
         console.log("Active trackers:", trackers);
         console.log("Excluded trackers:", excludedTrackers.map(e => `${e.tracker} - ${e.reason}`));
 
@@ -1901,8 +1903,7 @@
                 }
             }
             else if (tracker === "PTP") {
-                if (html.querySelector("#no_results_message > div") === null) return true;
-                else return false;
+                return true;
             }
         };
 
@@ -1953,6 +1954,9 @@
             if (response.status === 200) {
                 return JSON.parse(response.responseText);
             } else {
+                if (debug) {
+                    console.log(`Raw response from ${tracker}`, response.responseText);
+                }
                 console.warn(`Error: ${tracker} HTTP ${response.status} Error.`);
                 displayAlert(`${tracker} returned not ok`);
                 return null;  // Allow other processing to continue by returning null
@@ -1961,7 +1965,6 @@
 
         const fetch_url = async (query_url, tracker) => {
             const response = await new Promise(async (resolve, reject) => {
-
                 GM_xmlhttpRequest({
                     url: query_url,
                     method: "GET",
@@ -1986,7 +1989,49 @@
                 let result;
 
                 if (contentType.includes("xml")) {
-                    result = parser.parseFromString(response.responseText, "text/xml");
+                    const xmlDoc = parser.parseFromString(response.responseText, "text/xml");
+
+                    if (debug) {
+                    // Function to convert XML item to a JavaScript object
+                    function parseItem(item) {
+                        const getTextContent = (tagName) => item.getElementsByTagName(tagName)[0]?.textContent || "";
+
+                        const attributes = Array.from(item.getElementsByTagName('torznab:attr')).reduce((acc, attr) => {
+                            acc[attr.getAttribute('name')] = attr.getAttribute('value');
+                            return acc;
+                        }, {});
+
+                        return {
+                            title: getTextContent('title'),
+                            guid: getTextContent('guid'),
+                            link: getTextContent('link'),
+                            comments: getTextContent('comments'),
+                            pubDate: getTextContent('pubDate'),
+                            size: getTextContent('size'),
+                            files: getTextContent('files'),
+                            grabs: getTextContent('grabs'),
+                            categories: Array.from(item.getElementsByTagName('category')).map(cat => cat.textContent),
+                            description: getTextContent('description'),
+                            enclosure: {
+                                url: item.getElementsByTagName('enclosure')[0]?.getAttribute('url') || "",
+                                length: item.getElementsByTagName('enclosure')[0]?.getAttribute('length') || "",
+                                type: item.getElementsByTagName('enclosure')[0]?.getAttribute('type') || ""
+                            },
+                            torznabAttributes: attributes
+                        };
+                    }
+
+                    // Extract all <item> elements and parse them
+                    const items = Array.from(xmlDoc.getElementsByTagName('item')).map(parseItem);
+
+                    if (items.length === 0) {
+                        console.log(`No resopnse XML from ${tracker}`, response.responseText);
+                    }
+
+                    console.log(`XML array from ${tracker}`, items); // Log the items array
+                    }
+
+                    result = xmlDoc; // Return the XML document for further processing
                 } else {
                     result = parser.parseFromString(response.responseText, "text/html").body;
                 }
@@ -1995,7 +2040,7 @@
             } else {
                 console.warn(`Error: HTTP ${response.status} Error.`);
                 displayAlert(`${tracker} returned not ok`);
-                return null;  // Similar to the 100 case, allow other processing to continue by returning null
+                return null; // Similar to the 100 case, allow other processing to continue by returning null
             }
         };
 
@@ -2168,6 +2213,10 @@
                     if (use_post_instead(tracker) === true) {
                         post_json(post_query_url, tracker, postData, timeout)
                             .then(result => {
+                                if (debug) {
+                                    console.log(`URL for ${tracker}`, post_query_url);
+                                    console.log(`Post data for ${tracker}`, postData);
+                                }
                                 clearTimeout(timer); // Clear the timer on successful fetch
                                 if (result) {
                                     if (result?.results && tracker === "BHD") {
@@ -2179,6 +2228,9 @@
                                             console.log("BHD reached successfully but no results were returned");
                                             resolve([]);
                                         } else {
+                                            if (debug) {
+                                                console.log("BHD response",result.results);
+                                            }
                                             console.log("Data fetched successfully from BHD");
                                             resolve(get_post_torrent_objects(tracker, result));
                                         }
@@ -2201,6 +2253,9 @@
                                                     console.log("HDB reached successfully but no results were returned");
                                                     resolve([]);
                                                 } else {
+                                                    if (debug) {
+                                                        console.log("HDB response",result.data);
+                                                    }
                                                     console.log("Data fetched successfully from HDB");
                                                     resolve(get_post_torrent_objects(tracker, result));
                                                 }
@@ -2213,6 +2268,9 @@
                                                 console.warn("NBL API is down at the moment");
                                             }
                                         }
+                                        if (debug) {
+                                            console.log("NBL response",result.result);
+                                        }
                                         resolve(get_post_torrent_objects(tracker, result));
                                     } else if (tracker === "BTN" && result?.result) {
                                         if (result.result.results === "0") {
@@ -2220,6 +2278,9 @@
                                             resolve([]);
                                         }
                                         else {
+                                            if (debug) {
+                                                console.log("BTN response",result.result);
+                                            }
                                             console.log("Data fetched successfully from BTN");
                                             resolve(get_post_torrent_objects(tracker, result));
                                         }
@@ -2229,6 +2290,9 @@
                                             resolve([]);
                                         }
                                         else {
+                                            if (debug) {
+                                                console.log("ANT response",result.item);
+                                            }
                                             console.log("Data fetched successfully from ANT");
                                             resolve(get_post_torrent_objects(tracker, result));
                                         }
@@ -2243,12 +2307,18 @@
                     } else if (use_api_instead(tracker) === false) {
                         fetch_url(query_url, tracker)
                             .then(result => {
+                                if (debug) {
+                                    console.log(`URL for ${tracker}`, query_url);
+                                }
                                 clearTimeout(timer); // Clear the timer on successful fetch
                                 let movie_exist = is_movie_exist(tracker, result);
                                 if (movie_exist === false) {
                                     console.log(`${tracker} reached successfully but no results were returned`);
                                     resolve([]);
                                 } else {
+                                    if (debug) {
+                                        console.log(`HTML data from ${tracker}`, result);
+                                    }
                                     console.log(`Data fetched successfully from ${tracker}`);
                                     resolve(get_torrent_objs(tracker, result));
                                 }
@@ -2263,12 +2333,21 @@
                             .then(response => {
                                 clearTimeout(timer); // Clear the timer on successful fetch
                                 if (!response.ok) throw new Error('Failed to fetch data');
+                                if (debug) {
+                                    console.log(`HTML response from ${tracker}`, response);
+                                }
                                 return response.json();
                             })
                             .then(data => {
                                 if (data.data.length === 0) {
+                                    if (debug) {
+                                    console.log(`Data array from ${tracker}`, data);
+                                    }
                                     console.log(`${tracker} reached successfully but no results were returned`);
                                 } else {
+                                    if (debug) {
+                                        console.log(`Data array from ${tracker}`, data.data);
+                                    }
                                     console.log(`Data fetched successfully from ${tracker}`);
                                 }
                                 resolve(get_api_torrent_objects(tracker, data));
@@ -2964,8 +3043,13 @@
                         const size = parseInt(d.size / (1024 * 1024)); // Convert size to MiB
                         const api_size = parseInt(d.size); // Original size
 
-                        const originalInfoText = d.fileName;
-                        let infoText = originalInfoText;
+                        let infoText;
+                        let filesCount = d.fileCount;
+                        if (filesCount === 1 && d.files.length > 0) {
+                          infoText = d.files[0].name;
+                        } else {
+                          infoText = d.fileName;
+                        }
 
                         const inputTime = d.pubDate;
                         let time = toUnixTime(inputTime);
