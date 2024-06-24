@@ -1791,7 +1791,7 @@
                 const jsonResponse = JSON.parse(response.responseText);
                 console.log(`raw response from ${tracker}`, response.responseText);
                 if (tracker === 'RTF' && jsonResponse.error && jsonResponse.message === "Invalid API token.") {
-                    displayAlert("Updating RTF API token");
+                    displayAlert("Something went wrong with RTF API token");
                 }
                 return jsonResponse;
             } else {
@@ -1898,7 +1898,7 @@
                     GM_config.set("rtf_api", token);
                     localStorage.setItem("last_login_run", new Date().toString());
                 } else {
-                    console.log("Login failed");
+                    console.warn("RTF Auth Login failed");
                 }
             } else {
                 if (debug) {
