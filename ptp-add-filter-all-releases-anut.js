@@ -1556,6 +1556,9 @@
 
             const methodMapping = {
                 'RTF': 'GET',
+                'AvistaZ': 'GET',
+                'CinemaZ': 'GET',
+                'PHD': 'GET',
             };
             const method = methodMapping[tracker] || 'POST';
 
@@ -1581,6 +1584,7 @@
             });
 
             if (response.status === 200) {
+                console.log(`Raw JSON from ${tracker}`, response.responseText);
                 return JSON.parse(response.responseText);
             } else if (response.status === 401) {
                 const jsonResponse = JSON.parse(response.responseText);
