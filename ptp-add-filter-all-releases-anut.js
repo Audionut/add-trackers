@@ -1870,17 +1870,40 @@
         const login_url = "https://retroflix.club/api/login";
         const loginData = { username: RTF_USER, password: RTF_PASS };
 
-        (async () => {
-            const result = await fetch_login(login_url, loginData);
-            if (result) {
-                const token = result.token;
+        const shouldRunToday = () => {
+            const lastRun = localStorage.getItem("last_login_run");
+            if (lastRun) {
+                const lastRunDate = new Date(lastRun);
+                const today = new Date();
+                const shouldRun = today.toDateString() !== lastRunDate.toDateString();
                 if (debug) {
-                    console.log("Login successful", result);
-                    console.log("Extracted token:", token);
+                    console.log(`Last run date: ${lastRunDate.toDateString()}, Today's date: ${today.toDateString()}, Should run: ${shouldRun}`);
                 }
-                GM_config.set("rtf_api", token);
+                return shouldRun;
+            }
+            console.log("Running RTF Auth login to get updated API token.");
+            return true; // If no record of last run, it should run
+        };
+
+        (async () => {
+            if (shouldRunToday()) {
+                console.log("Running login function...");
+                const result = await fetch_login(login_url, loginData);
+                if (result) {
+                    const token = result.token;
+                    if (debug) {
+                        console.log("Login successful", result);
+                        console.log("Extracted token:", token);
+                    }
+                    GM_config.set("rtf_api", token);
+                    localStorage.setItem("last_login_run", new Date().toString());
+                } else {
+                    console.log("Login failed");
+                }
             } else {
-                console.log("Login failed");
+                if (debug) {
+                    console.log("RTF Auth login already performed today.");
+                }
             }
         })();
 
