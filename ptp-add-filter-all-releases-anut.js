@@ -2137,100 +2137,94 @@
                                 if (debug) {
                                     console.log(`URL for ${tracker}`, post_query_url);
                                     console.log(`Post data for ${tracker}`, postData);
+                                    console.log(`Result from ${tracker}`, result);
                                 }
                                 clearTimeout(timer); // Clear the timer on successful fetch
+
                                 if (result) {
-                                    if (result?.results && tracker === "BHD") {
-                                        if (result.status_code !== 1) {
-                                            console.log("BHD returned a failed status code");
-                                            resolve([]);
-                                        }
-                                        if (result.total_results === 0) {
-                                            console.log("BHD reached successfully but no results were returned");
-                                            resolve([]);
-                                        } else {
-                                            if (debug) {
-                                                console.log("BHD response", result.results);
+                                    try {
+                                        if (result?.results && tracker === "BHD") {
+                                            if (result.status_code !== 1) {
+                                                console.log("BHD returned a failed status code");
+                                                resolve([]);
                                             }
-                                            console.log("Data fetched successfully from BHD");
-                                            resolve(get_post_torrent_objects(tracker, result));
-                                        }
-                                    } else if (result?.data && tracker === "HDB") {
-                                        switch (result.status) {
-                                            case 1:
-                                                console.log("HDB: Failure (something bad happened)");
+                                            if (result.total_results === 0) {
+                                                console.log("BHD reached successfully but no results were returned");
                                                 resolve([]);
-                                                break;
-                                            case 4:
-                                                console.log("HDB: Auth data missing");
-                                                resolve([]);
-                                                break;
-                                            case 5:
-                                                console.log("HDB: Auth failed (incorrect username / password)");
-                                                resolve([]);
-                                                break;
-                                            default:
-                                                if (result.data.length === 0) {
-                                                    console.log("HDB reached successfully but no results were returned");
+                                            } else {
+                                                console.log("Data fetched successfully from BHD");
+                                                resolve(get_post_torrent_objects(tracker, result));
+                                            }
+                                        } else if (result?.data && tracker === "HDB") {
+                                            switch (result.status) {
+                                                case 1:
+                                                    console.log("HDB: Failure (something bad happened)");
                                                     resolve([]);
-                                                } else {
-                                                    if (debug) {
-                                                        console.log("HDB response", result.data);
+                                                    break;
+                                                case 4:
+                                                    console.log("HDB: Auth data missing");
+                                                    resolve([]);
+                                                    break;
+                                                case 5:
+                                                    console.log("HDB: Auth failed (incorrect username / password)");
+                                                    resolve([]);
+                                                    break;
+                                                default:
+                                                    if (result.data.length === 0) {
+                                                        console.log("HDB reached successfully but no results were returned");
+                                                        resolve([]);
+                                                    } else {
+                                                        console.log("Data fetched successfully from HDB");
+                                                        resolve(get_post_torrent_objects(tracker, result));
                                                     }
-                                                    console.log("Data fetched successfully from HDB");
-                                                    resolve(get_post_torrent_objects(tracker, result));
-                                                }
-                                        }
-                                    } else if (result.result && tracker === "NBL") {
-                                        if (result) {
-                                            const extractedText = result.result;
-                                            if (extractedText.includes("NBL API is down at the moment")) {
-                                                displayAlert('NBL API is down at the moment');
-                                                console.warn("NBL API is down at the moment");
                                             }
-                                        }
-                                        if (debug) {
-                                            console.log("NBL response", result.result);
-                                        }
-                                        resolve(get_post_torrent_objects(tracker, result));
-                                    } else if (tracker === "BTN" && result?.result) {
-                                        if (result.result.results === "0") {
-                                            console.log("BTN reached successfully but no results were returned");
-                                            resolve([]);
+                                        } else if (result?.result && tracker === "NBL") {
+                                            if (result.result.count === 0) {  // Fixed from result.result.item to result.result.items
+                                                console.log("NBL reached successfully but no results were returned");
+                                                resolve([]);
+                                            } else {
+                                                console.log("Data fetched successfully from NBL");
+                                                resolve(get_post_torrent_objects(tracker, result));
+                                            }
+                                        } else if (tracker === "BTN" && result?.result) {
+                                            if (result.result.results === "0") {
+                                                console.log("BTN reached successfully but no results were returned");
+                                                resolve([]);
+                                            } else {
+                                                console.log("Data fetched successfully from BTN");
+                                                resolve(get_post_torrent_objects(tracker, result));
+                                            }
+                                        } else if (result?.item && tracker === "ANT") {
+                                            if (result.item.length === 0) {
+                                                console.log("ANT reached successfully but no results were returned");
+                                                resolve([]);
+                                            } else {
+                                                console.log("Data fetched successfully from ANT");
+                                                resolve(get_post_torrent_objects(tracker, result));
+                                            }
+                                        } else if (tracker === "RTF" && Array.isArray(result)) {
+                                            if (result.length === 0) {
+                                                console.log("RTF reached successfully but no results were returned");
+                                                resolve([]);
+                                            } else {
+                                                console.log("Data fetched successfully from RTF");
+                                                resolve(get_post_torrent_objects(tracker, result)); // Resolve the result directly
+                                            }
                                         } else {
-                                            if (debug) {
-                                                console.log("BTN response", result.result);
-                                            }
-                                            console.log("Data fetched successfully from BTN");
-                                            resolve(get_post_torrent_objects(tracker, result));
-                                        }
-                                    } else if (result?.item && tracker === "ANT") {
-                                        if (result.item.length === 0) {
-                                            console.log("ANT reached successfully but no results were returned");
+                                            console.warn(`Unhandled tracker or response format for ${tracker}`);
                                             resolve([]);
-                                        } else {
-                                            if (debug) {
-                                                console.log("ANT response", result.item);
-                                            }
-                                            console.log("Data fetched successfully from ANT");
-                                            resolve(get_post_torrent_objects(tracker, result));
                                         }
-                                    } else if (tracker === "RTF" && Array.isArray(result)) {
-                                        if (result.length === 0) {
-                                            console.log("RTF reached successfully but no results were returned");
-                                            resolve([]);
-                                        } else {
-                                            if (debug) {
-                                                console.log("RTF response", result);
-                                            }
-                                            console.log("Data fetched successfully from RTF");
-                                            resolve(get_post_torrent_objects(tracker, result)); // Resolve the result directly
-                                        }
+                                    } catch (processingError) {
+                                        console.error(`Error processing result from ${tracker}:`, processingError);
+                                        resolve([]);
                                     }
+                                } else {
+                                    console.warn(`No result returned from ${tracker}`);
+                                    resolve([]);
                                 }
                             })
                             .catch(error => {
-                                console.warn(`Error fetching data from ${tracker}`);
+                                console.warn(`Error fetching data from ${tracker}:`, error);
                                 //displayAlert(`Error fetching data from ${tracker}`);
                                 resolve([]);
                             });
