@@ -23,7 +23,10 @@
     const fields = {
         "aither": {"label": "Aither *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "aither_api": {"label": "AITHER_API_TOKEN", "type": "text", "default": ""},
-        "avistaz": {"label": "Avistaz", "type": "checkbox", "default": false},
+        "avistaz": {"label": "Avistaz *", "type": "checkbox", "default": false, "tooltip": "Enter needed details below. PID can be found on your profile page"},
+        "avistaz_user": {"label": "Avistaz Username", "type": "text", "default": ""},
+        "avistaz_pass": {"label": "Avistaz Password", "type": "text", "default": ""},
+        "avistaz_pid": {"label": "Avistaz PID", "type": "text", "default": ""},
         "ant": {"label": "ANT *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "ant_api": {"label": "ANT_API_TOKEN", "type": "text", "default": ""},
         "bhd": {"label": "BHD *", "type": "checkbox", "default": false, "tooltip": "Enter API and RSS key below"},
@@ -34,7 +37,10 @@
         "btn": {"label": "BTN *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "btn_api": {"label": "BTN_API_TOKEN", "type": "text", "default": ""},
         "cg": {"label": "CG", "type": "checkbox", "default": false},
-        "cinemaz": {"label": "CinemaZ", "type": "checkbox", "default": false},
+        "cinemaz": {"label": "CinemaZ *", "type": "checkbox", "default": false, "tooltip": "Enter needed details below. PID can be found on your profile page"},
+        "cinemaz_user": {"label": "CinemaZ Username", "type": "text", "default": ""},
+        "cinemaz_pass": {"label": "CinemaZ Password", "type": "text", "default": ""},
+        "cinemaz_pid": {"label": "CinemaZ PID", "type": "text", "default": ""},
         "fl": {"label": "FL", "type": "checkbox", "default": false},
         "hdb": {"label": "HDB *", "type": "checkbox", "default": false, "tooltip": "Enter username and passkey below"},
         "hdb_user": {"label": "HDB_USER_NAME *", "type": "text", "default": "", "tooltip": "Requires 2fa enabled at HDB"},
@@ -50,7 +56,10 @@
         "nbl_api": {"label": "NBL_API_TOKEN", "type": "text", "default": ""},
         "oe": {"label": "OE *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "oe_api": {"label": "OE_API_TOKEN", "type": "text", "default": ""},
-        "phd": {"label": "PHD", "type": "checkbox", "default": false},
+        "phd": {"label": "PHD *", "type": "checkbox", "default": false, "tooltip": "Enter needed details below. PID can be found on your profile page"},
+        "phd_user": {"label": "PHD Username", "type": "text", "default": ""},
+        "phd_pass": {"label": "PHD Password", "type": "text", "default": ""},
+        "phd_pid": {"label": "PHD PID", "type": "text", "default": ""},
         "ptp": {"label": "PTP", "type": "checkbox", "default": true},
         "pxhd": {"label": "PxHD", "type": "checkbox", "default": false},
         "rfx": {"label": "RFX *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
@@ -80,6 +89,7 @@
         "timer": {"label": "Error timeout (seconds)", "type": "int", "default": 4, "tooltip": "Set the error timeout duration in seconds to skip slow/dead trackers"},
         "timerDuration": {"label": "Error display duration (seconds)", "type": "int", "default": 2, "tooltip": "Set the duration for displaying errors in seconds"},
         "debugging": {"label": "Enable debugging", "type": "checkbox", "default": false, "tooltip": "Enable this to help track down issues, then browse a torrent page and look in browser console"},
+        "runAuth": {"label": "Skip daily auth check and run now", "type": "checkbox", "default": false, "tooltip": "For the sites that require auth login to return api token, set this to skip the daily check and run immediately on refresh."},
         "rtf_login": {"label": "Get RTF API key", "type": "checkbox", "default": false, "tooltip": "Enter your RTF username and password below to automatically grab and update RTF API key"},
         "rtf_user": {"label": "RTF Username", "type": "text", "default": ""},
         "rtf_pass": {"label": "RTF Password", "type": "text", "default": ""}
@@ -107,7 +117,10 @@
             "bhd": ["bhd_api", "bhd_rss"],
             "hdb": ["hdb_user", "hdb_pass"],
             "tvv": ["tvv_auth", "tvv_torr"],
-            "rtf_login": ["rtf_user", "rtf_pass"]
+            "rtf_login": ["rtf_user", "rtf_pass"],
+            "avistaz": ["avistaz_user", "avistaz_pass", "avistaz_pid"],
+            "cinemaz": ["cinemaz_user", "cinemaz_pass", "cinemaz_pid"],
+            "phd": ["phd_user", "phd_pass", "phd_pid"]
         };
 
         if (key in multi_auth) {
@@ -124,7 +137,6 @@
             console.error(`Field ${fieldName} does not exist in GM_config.fields`);
         }
     }
-
     GM_config.init({
         "id": "PTPAddReleases",
         "title": "<div>Add releases from other trackers<br><small style='font-weight:normal;'>Select trackers you have access too</small></div>",
@@ -165,15 +177,18 @@
                 const api_based_nodes = {
                     "aither": GM_config.fields.aither.node,
                     "ant": GM_config.fields.ant.node,
+                    "avistaz": GM_config.fields.avistaz.node,
                     "bhd": GM_config.fields.bhd.node,
                     "blu": GM_config.fields.blu.node,
                     "btn": GM_config.fields.btn.node,
+                    "cinemaz": GM_config.fields.cinemaz.node,
                     "hdb": GM_config.fields.hdb.node,
                     "lst": GM_config.fields.lst.node,
                     "mtv": GM_config.fields.mtv.node,
                     "nbl": GM_config.fields.nbl.node,
                     "huno": GM_config.fields.huno.node,
                     "oe": GM_config.fields.oe.node,
+                    "phd": GM_config.fields.phd.node,
                     "rfx": GM_config.fields.rfx.node,
                     "rtf": GM_config.fields.rtf.node,
                     "rtf_login": GM_config.fields.rtf_login.node,
@@ -190,7 +205,7 @@
                 }
             },
             "save": function () {
-                alert("Saved Successfully!");
+                //alert("Saved Successfully!");
                 console.log("Settings saved");
             },
             "close": function () {
@@ -324,6 +339,15 @@
         const RTF_USER = GM_config.get("rtf_user");
         const RTF_PASS = GM_config.get("rtf_pass");
         const RTF_LOGIN = GM_config.get("rtf_login");
+        const AVISTAZ_USER = GM_config.get("avistaz_user");
+        const AVISTAZ_PASS = GM_config.get("avistaz_pass");
+        const AVISTAZ_PID = GM_config.get("avistaz_pid");
+        const CINEMAZ_USER = GM_config.get("cinemaz_user");
+        const CINEMAZ_PASS = GM_config.get("cinemaz_pass");
+        const CINEMAZ_PID = GM_config.get("cinemaz_pid");
+        const PHD_USER = GM_config.get("phd_user");
+        const PHD_PASS = GM_config.get("phd_pass");
+        const PHD_PID = GM_config.get("phd_pid");
 
         // We need to use XML resposne with TVV and have to define some parameters for it to work correctly.
         const TVV_AUTH_KEY = GM_config.get("tvv_auth"); // If you want to use TVV - find your authkey from a torrent download link
@@ -345,6 +369,7 @@
         let improved_tags = GM_config.get("funky_tags"); // true = Change display to work fully with PTP Improved Tags from jmxd.
         const btnTimer = GM_config.get("btntimer");
         const debug = GM_config.get("debugging");
+        const run_auth = GM_config.get("runAuth");
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -605,26 +630,6 @@
                 else if ([...div.querySelectorAll("img")].find(e => e.alt === "30% bonus")) return "30% Bonus";
                 else if ([...div.querySelectorAll("img")].find(e => e.alt === "40% bonus")) return "40% Bonus";
             }
-            else if (["AvistaZ", "CinemaZ", "PHD"].includes(tracker)) {
-                const icons = div.querySelectorAll(".torrent-file > div > i");
-                if (icons.length > 0) {
-                    let discount = "";
-                    let text;
-                    for (let [i, icon] of icons.entries()) {
-                        if (icon.title === "Free Download") {
-                            text = "Freeleech";
-                        } else if (icon.title === "Half Download") {
-                            text = "50% Freeleech";
-                        } else if (icon.title === "Double upload") {
-                            text = "Double Upload";
-                        } else {
-                            text = icon.title;
-                        }
-                        discount += text + (icons.length > 0 && i < icons.length - 1 ? " / " : "");
-                    }
-                    return text;
-                }
-            }
             return "None";
         };
 
@@ -678,7 +683,10 @@
               (tracker === "NBL") ||
               (tracker === "BTN") ||
               (tracker === "ANT") ||
-              (tracker === "RTF")
+              (tracker === "RTF") ||
+              (tracker === "Avistaz") ||
+              (tracker === "CinemaZ") ||
+              (tracker === "PHD")
               ) {
                 return true;
             } else {
@@ -1322,240 +1330,6 @@
                     }
                 });
             }
-            else if (tracker === "AvistaZ") {
-                // requires another request to get to the torrents
-                const groupUrl = html.querySelector("h3.movie-title > a").href;
-                const groupId = groupUrl.match(/\/movie\/(\d+)-/)[1];
-                const url = `https://avistaz.to/movies/torrents/${groupId}?quality=all`;
-                const result = await fetch_url(url);
-
-                result.querySelectorAll("tbody > tr").forEach(d => {
-                    let torrent_obj = {};
-                    let size = d.querySelector("td:nth-child(5)").textContent.trim().replace(",", "");
-
-                    if (size.includes("TB")) {
-                        size = parseInt(parseFloat(size.split("TB")[0]) * 1024 * 1024); // Convert TiB to MiB
-                    } else if (size.includes("GB")) {
-                        size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // Convert GB to MiB
-                    } else if (size.includes("MB")) {
-                        size = parseInt(parseFloat(size.split("MB")[0]));
-                    }
-                    else size = 1;
-
-                    const torrentLink = d.querySelector(".torrent-file > div > a");
-                    torrent_obj.size = size;
-                    let releaseName = torrentLink.textContent.trim();
-                    torrent_obj.datasetRelease = releaseName;
-                    let groupText = "";
-                    const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
-                    const badGroupsList = badGroups(); // Get the list of bad group names
-                    let matchedGroup = null;
-                    let badGroupFound = false;
-
-                    // Check for bad groups
-                    for (const badGroup of badGroupsList) {
-                        if (releaseName.includes(badGroup)) {
-                            badGroupFound = true;
-                            releaseName = releaseName.replace(badGroup, '').trim(); // Remove the bad group text
-                            groupText = ""; // Set groupText to an empty string
-                            break;
-                        }
-                    }
-
-                    if (!badGroupFound) {
-                        // Check for good groups if no bad group was found
-                        for (const group of groups) {
-                            if (releaseName.includes(group)) {
-                                matchedGroup = group;
-                                break;
-                            }
-                        }
-
-                        if (matchedGroup) {
-                            groupText = matchedGroup;
-                            if (improved_tags) {
-                                releaseName = releaseName.replace(groupText, '').trim();
-                            }
-                        } else {
-                            const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
-                            if (match) {
-                                groupText = match[1]; // Use match[1] to get the capturing group
-                                groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                                if (improved_tags) {
-                                    releaseName = releaseName.replace(`-${match[1]}`, '').trim();
-                                }
-                            }
-                        }
-                    }
-                    torrent_obj.info_text = releaseName;
-                    torrent_obj.groupId = groupText;
-                    torrent_obj.site = "AvistaZ";
-                    torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(8)").textContent);
-                    torrent_obj.seed = parseInt(d.querySelector("td:nth-child(6)").textContent);
-                    torrent_obj.leech = parseInt(d.querySelector("td:nth-child(7)").textContent);
-                    torrent_obj.download_link = d.querySelector(".torrent-download-icon").href.replace("passthepopcorn.me", "avistaz.to");
-                    torrent_obj.torrent_page = torrentLink.href.replace("passthepopcorn.me", "avistaz.to");
-                    torrent_obj.status = d.className.includes("success") ? "seeding" : "default";
-                    torrent_obj.discount = get_discount_text(d, tracker);
-                    torrent_objs.push(torrent_obj);
-                });
-            }
-            else if (tracker === "CinemaZ") {
-                // requires another request to get to the torrents
-                const groupUrl = html.querySelector("h3.movie-title > a").href;
-                const groupId = groupUrl.match(/\/movie\/(\d+)-/)[1];
-                const url = `https://cinemaz.to/movies/torrents/${groupId}?quality=all`;
-                const result = await fetch_url(url);
-
-                result.querySelectorAll("tbody > tr").forEach(d => {
-                    let torrent_obj = {};
-                    let size = d.querySelector("td:nth-child(5)").textContent.trim().replace(",", "");
-
-                    if (size.includes("TB")) {
-                        size = parseInt(parseFloat(size.split("TB")[0]) * 1024 * 1024); // Convert TiB to MiB
-                    } else if (size.includes("GB")) {
-                        size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // Convert GB to MiB
-                    } else if (size.includes("MB")) {
-                        size = parseInt(parseFloat(size.split("MB")[0]));
-                    }
-                    else size = 1;
-
-                    const torrentLink = d.querySelector(".torrent-file > div > a");
-                    torrent_obj.size = size;
-                    let releaseName = torrentLink.textContent.trim();
-                    torrent_obj.datasetRelease = releaseName;
-                    let groupText = "";
-                    const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
-                    const badGroupsList = badGroups(); // Get the list of bad group names
-                    let matchedGroup = null;
-                    let badGroupFound = false;
-
-                    // Check for bad groups
-                    for (const badGroup of badGroupsList) {
-                        if (releaseName.includes(badGroup)) {
-                            badGroupFound = true;
-                            releaseName = releaseName.replace(badGroup, '').trim(); // Remove the bad group text
-                            groupText = ""; // Set groupText to an empty string
-                            break;
-                        }
-                    }
-
-                    if (!badGroupFound) {
-                        // Check for good groups if no bad group was found
-                        for (const group of groups) {
-                            if (releaseName.includes(group)) {
-                                matchedGroup = group;
-                                break;
-                            }
-                        }
-
-                        if (matchedGroup) {
-                            groupText = matchedGroup;
-                            if (improved_tags) {
-                                releaseName = releaseName.replace(groupText, '').trim();
-                            }
-                        } else {
-                            const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
-                            if (match) {
-                                groupText = match[1]; // Use match[1] to get the capturing group
-                                groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                                if (improved_tags) {
-                                    releaseName = releaseName.replace(`-${match[1]}`, '').trim();
-                                }
-                            }
-                        }
-                    }
-                    torrent_obj.info_text = releaseName;
-                    torrent_obj.groupId = groupText;
-                    torrent_obj.site = "CinemaZ";
-                    torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(8)").textContent);
-                    torrent_obj.seed = parseInt(d.querySelector("td:nth-child(6)").textContent);
-                    torrent_obj.leech = parseInt(d.querySelector("td:nth-child(7)").textContent);
-                    torrent_obj.download_link = d.querySelector(".torrent-download-icon").href.replace("passthepopcorn.me", "cinemaz.to");
-                    torrent_obj.torrent_page = torrentLink.href.replace("passthepopcorn.me", "cinemaz.to");
-                    torrent_obj.status = d.className.includes("success") ? "seeding" : "default";
-                    torrent_obj.discount = get_discount_text(d, tracker);
-                    torrent_objs.push(torrent_obj);
-                });
-            }
-            else if (tracker === "PHD") {
-                // requires another request to get to the torrents
-                const groupUrl = html.querySelector("h3.movie-title > a").href;
-                const groupId = groupUrl.match(/\/movie\/(\d+)-/)[1];
-                const url = `https://privatehd.to/movies/torrents/${groupId}?quality=all`;
-                const result = await fetch_url(url);
-
-                result.querySelectorAll("tbody > tr").forEach(d => {
-                    let torrent_obj = {};
-                    let size = d.querySelector("td:nth-child(5)").textContent.trim().replace(",", "");
-
-                    if (size.includes("TB")) {
-                        size = parseInt(parseFloat(size.split("TB")[0]) * 1024 * 1024); // Convert TiB to MiB
-                    } else if (size.includes("GB")) {
-                        size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // Convert GB to MiB
-                    } else if (size.includes("MB")) {
-                        size = parseInt(parseFloat(size.split("MB")[0]));
-                    }
-                    else size = 1;
-
-                    const torrentLink = d.querySelector(".torrent-file > div > a");
-                    torrent_obj.size = size;
-                    let releaseName = torrentLink.textContent.trim();
-                    torrent_obj.datasetRelease = releaseName;
-                    let groupText = "";
-                    const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
-                    const badGroupsList = badGroups(); // Get the list of bad group names
-                    let matchedGroup = null;
-                    let badGroupFound = false;
-
-                    // Check for bad groups
-                    for (const badGroup of badGroupsList) {
-                        if (releaseName.includes(badGroup)) {
-                            badGroupFound = true;
-                            releaseName = releaseName.replace(badGroup, '').trim(); // Remove the bad group text
-                            groupText = ""; // Set groupText to an empty string
-                            break;
-                        }
-                    }
-
-                    if (!badGroupFound) {
-                        // Check for good groups if no bad group was found
-                        for (const group of groups) {
-                            if (releaseName.includes(group)) {
-                                matchedGroup = group;
-                                break;
-                            }
-                        }
-
-                        if (matchedGroup) {
-                            groupText = matchedGroup;
-                            if (improved_tags) {
-                                releaseName = releaseName.replace(groupText, '').trim();
-                            }
-                        } else {
-                            const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
-                            if (match) {
-                                groupText = match[1]; // Use match[1] to get the capturing group
-                                groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                                if (improved_tags) {
-                                    releaseName = releaseName.replace(`-${match[1]}`, '').trim();
-                                }
-                            }
-                        }
-                    }
-                    torrent_obj.info_text = releaseName;
-                    torrent_obj.groupId = groupText;
-                    torrent_obj.site = "PHD";
-                    torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(8)").textContent);
-                    torrent_obj.seed = parseInt(d.querySelector("td:nth-child(6)").textContent);
-                    torrent_obj.leech = parseInt(d.querySelector("td:nth-child(7)").textContent);
-                    torrent_obj.download_link = d.querySelector(".torrent-download-icon").href.replace("passthepopcorn.me", "privatehd.to");
-                    torrent_obj.torrent_page = torrentLink.href.replace("passthepopcorn.me", "privatehd.to");
-                    torrent_obj.status = d.className.includes("success") ? "seeding" : "default";
-                    torrent_obj.discount = get_discount_text(d, tracker);
-                    torrent_objs.push(torrent_obj);
-                });
-            }
             else if (tracker === "PxHD") {
                 let currentEdition = null;
 
@@ -1691,10 +1465,6 @@
                 if (html.querySelector(".torrent-search--list__no-result") === null) return true;
                 else return false;
             }
-            else if (["AvistaZ", "CinemaZ", "PHD"].includes(tracker)) {
-                if (html.querySelector("#content-area > div.block > p") === null) return true;
-                else return false;
-            }
             else if (tracker === "FL") {
                 if (html.querySelectorAll(".torrentrow").length === 0) return false;
                 else return true;
@@ -1733,8 +1503,20 @@
             }
         };
 
+        const isTrackerSelected = (tracker) => {
+            return GM_config.get(tracker.toLowerCase());
+        };
+
+        const getTokenFromLocalStorage = (key) => {
+            const tokenData = localStorage.getItem(key);
+            if (tokenData) {
+                const { token } = JSON.parse(tokenData);
+                return token;
+            }
+            return null;
+        };
+
         const post_json = async (post_query_url, tracker, postData) => {
-            // Define the headers mapping
             const headersMapping = {
                 'ANT': {
                     'Content-Type': 'application/json',
@@ -1746,19 +1528,32 @@
                     'Accept': 'application/json',
                     'Authorization': GM_config.get("rtf_api"),
                 },
+                'AvistaZ': {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Authorization': `Bearer ${getTokenFromLocalStorage("avistaz_api")}`,
+                },
+                'CinemaZ': {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Authorization': `Bearer ${getTokenFromLocalStorage("cinemaz_api")}`,
+                },
+                'PHD': {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Authorization': `Bearer ${getTokenFromLocalStorage("phd_api")}`,
+                },
                 // Add more trackers and their headers as needed
             };
 
-            // Get the headers for the specific tracker
             const headers = headersMapping[tracker] || {
                 'Content-Type': 'application/json'
-            };  // Default headers if tracker not found
+            };
 
             if (debug) {
                 console.log(`Headers for ${tracker}`, headers);
             }
 
-            // Assign GET here as needed.
             const methodMapping = {
                 'RTF': 'GET',
             };
@@ -1800,11 +1595,11 @@
                 }
                 console.warn(`Error: ${tracker} HTTP ${response.status} Error.`);
                 displayAlert(`${tracker} returned not ok`);
-                return null;  // Allow other processing to continue by returning null
+                return null;
             }
         };
 
-        const login_json = async (login_url, RTF_LOGIN, loginData) => {
+        const login_json = async (login_url, tracker, loginData) => {
             const headers = {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json'
@@ -1831,80 +1626,173 @@
                 });
             });
 
-            if (response.status === 201) {
+            if (response.status === 201 || response.status === 200) {
                 if (debug) {
-                    console.log(`Raw response from ${RTF_LOGIN}`, response.responseText);
+                    console.log(`Raw response from ${tracker}`, response.responseText);
                 }
                 return JSON.parse(response.responseText);
             } else {
                 if (debug) {
-                    console.log(`Raw response from ${RTF_LOGIN}`, response.responseText);
+                    console.log(`Raw response from ${tracker}`, response.responseText);
                 }
-                console.warn(`Error: ${RTF_LOGIN} HTTP ${response.status} Error.`);
-                displayAlert(`${RTF_LOGIN} returned not ok`);
-                return null;  // Allow other processing to continue by returning null
-            }
-        };
-
-        const fetch_login = async (login_url, loginData) => {
-            try {
-                const result = await login_json(login_url, 'RTF_LOGIN', loginData);
-                if (result) {
-                    if (result.token) {
-                        return result;
-                    } else {
-                        console.log("RTF response", result);
-                        console.log("RTF data", loginData);
-                        return null;
-                    }
-                } else {
-                    return null;
-                }
-            } catch (error) {
-                console.error(`Error in fetch_login for RTF_LOGIN`, error);
+                console.warn(`Error: ${tracker} HTTP ${response.status} Error.`);
+                displayAlert(`${tracker} returned not ok`);
                 return null;
             }
         };
 
-        // URL and login data
-        const login_url = "https://retroflix.club/api/login";
-        const loginData = { username: RTF_USER, password: RTF_PASS };
+        const fetch_login = async (login_url, tracker, loginData) => {
+            try {
+                const result = await login_json(login_url, tracker, loginData);
+                if (result && result.token) {
+                    if (tracker === 'RTF') {
+                        GM_config.set("rtf_api", result.token);
+                        GM_config.save();
+                    } else {
+                        localStorage.setItem(`${tracker}_token`, result.token);
+                    }
+                    return result;
+                } else {
+                    console.log(`${tracker} response`, result);
+                    console.log(`${tracker} data`, loginData);
+                    return null;
+                }
+            } catch (error) {
+                console.error(`Error in fetch_login for ${tracker}`, error);
+                return null;
+            }
+        };
 
-        const shouldRunToday = () => {
-            const lastRun = localStorage.getItem("last_login_run");
+        const avistaz_login = async () => {
+            const login_url = "https://avistaz.to/api/v1/jackett/auth";
+            const loginData = {
+                username: AVISTAZ_USER,
+                password: AVISTAZ_PASS,
+                pid: AVISTAZ_PID
+            };
+            return await fetch_login(login_url, 'AVISTAZ', loginData);
+        };
+
+        const cinemaz_login = async () => {
+            const login_url = "https://cinemaz.to/api/v1/jackett/auth";
+            const loginData = {
+                username: CINEMAZ_USER,
+                password: CINEMAZ_PASS,
+                pid: CINEMAZ_PID
+            };
+            return await fetch_login(login_url, 'CINEMAZ', loginData);
+        };
+
+        const privateHD_login = async () => {
+            const login_url = "https://privatehd.to/api/v1/jackett/auth";
+            const loginData = {
+                username: PHD_USER,
+                password: PHD_PASS,
+                pid: PHD_PID
+            };
+            return await fetch_login(login_url, 'PRIVATEHD', loginData);
+        };
+
+        const shouldRunToday = (tracker, override) => {
+            if (override) return true;
+            const lastRun = localStorage.getItem(`${tracker}_last_login_run`);
             if (lastRun) {
                 const lastRunDate = new Date(lastRun);
                 const today = new Date();
                 const shouldRun = today.toDateString() !== lastRunDate.toDateString();
                 if (debug) {
-                    console.log(`Last run date: ${lastRunDate.toDateString()}, Today's date: ${today.toDateString()}, Should run: ${shouldRun}`);
+                    console.log(`Last run date for ${tracker}: ${lastRunDate.toDateString()}, Today's date: ${today.toDateString()}, Should run: ${shouldRun}`);
                 }
                 return shouldRun;
             }
-            console.log("Running RTF Auth login to get updated API token.");
-            return true; // If no record of last run, it should run
+            console.log(`Running ${tracker} Auth login to get updated API token.`);
+            return true;
         };
 
-        (async () => {
-            if (shouldRunToday()) {
-                console.log("Running login function...");
-                const result = await fetch_login(login_url, loginData);
+        (async (override = run_auth) => {
+            if (isTrackerSelected('rtf') && shouldRunToday('RTF', override)) {
+                console.log("Running RTF login function...");
+                const login_url = "https://retroflix.club/api/login";
+                const loginData = { username: RTF_USER, password: RTF_PASS };
+                const result = await fetch_login(login_url, 'RTF', loginData);
                 if (result) {
                     const token = result.token;
                     if (debug) {
-                        console.log("Login successful", result);
+                        console.log("RTF Login successful", result);
                         console.log("Extracted token:", token);
                     }
-                    GM_config.set("rtf_api", token);
-                    localStorage.setItem("last_login_run", new Date().toString());
+                    //GM_config.set("rtf_api", token);
+                    //GM_config.save();
+                    localStorage.setItem("RTF_last_login_run", new Date().toString());
                 } else {
                     console.warn("RTF Auth Login failed");
                 }
             } else {
                 if (debug) {
-                    console.log("RTF Auth login already performed today.");
+                    console.log("RTF Auth login already performed today or not selected.");
                 }
             }
+
+            if (isTrackerSelected('avistaz') && shouldRunToday('AVISTAZ', override)) {
+                console.log("Running AvistaZ login function...");
+                const result = await avistaz_login();
+                if (result) {
+                    const token = result.token;
+                    if (debug) {
+                        console.log("AvistaZ Login successful", result);
+                        console.log("Extracted token:", token);
+                    }
+                    localStorage.setItem("AVISTAZ_token", token);
+                    localStorage.setItem("AVISTAZ_last_login_run", new Date().toString());
+                } else {
+                    console.warn("AvistaZ Auth Login failed");
+                }
+            } else {
+                if (debug) {
+                    console.log("AvistaZ Auth login already performed today or not selected.");
+                }
+            }
+
+            if (isTrackerSelected('cinemaz') && shouldRunToday('CINEMAZ', override)) {
+                console.log("Running CinemaZ login function...");
+                const result = await cinemaz_login();
+                if (result) {
+                    const token = result.token;
+                    if (debug) {
+                        console.log("CinemaZ Login successful", result);
+                        console.log("Extracted token:", token);
+                    }
+                    localStorage.setItem("CINEMAZ_token", token);
+                    localStorage.setItem("CINEMAZ_last_login_run", new Date().toString());
+                } else {
+                    console.warn("CinemaZ Auth Login failed");
+                }
+            } else {
+                if (debug) {
+                    console.log("CinemaZ Auth login already performed today or not selected.");
+                }
+            }
+
+            if (isTrackerSelected('phd') && shouldRunToday('PRIVATEHD', override)) {
+                console.log("Running PrivateHD login function...");
+                const result = await privateHD_login();
+                if (result) {
+                    const token = result.token;
+                    if (debug) {
+                        console.log("PrivateHD Login successful", result);
+                        console.log("Extracted token:", token);
+                    }
+                    localStorage.setItem("PRIVATEHD_token", token);
+                    localStorage.setItem("PRIVATEHD_last_login_run", new Date().toString());
+                } else {
+                    console.warn("PrivateHD Auth Login failed");
+                }
+            } else {
+                if (debug) {
+                    console.log("PrivateHD Auth login already performed today or not selected.");
+                }
+            }
+
         })();
 
         const fetch_url = async (query_url, tracker) => {
@@ -2130,13 +2018,13 @@
                     };
                 }
                 else if (tracker === "AvistaZ") {
-                    query_url = "https://avistaz.to/movies?search=&imdb=" + imdb_id + "&view=lists";
+                    post_query_url = "https://avistaz.to/api/v1/jackett/torrents?imdb=" + imdb_id;
                 }
                 else if (tracker === "CinemaZ") {
-                    query_url = "https://cinemaz.to/movies?search=&imdb=" + imdb_id + "&view=lists";
+                    post_query_url = "https://cinemaz.to/api/v1/jackett/torrents?imdb=" + imdb_id;
                 }
                 else if (tracker === "PHD") {
-                    query_url = "https://privatehd.to/movies?search=&imdb=" + imdb_id + "&view=lists";
+                    post_query_url = "https://privatehd.to/api/v1/jackett/torrents?imdb=" + imdb_id;
                 }
                 else if (tracker === "FL") {
                     query_url = "https://filelist.io/browse.php?search=" + imdb_id + "&cat=0&searchin=1&sort=3";
@@ -2232,6 +2120,14 @@
                                             } else {
                                                 console.log("Data fetched successfully from RTF");
                                                 resolve(get_post_torrent_objects(tracker, result)); // Resolve the result directly
+                                            }
+                                        } else if (result?.data && tracker === "AvistaZ" || tracker === "CinemaZ" || tracker === "PHD") {
+                                            if (result.data.length === 0) {
+                                                console.log(`${tracker} reached successfully but no results were returned`);
+                                                resolve([]);
+                                            } else {
+                                                console.log(`Data fetched successfully from ${tracker}`);
+                                                resolve(get_post_torrent_objects(tracker, result));
                                             }
                                         } else {
                                             console.warn(`Unhandled tracker or response format for ${tracker}`);
@@ -3118,6 +3014,47 @@
                     }).filter(obj => obj !== null); // Filter out any null objects
                 } catch (error) {
                     console.error("An error occurred while processing RTF tracker:", error);
+                }
+            }
+            else if (tracker === "Avistaz" || tracker === "CinemaZ" || tracker === "PHD") {
+                try {
+                    torrent_objs = postData.data.map((d) => {
+                        const size = parseInt(d.file_size / (1024 * 1024)); // Convert size to MiB
+                        const api_size = parseInt(d.file_size); // Original size
+
+                        const inputTime = d.created_at;
+                        let time = toUnixTime(inputTime);
+                        if (isNaN(time)) {
+                            return null;
+                        }
+
+                            const torrentObj = {
+                                api_size: api_size,
+                                datasetRelease: d.file_name,
+                                size: size,
+                                info_text: d.file_name,
+                                tracker: tracker,
+                                site: tracker,
+                                snatch: d.completed || 0,
+                                seed: d.seed || 0,
+                                leech: d.leech || 0,
+                                download_link: d.download,
+                                torrent_page: d.url || "",
+                                discount: "None",
+                                status: "default",
+                                //groupId: d.releaseGroup,
+                                time: time,
+                            };
+
+                            // Map additional properties if necessary
+                            const mappedObj = {
+                                ...torrentObj,
+                                quality: get_torrent_quality(torrentObj),
+                            };
+                            return mappedObj;
+                    }).filter(obj => obj !== null); // Filter out any null objects
+                } catch (error) {
+                    console.error("An error occurred while processing ANT tracker:", error);
                 }
             }
             return torrent_objs;
@@ -4019,7 +3956,7 @@
 
                 cln.querySelector(".size-span").textContent = ptp_format_size;
 
-                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV", "LST", "ANT", "RTF"];
+                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV", "LST", "ANT", "RTF", "Avistaz", "CinemaZ", "PHD"];
                 if (byteSizedTrackers.includes(torrent.site)) {
                     cln.querySelector(".size-span").setAttribute("title", api_sized);
                 } else {
