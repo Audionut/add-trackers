@@ -1,14 +1,12 @@
 // ==UserScript==
-// @name         PTP - Add releases from other trackers
+// @name         BETA testing avistaz sites
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.9.7-A
-// @description  Add releases from other trackers
+// @version      3.9.8-A
+// @description  BETA testing avistaz sites
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
 // @match        *://passthepopcorn.me/*threadid=44047*
 // @icon         https://passthepopcorn.me/favicon.ico
-// @downloadURL  https://github.com/Audionut/add-trackers/raw/main/ptp-add-filter-all-releases-anut.js
-// @updateURL    https://github.com/Audionut/add-trackers/raw/main/ptp-add-filter-all-releases-anut.js
 // @grant        GM_xmlhttpRequest
 // @grant        GM.getValue
 // @grant        GM.setValue
@@ -44,7 +42,7 @@
         "fl": {"label": "FL", "type": "checkbox", "default": false},
         "hdb": {"label": "HDB *", "type": "checkbox", "default": false, "tooltip": "Enter username and passkey below"},
         "hdb_user": {"label": "HDB_USER_NAME *", "type": "text", "default": "", "tooltip": "Requires 2fa enabled at HDB"},
-        "hdb_pass": {"label": "HDB_PASS_KEY *", "type": "text", "default": "", "tooltip": "passkey from your HDB profile page"},
+        "hdb_pass": {"label": "HDB_PASS_KEY *", "type": "text", "default": "", "tooltip": "Passkey from your HDB profile page"},
         "huno": {"label": "HUNO *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "huno_api": {"label": "HUNO_API_TOKEN", "type": "text", "default": ""},
         "kg": {"label": "KG", "type": "checkbox", "default": false},
@@ -64,8 +62,9 @@
         "pxhd": {"label": "PxHD", "type": "checkbox", "default": false},
         "rfx": {"label": "RFX *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "rfx_api": {"label": "RFX_API_TOKEN", "type": "text", "default": ""},
-        "rtf": {"label": "RTF *", "type": "checkbox", "default": false, "tooltip": "Enter API key below. Alternatively, you can enter your details at bottom of settings to automatically grab and update API key"},
-        "rtf_api": {"label": "RTF_API_TOKEN", "type": "text", "default": ""},
+        "rtf": {"label": "RTF *", "type": "checkbox", "default": false, "tooltip": "Enter RTF username and password below"},
+        "rtf_user": {"label": "RTF Username", "type": "text", "default": ""},
+        "rtf_pass": {"label": "RTF Password", "type": "text", "default": ""},
         "tik": {"label": "TIK *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "tik_api": {"label": "TIK_API_TOKEN", "type": "text", "default": ""},
         "tvv": {"label": "TVV *", "type": "checkbox", "default": false, "tooltip": "Enter auth key & torrent pass below"},
@@ -89,10 +88,16 @@
         "timer": {"label": "Error timeout (seconds)", "type": "int", "default": 4, "tooltip": "Set the error timeout duration in seconds to skip slow/dead trackers"},
         "timerDuration": {"label": "Error display duration (seconds)", "type": "int", "default": 2, "tooltip": "Set the duration for displaying errors in seconds"},
         "debugging": {"label": "Enable debugging", "type": "checkbox", "default": false, "tooltip": "Enable this to help track down issues, then browse a torrent page and look in browser console"},
-        "runAuth": {"label": "Skip daily auth check and run now", "type": "checkbox", "default": false, "tooltip": "For the sites that require auth login to return api token, set this to skip the daily check and run immediately on refresh."},
-        "rtf_login": {"label": "Get RTF API key", "type": "checkbox", "default": false, "tooltip": "Enter your RTF username and password below to automatically grab and update RTF API key"},
-        "rtf_user": {"label": "RTF Username", "type": "text", "default": ""},
-        "rtf_pass": {"label": "RTF Password", "type": "text", "default": ""}
+        "runAuth": {"label": "Skip auth wait period and and run now", "type": "checkbox", "default": false, "tooltip": "For the sites that require auth login to return api token, set this to run auth login immediately on refresh."},
+        "RTF_token": {"label": "RTF_API_TOKEN *", "type": "text", "default": "", "tooltip": "This is set automatically"},
+        "RTF_last_login_run": {"label": "RTF Last Login Run", "type": "text", "default": ""},
+        "AVISTAZ_token": {"label": "AVISTAZ_API_TOKEN *", "type": "text", "default": "", "tooltip": "This is set automatically"},
+        "AVISTAZ_last_login_run": {"label": "AvistaZ Last Login Run", "type": "text", "default": ""},
+        "CINEMAZ_token": {"label": "CINEMAZ_API_TOKEN *", "type": "text", "default": "", "tooltip": "This is set automatically"},
+        "CINEMAZ_last_login_run": {"label": "CinemaZ Last Login Run", "type": "text", "default": ""},
+        "PRIVATEHD_token": {"label": "PHD_API_TOKEN", "type": "text", "default": "", "tooltip": "This is set automatically"},
+        "PRIVATEHD_last_login_run": {"label": "PHD Last Login Run", "type": "text", "default": ""},
+        "authloginwait": {"label": "How often should Auth login be performed (hours)", "type": "int", "default": 22, "tooltip": "For sites that need to run auth login to get API tokens. If RTF only this can be set anywhere before 2 weeks, if Avistaz network sites, set before 24 hours."}
     };
 
     function resetToDefaults() {
@@ -102,14 +107,16 @@
             for (const field in fields) {
                 if (fields.hasOwnProperty(field)) {
                     GM_config.set(field, fields[field].default);
+                } else {
+                    console.error(`Field ${field} does not exist in fields object`);
                 }
             }
             GM_config.save();
             alert("All settings have been reset to their default values.");
             GM_config.close();
             GM_config.open();
-       }
-   }
+        }
+    }
 
     // Toggle the visibility of api fields if they've been enabled or disabled
     function toggleAuthFields(key, isAuthEnabled) {
@@ -117,10 +124,10 @@
             "bhd": ["bhd_api", "bhd_rss"],
             "hdb": ["hdb_user", "hdb_pass"],
             "tvv": ["tvv_auth", "tvv_torr"],
-            "rtf_login": ["rtf_user", "rtf_pass"],
-            "avistaz": ["avistaz_user", "avistaz_pass", "avistaz_pid"],
-            "cinemaz": ["cinemaz_user", "cinemaz_pass", "cinemaz_pid"],
-            "phd": ["phd_user", "phd_pass", "phd_pid"]
+            "rtf": ["rtf_user", "rtf_pass", "RTF_token", "RTF_last_login_run"],
+            "avistaz": ["avistaz_user", "avistaz_pass", "avistaz_pid", "AVISTAZ_token", "AVISTAZ_last_login_run"],
+            "cinemaz": ["cinemaz_user", "cinemaz_pass", "cinemaz_pid", "CINEMAZ_token", "CINEMAZ_last_login_run"],
+            "phd": ["phd_user", "phd_pass", "phd_pid", "PRIVATEHD_token", "PRIVATEHD_last_login_run"]
         };
 
         if (key in multi_auth) {
@@ -137,6 +144,7 @@
             console.error(`Field ${fieldName} does not exist in GM_config.fields`);
         }
     }
+
     GM_config.init({
         "id": "PTPAddReleases",
         "title": "<div>Add releases from other trackers<br><small style='font-weight:normal;'>Select trackers you have access too</small></div>",
@@ -191,10 +199,9 @@
                     "phd": GM_config.fields.phd.node,
                     "rfx": GM_config.fields.rfx.node,
                     "rtf": GM_config.fields.rtf.node,
-                    "rtf_login": GM_config.fields.rtf_login.node,
                     "tik": GM_config.fields.tik.node,
                     "tvv": GM_config.fields.tvv.node
-                }
+                };
 
                 // Add event listeners for trackers with auth
                 for (const [key, value] of Object.entries(api_based_nodes)) {
@@ -205,7 +212,7 @@
                 }
             },
             "save": function () {
-                //alert("Saved Successfully!");
+                alert("Saved Successfully!");
                 console.log("Settings saved");
             },
             "close": function () {
@@ -257,8 +264,7 @@
             "CG": GM_config.get("cg"),
         };
 
-        const movie_only_dict = {
-        };
+        const movie_only_dict = {};
 
         const tv_dict = {
             "BTN": GM_config.get("btn"),
@@ -320,56 +326,60 @@
     const filtered_old_trackers = filterTrackersByDefault(old_trackers);
     const filtered_very_old_trackers = filterTrackersByDefault(very_old_trackers);
 
-        const BLU_API_TOKEN = GM_config.get("blu_api"); // if you want to use BLU - find your api key here: https://blutopia.cc/users/YOUR_USERNAME_HERE/apikeys
-        const TIK_API_TOKEN = GM_config.get("tik_api"); // if you want to use TIK - find your api key here: https://cinematik.net/users/YOUR_USERNAME_HERE/apikeys
-        const AITHER_API_TOKEN = GM_config.get("aither_api"); // if you want to use Aither - find your api key here: https:/aither.cc/users/YOUR_USERNAME_HERE/apikeys
-        const HUNO_API_TOKEN = GM_config.get("huno_api"); // if you want to use HUNO - find your api key here: https://hawke.uno/users/YOUR_USERNAME_HERE/settings/security#api
-        const RFX_API_TOKEN = GM_config.get("rfx_api"); // if you want to use RFX - find your api key here: https:/reelflix.xyz/users/YOUR_USERNAME_HERE/apikeys
-        const OE_API_TOKEN = GM_config.get("oe_api"); /// if you want to use OE - find your api key here: https:/onlyencodes.cc/users/YOUR_USERNAME_HERE/apikeys
-        const BHD_API_TOKEN = GM_config.get("bhd_api");
-        const BHD_RSS_KEY = GM_config.get("bhd_rss");
-        const HDB_USER_NAME = GM_config.get("hdb_user");
-        const HDB_PASS_KEY = GM_config.get("hdb_pass");
-        const NBL_API_TOKEN = GM_config.get("nbl_api");
-        const BTN_API_TOKEN = GM_config.get("btn_api");
-        const MTV_API_TOKEN = GM_config.get("mtv_api");
-        const LST_API_TOKEN = GM_config.get("lst_api");
-        const ANT_API_TOKEN = GM_config.get("ant_api");
-        const RTF_API_TOKEN = GM_config.get("rtf_api");
-        const RTF_USER = GM_config.get("rtf_user");
-        const RTF_PASS = GM_config.get("rtf_pass");
-        const RTF_LOGIN = GM_config.get("rtf_login");
-        const AVISTAZ_USER = GM_config.get("avistaz_user");
-        const AVISTAZ_PASS = GM_config.get("avistaz_pass");
-        const AVISTAZ_PID = GM_config.get("avistaz_pid");
-        const CINEMAZ_USER = GM_config.get("cinemaz_user");
-        const CINEMAZ_PASS = GM_config.get("cinemaz_pass");
-        const CINEMAZ_PID = GM_config.get("cinemaz_pid");
-        const PHD_USER = GM_config.get("phd_user");
-        const PHD_PASS = GM_config.get("phd_pass");
-        const PHD_PID = GM_config.get("phd_pid");
+    const BLU_API_TOKEN = GM_config.get("blu_api"); // if you want to use BLU - find your api key here: https://blutopia.cc/users/YOUR_USERNAME_HERE/apikeys
+    const TIK_API_TOKEN = GM_config.get("tik_api"); // if you want to use TIK - find your api key here: https://cinematik.net/users/YOUR_USERNAME_HERE/apikeys
+    const AITHER_API_TOKEN = GM_config.get("aither_api"); // if you want to use Aither - find your api key here: https:/aither.cc/users/YOUR_USERNAME_HERE/apikeys
+    const HUNO_API_TOKEN = GM_config.get("huno_api"); // if you want to use HUNO - find your api key here: https://hawke.uno/users/YOUR_USERNAME_HERE/settings/security#api
+    const RFX_API_TOKEN = GM_config.get("rfx_api"); // if you want to use RFX - find your api key here: https:/reelflix.xyz/users/YOUR_USERNAME_HERE/apikeys
+    const OE_API_TOKEN = GM_config.get("oe_api"); /// if you want to use OE - find your api key here: https:/onlyencodes.cc/users/YOUR_USERNAME_HERE/apikeys
+    const BHD_API_TOKEN = GM_config.get("bhd_api");
+    const BHD_RSS_KEY = GM_config.get("bhd_rss");
+    const HDB_USER_NAME = GM_config.get("hdb_user");
+    const HDB_PASS_KEY = GM_config.get("hdb_pass");
+    const NBL_API_TOKEN = GM_config.get("nbl_api");
+    const BTN_API_TOKEN = GM_config.get("btn_api");
+    const MTV_API_TOKEN = GM_config.get("mtv_api");
+    const LST_API_TOKEN = GM_config.get("lst_api");
+    const ANT_API_TOKEN = GM_config.get("ant_api");
+    const RTF_USER = GM_config.get("rtf_user");
+    const RTF_PASS = GM_config.get("rtf_pass");
+    const AVISTAZ_USER = GM_config.get("avistaz_user");
+    const AVISTAZ_PASS = GM_config.get("avistaz_pass");
+    const AVISTAZ_PID = GM_config.get("avistaz_pid");
+    const CINEMAZ_USER = GM_config.get("cinemaz_user");
+    const CINEMAZ_PASS = GM_config.get("cinemaz_pass");
+    const CINEMAZ_PID = GM_config.get("cinemaz_pid");
+    const PHD_USER = GM_config.get("phd_user");
+    const PHD_PASS = GM_config.get("phd_pass");
+    const PHD_PID = GM_config.get("phd_pid");
+    const RTF_token = GM_config.get("RTF_token");
+    const AVISTAZ_token = GM_config.get("AVISTAZ_token");
+    const CINEMAZ_token = GM_config.get("CINEMAZ_token");
+    const PRIVATEHD_token = GM_config.get("PRIVATEHD_token");
 
-        // We need to use XML resposne with TVV and have to define some parameters for it to work correctly.
-        const TVV_AUTH_KEY = GM_config.get("tvv_auth"); // If you want to use TVV - find your authkey from a torrent download link
-        const TVV_TORR_PASS = GM_config.get("tvv_torr"); // We also need the torrent pass - find your torrent_pass from a torrent download link
+    // We need to use XML response with TVV and have to define some parameters for it to work correctly.
+    const TVV_AUTH_KEY = GM_config.get("tvv_auth"); // If you want to use TVV - find your authkey from a torrent download link
+    const TVV_TORR_PASS = GM_config.get("tvv_torr"); // We also need the torrent pass - find your torrent_pass from a torrent download link
 
-        const hideBlankLinks = GM_config.get("hideBlankLinks");
-        const show_tracker_icon = GM_config.get("show_icon"); // false = will show default green checked icon ||| true = will show tracker logo instead of checked icon
-        const show_tracker_name = GM_config.get("show_name"); // false = will hide tracker name ||| true = will show tracker name
-        const hide_if_torrent_with_same_size_exists = GM_config.get("hide_same_size"); // true = will hide torrents with the same file size as existing PTP ones
-        const log_torrents_with_same_size = GM_config.get("log_same_size"); // true = will log torrents with the same file size as existing PTP ones in console (F12)
-        const hide_filters_div = GM_config.get("hide_filters"); // false = will show filters box ||| true = will hide filters box
-        const hide_dead_external_torrents = GM_config.get("hide_dead"); // true = won't display dead external torrents
-        const open_in_new_tab = GM_config.get("new_tab"); // false : when you click external torrent, it will open the page in new tab. ||| true : it will replace current tab.
-        let hide_tags = GM_config.get("hide_tags"); // true = will hide all of the tags. Featured, DU, reported, etc.
-        const run_by_default = GM_config.get("run_default"); // false = won't run the script by default, but will add an "Other Trackers" link under the page title, which when clicked will run the script.
-        const timer = GM_config.get("timer") * 1000; // Convert to milliseconds
-        const timerDuration = GM_config.get("timerDuration") * 1000; // Convert to milliseconds
-        let ptp_release_name = GM_config.get("ptp_name"); // true = show release name - false = original PTP release style. Ignored if Improved Tags  = true
-        let improved_tags = GM_config.get("funky_tags"); // true = Change display to work fully with PTP Improved Tags from jmxd.
-        const btnTimer = GM_config.get("btntimer");
-        const debug = GM_config.get("debugging");
-        const run_auth = GM_config.get("runAuth");
+    const hideBlankLinks = GM_config.get("hideBlankLinks");
+    const show_tracker_icon = GM_config.get("show_icon"); // false = will show default green checked icon ||| true = will show tracker logo instead of checked icon
+    const show_tracker_name = GM_config.get("show_name"); // false = will hide tracker name ||| true = will show tracker name
+    const hide_if_torrent_with_same_size_exists = GM_config.get("hide_same_size"); // true = will hide torrents with the same file size as existing PTP ones
+    const log_torrents_with_same_size = GM_config.get("log_same_size"); // true = will log torrents with the same file size as existing PTP ones in console (F12)
+    const hide_filters_div = GM_config.get("hide_filters"); // false = will show filters box ||| true = will hide filters box
+    const hide_dead_external_torrents = GM_config.get("hide_dead"); // true = won't display dead external torrents
+    const open_in_new_tab = GM_config.get("new_tab"); // false : when you click external torrent, it will open the page in new tab. ||| true : it will replace current tab.
+    let hide_tags = GM_config.get("hide_tags"); // true = will hide all of the tags. Featured, DU, reported, etc.
+    const run_by_default = GM_config.get("run_default"); // false = won't run the script by default, but will add an "Other Trackers" link under the page title, which when clicked will run the script.
+    const timer = GM_config.get("timer") * 1000; // Convert to milliseconds
+    const timerDuration = GM_config.get("timerDuration") * 1000; // Convert to milliseconds
+    let ptp_release_name = GM_config.get("ptp_name"); // true = show release name - false = original PTP release style. Ignored if Improved Tags  = true
+    let improved_tags = GM_config.get("funky_tags"); // true = Change display to work fully with PTP Improved Tags from jmxd.
+    const btnTimer = GM_config.get("btntimer");
+    const debug = GM_config.get("debugging");
+    const run_auth = GM_config.get("runAuth");
+    const authloginwait = GM_config.get("authloginwait");
+
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -1507,15 +1517,6 @@
             return GM_config.get(tracker.toLowerCase());
         };
 
-        const getTokenFromLocalStorage = (key) => {
-            const tokenData = localStorage.getItem(key);
-            if (tokenData) {
-                const { token } = JSON.parse(tokenData);
-                return token;
-            }
-            return null;
-        };
-
         const post_json = async (post_query_url, tracker, postData) => {
             const headersMapping = {
                 'ANT': {
@@ -1526,22 +1527,22 @@
                 'RTF': {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json',
-                    'Authorization': GM_config.get("rtf_api"),
+                    'Authorization': GM_config.get("RTF_token"),
                 },
                 'AvistaZ': {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json',
-                    'Authorization': `Bearer ${getTokenFromLocalStorage("avistaz_api")}`,
+                    'Authorization': `Bearer ${GM_config.get("AVISTAZ_token")}`,
                 },
                 'CinemaZ': {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json',
-                    'Authorization': `Bearer ${getTokenFromLocalStorage("cinemaz_api")}`,
+                    'Authorization': `Bearer ${GM_config.get("CINEMAZ_token")}`,
                 },
                 'PHD': {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json',
-                    'Authorization': `Bearer ${getTokenFromLocalStorage("phd_api")}`,
+                    'Authorization': `Bearer ${GM_config.get("PRIVATEHD_token")}`,
                 },
                 // Add more trackers and their headers as needed
             };
@@ -1593,6 +1594,18 @@
                     displayAlert("Something went wrong with RTF API token");
                 }
                 return jsonResponse;
+            } else if (response.status === 404) {
+                const jsonResponse = JSON.parse(response.responseText);
+                if (debug) {
+                    console.log(`raw response from ${tracker}`, response.responseText);
+                }
+                if (tracker === "AvistaZ" || tracker === "CinemaZ" || tracker === "PHD") {
+                    console.log(`${tracker} reached successfully but no results were returned`);
+                }
+                return jsonResponse;
+            } else if (response.status === 422) {
+                console.log(`Confirmed Auth details incorrect for ${tracker}`);
+                return null;
             } else {
                 if (debug) {
                     console.log(`Raw response from ${tracker}`, response.responseText);
@@ -1632,12 +1645,18 @@
 
             if (response.status === 201 || response.status === 200) {
                 if (debug) {
-                    console.log(`Raw response from ${tracker}`, response.responseText);
+                    console.log(`Login response from ${tracker}`, response.responseText);
                 }
+                return JSON.parse(response.responseText);
+            } else if (response.status === 422) {
+                const jsonResponse = JSON.parse(response.responseText);
+                console.warn(`Auth details not correct for ${tracker} auth login`);
+                console.log(`Login response from ${tracker}`, response.responseText);
+                displayAlert(`Auth details not correct for ${tracker} auth login`);
                 return JSON.parse(response.responseText);
             } else {
                 if (debug) {
-                    console.log(`Raw response from ${tracker}`, response.responseText);
+                    console.log(`Login response from ${tracker}`, response.responseText);
                 }
                 console.warn(`Error: ${tracker} HTTP ${response.status} Error.`);
                 displayAlert(`${tracker} returned not ok`);
@@ -1649,12 +1668,6 @@
             try {
                 const result = await login_json(login_url, tracker, loginData);
                 if (result && result.token) {
-                    if (tracker === 'RTF') {
-                        GM_config.set("rtf_api", result.token);
-                        GM_config.save();
-                    } else {
-                        localStorage.setItem(`${tracker}_token`, result.token);
-                    }
                     return result;
                 } else {
                     console.log(`${tracker} response`, result);
@@ -1697,24 +1710,24 @@
             return await fetch_login(login_url, 'PRIVATEHD', loginData);
         };
 
-        const shouldRunToday = (tracker, override) => {
+        const shouldRunAfterInterval = (tracker, override, intervalHours) => {
             if (override) return true;
-            const lastRun = localStorage.getItem(`${tracker}_last_login_run`);
+            const lastRun = GM_config.get(`${tracker}_last_login_run`);
             if (lastRun) {
                 const lastRunDate = new Date(lastRun);
-                const today = new Date();
-                const shouldRun = today.toDateString() !== lastRunDate.toDateString();
+                const now = new Date();
+                const timeDifference = (now - lastRunDate) / (1000 * 60 * 60); // Time difference in hours
+                const shouldRun = timeDifference >= intervalHours;
                 if (debug) {
-                    console.log(`Last run date for ${tracker}: ${lastRunDate.toDateString()}, Today's date: ${today.toDateString()}, Should run: ${shouldRun}`);
+                    console.log(`Last run date for ${tracker}: ${lastRunDate.toString()}, Current date: ${now.toString()}, Time difference: ${timeDifference} hours, Should run: ${shouldRun}`);
                 }
                 return shouldRun;
             }
-            console.log(`Running ${tracker} Auth login to get updated API token.`);
             return true;
         };
 
-        (async (override = run_auth) => {
-            if (isTrackerSelected('rtf') && shouldRunToday('RTF', override)) {
+        (async (override = run_auth, intervalHours = authloginwait) => {
+            if (isTrackerSelected('rtf') && shouldRunAfterInterval('RTF', override, intervalHours)) {
                 console.log("Running RTF login function...");
                 const login_url = "https://retroflix.club/api/login";
                 const loginData = { username: RTF_USER, password: RTF_PASS };
@@ -1725,19 +1738,18 @@
                         console.log("RTF Login successful", result);
                         console.log("Extracted token:", token);
                     }
-                    //GM_config.set("rtf_api", token);
-                    //GM_config.save();
-                    localStorage.setItem("RTF_last_login_run", new Date().toString());
+                    GM_config.set("RTF_token", result.token);
+                    GM_config.set("RTF_last_login_run", new Date().toString());
                 } else {
                     console.warn("RTF Auth Login failed");
                 }
             } else {
                 if (debug) {
-                    console.log("RTF Auth login already performed today or not selected.");
+                    console.log("RTF Auth login already performed within the time period or the tracker is not selected.");
                 }
             }
 
-            if (isTrackerSelected('avistaz') && shouldRunToday('AVISTAZ', override)) {
+            if (isTrackerSelected('avistaz') && shouldRunAfterInterval('AVISTAZ', override, intervalHours)) {
                 console.log("Running AvistaZ login function...");
                 const result = await avistaz_login();
                 if (result) {
@@ -1746,18 +1758,18 @@
                         console.log("AvistaZ Login successful", result);
                         console.log("Extracted token:", token);
                     }
-                    localStorage.setItem("AVISTAZ_token", token);
-                    localStorage.setItem("AVISTAZ_last_login_run", new Date().toString());
+                    GM_config.set("AVISTAZ_token", token);
+                    GM_config.set("AVISTAZ_last_login_run", new Date().toString());
                 } else {
                     console.warn("AvistaZ Auth Login failed");
                 }
             } else {
                 if (debug) {
-                    console.log("AvistaZ Auth login already performed today or not selected.");
+                    console.log("AvistaZ Auth login already performed within the time period or the tracker is not selected.");
                 }
             }
 
-            if (isTrackerSelected('cinemaz') && shouldRunToday('CINEMAZ', override)) {
+            if (isTrackerSelected('cinemaz') && shouldRunAfterInterval('CINEMAZ', override, intervalHours)) {
                 console.log("Running CinemaZ login function...");
                 const result = await cinemaz_login();
                 if (result) {
@@ -1766,18 +1778,18 @@
                         console.log("CinemaZ Login successful", result);
                         console.log("Extracted token:", token);
                     }
-                    localStorage.setItem("CINEMAZ_token", token);
-                    localStorage.setItem("CINEMAZ_last_login_run", new Date().toString());
+                    GM_config.set("CINEMAZ_token", token);
+                    GM_config.set("CINEMAZ_last_login_run", new Date().toString());
                 } else {
                     console.warn("CinemaZ Auth Login failed");
                 }
             } else {
                 if (debug) {
-                    console.log("CinemaZ Auth login already performed today or not selected.");
+                    console.log("CinemaZ Auth login already performed within the time period or the tracker is not selected.");
                 }
             }
 
-            if (isTrackerSelected('phd') && shouldRunToday('PRIVATEHD', override)) {
+            if (isTrackerSelected('phd') && shouldRunAfterInterval('PRIVATEHD', override, intervalHours)) {
                 console.log("Running PrivateHD login function...");
                 const result = await privateHD_login();
                 if (result) {
@@ -1786,14 +1798,14 @@
                         console.log("PrivateHD Login successful", result);
                         console.log("Extracted token:", token);
                     }
-                    localStorage.setItem("PRIVATEHD_token", token);
-                    localStorage.setItem("PRIVATEHD_last_login_run", new Date().toString());
+                    GM_config.set("PRIVATEHD_token", token);
+                    GM_config.set("PRIVATEHD_last_login_run", new Date().toString());
                 } else {
                     console.warn("PrivateHD Auth Login failed");
                 }
             } else {
                 if (debug) {
-                    console.log("PrivateHD Auth login already performed today or not selected.");
+                    console.log("PrivateHD Auth login already performed within the time period or the tracker is not selected.");
                 }
             }
 
@@ -2126,13 +2138,8 @@
                                                 resolve(get_post_torrent_objects(tracker, result)); // Resolve the result directly
                                             }
                                         } else if (result?.data && tracker === "AvistaZ" || tracker === "CinemaZ" || tracker === "PHD") {
-                                            if (result.data.length === 0) {
-                                                console.log(`${tracker} reached successfully but no results were returned`);
-                                                resolve([]);
-                                            } else {
                                                 console.log(`Data fetched successfully from ${tracker}`);
                                                 resolve(get_post_torrent_objects(tracker, result));
-                                            }
                                         } else {
                                             console.warn(`Unhandled tracker or response format for ${tracker}`);
                                             resolve([]);
