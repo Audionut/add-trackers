@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BETA testing avistaz sites
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.9.8-A
+// @version      3.9.9-A
 // @description  BETA testing avistaz sites
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -88,16 +88,21 @@
         "timer": {"label": "Error timeout (seconds)", "type": "int", "default": 4, "tooltip": "Set the error timeout duration in seconds to skip slow/dead trackers"},
         "timerDuration": {"label": "Error display duration (seconds)", "type": "int", "default": 2, "tooltip": "Set the duration for displaying errors in seconds"},
         "debugging": {"label": "Enable debugging", "type": "checkbox", "default": false, "tooltip": "Enable this to help track down issues, then browse a torrent page and look in browser console"},
-        "runAuth": {"label": "Skip auth wait period and and run now", "type": "checkbox", "default": false, "tooltip": "For the sites that require auth login to return api token, set this to run auth login immediately on refresh."},
-        "RTF_token": {"label": "RTF_API_TOKEN *", "type": "text", "default": "", "tooltip": "This is set automatically"},
-        "RTF_last_login_run": {"label": "RTF Last Login Run", "type": "text", "default": ""},
+        "authloginwait": {"label": "How often should Auth login be performed (hours)", "type": "int", "default": 22, "tooltip": "For sites that need to run auth login to get API tokens. If RTF only this can be set anywhere before 2 weeks, if Avistaz network sites, set before 24 hours."},
+        "timeZone": {"label": "Timezone offset for the last login run feedback", "type": "int", "default": 10, "tooltip": "Use minus (-) for negative time zones"},
+        "runAuth": {"label": "Skip auth wait period and and run now", "type": "checkbox", "default": false, "tooltip": "For the sites that require auth login to return api token, set this to run auth login immediately on refresh. Turn back off again once auth issues are sorted"},
         "AVISTAZ_token": {"label": "AVISTAZ_API_TOKEN *", "type": "text", "default": "", "tooltip": "This is set automatically"},
         "AVISTAZ_last_login_run": {"label": "AvistaZ Last Login Run", "type": "text", "default": ""},
+        "AVISTAZ_last_login_run_raw": {"label": "AvistaZ Last Login Run UTC", "type": "text", "default": ""},
         "CINEMAZ_token": {"label": "CINEMAZ_API_TOKEN *", "type": "text", "default": "", "tooltip": "This is set automatically"},
         "CINEMAZ_last_login_run": {"label": "CinemaZ Last Login Run", "type": "text", "default": ""},
-        "PRIVATEHD_token": {"label": "PHD_API_TOKEN", "type": "text", "default": "", "tooltip": "This is set automatically"},
-        "PRIVATEHD_last_login_run": {"label": "PHD Last Login Run", "type": "text", "default": ""},
-        "authloginwait": {"label": "How often should Auth login be performed (hours)", "type": "int", "default": 22, "tooltip": "For sites that need to run auth login to get API tokens. If RTF only this can be set anywhere before 2 weeks, if Avistaz network sites, set before 24 hours."}
+        "CINEMAZ_last_login_run_raw": {"label": "CinemaZ Last Login Run UTC", "type": "text", "default": ""},
+        "PHD_token": {"label": "PHD_API_TOKEN", "type": "text", "default": "", "tooltip": "This is set automatically"},
+        "PHD_last_login_run": {"label": "PHD Last Login Run", "type": "text", "default": ""},
+        "PHD_last_login_run_raw": {"label": "PHD Last Login Run UTC", "type": "text", "default": ""},
+        "RTF_token": {"label": "RTF_API_TOKEN *", "type": "text", "default": "", "tooltip": "This is set automatically"},
+        "RTF_last_login_run": {"label": "RTF Last Login Run", "type": "text", "default": ""},
+        "RTF_last_login_run_raw": {"label": "RTF Last Login Run UTC", "type": "text", "default": ""}
     };
 
     function resetToDefaults() {
@@ -124,10 +129,10 @@
             "bhd": ["bhd_api", "bhd_rss"],
             "hdb": ["hdb_user", "hdb_pass"],
             "tvv": ["tvv_auth", "tvv_torr"],
-            "rtf": ["rtf_user", "rtf_pass", "RTF_token", "RTF_last_login_run"],
-            "avistaz": ["avistaz_user", "avistaz_pass", "avistaz_pid", "AVISTAZ_token", "AVISTAZ_last_login_run"],
-            "cinemaz": ["cinemaz_user", "cinemaz_pass", "cinemaz_pid", "CINEMAZ_token", "CINEMAZ_last_login_run"],
-            "phd": ["phd_user", "phd_pass", "phd_pid", "PRIVATEHD_token", "PRIVATEHD_last_login_run"]
+            "rtf": ["rtf_user", "rtf_pass", "runAuth", "RTF_token", "RTF_last_login_run", "RTF_last_login_run_raw", "authloginwait", "timeZone"],
+            "avistaz": ["avistaz_user", "avistaz_pass", "avistaz_pid", "runAuth", "AVISTAZ_token", "AVISTAZ_last_login_run", "AVISTAZ_last_login_run_raw", "authloginwait", "timeZone"],
+            "cinemaz": ["cinemaz_user", "cinemaz_pass", "cinemaz_pid", "runAuth", "CINEMAZ_token", "CINEMAZ_last_login_run", "CINEMAZ_last_login_run_raw", "authloginwait", "timeZone"],
+            "phd": ["phd_user", "phd_pass", "phd_pid", "runAuth", "PHD_token", "PHD_last_login_run", "PHD_last_login_run_raw", "authloginwait", "timeZone"]
         };
 
         if (key in multi_auth) {
@@ -355,7 +360,7 @@
     const RTF_token = GM_config.get("RTF_token");
     const AVISTAZ_token = GM_config.get("AVISTAZ_token");
     const CINEMAZ_token = GM_config.get("CINEMAZ_token");
-    const PRIVATEHD_token = GM_config.get("PRIVATEHD_token");
+    const PHD_token = GM_config.get("PHD_token");
 
     // We need to use XML response with TVV and have to define some parameters for it to work correctly.
     const TVV_AUTH_KEY = GM_config.get("tvv_auth"); // If you want to use TVV - find your authkey from a torrent download link
@@ -379,7 +384,7 @@
     const debug = GM_config.get("debugging");
     const run_auth = GM_config.get("runAuth");
     const authloginwait = GM_config.get("authloginwait");
-
+    const timeZone = GM_config.get("timeZone");
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -1517,7 +1522,10 @@
             return GM_config.get(tracker.toLowerCase());
         };
 
-        const post_json = async (post_query_url, tracker, postData) => {
+        const post_json = async (post_query_url, tracker, postData, timeout = timer) => {
+                const timer = setTimeout(() => {
+                    return null
+                }, timeout);
             const headersMapping = {
                 'ANT': {
                     'Content-Type': 'application/json',
@@ -1542,7 +1550,7 @@
                 'PHD': {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json',
-                    'Authorization': `Bearer ${GM_config.get("PRIVATEHD_token")}`,
+                    'Authorization': `Bearer ${GM_config.get("PHD_token")}`,
                 },
                 // Add more trackers and their headers as needed
             };
@@ -1585,16 +1593,18 @@
             });
 
             if (response.status === 200) {
-                console.log(`Raw JSON from ${tracker}`, response.responseText);
                 return JSON.parse(response.responseText);
+                clearTimeout(timer);
             } else if (response.status === 401) {
                 const jsonResponse = JSON.parse(response.responseText);
+                clearTimeout(timer);
                 console.log(`raw response from ${tracker}`, response.responseText);
                 if (tracker === 'RTF' && jsonResponse.error && jsonResponse.message === "Invalid API token.") {
                     displayAlert("Something went wrong with RTF API token");
                 }
                 return jsonResponse;
             } else if (response.status === 404) {
+                clearTimeout(timer);
                 const jsonResponse = JSON.parse(response.responseText);
                 if (debug) {
                     console.log(`raw response from ${tracker}`, response.responseText);
@@ -1604,9 +1614,16 @@
                 }
                 return jsonResponse;
             } else if (response.status === 422) {
+                clearTimeout(timer);
                 console.log(`Confirmed Auth details incorrect for ${tracker}`);
                 return null;
+            } else if (response.status === 502) {
+                console.warn(`502 bad gateway for ${tracker}`);
+                displayAlert(`502 bad gateway for ${tracker}`);
+                clearTimeout(timer);
+                return null;
             } else {
+                clearTimeout(timer);
                 if (debug) {
                     console.log(`Raw response from ${tracker}`, response.responseText);
                 }
@@ -1680,6 +1697,15 @@
             }
         };
 
+        const rtf_login = async () => {
+            const login_url = "https://retroflix.club/api/login";
+            const loginData = {
+                username: RTF_USER,
+                password: RTF_PASS
+            };
+            return await fetch_login(login_url, 'RTF', loginData);
+        };
+
         const avistaz_login = async () => {
             const login_url = "https://avistaz.to/api/v1/jackett/auth";
             const loginData = {
@@ -1700,115 +1726,84 @@
             return await fetch_login(login_url, 'CINEMAZ', loginData);
         };
 
-        const privateHD_login = async () => {
+        const phd_login = async () => {
             const login_url = "https://privatehd.to/api/v1/jackett/auth";
             const loginData = {
                 username: PHD_USER,
                 password: PHD_PASS,
                 pid: PHD_PID
             };
-            return await fetch_login(login_url, 'PRIVATEHD', loginData);
+            return await fetch_login(login_url, 'PHD', loginData);
         };
 
-        const shouldRunAfterInterval = (tracker, override, intervalHours) => {
+        const formatDateWithTimezone = (date, timezoneOffset) => {
+            if (isNaN(date.getTime())) {
+                throw new RangeError('Invalid date');
+            }
+            const adjustedTime = new Date(date.getTime() + (timezoneOffset * 60 * 60 * 1000));
+            const sign = timezoneOffset >= 0 ? "+" : "-";
+            const hours = Math.abs(timezoneOffset).toString().padStart(2, '0') + "00";
+            return `${adjustedTime.toISOString().replace('Z', '')} GMT${sign}${hours}`;
+        };
+
+        const shouldRunAfterInterval = (tracker, override, intervalHours, timezoneOffset) => {
             if (override) return true;
-            const lastRun = GM_config.get(`${tracker}_last_login_run`);
-            if (lastRun) {
-                const lastRunDate = new Date(lastRun);
-                const now = new Date();
-                const timeDifference = (now - lastRunDate) / (1000 * 60 * 60); // Time difference in hours
-                const shouldRun = timeDifference >= intervalHours;
-                if (debug) {
-                    console.log(`Last run date for ${tracker}: ${lastRunDate.toString()}, Current date: ${now.toString()}, Time difference: ${timeDifference} hours, Should run: ${shouldRun}`);
+
+            const lastRunRaw = GM_config.get(`${tracker}_last_login_run_raw`);
+            if (lastRunRaw) {
+                const lastRunDate = new Date(lastRunRaw);
+                if (isNaN(lastRunDate.getTime())) {
+                    console.error(`Invalid lastRun date for ${tracker}: ${lastRunRaw}`);
+                    return false;
                 }
+                const now = new Date();
+
+                const adjustedLastRunDate = new Date(lastRunDate.getTime() + (timezoneOffset * 60 * 60 * 1000));
+                const adjustedNow = new Date(now.getTime() + (timezoneOffset * 60 * 60 * 1000));
+                const timeDifference = (adjustedNow - adjustedLastRunDate) / (1000 * 60 * 60); // Time difference in hours
+                const shouldRun = timeDifference >= intervalHours;
+
+                if (debug) {
+                    console.log(`Last run date for ${tracker}: ${formatDateWithTimezone(lastRunDate, timezoneOffset)}, Current date: ${formatDateWithTimezone(now, timezoneOffset)}, Time difference: ${timeDifference} hours, Should run: ${shouldRun}`);
+                }
+
                 return shouldRun;
             }
             return true;
         };
 
         (async (override = run_auth, intervalHours = authloginwait) => {
-            if (isTrackerSelected('rtf') && shouldRunAfterInterval('RTF', override, intervalHours)) {
-                console.log("Running RTF login function...");
-                const login_url = "https://retroflix.club/api/login";
-                const loginData = { username: RTF_USER, password: RTF_PASS };
-                const result = await fetch_login(login_url, 'RTF', loginData);
-                if (result) {
-                    const token = result.token;
-                    if (debug) {
-                        console.log("RTF Login successful", result);
-                        console.log("Extracted token:", token);
-                    }
-                    GM_config.set("RTF_token", result.token);
-                    GM_config.set("RTF_last_login_run", new Date().toString());
-                } else {
-                    console.warn("RTF Auth Login failed");
-                }
-            } else {
-                if (debug) {
-                    console.log("RTF Auth login already performed within the time period or the tracker is not selected.");
-                }
-            }
+            const timezoneOffset = GM_config.get('timeZone');
 
-            if (isTrackerSelected('avistaz') && shouldRunAfterInterval('AVISTAZ', override, intervalHours)) {
-                console.log("Running AvistaZ login function...");
-                const result = await avistaz_login();
-                if (result) {
-                    const token = result.token;
-                    if (debug) {
-                        console.log("AvistaZ Login successful", result);
-                        console.log("Extracted token:", token);
+            const updateTrackerLogin = async (tracker, loginFunction, loginData, timezoneOffset) => {
+                if (isTrackerSelected(tracker) && shouldRunAfterInterval(tracker.toUpperCase(), override, intervalHours, timezoneOffset)) {
+                    console.log(`Running ${tracker} login function...`);
+                    const result = await loginFunction(loginData);
+                    if (result) {
+                        const token = result.token;
+                        if (debug) {
+                            console.log(`${tracker} Login successful`, result);
+                            console.log("Extracted token:", token);
+                        }
+                        GM_config.set(`${tracker.toUpperCase()}_token`, token);
+                        const rawDate = new Date().toISOString();
+                        const formattedDate = formatDateWithTimezone(new Date(rawDate), timezoneOffset);
+                        GM_config.set(`${tracker.toUpperCase()}_last_login_run_raw`, rawDate);
+                        GM_config.set(`${tracker.toUpperCase()}_last_login_run`, formattedDate);
+                    } else {
+                        console.warn(`${tracker} Auth Login failed`);
                     }
-                    GM_config.set("AVISTAZ_token", token);
-                    GM_config.set("AVISTAZ_last_login_run", new Date().toString());
                 } else {
-                    console.warn("AvistaZ Auth Login failed");
-                }
-            } else {
-                if (debug) {
-                    console.log("AvistaZ Auth login already performed within the time period or the tracker is not selected.");
-                }
-            }
-
-            if (isTrackerSelected('cinemaz') && shouldRunAfterInterval('CINEMAZ', override, intervalHours)) {
-                console.log("Running CinemaZ login function...");
-                const result = await cinemaz_login();
-                if (result) {
-                    const token = result.token;
                     if (debug) {
-                        console.log("CinemaZ Login successful", result);
-                        console.log("Extracted token:", token);
+                        console.log(`${tracker} Auth login already performed within the time period or the tracker is not selected.`);
                     }
-                    GM_config.set("CINEMAZ_token", token);
-                    GM_config.set("CINEMAZ_last_login_run", new Date().toString());
-                } else {
-                    console.warn("CinemaZ Auth Login failed");
                 }
-            } else {
-                if (debug) {
-                    console.log("CinemaZ Auth login already performed within the time period or the tracker is not selected.");
-                }
-            }
+            };
 
-            if (isTrackerSelected('phd') && shouldRunAfterInterval('PRIVATEHD', override, intervalHours)) {
-                console.log("Running PrivateHD login function...");
-                const result = await privateHD_login();
-                if (result) {
-                    const token = result.token;
-                    if (debug) {
-                        console.log("PrivateHD Login successful", result);
-                        console.log("Extracted token:", token);
-                    }
-                    GM_config.set("PRIVATEHD_token", token);
-                    GM_config.set("PRIVATEHD_last_login_run", new Date().toString());
-                } else {
-                    console.warn("PrivateHD Auth Login failed");
-                }
-            } else {
-                if (debug) {
-                    console.log("PrivateHD Auth login already performed within the time period or the tracker is not selected.");
-                }
-            }
-
+            await updateTrackerLogin('rtf', rtf_login, {}, timezoneOffset);
+            await updateTrackerLogin('avistaz', avistaz_login, {}, timezoneOffset);
+            await updateTrackerLogin('cinemaz', cinemaz_login, {}, timezoneOffset);
+            await updateTrackerLogin('phd', phd_login, {}, timezoneOffset);
         })();
 
         const fetch_url = async (query_url, tracker) => {
@@ -2072,7 +2067,7 @@
                                     try {
                                         if (result?.results && tracker === "BHD") {
                                             if (result.status_code !== 1) {
-                                                console.log("BHD returned a failed status code");
+                                                console.warn("BHD returned a failed status code");
                                                 resolve([]);
                                             }
                                             if (result.total_results === 0) {
@@ -2085,15 +2080,15 @@
                                         } else if (result?.data && tracker === "HDB") {
                                             switch (result.status) {
                                                 case 1:
-                                                    console.log("HDB: Failure (something bad happened)");
+                                                    console.warn("HDB: Failure (something bad happened)");
                                                     resolve([]);
                                                     break;
                                                 case 4:
-                                                    console.log("HDB: Auth data missing");
+                                                    console.warn("HDB: Auth data missing");
                                                     resolve([]);
                                                     break;
                                                 case 5:
-                                                    console.log("HDB: Auth failed (incorrect username / password)");
+                                                    console.warn("HDB: Auth failed (incorrect username / password)");
                                                     resolve([]);
                                                     break;
                                                 default:
