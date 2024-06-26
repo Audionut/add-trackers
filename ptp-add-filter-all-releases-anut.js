@@ -15,6 +15,7 @@
 // @grant        GM.registerMenuCommand
 // @require      https://cdn.jsdelivr.net/gh/sizzlemctwizzle/GM_config@43fd0fe4de1166f343883511e53546e87840aeaf/gm_config.js
 // @require      https://github.com/Audionut/add-trackers/raw/main/scene_groups.js
+// @require      https://github.com/Audionut/add-trackers/raw/main/ptp-get-tvmaze-id.js
 // ==/UserScript==
 
 (function () {
