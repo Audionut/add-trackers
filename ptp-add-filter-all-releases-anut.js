@@ -1,21 +1,21 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.9.9-A
+// @version      4.9.9-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
 // @match        *://passthepopcorn.me/*threadid=44047*
 // @icon         https://passthepopcorn.me/favicon.ico
-// @downloadURL  https://github.com/Audionut/add-trackers/raw/main/ptp-add-filter-all-releases-anut.js
-// @updateURL    https://github.com/Audionut/add-trackers/raw/main/ptp-add-filter-all-releases-anut.js
+// @downloadURL  https://github.com/Audionut/add-trackers/raw/tvmaze/ptp-add-filter-all-releases-anut.js
+// @updateURL    https://github.com/Audionut/add-trackers/raw/tvmaze/ptp-add-filter-all-releases-anut.js
 // @grant        GM_xmlhttpRequest
 // @grant        GM.getValue
 // @grant        GM.setValue
 // @grant        GM.registerMenuCommand
 // @require      https://cdn.jsdelivr.net/gh/sizzlemctwizzle/GM_config@43fd0fe4de1166f343883511e53546e87840aeaf/gm_config.js
 // @require      https://github.com/Audionut/add-trackers/raw/main/scene_groups.js
-// @require      https://github.com/Audionut/add-trackers/raw/main/ptp-get-tvmaze-id.js
+// @require      https://github.com/Audionut/add-trackers/raw/tvmaze/ptp-get-tvmaze-id.js
 // ==/UserScript==
 
 (function () {
@@ -5073,6 +5073,16 @@
                     console.log('TVDB error:', error.message);
                 }
             }
+
+            let tvmazeId;
+            window.getTvmazeId()
+                .then(tvmazeId => {
+                    console.log("TVmaze ID:", tvmazeId);
+                    // Use the TVmaze ID as needed
+                })
+                .catch(error => {
+                    console.error("Error fetching TVmaze ID:", error);
+                });
 
             let name_url = document.querySelector("h2.page__title").textContent.trim();
             let show_name;
