@@ -5081,7 +5081,7 @@
                 const timeoutId = setTimeout(() => {
                     reject(new Error("TVmaze ID fetch timed out."));
                     cleanup();
-                }, 10000); // Adjusted timeout to 10 seconds for better reliability
+                }, 1000); // Adjusted timeout to 10 seconds for better reliability
             });
         }
 
