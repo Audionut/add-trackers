@@ -1442,6 +1442,9 @@
             torrent_objs = torrent_objs.map(e => {
                 return { ...e, "quality": get_torrent_quality(e) };
             });
+            if (debug) {
+                console.log(`${tracker} processed torrent objects`, torrent_objs);
+            }
             return torrent_objs;
         };
 
@@ -3065,6 +3068,9 @@
                     console.error("An error occurred while processing ANT tracker:", error);
                 }
             }
+            if (debug) {
+                console.log(`${tracker} processed torrent objects`, torrent_objs);
+            }
             return torrent_objs;
         };
 
@@ -3393,6 +3399,9 @@
                     }
                 }).filter(obj => obj !== null); // Filter out the null objects (skipped torrents)
                 // Returning the final torrent objects
+                if (debug) {
+                    console.log(`${tracker} processed torrent objects`, torrent_objs);
+                }
                 return torrent_objs;
             }
         };
@@ -3912,11 +3921,17 @@
                     }
                 }
 
+                const groupTorrent = cln.querySelector('.torrent-info-link');
+                let newHtml = groupTorrent.outerHTML;
+
                 if (torrent.time && torrent.time !== "None") {
-                    const groupTorrent = cln.querySelector('.torrent-info-link');
                     if (groupTorrent) {
-                        groupTorrent.outerHTML += `<span class='release time' title="${torrent.time}"></span>`;
+                        newHtml += `<span class='release time' title="${torrent.time}"></span>`;
                     }
+                }
+
+                if (groupTorrent) {
+                    groupTorrent.outerHTML = newHtml;
                 }
 
                 if (torrent.status === "seeding") cln.querySelector(".torrent-info-link").className += " torrent-info-link--user-seeding";
