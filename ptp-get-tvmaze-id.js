@@ -1,55 +1,65 @@
 // ==UserScript==
 // @name       PTP - Get TVmaze ID from IMDb ID
-// @version    1.2
-// @description Fetch TVmaze ID using IMDb ID on PTP torrent pages and return the result via a Promise.
+// @version    1.1
+// @description Fetch TVmaze ID using IMDb ID on PTP torrent pages and dispatch an event with the result.
 // @match      https://passthepopcorn.me/torrents.php?*id=*
 // @namespace  https://github.com/Audionut/add-trackers
-// @grant      GM_xmlHttpRequest
+// @grant      GM.xmlHttpRequest
 // ==/UserScript==
 
 'use strict';
 
-// Function to get TVmaze ID
-function getTvmazeId() {
-    return new Promise((resolve, reject) => {
-        // Get PTP ID
-        const ptpId = new URL(window.location.href).searchParams.get("id");
+// Get PTP ID
+const ptpId = new URL(window.location.href).searchParams.get("id");
 
-        // Get IMDb URL
-        const imdbLinkElement = document.getElementById("imdb-title-link");
-        if (!imdbLinkElement) {
-            console.warn("No IMDb ID found, aborting.");
-            reject("No IMDb ID found.");
-            return;
-        }
+// Get IMDb URL
+const imdbLinkElement = document.getElementById("imdb-title-link");
+if (!imdbLinkElement) {
+    console.warn("No IMDb ID found, aborting.");
+    return;
+}
+const imdbId = imdbLinkElement.href.match(/title\/(tt\d+)\//)[1];
+const tvmazeUrl = `https://api.tvmaze.com/lookup/shows?imdb=${imdbId}`;
 
-        const imdbId = imdbLinkElement.href.match(/title\/(tt\d+)\//)[1];
-        const tvmazeUrl = `https://api.tvmaze.com/lookup/shows?imdb=${imdbId}`;
+// Function to dispatch event with TVmaze ID
+function dispatchTvmazeEvent(tvmazeId) {
+    const event = new CustomEvent('tvmazeIdFetched', { detail: { ptpId, tvmazeId } });
+    document.dispatchEvent(event);
+}
 
-        // Parse TVmaze response
-        function parseTvmazeResponse(response) {
-            const data = JSON.parse(response.responseText);
-            if (data && data.id) {
-                resolve(data.id);
-            } else {
-                console.error("TVmaze ID not found in response.");
-                reject("TVmaze ID not found in response.");
-            }
-        }
-
-        // Fetch TV show information from TVmaze
-        GM_xmlHttpRequest({
-            method: "GET",
-            url: tvmazeUrl,
-            timeout: 10000,
-            onload: parseTvmazeResponse,
-            onerror: () => {
-                console.error("Failed to fetch TVmaze data.");
-                reject("Failed to fetch TVmaze data.");
-            }
+// Parse TVmaze response
+function parseTvmazeResponse(response) {
+    const data = JSON.parse(response.responseText);
+    if (data && data.id) {
+        waitForMainScript(() => {
+            dispatchTvmazeEvent(data.id);
         });
+    } else {
+        console.error("TVmaze ID not found in response.");
+    }
+}
+
+// Fetch TV show information from TVmaze
+function fetchTvmazeData() {
+    GM.xmlHttpRequest({
+        method: "GET",
+        url: tvmazeUrl,
+        timeout: 10000,
+        onload: parseTvmazeResponse,
+        onerror: () => console.error("Failed to fetch TVmaze data."),
     });
 }
 
-// Export function for use in another script
-window.getTvmazeId = getTvmazeId;
+// Function to wait for the main script to be ready
+function waitForMainScript(callback) {
+    if (document.readyState === "complete") {
+        callback();
+    } else {
+        setTimeout(() => waitForMainScript(callback), 100); // Adjust the interval as needed
+    }
+}
+
+// Initialize script
+(function init() {
+    fetchTvmazeData();
+})();

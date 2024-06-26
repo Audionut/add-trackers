@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.9.9-A
+// @version      4.0.0-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -1899,7 +1899,7 @@
             });
         };
 
-        const fetch_tracker = async (tracker, imdb_id, show_name, show_nbl_name, tvdbId, timeout = timer) => {
+        const fetch_tracker = async (tracker, imdb_id, show_name, show_nbl_name, tvdbId, tvmazeId, timeout = timer) => {
             return new Promise(async (resolve, reject) => {
                 const timer = setTimeout(() => {
                     console.warn(`Error fetching data from ${tracker}`);
@@ -2018,20 +2018,37 @@
                 }
                 else if (tracker === "NBL") {
                     post_query_url = "https://nebulance.io/api.php";
-                    postData = {
-                        jsonrpc: "2.0",
-                        id: generateGUID().substring(0, 8),
-                        method: "getTorrents",
-                        params: [
-                            NBL_API_TOKEN,
-                            {
-                                //tvmaze: nbl_test
-                                series: show_nbl_name
-                            },
-                            20, // Results per page
-                            0   // Page number
-                        ]
-                    };
+                    if (tvmazeId) {
+                        postData = {
+                            jsonrpc: "2.0",
+                            id: generateGUID().substring(0, 8),
+                            method: "getTorrents",
+                            params: [
+                                NBL_API_TOKEN,
+                                {
+                                    tvmaze: tvmazeId
+                                    //series: show_nbl_name
+                                },
+                                20, // Results per page
+                                0   // Page number
+                            ]
+                        };
+                    } else {
+                        postData = {
+                            jsonrpc: "2.0",
+                            id: generateGUID().substring(0, 8),
+                            method: "getTorrents",
+                            params: [
+                                NBL_API_TOKEN,
+                                {
+                                    //tvmaze: tvmazeId
+                                    series: show_nbl_name
+                                },
+                                20, // Results per page
+                                0   // Page number
+                            ]
+                        };
+                    }
                 }
                 else if (tracker === "AvistaZ") {
                     post_query_url = "https://avistaz.to/api/v1/jackett/torrents?imdb=" + imdb_id;
@@ -2703,6 +2720,7 @@
                                     discount: "None",
                                     status: "default",
                                     groupId: groupText,
+                                    time: time,
                                 };
 
                                 // Map additional properties if necessary
@@ -5032,6 +5050,52 @@
             });
         }
 
+        // Function to get TVmaze ID
+        function getTvmazeId() {
+            return new Promise((resolve, reject) => {
+                // Add event listener for TVmaze ID
+                const onTvmazeIdFetched = (event) => {
+                    const { tvmazeId } = event.detail;
+                    resolve(tvmazeId);
+                    cleanup();
+                };
+
+                // Add event listener for TVmaze ID fetch errors
+                const onTvmazeIdFetchError = (event) => {
+                    const { message } = event.detail;
+                    reject(new Error(message));
+                    cleanup();
+                };
+
+                // Cleanup function to remove event listeners
+                const cleanup = () => {
+                    clearTimeout(timeoutId);
+                    document.removeEventListener('tvmazeIdFetched', onTvmazeIdFetched);
+                    document.removeEventListener('tvmazeIdFetchError', onTvmazeIdFetchError);
+                };
+
+                document.addEventListener('tvmazeIdFetched', onTvmazeIdFetched);
+                document.addEventListener('tvmazeIdFetchError', onTvmazeIdFetchError);
+
+                // Set a timeout to reject the promise if neither event is triggered
+                const timeoutId = setTimeout(() => {
+                    reject(new Error("TVmaze ID fetch timed out."));
+                    cleanup();
+                }, 10000); // Adjusted timeout to 10 seconds for better reliability
+            });
+        }
+
+        // Function to wait for TVmaze ID with a timeout
+        async function waitForTvmazeId() {
+            try {
+                const tvmazeId = await getTvmazeId();
+                return tvmazeId;
+            } catch (error) {
+                console.log('TVmaze error:', error.message);
+                return null;
+            }
+        }
+
         const mainFunc = async () => {
             if (show_tracker_name || improved_tags || ptp_release_name) {
                 fix_ptp_names();
@@ -5073,6 +5137,20 @@
                 }
             }
 
+            let tvmazeId;
+            if (trackers.includes("NBL")) {
+                try {
+                    tvmazeId = await waitForTvmazeId();
+                    if (tvmazeId) {
+                        console.log(`TVmaze ID is ${tvmazeId}`);
+                    } else {
+                        console.log('TVmaze ID not found yet.');
+                    }
+                } catch (error) {
+                    console.log('TVmaze error:', error.message);
+                }
+            }
+
             let name_url = document.querySelector("h2.page__title").textContent.trim();
             let show_name;
             let show_nbl_name;
@@ -5095,7 +5173,7 @@
             show_nbl_name = show_nbl_name.trim().replace(/[\s:]+$/, '');
 
             let promises = [];
-            trackers.forEach(t => promises.push(fetch_tracker(t, imdb_id, show_name, show_nbl_name, tvdbId)));
+            trackers.forEach(t => promises.push(fetch_tracker(t, imdb_id, show_name, show_nbl_name, tvdbId, tvmazeId)));
             Promise.all(promises)
                 .then(torrents_lists => {
                     var all_torrents = [].concat.apply([], torrents_lists).sort((a, b) => a.size < b.size ? 1 : -1);
