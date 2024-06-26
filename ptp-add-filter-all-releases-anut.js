@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.9.8-A
+// @version      3.9.9-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -701,7 +701,7 @@
               (tracker === "BTN") ||
               (tracker === "ANT") ||
               (tracker === "RTF") ||
-              (tracker === "Avistaz") ||
+              (tracker === "AvistaZ") ||
               (tracker === "CinemaZ") ||
               (tracker === "PHD")
               ) {
@@ -3024,7 +3024,7 @@
                     console.error("An error occurred while processing RTF tracker:", error);
                 }
             }
-            else if (tracker === "Avistaz" || tracker === "CinemaZ" || tracker === "PHD") {
+            else if (tracker === "AvistaZ" || tracker === "CinemaZ" || tracker === "PHD") {
                 try {
                     torrent_objs = postData.data.map((d) => {
                         const size = parseInt(d.file_size / (1024 * 1024)); // Convert size to MiB
@@ -3964,7 +3964,7 @@
 
                 cln.querySelector(".size-span").textContent = ptp_format_size;
 
-                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV", "LST", "ANT", "RTF", "Avistaz", "CinemaZ", "PHD"];
+                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV", "LST", "ANT", "RTF", "AvistaZ", "CinemaZ", "PHD"];
                 if (byteSizedTrackers.includes(torrent.site)) {
                     cln.querySelector(".size-span").setAttribute("title", api_sized);
                 } else {
