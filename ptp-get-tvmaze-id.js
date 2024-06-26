@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name       PTP - Get TVmaze ID from IMDb ID
-// @version    1.1
+// @version    1.2
 // @description Fetch TVmaze ID using IMDb ID on PTP torrent pages and return the result via a Promise.
 // @match      https://passthepopcorn.me/torrents.php?*id=*
 // @namespace  https://github.com/Audionut/add-trackers
-// @grant      GM.xmlHttpRequest
+// @grant      GM_xmlHttpRequest
 // ==/UserScript==
 
 'use strict';
@@ -38,7 +38,7 @@ function getTvmazeId() {
         }
 
         // Fetch TV show information from TVmaze
-        GM.xmlHttpRequest({
+        GM_xmlHttpRequest({
             method: "GET",
             url: tvmazeUrl,
             timeout: 10000,
