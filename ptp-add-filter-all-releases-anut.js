@@ -3351,6 +3351,26 @@
                             return null;
                         }
 
+                        const descriptionText = element.attributes.description;
+                        const imageRegex = /\[img=\d+\](https?:\/\/[^\s]+?\.png)\[\/img\]|\[URL=(https?:\/\/[^\s]+?)\]\[IMG\](https?:\/\/[^\s]+?\.png)\[\/IMG\]\[\/URL\]/gi;
+                        const imageUrls = [];
+                        let match;
+
+                        while ((match = imageRegex.exec(descriptionText)) !== null) {
+                            // Handle the [img] tag matches
+                            if (match[1]) {
+                                imageUrls.push(match[1]);
+                            }
+                            // Handle the [URL] and [IMG] tag matches
+                            else if (match[2] && match[3]) {
+                                if (match[3].includes("thumb")) {
+                                    imageUrls.push(match[2]); // Use the URL from the [URL] tag
+                                } else {
+                                    imageUrls.push(match[3]); // Use the URL from the [IMG] tag
+                                }
+                            }
+                        }
+
                         const torrentObj = {
                             api_size: parseInt(element.attributes.size),
                             datasetRelease: getRelease,
@@ -3381,6 +3401,7 @@
                             distributor: element.attributes.distributor,
                             region: element.attributes.region,
                             time: time,
+                            images: imageUrls,
                         };
                         // Mapping additional properties and logging the final torrent objects
                         const mappedObj = { ...torrentObj, "quality": get_torrent_quality(torrentObj), "discount": get_api_discount(torrentObj.discount, torrentObj.refundable, tracker), "internal": get_api_internal(torrentObj.internal), "Featured": get_api_featured(torrentObj.featured) };
@@ -3912,11 +3933,26 @@
                     }
                 }
 
+                const groupTorrent = cln.querySelector('.torrent-info-link');
+                let newHtml = groupTorrent.outerHTML;
+
                 if (torrent.time && torrent.time !== "None") {
-                    const groupTorrent = cln.querySelector('.torrent-info-link');
                     if (groupTorrent) {
-                        groupTorrent.outerHTML += `<span class='release time' title="${torrent.time}"></span>`;
+                        newHtml += `<span class='release time' title="${torrent.time}"></span>`;
                     }
+                }
+
+                if (torrent.images && Array.isArray(torrent.images) && torrent.images.length > 0) {
+                    if (groupTorrent) {
+                        torrent.images.forEach(image => {
+                            newHtml += `<span class='UNIT3D images' title="${image}"></span>`;
+                        });
+                    }
+                }
+
+                // Update outerHTML
+                if (groupTorrent) {
+                    groupTorrent.outerHTML = newHtml;
                 }
 
                 if (torrent.status === "seeding") cln.querySelector(".torrent-info-link").className += " torrent-info-link--user-seeding";
