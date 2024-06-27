@@ -1665,6 +1665,7 @@
                             console.log("Extracted token:", token);
                         }
                         GM_config.set(`${tracker.toLowerCase()}_token`, token);
+                        console.log(`${tracker} token found and set`);
                         const rawDate = new Date().toISOString();
                         GM_config.set(`${tracker.toLowerCase()}_last_login_run_raw`, rawDate);
                         GM_config.save();
