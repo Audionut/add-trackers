@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.0.0-A
+// @version      4.0.1-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -91,20 +91,14 @@
         "timerDuration": {"label": "Error display duration (seconds)", "type": "int", "default": 2, "tooltip": "Set the duration for displaying errors in seconds"},
         "debugging": {"label": "Enable debugging", "type": "checkbox", "default": false, "tooltip": "Enable this to help track down issues, then browse a torrent page and look in browser console"},
         "authloginwait": {"label": "How often should Auth login be performed (hours)", "type": "int", "default": 22, "tooltip": "For sites that need to run auth login to get API tokens. If RTF only this can be set anywhere before 2 weeks, if Avistaz network sites, set before 24 hours."},
-        "timeZone": {"label": "Timezone offset for the last login run feedback", "type": "int", "default": 10, "tooltip": "Use minus (-) for negative time zones"},
-        "runAuth": {"label": "Skip auth wait period and and run now", "type": "checkbox", "default": false, "tooltip": "For the sites that require auth login to return api token, set this to run auth login immediately on refresh. Turn back off again once auth issues are sorted"},
-        "AVISTAZ_token": {"label": "AVISTAZ_API_TOKEN *", "type": "text", "default": "", "tooltip": "This is set automatically"},
-        "AVISTAZ_last_login_run": {"label": "AvistaZ Last Login Run", "type": "text", "default": ""},
-        "AVISTAZ_last_login_run_raw": {"label": "AvistaZ Last Login Run UTC", "type": "text", "default": ""},
-        "CINEMAZ_token": {"label": "CINEMAZ_API_TOKEN *", "type": "text", "default": "", "tooltip": "This is set automatically"},
-        "CINEMAZ_last_login_run": {"label": "CinemaZ Last Login Run", "type": "text", "default": ""},
-        "CINEMAZ_last_login_run_raw": {"label": "CinemaZ Last Login Run UTC", "type": "text", "default": ""},
-        "PHD_token": {"label": "PHD_API_TOKEN", "type": "text", "default": "", "tooltip": "This is set automatically"},
-        "PHD_last_login_run": {"label": "PHD Last Login Run", "type": "text", "default": ""},
-        "PHD_last_login_run_raw": {"label": "PHD Last Login Run UTC", "type": "text", "default": ""},
-        "RTF_token": {"label": "RTF_API_TOKEN *", "type": "text", "default": "", "tooltip": "This is set automatically"},
-        "RTF_last_login_run": {"label": "RTF Last Login Run", "type": "text", "default": ""},
-        "RTF_last_login_run_raw": {"label": "RTF Last Login Run UTC", "type": "text", "default": ""}
+        "avistaz_token": {"label": "AVISTAZ_API_TOKEN *", "type": "text", "default": "", "tooltip": "This is set automatically. Clear token to force auth login"},
+        "avistaz_last_login_run_raw": {"label": "AvistaZ Last Login Run UTC", "type": "text", "default": ""},
+        "cinemaz_token": {"label": "CINEMAZ_API_TOKEN *", "type": "text", "default": "", "tooltip": "This is set automatically. Clear token to force auth login"},
+        "cinemaz_last_login_run_raw": {"label": "CinemaZ Last Login Run UTC", "type": "text", "default": ""},
+        "phd_token": {"label": "PHD_API_TOKEN", "type": "text", "default": "", "tooltip": "This is set automatically. Clear token to force auth login"},
+        "phd_last_login_run_raw": {"label": "PHD Last Login Run UTC", "type": "text", "default": ""},
+        "rtf_token": {"label": "RTF_API_TOKEN *", "type": "text", "default": "", "tooltip": "This is set automatically. Clear token to force auth login"},
+        "rtf_last_login_run_raw": {"label": "RTF Last Login Run UTC", "type": "text", "default": ""}
     };
 
     function resetToDefaults() {
@@ -131,10 +125,10 @@
             "bhd": ["bhd_api", "bhd_rss"],
             "hdb": ["hdb_user", "hdb_pass"],
             "tvv": ["tvv_auth", "tvv_torr"],
-            "rtf": ["rtf_user", "rtf_pass", "runAuth", "RTF_token", "RTF_last_login_run", "RTF_last_login_run_raw", "authloginwait", "timeZone"],
-            "avistaz": ["avistaz_user", "avistaz_pass", "avistaz_pid", "runAuth", "AVISTAZ_token", "AVISTAZ_last_login_run", "AVISTAZ_last_login_run_raw", "authloginwait", "timeZone"],
-            "cinemaz": ["cinemaz_user", "cinemaz_pass", "cinemaz_pid", "runAuth", "CINEMAZ_token", "CINEMAZ_last_login_run", "CINEMAZ_last_login_run_raw", "authloginwait", "timeZone"],
-            "phd": ["phd_user", "phd_pass", "phd_pid", "runAuth", "PHD_token", "PHD_last_login_run", "PHD_last_login_run_raw", "authloginwait", "timeZone"]
+            "rtf": ["rtf_user", "rtf_pass", "rtf_token", "rtf_last_login_run_raw", "authloginwait"],
+            "avistaz": ["avistaz_user", "avistaz_pass", "avistaz_pid", "avistaz_token", "avistaz_last_login_run_raw", "authloginwait"],
+            "cinemaz": ["cinemaz_user", "cinemaz_pass", "cinemaz_pid", "cinemaz_token", "cinemaz_last_login_run_raw", "authloginwait"],
+            "phd": ["phd_user", "phd_pass", "phd_pid", "phd_token", "phd_last_login_run_raw", "authloginwait"]
         };
 
         if (key in multi_auth) {
@@ -219,7 +213,7 @@
                 }
             },
             "save": function () {
-                alert("Saved Successfully!");
+                //alert("Saved Successfully!");
                 console.log("Settings saved");
             },
             "close": function () {
@@ -359,10 +353,10 @@
     const PHD_USER = GM_config.get("phd_user");
     const PHD_PASS = GM_config.get("phd_pass");
     const PHD_PID = GM_config.get("phd_pid");
-    const RTF_token = GM_config.get("RTF_token");
-    const AVISTAZ_token = GM_config.get("AVISTAZ_token");
-    const CINEMAZ_token = GM_config.get("CINEMAZ_token");
-    const PHD_token = GM_config.get("PHD_token");
+    const rtf_token = GM_config.get("rtf_token");
+    const avistaz_token = GM_config.get("avistaz_token");
+    const cinemaz_token = GM_config.get("cinemaz_token");
+    const phd_token = GM_config.get("phd_token");
 
     // We need to use XML response with TVV and have to define some parameters for it to work correctly.
     const TVV_AUTH_KEY = GM_config.get("tvv_auth"); // If you want to use TVV - find your authkey from a torrent download link
@@ -384,9 +378,7 @@
     let improved_tags = GM_config.get("funky_tags"); // true = Change display to work fully with PTP Improved Tags from jmxd.
     const btnTimer = GM_config.get("btntimer");
     const debug = GM_config.get("debugging");
-    const run_auth = GM_config.get("runAuth");
     const authloginwait = GM_config.get("authloginwait");
-    const timeZone = GM_config.get("timeZone");
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -739,7 +731,9 @@
                 "nogroup",
                 "VC-1",
                 "MIXED",
-                "Mixed"
+                "Mixed",
+                "MiXED",
+                "BTN"
                 //"ExampleText2",
                 //"ExampleText3"
             ];
@@ -1527,6 +1521,169 @@
             return GM_config.get(tracker.toLowerCase());
         };
 
+        const login_json = async (login_url, tracker, loginData) => {
+            const headers = {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            };
+
+            const response = await new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    url: login_url,
+                    method: "POST",
+                    data: JSON.stringify(loginData),
+                    headers: headers,
+                    onload: (res) => {
+                        resolve(res);
+                    },
+                    onerror: (err) => {
+                        reject(err);
+                    },
+                    onabort: (err) => {
+                        reject(err);
+                    },
+                    ontimeout: (err) => {
+                        reject(err);
+                    },
+                });
+            });
+
+            if (response.status === 201 || response.status === 200) {
+                if (debug) {
+                    console.log(`Login response from ${tracker}`, response.responseText);
+                }
+                return JSON.parse(response.responseText);
+            } else if (response.status === 422) {
+                const jsonResponse = JSON.parse(response.responseText);
+                console.warn(`Auth details not correct for ${tracker} auth login`);
+                console.log(`Login response from ${tracker}`, response.responseText);
+                displayAlert(`Auth details not correct for ${tracker} auth login`);
+                return JSON.parse(response.responseText);
+            } else {
+                if (debug) {
+                    console.log(`Login response from ${tracker}`, response.responseText);
+                }
+                console.warn(`Error: ${tracker} HTTP ${response.status} Error.`);
+                displayAlert(`${tracker} returned not ok`);
+                return null;
+            }
+        };
+
+        const fetch_login = async (login_url, tracker, loginData) => {
+            try {
+                const result = await login_json(login_url, tracker, loginData);
+                if (result && result.token) {
+                    return result;
+                } else {
+                    console.log(`${tracker} response`, result);
+                    console.log(`${tracker} data`, loginData);
+                    return null;
+                }
+            } catch (error) {
+                console.error(`Error in fetch_login for ${tracker}`, error);
+                return null;
+            }
+        };
+
+        const rtf_login = async () => {
+            const login_url = "https://retroflix.club/api/login";
+            const loginData = {
+                username: RTF_USER,
+                password: RTF_PASS
+            };
+            return await fetch_login(login_url, 'rtf', loginData);
+        };
+
+        const avistaz_login = async () => {
+            const login_url = "https://avistaz.to/api/v1/jackett/auth";
+            const loginData = {
+                username: AVISTAZ_USER,
+                password: AVISTAZ_PASS,
+                pid: AVISTAZ_PID
+            };
+            return await fetch_login(login_url, 'avistaz', loginData);
+        };
+
+        const cinemaz_login = async () => {
+            const login_url = "https://cinemaz.to/api/v1/jackett/auth";
+            const loginData = {
+                username: CINEMAZ_USER,
+                password: CINEMAZ_PASS,
+                pid: CINEMAZ_PID
+            };
+            return await fetch_login(login_url, 'cinemaz', loginData);
+        };
+
+        const phd_login = async () => {
+            const login_url = "https://privatehd.to/api/v1/jackett/auth";
+            const loginData = {
+                username: PHD_USER,
+                password: PHD_PASS,
+                pid: PHD_PID
+            };
+            return await fetch_login(login_url, 'phd', loginData);
+        };
+
+        const shouldRunAfterInterval = (tracker, intervalHours) => {
+            const token = GM_config.get(`${tracker.toLowerCase()}_token`);
+            if (!token) {
+                console.log(`No token found for ${tracker}, overriding wait period.`);
+                return true;
+            }
+
+            const lastRunRaw = GM_config.get(`${tracker.toLowerCase()}_last_login_run_raw`);
+            if (lastRunRaw) {
+                const lastRunDate = new Date(lastRunRaw);
+                if (isNaN(lastRunDate.getTime())) {
+                    console.error(`Invalid lastRun date for ${tracker}: ${lastRunRaw}`);
+                    return false;
+                }
+                const now = new Date();
+                const timeDifference = (now - lastRunDate) / (1000 * 60 * 60); // Time difference in hours
+                const shouldRun = timeDifference >= intervalHours;
+                console.log(`${tracker} auth login last run ${timeDifference} hours ago. Should run = ${shouldRun}`);
+
+                if (debug) {
+                    console.log(`Last run date for ${tracker}: ${lastRunDate.toISOString()}, Current date: ${now.toISOString()}, Time difference: ${timeDifference} hours, Should run: ${shouldRun}`);
+                }
+
+                return shouldRun;
+            }
+            return true;
+        };
+
+        (async (intervalHours = authloginwait) => {
+
+            const updateTrackerLogin = async (tracker, loginFunction, loginData) => {
+                if (isTrackerSelected(tracker) && shouldRunAfterInterval(tracker, intervalHours)) {
+                    console.log(`Running ${tracker} login function...`);
+                    const result = await loginFunction(loginData);
+                    if (result) {
+                        const token = result.token;
+                        if (debug) {
+                            console.log(`${tracker} Login successful`, result);
+                            console.log("Extracted token:", token);
+                        }
+                        GM_config.set(`${tracker.toLowerCase()}_token`, token);
+                        const rawDate = new Date().toISOString();
+                        GM_config.set(`${tracker.toLowerCase()}_last_login_run_raw`, rawDate);
+                        GM_config.save();
+                    } else {
+                        console.warn(`${tracker} Auth Login failed`);
+                    }
+                } else {
+                    if (debug) {
+                        console.log(`${tracker} Auth login already performed within the time period or the tracker is not selected.`);
+                    }
+                }
+            };
+
+            await updateTrackerLogin('rtf', rtf_login, {});
+            await updateTrackerLogin('avistaz', avistaz_login, {});
+            await updateTrackerLogin('cinemaz', cinemaz_login, {});
+            await updateTrackerLogin('phd', phd_login, {});
+        })();
+
         const post_json = async (post_query_url, tracker, postData, timeout = timer) => {
                 const timer = setTimeout(() => {
                     return null
@@ -1540,22 +1697,22 @@
                 'RTF': {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json',
-                    'Authorization': GM_config.get("RTF_token"),
+                    'Authorization': GM_config.get("rtf_token"),
                 },
                 'AvistaZ': {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json',
-                    'Authorization': `Bearer ${GM_config.get("AVISTAZ_token")}`,
+                    'Authorization': `Bearer ${GM_config.get("avistaz_token")}`,
                 },
                 'CinemaZ': {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json',
-                    'Authorization': `Bearer ${GM_config.get("CINEMAZ_token")}`,
+                    'Authorization': `Bearer ${GM_config.get("cinemaz_token")}`,
                 },
                 'PHD': {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json',
-                    'Authorization': `Bearer ${GM_config.get("PHD_token")}`,
+                    'Authorization': `Bearer ${GM_config.get("phd_token")}`,
                 },
                 // Add more trackers and their headers as needed
             };
@@ -1637,179 +1794,6 @@
                 return null;
             }
         };
-
-        const login_json = async (login_url, tracker, loginData) => {
-            const headers = {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            };
-
-            const response = await new Promise((resolve, reject) => {
-                GM_xmlhttpRequest({
-                    url: login_url,
-                    method: "POST",
-                    data: JSON.stringify(loginData),
-                    headers: headers,
-                    onload: (res) => {
-                        resolve(res);
-                    },
-                    onerror: (err) => {
-                        reject(err);
-                    },
-                    onabort: (err) => {
-                        reject(err);
-                    },
-                    ontimeout: (err) => {
-                        reject(err);
-                    },
-                });
-            });
-
-            if (response.status === 201 || response.status === 200) {
-                if (debug) {
-                    console.log(`Login response from ${tracker}`, response.responseText);
-                }
-                return JSON.parse(response.responseText);
-            } else if (response.status === 422) {
-                const jsonResponse = JSON.parse(response.responseText);
-                console.warn(`Auth details not correct for ${tracker} auth login`);
-                console.log(`Login response from ${tracker}`, response.responseText);
-                displayAlert(`Auth details not correct for ${tracker} auth login`);
-                return JSON.parse(response.responseText);
-            } else {
-                if (debug) {
-                    console.log(`Login response from ${tracker}`, response.responseText);
-                }
-                console.warn(`Error: ${tracker} HTTP ${response.status} Error.`);
-                displayAlert(`${tracker} returned not ok`);
-                return null;
-            }
-        };
-
-        const fetch_login = async (login_url, tracker, loginData) => {
-            try {
-                const result = await login_json(login_url, tracker, loginData);
-                if (result && result.token) {
-                    return result;
-                } else {
-                    console.log(`${tracker} response`, result);
-                    console.log(`${tracker} data`, loginData);
-                    return null;
-                }
-            } catch (error) {
-                console.error(`Error in fetch_login for ${tracker}`, error);
-                return null;
-            }
-        };
-
-        const rtf_login = async () => {
-            const login_url = "https://retroflix.club/api/login";
-            const loginData = {
-                username: RTF_USER,
-                password: RTF_PASS
-            };
-            return await fetch_login(login_url, 'RTF', loginData);
-        };
-
-        const avistaz_login = async () => {
-            const login_url = "https://avistaz.to/api/v1/jackett/auth";
-            const loginData = {
-                username: AVISTAZ_USER,
-                password: AVISTAZ_PASS,
-                pid: AVISTAZ_PID
-            };
-            return await fetch_login(login_url, 'AVISTAZ', loginData);
-        };
-
-        const cinemaz_login = async () => {
-            const login_url = "https://cinemaz.to/api/v1/jackett/auth";
-            const loginData = {
-                username: CINEMAZ_USER,
-                password: CINEMAZ_PASS,
-                pid: CINEMAZ_PID
-            };
-            return await fetch_login(login_url, 'CINEMAZ', loginData);
-        };
-
-        const phd_login = async () => {
-            const login_url = "https://privatehd.to/api/v1/jackett/auth";
-            const loginData = {
-                username: PHD_USER,
-                password: PHD_PASS,
-                pid: PHD_PID
-            };
-            return await fetch_login(login_url, 'PHD', loginData);
-        };
-
-        const formatDateWithTimezone = (date, timezoneOffset) => {
-            if (isNaN(date.getTime())) {
-                throw new RangeError('Invalid date');
-            }
-            const adjustedTime = new Date(date.getTime() + (timezoneOffset * 60 * 60 * 1000));
-            const sign = timezoneOffset >= 0 ? "+" : "-";
-            const hours = Math.abs(timezoneOffset).toString().padStart(2, '0') + "00";
-            return `${adjustedTime.toISOString().replace('Z', '')} GMT${sign}${hours}`;
-        };
-
-        const shouldRunAfterInterval = (tracker, override, intervalHours, timezoneOffset) => {
-            if (override) return true;
-
-            const lastRunRaw = GM_config.get(`${tracker}_last_login_run_raw`);
-            if (lastRunRaw) {
-                const lastRunDate = new Date(lastRunRaw);
-                if (isNaN(lastRunDate.getTime())) {
-                    console.error(`Invalid lastRun date for ${tracker}: ${lastRunRaw}`);
-                    return false;
-                }
-                const now = new Date();
-
-                const adjustedLastRunDate = new Date(lastRunDate.getTime() + (timezoneOffset * 60 * 60 * 1000));
-                const adjustedNow = new Date(now.getTime() + (timezoneOffset * 60 * 60 * 1000));
-                const timeDifference = (adjustedNow - adjustedLastRunDate) / (1000 * 60 * 60); // Time difference in hours
-                const shouldRun = timeDifference >= intervalHours;
-
-                if (debug) {
-                    console.log(`Last run date for ${tracker}: ${formatDateWithTimezone(lastRunDate, timezoneOffset)}, Current date: ${formatDateWithTimezone(now, timezoneOffset)}, Time difference: ${timeDifference} hours, Should run: ${shouldRun}`);
-                }
-
-                return shouldRun;
-            }
-            return true;
-        };
-
-        (async (override = run_auth, intervalHours = authloginwait) => {
-            const timezoneOffset = GM_config.get('timeZone');
-
-            const updateTrackerLogin = async (tracker, loginFunction, loginData, timezoneOffset) => {
-                if (isTrackerSelected(tracker) && shouldRunAfterInterval(tracker.toUpperCase(), override, intervalHours, timezoneOffset)) {
-                    console.log(`Running ${tracker} login function...`);
-                    const result = await loginFunction(loginData);
-                    if (result) {
-                        const token = result.token;
-                        if (debug) {
-                            console.log(`${tracker} Login successful`, result);
-                            console.log("Extracted token:", token);
-                        }
-                        GM_config.set(`${tracker.toUpperCase()}_token`, token);
-                        const rawDate = new Date().toISOString();
-                        const formattedDate = formatDateWithTimezone(new Date(rawDate), timezoneOffset);
-                        GM_config.set(`${tracker.toUpperCase()}_last_login_run_raw`, rawDate);
-                        GM_config.set(`${tracker.toUpperCase()}_last_login_run`, formattedDate);
-                    } else {
-                        console.warn(`${tracker} Auth Login failed`);
-                    }
-                } else {
-                    if (debug) {
-                        console.log(`${tracker} Auth login already performed within the time period or the tracker is not selected.`);
-                    }
-                }
-            };
-
-            await updateTrackerLogin('rtf', rtf_login, {}, timezoneOffset);
-            await updateTrackerLogin('avistaz', avistaz_login, {}, timezoneOffset);
-            await updateTrackerLogin('cinemaz', cinemaz_login, {}, timezoneOffset);
-            await updateTrackerLogin('phd', phd_login, {}, timezoneOffset);
-        })();
 
         const fetch_url = async (query_url, tracker) => {
             const response = await new Promise(async (resolve, reject) => {
