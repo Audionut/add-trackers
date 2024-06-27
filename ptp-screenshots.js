@@ -182,7 +182,7 @@
                     continue; // Skip delay
                 }
 
-                await new Promise(r => setTimeout(r, 600)); // Apply delay only once per row
+                await new Promise(r => setTimeout(r, 600)); // Apply delay only once per row. Set in consultation with site staff.
 
                 const url = `https://passthepopcorn.me/torrents.php?action=description&id=${movieId}&torrentid=${torrentId}`;
                 const response = await fetch(url);
@@ -203,7 +203,7 @@
                         imageSrcGroups[groupText][releaseName].push(imgSrc);
                     });
                     GM.setValue(cacheKey, imgSrcList);
-                    displayImagesForRelease(groupText, releaseName, groupDiv); // Display images for this release immediately
+                    displayImagesForRelease(groupText, releaseName, groupDiv); // Display images for this release immediately since no extra sites calls are necessary
                     console.log(`Processed images for movieId ${movieId}, torrentId ${torrentId}, releaseName: ${releaseName}`);
                     processedMatches.add(matchKey);
                 } else {
@@ -241,7 +241,7 @@
             setTimeout(() => {
                 releaseDiv.appendChild(img);
             }, delay);
-            delay += 150; // Increment delay for each image
+            delay += 150; // Increment delay for each image - assist with throttling
         });
 
         groupDiv.appendChild(releaseDiv);
