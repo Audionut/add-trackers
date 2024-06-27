@@ -3352,23 +3352,13 @@
                         }
 
                         const descriptionText = element.attributes.description;
-                        const imageRegex = /\[img=\d+\](https?:\/\/[^\s]+?\.png)\[\/img\]|\[URL=(https?:\/\/[^\s]+?)\]\[IMG\](https?:\/\/[^\s]+?\.png)\[\/IMG\]\[\/URL\]/gi;
                         const imageUrls = [];
+                        const regex = /\[img=\d+\](https?:\/\/[^ \[\]]+?\.png)\[\/img\]|(?:^|\s)(https?:\/\/[^ \[\]]+?\.png)(?=\s|$)/gi;
                         let match;
 
-                        while ((match = imageRegex.exec(descriptionText)) !== null) {
-                            // Handle the [img] tag matches
-                            if (match[1]) {
-                                imageUrls.push(match[1]);
-                            }
-                            // Handle the [URL] and [IMG] tag matches
-                            else if (match[2] && match[3]) {
-                                if (match[3].includes("thumb")) {
-                                    imageUrls.push(match[2]); // Use the URL from the [URL] tag
-                                } else {
-                                    imageUrls.push(match[3]); // Use the URL from the [IMG] tag
-                                }
-                            }
+                        while ((match = regex.exec(descriptionText)) !== null) {
+                            const url = match[1] || match[2];
+                            imageUrls.push(url);
                         }
 
                         const torrentObj = {
