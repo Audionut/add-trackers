@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Screenshots
-// @version      1.0
+// @version      1.1
 // @description  Load and display screenshots from all torrents on a movie page.
 // @author       Audionut
 // @namespace    https://github.com/Audionut/add-trackers
@@ -206,7 +206,6 @@
 
         const showReleaseNames = await GM.getValue('showReleaseNames', true);
         const showUNIT3D = await GM.getValue('showUNIT3D', true);
-        const enableCheckImageStatus = await GM.getValue('enableCheckImageStatus', true);
 
         for (const row of rowsToProcess) {
             const rowClass = row.className;
@@ -253,7 +252,23 @@
                 const onclickContent = linkElement.getAttribute('onclick');
                 if (!onclickContent) {
                     console.log(`No onclickContent found for row with releaseName: ${releaseName}, releaseGroup: ${releaseGroup}, size: ${size}`);
-                    continue; // Skip if no onclick content
+                    // Check for UNIT3D image spans
+                    if (showUNIT3D) {
+                        const unit3dImages = row.querySelectorAll('.UNIT3D.images');
+                        if (unit3dImages.length > 0) {
+                            if (!imageSrcGroups[groupText][releaseName]) {
+                                imageSrcGroups[groupText][releaseName] = [];
+                            }
+                            unit3dImages.forEach(span => {
+                                const imgSrc = span.getAttribute('title');
+                                imageSrcGroups[groupText][releaseName].push(imgSrc);
+                            });
+                            displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames);
+                            console.log(`Processed UNIT3D images for row with releaseName: ${releaseName}, releaseGroup: ${releaseGroup}, size: ${size}`);
+                            continue; // Skip if no links or image spans
+                        }
+                    }
+                    continue; // Skip if no onclick content and no UNIT3D images
                 }
 
                 const match = onclickContent.match(/show_description\('(\d+)', '(\d+)'\);/);
