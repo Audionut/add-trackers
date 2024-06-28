@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.0.1-A
+// @version      4.0.2-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -3360,6 +3360,16 @@
                             return null;
                         }
 
+                        const descriptionText = element.attributes.description;
+                        const imageUrls = [];
+                        const regex = /\[img=\d+\](https?:\/\/[^ \[\]]+?\.png)\[\/img\]|(?:^|\s)(https?:\/\/[^ \[\]]+?\.png)(?=\s|$)/gi;
+                        let match;
+
+                        while ((match = regex.exec(descriptionText)) !== null) {
+                            const url = match[1] || match[2];
+                            imageUrls.push(url);
+                        }
+
                         const torrentObj = {
                             api_size: parseInt(element.attributes.size),
                             datasetRelease: getRelease,
@@ -3390,6 +3400,7 @@
                             distributor: element.attributes.distributor,
                             region: element.attributes.region,
                             time: time,
+                            images: imageUrls,
                         };
                         // Mapping additional properties and logging the final torrent objects
                         const mappedObj = { ...torrentObj, "quality": get_torrent_quality(torrentObj), "discount": get_api_discount(torrentObj.discount, torrentObj.refundable, tracker), "internal": get_api_internal(torrentObj.internal), "Featured": get_api_featured(torrentObj.featured) };
@@ -3930,6 +3941,14 @@
                 if (torrent.time && torrent.time !== "None") {
                     if (groupTorrent) {
                         newHtml += `<span class='release time' title="${torrent.time}"></span>`;
+                    }
+                }
+
+                if (torrent.images && Array.isArray(torrent.images) && torrent.images.length > 0) {
+                    if (groupTorrent) {
+                        torrent.images.forEach(image => {
+                            newHtml += `<span class='UNIT3D images' title="${image}"></span>`;
+                        });
                     }
                 }
 
