@@ -402,7 +402,7 @@
         const enableCheckImageStatus = await getSetting('enableCheckImageStatus', true);
 
         if (enableCheckImageStatus) {
-            imgSrcList.forEach(imgSrc => processImageWithStatus(groupText, imgSrc, releaseImagesDiv, imgWidth));
+            await Promise.all(imgSrcList.map(imgSrc => processImageWithStatus(groupText, imgSrc, releaseImagesDiv, imgWidth)));
         } else {
             imgSrcList.forEach(imgSrc => appendImage(imgSrc, releaseImagesDiv, imgWidth));
         }
