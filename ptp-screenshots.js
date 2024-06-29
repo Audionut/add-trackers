@@ -1,24 +1,28 @@
 // ==UserScript==
 // @name         PTP Screenshots
-// @version      1.4
-// @description  Load and display screenshots from all torrents on a movie page.
-// @author       Audionut
+// @version      1.5
+// @description  Load and display screenshots from all torrents on a movie page with dimension checks for different groups.
+// @grant        GM.setValue
+// @grant        GM.getValue
 // @namespace    https://github.com/Audionut/add-trackers
 // @match        https://passthepopcorn.me/torrents.php?id=*
 // @downloadURL  https://github.com/Audionut/add-trackers/raw/main/ptp-screenshots.js
 // @updateURL    https://github.com/Audionut/add-trackers/raw/main/ptp-screenshots.js
-// @grant        GM.setValue
-// @grant        GM.getValue
 // ==/UserScript==
 
 (function() {
     'use strict';
 
     const imageSrcGroups = {}; // Object to store image URLs grouped by the row group text
+    const dimensionLimits = {
+        'Standard Definition': { width: 720, height: 576 },
+        'High Definition': { width: 1920, height: 1080 },
+        'Ultra High Definition': { width: 3840, height: 2160 }
+    };
 
     // Create a new div element to hold the images and settings
     const newDiv = document.createElement('div');
-    newDiv.className = 'screenshots-panel panel';
+    newDiv.className = 'screenshots-panel panel'; // Add 'panel' class for default styling
 
     const panelHeading = document.createElement('div');
     panelHeading.className = 'panel__heading';
@@ -76,6 +80,9 @@
         }
         .release-div.with-header {
             margin-top: 10px;
+        }
+        .screenshots-panel {
+            /* Add necessary default styles here if needed */
         }
     `;
     document.head.appendChild(style);
@@ -143,6 +150,21 @@
     };
     checkImageStatusLabel.appendChild(checkImageStatusCheckbox);
     settingsDiv.appendChild(checkImageStatusLabel);
+
+    const checkImageDimensionsLabel = document.createElement('label');
+    checkImageDimensionsLabel.textContent = 'Check Image Dimensions: ';
+    const checkImageDimensionsCheckbox = document.createElement('input');
+    checkImageDimensionsCheckbox.type = 'checkbox';
+
+    GM.getValue('checkImageDimensions', true).then(value => {
+        checkImageDimensionsCheckbox.checked = value;
+    });
+
+    checkImageDimensionsCheckbox.onchange = function() {
+        GM.setValue('checkImageDimensions', checkImageDimensionsCheckbox.checked);
+    };
+    checkImageDimensionsLabel.appendChild(checkImageDimensionsCheckbox);
+    settingsDiv.appendChild(checkImageDimensionsLabel);
 
     newDiv.appendChild(settingsDiv);
 
@@ -380,7 +402,7 @@
         const enableCheckImageStatus = await getSetting('enableCheckImageStatus', true);
 
         if (enableCheckImageStatus) {
-            imgSrcList.forEach(imgSrc => processImageWithStatus(imgSrc, releaseImagesDiv, imgWidth));
+            imgSrcList.forEach(imgSrc => processImageWithStatus(groupText, imgSrc, releaseImagesDiv, imgWidth));
         } else {
             imgSrcList.forEach(imgSrc => appendImage(imgSrc, releaseImagesDiv, imgWidth));
         }
@@ -411,14 +433,31 @@
         }
     }
 
-    async function processImageWithStatus(imgSrc, releaseImagesDiv, imgWidth) {
-        const status = await checkImageStatus(imgSrc);
-        console.time(`checkImageStatus_${imgSrc}`);
-        if (status) {
-            console.timeEnd(`checkImageStatus_${imgSrc}`);
-            appendImage(imgSrc, releaseImagesDiv, imgWidth);
-        } else {
-            console.timeEnd(`checkImageStatus_${imgSrc}`);
+    async function processImageWithStatus(groupText, imgSrc, releaseImagesDiv, imgWidth) {
+        try {
+            const status = await checkImageStatus(imgSrc);
+            console.time(`checkImageStatus_${imgSrc}`);
+            if (status) {
+                console.timeEnd(`checkImageStatus_${imgSrc}`);
+                const checkImageDimensions = await getSetting('checkImageDimensions', true);
+
+                if (checkImageDimensions && dimensionLimits[groupText]) {
+                    const dimensions = await getImageDimensions(imgSrc);
+                    console.log(`Dimensions for ${imgSrc}: Width=${dimensions.width}, Height=${dimensions.height}`);
+
+                    const limits = dimensionLimits[groupText];
+                    if (dimensions.width > limits.width || dimensions.height > limits.height) {
+                        console.log(`Skipping image ${imgSrc} due to dimension limits`);
+                        return; // Skip this image
+                    }
+                }
+
+                appendImage(imgSrc, releaseImagesDiv, imgWidth);
+            } else {
+                console.timeEnd(`checkImageStatus_${imgSrc}`);
+            }
+        } catch (error) {
+            console.error(`Error processing image ${imgSrc}:`, error);
         }
     }
 
@@ -437,6 +476,19 @@
             const img = new Image();
             img.onload = () => resolve(true);
             img.onerror = () => resolve(false);
+            img.src = url;
+        });
+    }
+
+    function getImageDimensions(url) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+                resolve({ width: img.naturalWidth, height: img.naturalHeight });
+            };
+            img.onerror = () => {
+                reject(new Error('Image failed to load'));
+            };
             img.src = url;
         });
     }
