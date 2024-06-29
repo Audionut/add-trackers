@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.0.2-A
+// @version      4.0.3-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -1461,8 +1461,8 @@
                     return false;
                 } else if (html.querySelector('SearchError[value="101"]') !== null) {
                     let timeValue = html.querySelector('SearchError[value="101"]').textContent;
-                    console.warn(`RTF: ${timeValue}`);
-                    displayAlert(`RTF: ${timeValue}`);
+                    console.warn(`TVV: ${timeValue}`);
+                    displayAlert(`TVV: ${timeValue}`);
                     return false;
                 } else if (html.querySelector('SearchError') !== null) {
                     console.warn("Some issue with TVV searching");
