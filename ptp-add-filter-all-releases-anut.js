@@ -72,6 +72,7 @@
         "tvv": {"label": "TVV *", "type": "checkbox", "default": false, "tooltip": "Enter auth key & torrent pass below"},
         "tvv_auth": {"label": "TVV_AUTH_KEY", "type": "text", "default": "", "tooltip": "Find from a torrent download link at TVV"},
         "tvv_torr": {"label": "TVV_TORR_PASS", "type": "text", "default": "", "tooltip": "Needed to access TVV xml output"},
+        "easysearch": {"label": "TVV easy searching", "type": "checkbox", "default": true, "tooltip": "TVV has strict searching limits, especially for lower user groups. Disable this to search with more expensive options, better feedback including seeding status, but you're more likely to hit searching to soon error."},
         "show_icon": {"label": "Show Tracker Icon", "type": "checkbox", "default": true, "tooltip": "Display the tracker icon next to releases"},
         "show_name": {"label": "Show Tracker Name", "type": "checkbox", "default": true, "tooltip": "Display the tracker name next to releases"},
         "hide_same_size": {"label": "Hide torrents with same size", "type": "checkbox", "default": false, "tooltip": "Hide torrents that have the same file size as existing ones"},
@@ -124,7 +125,7 @@
         const multi_auth = {
             "bhd": ["bhd_api", "bhd_rss"],
             "hdb": ["hdb_user", "hdb_pass"],
-            "tvv": ["tvv_auth", "tvv_torr"],
+            "tvv": ["tvv_auth", "tvv_torr", "easysearch"],
             "rtf": ["rtf_user", "rtf_pass", "rtf_token", "rtf_last_login_run_raw", "authloginwait"],
             "avistaz": ["avistaz_user", "avistaz_pass", "avistaz_pid", "avistaz_token", "avistaz_last_login_run_raw", "authloginwait"],
             "cinemaz": ["cinemaz_user", "cinemaz_pass", "cinemaz_pid", "cinemaz_token", "cinemaz_last_login_run_raw", "authloginwait"],
@@ -379,6 +380,7 @@
     const btnTimer = GM_config.get("btntimer");
     const debug = GM_config.get("debugging");
     const authloginwait = GM_config.get("authloginwait");
+    const easysearching = GM_config.get("easysearch");
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -1996,7 +1998,11 @@
                         LST_API_TOKEN;
                 }
                 else if (tracker === "TVV") {
-                    query_url = "https://tv-vault.me/xmlsearch.php?query=get&torrent_pass=" + TVV_TORR_PASS + "&imdbid=" + imdb_id + "&xmladd-x-currentseed=1";
+                    if (!easysearching) {
+                        query_url = "https://tv-vault.me/xmlsearch.php?query=get&torrent_pass=" + TVV_TORR_PASS + "&imdbid=" + imdb_id + "&xmladd-x-currentseed=1";
+                    } else {
+                        query_url = "https://tv-vault.me/xmlsearch.php?query=get&torrent_pass=" + TVV_TORR_PASS + "&imdbid=" + imdb_id;
+                    }
                 }
                 else if (tracker === "RTF") {
                     post_query_url = "https://retroflix.club/api/torrent?imdbId=" + imdb_id + "&page=1&itemsPerPage=50&sort=torrent.createdAt&direction=desc";
