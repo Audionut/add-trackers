@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Screenshots
-// @version      1.1
+// @version      1.2
 // @description  Load and display screenshots from all torrents on a movie page.
 // @author       Audionut
 // @namespace    https://github.com/Audionut/add-trackers
@@ -334,19 +334,12 @@
     async function displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames) {
         const displayTimer = `displayImagesForRelease_${releaseName}`;
         console.time(displayTimer);
+
         const releaseDiv = document.createElement('div');
         releaseDiv.style.marginBottom = '5px';
 
         if (showReleaseNames) {
-            const releaseHeader = document.createElement('strong');
-            releaseHeader.textContent = releaseName;
-            releaseHeader.style.display = 'block';
-            releaseHeader.style.marginBottom = '5px';
-            releaseHeader.style.cursor = 'pointer';
-            releaseHeader.onclick = function() {
-                const releaseImagesDiv = this.nextElementSibling;
-                releaseImagesDiv.style.display = releaseImagesDiv.style.display === 'none' ? 'block' : 'none';
-            };
+            const releaseHeader = createReleaseHeader(releaseName);
             releaseDiv.appendChild(releaseHeader);
         }
 
@@ -354,53 +347,14 @@
         releaseImagesDiv.style.display = 'block';
         releaseDiv.appendChild(releaseImagesDiv);
 
-        const imgSrcList = imageSrcGroups[groupText][releaseName] || [];
-        let delay = 0;
-
-        const imgWidth = await GM.getValue('imgWidth', 100);
-        const enableCheckImageStatus = await GM.getValue('enableCheckImageStatus', true);
+        const imgSrcList = imageSrcGroups[groupText]?.[releaseName] || [];
+        const imgWidth = await getSetting('imgWidth', 100);
+        const enableCheckImageStatus = await getSetting('enableCheckImageStatus', true);
 
         if (enableCheckImageStatus) {
-            const checkImageStatusPromises = imgSrcList.map(imgSrc => checkImageStatus(imgSrc).then(status => ({ imgSrc, status })));
-            const imgStatusList = await Promise.all(checkImageStatusPromises);
-
-            for (const { imgSrc, status } of imgStatusList) {
-                console.time(`checkImageStatus_${imgSrc}`);
-                if (status) {
-                    console.timeEnd(`checkImageStatus_${imgSrc}`);
-                    const img = document.createElement('img');
-                    img.src = imgSrc;
-                    img.style.width = `${imgWidth}px`;
-                    img.style.marginRight = '5px';
-                    img.style.marginBottom = '5px';
-                    img.onclick = function() {
-                        lightbox.init(img, 500);
-                    };
-
-                    setTimeout(() => {
-                        releaseImagesDiv.appendChild(img);
-                    }, delay);
-                    delay += 50; // Increment delay for each image
-                } else {
-                    console.timeEnd(`checkImageStatus_${imgSrc}`);
-                }
-            }
+            imgSrcList.forEach(imgSrc => processImageWithStatus(imgSrc, releaseImagesDiv, imgWidth));
         } else {
-            for (const imgSrc of imgSrcList) {
-                const img = document.createElement('img');
-                img.src = imgSrc;
-                img.style.width = `${imgWidth}px`;
-                img.style.marginRight = '5px';
-                img.style.marginBottom = '5px';
-                img.onclick = function() {
-                    lightbox.init(img, 500);
-                };
-
-                setTimeout(() => {
-                    releaseImagesDiv.appendChild(img);
-                }, delay);
-                delay += 50; // Increment delay for each image
-            }
+            imgSrcList.forEach(imgSrc => appendImage(imgSrc, releaseImagesDiv, imgWidth));
         }
 
         groupDiv.appendChild(releaseDiv);
@@ -408,7 +362,51 @@
         console.timeEnd(displayTimer);
     }
 
-    async function checkImageStatus(url) {
+    function createReleaseHeader(releaseName) {
+        const releaseHeader = document.createElement('strong');
+        releaseHeader.textContent = releaseName;
+        releaseHeader.style.display = 'block';
+        releaseHeader.style.marginBottom = '5px';
+        releaseHeader.style.cursor = 'pointer';
+        releaseHeader.onclick = function() {
+            const releaseImagesDiv = this.nextElementSibling;
+            releaseImagesDiv.style.display = releaseImagesDiv.style.display === 'none' ? 'block' : 'none';
+        };
+        return releaseHeader;
+    }
+
+    async function getSetting(settingName, defaultValue) {
+        try {
+            return await GM.getValue(settingName, defaultValue);
+        } catch (error) {
+            console.error(`Error fetching setting ${settingName}:`, error);
+            return defaultValue;
+        }
+    }
+
+    async function processImageWithStatus(imgSrc, releaseImagesDiv, imgWidth) {
+        const status = await checkImageStatus(imgSrc);
+        console.time(`checkImageStatus_${imgSrc}`);
+        if (status) {
+            console.timeEnd(`checkImageStatus_${imgSrc}`);
+            appendImage(imgSrc, releaseImagesDiv, imgWidth);
+        } else {
+            console.timeEnd(`checkImageStatus_${imgSrc}`);
+        }
+    }
+
+    function appendImage(imgSrc, releaseImagesDiv, imgWidth) {
+        const img = document.createElement('img');
+        img.src = imgSrc;
+        img.style.width = `${imgWidth}px`;
+        img.style.marginRight = '5px';
+        img.style.marginBottom = '5px';
+        img.onclick = () => lightbox.init(img, 500);
+
+        releaseImagesDiv.appendChild(img);
+    }
+
+    function checkImageStatus(url) {
         return new Promise(resolve => {
             const img = new Image();
             img.onload = () => resolve(true);
