@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Screenshots
-// @version      1.3
+// @version      1.4
 // @description  Load and display screenshots from all torrents on a movie page.
 // @author       Audionut
 // @namespace    https://github.com/Audionut/add-trackers
@@ -18,7 +18,7 @@
 
     // Create a new div element to hold the images and settings
     const newDiv = document.createElement('div');
-    newDiv.className = 'panel';
+    newDiv.className = 'screenshots-panel panel';
 
     const panelHeading = document.createElement('div');
     panelHeading.className = 'panel__heading';
@@ -455,8 +455,8 @@
                     div.classList.remove('with-header');
                 }
             });
+            const screenshotsPanel = document.querySelector('.screenshots-panel .panel__body');
             if (!showReleaseNames) {
-                const groupDiv = document.querySelector('.panel__body');
                 const releaseImagesDiv = document.createElement('div');
                 releaseImagesDiv.className = 'release-images-div';
                 const allImages = [];
@@ -464,10 +464,12 @@
                     allImages.push(...div.querySelector('.release-images-div').childNodes);
                 });
                 releaseImagesDiv.append(...allImages);
-                groupDiv.innerHTML = '';
-                groupDiv.appendChild(releaseImagesDiv);
+                screenshotsPanel.innerHTML = '';
+                screenshotsPanel.appendChild(releaseImagesDiv);
             } else {
-                addHeaders(); // Re-add headers and reorganize layout
+                // Clear the panel body and reinitialize headers and images
+                screenshotsPanel.innerHTML = '';
+                addHeaders();
             }
         });
     }
