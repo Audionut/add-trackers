@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Screenshots
-// @version      1.6
+// @version      1.7
 // @description  Load and display screenshots from all torrents on a movie page with dimension checks for different groups and status indicators.
 // @grant        GM.setValue
 // @grant        GM.getValue
@@ -15,8 +15,8 @@
 
     const imageSrcGroups = {}; // Object to store image URLs grouped by the row group text
     const dimensionLimits = {
-        'Standard Definition': { min: { width: 500, height: 300 }, max: { width: 1064, height: 616 } },
-        'High Definition': { min: { width: 1000, height: 500 }, max: { width: 1940, height: 1120 } },
+        'Standard Definition': { min: { width: 500, height: 250 }, max: { width: 1064, height: 616 } },
+        'High Definition': { min: { width: 600, height: 500 }, max: { width: 1940, height: 1120 } },
         'Ultra High Definition': { min: { width: 2000, height: 1100 }, max: { width: 3880, height: 2200 } }
     };
 
@@ -162,6 +162,22 @@
     checkImageStatusLabel.appendChild(checkImageStatusCheckbox);
     settingsDiv.appendChild(checkImageStatusLabel);
 
+    // Adding the new setting to the settings panel
+    const showFailedImageIndicatorLabel = document.createElement('label');
+    showFailedImageIndicatorLabel.textContent = 'Show Failed Image Indicator: ';
+    const showFailedImageIndicatorCheckbox = document.createElement('input');
+    showFailedImageIndicatorCheckbox.type = 'checkbox';
+
+    GM.getValue('showFailedImageIndicator', true).then(value => {
+        showFailedImageIndicatorCheckbox.checked = value;
+    });
+
+    showFailedImageIndicatorCheckbox.onchange = function() {
+        GM.setValue('showFailedImageIndicator', showFailedImageIndicatorCheckbox.checked);
+    };
+    showFailedImageIndicatorLabel.appendChild(showFailedImageIndicatorCheckbox);
+    settingsDiv.appendChild(showFailedImageIndicatorLabel);
+
     const checkImageDimensionsLabel = document.createElement('label');
     checkImageDimensionsLabel.textContent = 'Check Image Dimensions: ';
     const checkImageDimensionsCheckbox = document.createElement('input');
@@ -235,248 +251,257 @@
         console.timeEnd('addHeaders');
     }
 
-async function processImagesForGroup(groupText, groupDiv) {
-    statusMessage.textContent = `Fetching and processing images for group: ${groupText}...`;
-    console.time(`processImagesForGroup_${groupText}`);
-    const parentRows = document.querySelectorAll('.group_torrent.group_torrent_header');
-    const rowGroupMap = new Map();
-    const processedMatches = new Set(); // To track processed releaseGroup-size matches
-    const failedReleases = new Set(); // To track releases with failed images
+    async function processImagesForGroup(groupText, groupDiv) {
+        statusMessage.textContent = `Fetching and processing images for group: ${groupText}...`;
+        console.time(`processImagesForGroup_${groupText}`);
+        const parentRows = document.querySelectorAll('.group_torrent.group_torrent_header');
+        const rowGroupMap = new Map();
+        const processedMatches = new Set(); // To track processed releaseGroup-size matches
+        const failedReleases = new Set(); // To track releases with failed images
 
-    parentRows.forEach(row => {
-        let currentRow = row;
-        while (currentRow) {
-            if (currentRow.querySelector('.basic-movie-list__torrent-edition__sub')) {
-                const rowGroupText = currentRow.querySelector('.basic-movie-list__torrent-edition__sub').textContent.trim();
-                rowGroupMap.set(row, rowGroupText);
-                break;
-            }
-            currentRow = currentRow.previousElementSibling;
-        }
-    });
-
-    const rowsToProcess = Array.from(parentRows).filter(row => rowGroupMap.get(row) === groupText);
-    const processedRows = new Set(); // Track processed rows
-
-    const showReleaseNames = await GM.getValue('showReleaseNames', true);
-    const showUNIT3D = await GM.getValue('showUNIT3D', true);
-
-    // Initialize the processing counter
-    const processingStatus = { [groupText]: 0 };
-
-    const processRow = async (row) => {
-        const rowClass = row.className;
-        const rowTimer = `processRow_${rowClass}`;
-        console.time(rowTimer);
-        try {
-            if (processedRows.has(row)) return; // Skip if already processed
-            processedRows.add(row);
-
-            const releaseName = row.getAttribute('data-releasename') || '';
-            const releaseGroup = row.getAttribute('data-releasegroup') || '';
-            const sizeElement = row.querySelector('td.nobr span[title]');
-            const size = sizeElement ? sizeElement.getAttribute('title') : 'Unknown Size';
-
-            const matchKey = `${releaseGroup}_${size}`;
-            if (processedMatches.has(matchKey)) {
-                console.log(`Skipping row due to duplicate match: ${matchKey}`);
-                return; // Skip if already processed
-            }
-
-            const linkElement = row.querySelector('a.torrent-info-link');
-            if (!linkElement) {
-                console.log(`No link element found for row with releaseName: ${releaseName}, releaseGroup: ${releaseGroup}, size: ${size}`);
-                // Check for UNIT3D image spans
-                if (showUNIT3D) {
-                    const unit3dImages = row.querySelectorAll('.UNIT3D.images');
-                    if (unit3dImages.length > 0) {
-                        if (!imageSrcGroups[groupText][releaseName]) {
-                            imageSrcGroups[groupText][releaseName] = [];
-                        }
-                        unit3dImages.forEach(span => {
-                            const imgSrc = span.getAttribute('title');
-                            imageSrcGroups[groupText][releaseName].push(imgSrc);
-                        });
-                        processingStatus[groupText] += imageSrcGroups[groupText][releaseName].length;
-                        await displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, processingStatus, failedReleases);
-                        console.log(`Processed UNIT3D images for row with releaseName: ${releaseName}, releaseGroup: ${releaseGroup}, size: ${size}`);
-                        return; // Skip if no links or image spans
-                    }
-                } else {
-                    return; // Skip if showUNIT3D is false
+        parentRows.forEach(row => {
+            let currentRow = row;
+            while (currentRow) {
+                if (currentRow.querySelector('.basic-movie-list__torrent-edition__sub')) {
+                    const rowGroupText = currentRow.querySelector('.basic-movie-list__torrent-edition__sub').textContent.trim();
+                    rowGroupMap.set(row, rowGroupText);
+                    break;
                 }
+                currentRow = currentRow.previousElementSibling;
             }
+        });
 
-            const onclickContent = linkElement.getAttribute('onclick');
-            if (!onclickContent) {
-                console.log(`No onclickContent found for row with releaseName: ${releaseName}, releaseGroup: ${releaseGroup}, size: ${size}`);
-                // Check for UNIT3D image spans
-                if (showUNIT3D) {
-                    const unit3dImages = row.querySelectorAll('.UNIT3D.images');
-                    if (unit3dImages.length > 0) {
-                        if (!imageSrcGroups[groupText][releaseName]) {
-                            imageSrcGroups[groupText][releaseName] = [];
+        const rowsToProcess = Array.from(parentRows).filter(row => rowGroupMap.get(row) === groupText);
+        const processedRows = new Set(); // Track processed rows
+
+        const showReleaseNames = await GM.getValue('showReleaseNames', true);
+        const showUNIT3D = await GM.getValue('showUNIT3D', true);
+        const showFailedImageIndicator = await GM.getValue('showFailedImageIndicator', true); // New setting
+
+        // Initialize the processing counter
+        const processingStatus = { [groupText]: 0 };
+
+        const processRow = async (row) => {
+            const rowClass = row.className;
+            const rowTimer = `processRow_${rowClass}`;
+            console.time(rowTimer);
+            try {
+                if (processedRows.has(row)) return; // Skip if already processed
+                processedRows.add(row);
+
+                const releaseName = row.getAttribute('data-releasename') || '';
+                const releaseGroup = row.getAttribute('data-releasegroup') || '';
+                const sizeElement = row.querySelector('td.nobr span[title]');
+                const size = sizeElement ? sizeElement.getAttribute('title') : 'Unknown Size';
+
+                const matchKey = `${releaseGroup}_${size}`;
+                if (processedMatches.has(matchKey)) {
+                    console.log(`Skipping row due to duplicate match: ${matchKey}`);
+                    return; // Skip if already processed
+                }
+
+                const linkElement = row.querySelector('a.torrent-info-link');
+                if (!linkElement) {
+                    console.log(`No link element found for row with releaseName: ${releaseName}, releaseGroup: ${releaseGroup}, size: ${size}`);
+                    // Check for UNIT3D image spans
+                    if (showUNIT3D) {
+                        const unit3dImages = row.querySelectorAll('.UNIT3D.images');
+                        if (unit3dImages.length > 0) {
+                            if (!imageSrcGroups[groupText][releaseName]) {
+                                imageSrcGroups[groupText][releaseName] = [];
+                            }
+                            unit3dImages.forEach(span => {
+                                const imgSrc = span.getAttribute('title');
+                                imageSrcGroups[groupText][releaseName].push(imgSrc);
+                            });
+                            processingStatus[groupText] += imageSrcGroups[groupText][releaseName].length;
+                            await displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, processingStatus, failedReleases, showFailedImageIndicator);
+                            console.log(`Processed UNIT3D images for row with releaseName: ${releaseName}, releaseGroup: ${releaseGroup}, size: ${size}`);
+                            return; // Skip if no links or image spans
                         }
-                        unit3dImages.forEach(span => {
-                            const imgSrc = span.getAttribute('title');
-                            imageSrcGroups[groupText][releaseName].push(imgSrc);
-                        });
-                        processingStatus[groupText] += imageSrcGroups[groupText][releaseName].length;
-                        await displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, processingStatus, failedReleases);
-                        console.log(`Processed UNIT3D images for row with releaseName: ${releaseName}, releaseGroup: ${releaseGroup}, size: ${size}`);
-                        return; // Skip if no links or image spans
+                    } else {
+                        return; // Skip if showUNIT3D is false
                     }
                 }
-                return; // Skip if no onclick content and no UNIT3D images
-            }
 
-            const match = onclickContent.match(/show_description\('(\d+)', '(\d+)'\);/);
-            if (!match) {
-                console.log(`No show_description match found for row with releaseName: ${releaseName}, releaseGroup: ${releaseGroup}, size: ${size}`);
-                return; // Skip to next row
-            }
-
-            const [_, movieId, torrentId] = match;
-            const cacheKey = `images_${movieId}_${torrentId}`;
-
-            const cachedData = await GM.getValue(cacheKey, null);
-            if (cachedData) {
-                if (!imageSrcGroups[groupText][releaseName]) {
-                    imageSrcGroups[groupText][releaseName] = [];
+                const onclickContent = linkElement.getAttribute('onclick');
+                if (!onclickContent) {
+                    console.log(`No onclickContent found for row with releaseName: ${releaseName}, releaseGroup: ${releaseGroup}, size: ${size}`);
+                    // Check for UNIT3D image spans
+                    if (showUNIT3D) {
+                        const unit3dImages = row.querySelectorAll('.UNIT3D.images');
+                        if (unit3dImages.length > 0) {
+                            if (!imageSrcGroups[groupText][releaseName]) {
+                                imageSrcGroups[groupText][releaseName] = [];
+                            }
+                            unit3dImages.forEach(span => {
+                                const imgSrc = span.getAttribute('title');
+                                imageSrcGroups[groupText][releaseName].push(imgSrc);
+                            });
+                            processingStatus[groupText] += imageSrcGroups[groupText][releaseName].length;
+                            await displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, processingStatus, failedReleases, showFailedImageIndicator);
+                            console.log(`Processed UNIT3D images for row with releaseName: ${releaseName}, releaseGroup: ${releaseGroup}, size: ${size}`);
+                            return; // Skip if no links or image spans
+                        }
+                    }
+                    return; // Skip if no onclick content and no UNIT3D images
                 }
-                imageSrcGroups[groupText][releaseName].push(...cachedData);
-                processingStatus[groupText] += cachedData.length;
-                await displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, processingStatus, failedReleases);
-                console.log(`Loaded cached images for movieId ${movieId}, torrentId ${torrentId}:`, cachedData);
-                processedMatches.add(matchKey);
-                return; // Skip delay
-            }
 
-            // Apply delay only once per fetch request
-            console.time(`fetchRequest_${releaseName}`);
-            const url = `https://passthepopcorn.me/torrents.php?action=description&id=${movieId}&torrentid=${torrentId}`;
-            const fetchPromise = fetch(url).then(response => response.json());
-            const delayPromise = new Promise(r => setTimeout(r, 600));
-            const [data] = await Promise.all([fetchPromise, delayPromise]);
-            console.timeEnd(`fetchRequest_${releaseName}`);
+                const match = onclickContent.match(/show_description\('(\d+)', '(\d+)'\);/);
+                if (!match) {
+                    console.log(`No show_description match found for row with releaseName: ${releaseName}, releaseGroup: ${releaseGroup}, size: ${size}`);
+                    return; // Skip to next row
+                }
 
-            const description = data.Description;
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(description, 'text/html');
+                const [_, movieId, torrentId] = match;
+                const cacheKey = `images_${movieId}_${torrentId}`;
 
-            // Skip images contained within the specified HTML snippet
-            if (description.includes('<strong>Source, Encode</strong>')) {
-                console.log(`Skipping images within "Source, Encode" for movieId ${movieId}, torrentId ${torrentId}, releaseName: ${releaseName}`);
-                return;
-            }
-
-            const imgElements = doc.querySelectorAll('img.bbcode__image');
-            const imgSrcList = [];
-            if (imgElements.length > 0) {
-                console.time(`processImages_${releaseName}`);
-                imgElements.forEach(imgElement => {
-                    const imgSrc = imgElement.src;
-                    imgSrcList.push(imgSrc);
+                const cachedData = await GM.getValue(cacheKey, null);
+                if (cachedData) {
                     if (!imageSrcGroups[groupText][releaseName]) {
                         imageSrcGroups[groupText][releaseName] = [];
                     }
-                    imageSrcGroups[groupText][releaseName].push(imgSrc);
-                });
-                GM.setValue(cacheKey, imgSrcList);
-                processingStatus[groupText] += imgSrcList.length;
-                await displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, processingStatus, failedReleases); // Display images for this release immediately
-                console.log(`Processed images for movieId ${movieId}, torrentId ${torrentId}, releaseName: ${releaseName}`);
-                processedMatches.add(matchKey);
-                console.timeEnd(`processImages_${releaseName}`);
-            } else {
-                console.log(`No image elements found in description for movieId ${movieId}, torrentId ${torrentId}`);
+                    imageSrcGroups[groupText][releaseName].push(...cachedData);
+                    processingStatus[groupText] += cachedData.length;
+                    await displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, processingStatus, failedReleases, showFailedImageIndicator);
+                    console.log(`Loaded cached images for movieId ${movieId}, torrentId ${torrentId}:`, cachedData);
+                    processedMatches.add(matchKey);
+                    return; // Skip delay
+                }
+
+                // Apply delay only once per fetch request
+                console.time(`fetchRequest_${releaseName}`);
+                const url = `https://passthepopcorn.me/torrents.php?action=description&id=${movieId}&torrentid=${torrentId}`;
+                const fetchPromise = fetch(url).then(response => response.json());
+                const delayPromise = new Promise(r => setTimeout(r, 600));
+                const [data] = await Promise.all([fetchPromise, delayPromise]);
+                console.timeEnd(`fetchRequest_${releaseName}`);
+
+                const description = data.Description;
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(description, 'text/html');
+
+                // Skip images contained within the specified HTML snippet
+                if (description.includes('<strong>Source, Encode</strong>')) {
+                    console.log(`Skipping images within "Source, Encode" for movieId ${movieId}, torrentId ${torrentId}, releaseName: ${releaseName}`);
+                    return;
+                }
+
+                const imgElements = doc.querySelectorAll('img.bbcode__image');
+                const imgSrcList = [];
+                if (imgElements.length > 0) {
+                    console.time(`processImages_${releaseName}`);
+                    imgElements.forEach(imgElement => {
+                        const imgSrc = imgElement.src;
+                        imgSrcList.push(imgSrc);
+                        if (!imageSrcGroups[groupText][releaseName]) {
+                            imageSrcGroups[groupText][releaseName] = [];
+                        }
+                        imageSrcGroups[groupText][releaseName].push(imgSrc);
+                    });
+                    GM.setValue(cacheKey, imgSrcList);
+                    processingStatus[groupText] += imgSrcList.length;
+                    await displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, processingStatus, failedReleases, showFailedImageIndicator); // Display images for this release immediately
+                    console.log(`Processed images for movieId ${movieId}, torrentId ${torrentId}, releaseName: ${releaseName}`);
+                    processedMatches.add(matchKey);
+                    console.timeEnd(`processImages_${releaseName}`);
+                } else {
+                    console.log(`No image elements found in description for movieId ${movieId}, torrentId ${torrentId}`);
+                }
+            } catch (error) {
+                console.error(`Error processing row with releaseName: ${releaseName}, releaseGroup: ${releaseGroup}, size: ${size}`, error);
             }
-        } catch (error) {
-            console.error(`Error processing row with releaseName: ${releaseName}, releaseGroup: ${releaseGroup}, size: ${size}`, error);
-        }
-        console.timeEnd(rowTimer);
-    };
+            console.timeEnd(rowTimer);
+        };
 
-    await Promise.all(rowsToProcess.map(row => processRow(row)));
-    console.timeEnd(`processImagesForGroup_${groupText}`);
+        await Promise.all(rowsToProcess.map(row => processRow(row)));
+        console.timeEnd(`processImagesForGroup_${groupText}`);
 
-    // Ensure the status message is updated after all rows are processed and images added
-    if (processingStatus[groupText] === 0) {
-        statusMessage.textContent = `Finished fetching and processing all images for group: ${groupText}`;
-        if (failedReleases.size > 0) {
-            statusMessage.textContent += `\nFailed image checks for releases: ${Array.from(failedReleases).join(', ')}`;
-        }
-    }
-}
-
-async function displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, processingStatus, failedReleases) {
-    const displayTimer = `displayImagesForRelease_${releaseName}`;
-    console.time(displayTimer);
-
-    const releaseDiv = document.createElement('div');
-    releaseDiv.className = 'release-div';
-    if (showReleaseNames) {
-        releaseDiv.classList.add('with-header');
-    }
-
-    if (showReleaseNames) {
-        const releaseHeader = createReleaseHeader(releaseName);
-        releaseDiv.appendChild(releaseHeader);
-    }
-
-    let releaseImagesDiv;
-    if (showReleaseNames) {
-        releaseImagesDiv = document.createElement('div');
-        releaseImagesDiv.className = 'release-images-div';
-        releaseDiv.appendChild(releaseImagesDiv);
-        groupDiv.appendChild(releaseDiv);
-    } else {
-        releaseImagesDiv = groupDiv.querySelector('.release-images-div') || document.createElement('div');
-        releaseImagesDiv.className = 'release-images-div';
-        if (!groupDiv.contains(releaseImagesDiv)) {
-            groupDiv.appendChild(releaseImagesDiv);
-        }
-    }
-
-    const imgSrcList = imageSrcGroups[groupText]?.[releaseName] || [];
-    const imagesPerRow = await getSetting('imagesPerRow', 4);
-    const enableCheckImageStatus = await getSetting('enableCheckImageStatus', true);
-    const enableCheckImageDimensions = await getSetting('checkImageDimensions', true);
-
-    const processImage = async (imgSrc) => {
-        let status = true;
-        if (enableCheckImageStatus) {
-            status = await checkImageStatus(imgSrc);
-        }
-        if (status && enableCheckImageDimensions && dimensionLimits[groupText]) {
-            const dimensions = await getImageDimensions(imgSrc);
-            console.log(`Dimensions for ${imgSrc}: Width=${dimensions.width}, Height=${dimensions.height}`);
-            const limits = dimensionLimits[groupText];
-            if (dimensions.width > limits.max.width || dimensions.height > limits.max.height ||
-                dimensions.width < limits.min.width || dimensions.height < limits.min.height) {
-                status = false;
-            }
-        }
-        if (status) {
-            appendImage(imgSrc, releaseImagesDiv, imagesPerRow);
-        } else {
-            failedReleases.add(releaseName);
-        }
-        // Decrement the processing counter and check if all processing is done
-        processingStatus[groupText]--;
+        // Ensure the status message is updated after all rows are processed and images added
         if (processingStatus[groupText] === 0) {
-            statusMessage.textContent = `Finished adding all images for group: ${groupText}`;
+            statusMessage.textContent = `Finished fetching and processing all images for group: ${groupText}`;
             if (failedReleases.size > 0) {
                 statusMessage.textContent += `\nFailed image checks for releases: ${Array.from(failedReleases).join(', ')}`;
             }
         }
-    };
+    }
 
-    await Promise.all(imgSrcList.map(imgSrc => processImage(imgSrc)));
+    async function displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, processingStatus, failedReleases, showFailedImageIndicator) {
+        const displayTimer = `displayImagesForRelease_${releaseName}`;
+        console.time(displayTimer);
 
-    console.log(`Images have been added to the group: ${groupText}, release: ${releaseName}`);
-    console.timeEnd(displayTimer);
-}
+        const releaseDiv = document.createElement('div');
+        releaseDiv.className = 'release-div';
+        if (showReleaseNames) {
+            releaseDiv.classList.add('with-header');
+        }
+
+        if (showReleaseNames) {
+            const releaseHeader = createReleaseHeader(releaseName);
+            releaseDiv.appendChild(releaseHeader);
+        }
+
+        let releaseImagesDiv;
+        if (showReleaseNames) {
+            releaseImagesDiv = document.createElement('div');
+            releaseImagesDiv.className = 'release-images-div';
+            releaseDiv.appendChild(releaseImagesDiv);
+            groupDiv.appendChild(releaseDiv);
+        } else {
+            releaseImagesDiv = groupDiv.querySelector('.release-images-div') || document.createElement('div');
+            releaseImagesDiv.className = 'release-images-div';
+            if (!groupDiv.contains(releaseImagesDiv)) {
+                groupDiv.appendChild(releaseImagesDiv);
+            }
+        }
+
+        const imgSrcList = imageSrcGroups[groupText]?.[releaseName] || [];
+        const imagesPerRow = await getSetting('imagesPerRow', 4);
+        const enableCheckImageStatus = await getSetting('enableCheckImageStatus', true);
+        const enableCheckImageDimensions = await getSetting('checkImageDimensions', true);
+
+        const processImage = async (imgSrc) => {
+            let status = true;
+            if (enableCheckImageStatus) {
+                status = await checkImageStatus(imgSrc);
+            }
+            if (status && enableCheckImageDimensions && dimensionLimits[groupText]) {
+                const dimensions = await getImageDimensions(imgSrc);
+                console.log(`Dimensions for ${imgSrc}: Width=${dimensions.width}, Height=${dimensions.height}`);
+                const limits = dimensionLimits[groupText];
+                if (dimensions.width > limits.max.width || dimensions.height > limits.max.height ||
+                    dimensions.width < limits.min.width || dimensions.height < limits.min.height) {
+                    status = false;
+                }
+            }
+            if (status) {
+                appendImage(imgSrc, releaseImagesDiv, imagesPerRow);
+            } else if (enableCheckImageStatus) {
+                failedReleases.add(releaseName);
+            }
+            // Decrement the processing counter and check if all processing is done
+            processingStatus[groupText]--;
+            if (processingStatus[groupText] === 0) {
+                statusMessage.textContent = `Finished adding all images for group: ${groupText}`;
+                if (failedReleases.size > 0) {
+                    statusMessage.textContent += `\nFailed image checks for releases: ${Array.from(failedReleases).join(', ')}`;
+                }
+                if (showFailedImageIndicator && enableCheckImageStatus) {
+                    failedReleases.forEach(name => {
+                        const failedReleaseDiv = document.createElement('div');
+                        failedReleaseDiv.textContent = name;
+                        failedReleaseDiv.style.color = 'red';
+                        groupDiv.appendChild(failedReleaseDiv);
+                    });
+                }
+            }
+        };
+
+        await Promise.all(imgSrcList.map(imgSrc => processImage(imgSrc)));
+
+        console.log(`Images have been added to the group: ${groupText}, release: ${releaseName}`);
+        console.timeEnd(displayTimer);
+    }
 
     function createReleaseHeader(releaseName) {
         const releaseHeader = document.createElement('strong');
