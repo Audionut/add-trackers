@@ -15,9 +15,9 @@
 
     const imageSrcGroups = {}; // Object to store image URLs grouped by the row group text
     const dimensionLimits = {
-        'Standard Definition': { width: 1024, height: 576 },
-        'High Definition': { width: 1920, height: 1080 },
-        'Ultra High Definition': { width: 3840, height: 2160 }
+        'Standard Definition': { min: { width: 500, height: 300 }, max: { width: 1024, height: 576 } },
+        'High Definition': { min: { width: 1000, height: 500 }, max: { width: 1920, height: 1080 } },
+        'Ultra High Definition': { min: { width: 2000, height: 1100 }, max: { width: 3840, height: 2160 } }
     };
 
     // Create a new div element to hold the images and settings
@@ -76,9 +76,7 @@
             justify-content: center;
             align-items: center;
             overflow: hidden;
-            border-radius: 10px;
             background-color: rgb(51, 51, 51);
-            width: calc(100% / 4 - 10px); /* Default to 4 images per row with 10px gap */
             max-width: 100%;
         }
         .release-images-div img {
@@ -116,23 +114,23 @@
     showReleaseNamesLabel.appendChild(showReleaseNamesCheckbox);
     settingsDiv.appendChild(showReleaseNamesLabel);
 
-    const imgWidthLabel = document.createElement('label');
-    imgWidthLabel.textContent = 'Image Width (px): ';
-    const imgWidthInput = document.createElement('input');
-    imgWidthInput.type = 'number';
-    imgWidthInput.min = 50;
-    imgWidthInput.max = 500;
+    const imagesPerRowLabel = document.createElement('label');
+    imagesPerRowLabel.textContent = 'Number of Images per Row: ';
+    const imagesPerRowInput = document.createElement('input');
+    imagesPerRowInput.type = 'number';
+    imagesPerRowInput.min = 1;
+    imagesPerRowInput.max = 10;
 
-    GM.getValue('imgWidth', 100).then(value => {
-        imgWidthInput.value = value;
+    GM.getValue('imagesPerRow', 4).then(value => {
+        imagesPerRowInput.value = value;
     });
 
-    imgWidthInput.onchange = function() {
-        GM.setValue('imgWidth', imgWidthInput.value);
-        updateImageWidths();
+    imagesPerRowInput.onchange = function() {
+        GM.setValue('imagesPerRow', imagesPerRowInput.value);
+        updateImageLayout();
     };
-    imgWidthLabel.appendChild(imgWidthInput);
-    settingsDiv.appendChild(imgWidthLabel);
+    imagesPerRowLabel.appendChild(imagesPerRowInput);
+    settingsDiv.appendChild(imagesPerRowLabel);
 
     const showUNIT3DLabel = document.createElement('label');
     showUNIT3DLabel.textContent = 'Show UNIT3D Images: ';
@@ -429,15 +427,9 @@
         }
 
         const imgSrcList = imageSrcGroups[groupText]?.[releaseName] || [];
-        const imgWidth = await getSetting('imgWidth', 100);
+        const imagesPerRow = await getSetting('imagesPerRow', 4);
         const enableCheckImageStatus = await getSetting('enableCheckImageStatus', true);
         const enableCheckImageDimensions = await getSetting('checkImageDimensions', true);
-
-        const dimensionLimits = {
-            'Standard Definition': { min: { width: 500, height: 300 }, max: { width: 1024, height: 576 } },
-            'High Definition': { min: { width: 1000, height: 500 }, max: { width: 1920, height: 1080 } },
-            'Ultra High Definition': { min: { width: 2000, height: 1100 }, max: { width: 3840, height: 2160 } }
-        };
 
         const processImage = async (imgSrc) => {
             let status = true;
@@ -454,7 +446,7 @@
                 }
             }
             if (status) {
-                appendImage(imgSrc, releaseImagesDiv, imgWidth);
+                appendImage(imgSrc, releaseImagesDiv, imagesPerRow);
             }
             // Decrement the processing counter and check if all processing is done
             processingStatus[groupText]--;
@@ -491,10 +483,10 @@
         }
     }
 
-    function appendImage(imgSrc, releaseImagesDiv, imgWidth) {
+    function appendImage(imgSrc, releaseImagesDiv, imagesPerRow) {
         const container = document.createElement('div');
         container.className = 'image-container';
-        container.style.width = `${imgWidth}px`;
+        container.style.width = `calc(100% / ${imagesPerRow} - 10px)`;
 
         const img = document.createElement('img');
         img.src = imgSrc;
@@ -563,11 +555,11 @@
         });
     }
 
-    function updateImageWidths() {
-        GM.getValue('imgWidth', 100).then(imgWidth => {
-            const images = document.querySelectorAll('.image-group img');
+    function updateImageLayout() {
+        GM.getValue('imagesPerRow', 4).then(imagesPerRow => {
+            const images = document.querySelectorAll('.image-container');
             images.forEach(img => {
-                img.style.width = `${imgWidth}px`;
+                img.style.width = `calc(100% / ${imagesPerRow} - 10px)`;
             });
         });
     }
