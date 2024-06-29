@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Screenshots
-// @version      1.2
+// @version      1.3
 // @description  Load and display screenshots from all torrents on a movie page.
 // @author       Audionut
 // @namespace    https://github.com/Audionut/add-trackers
@@ -61,6 +61,21 @@
         }
         #settings-panel input[type="number"] {
             margin-right: 10px;
+        }
+        .release-images-div {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+        .release-images-div img {
+            margin-right: 0;
+            margin-bottom: 0;
+        }
+        .release-div {
+            margin-bottom: 10px;
+        }
+        .release-div.with-header {
+            margin-top: 10px;
         }
     `;
     document.head.appendChild(style);
@@ -336,16 +351,29 @@
         console.time(displayTimer);
 
         const releaseDiv = document.createElement('div');
-        releaseDiv.style.marginBottom = '5px';
+        releaseDiv.className = 'release-div';
+        if (showReleaseNames) {
+            releaseDiv.classList.add('with-header');
+        }
 
         if (showReleaseNames) {
             const releaseHeader = createReleaseHeader(releaseName);
             releaseDiv.appendChild(releaseHeader);
         }
 
-        const releaseImagesDiv = document.createElement('div');
-        releaseImagesDiv.style.display = 'block';
-        releaseDiv.appendChild(releaseImagesDiv);
+        let releaseImagesDiv;
+        if (showReleaseNames) {
+            releaseImagesDiv = document.createElement('div');
+            releaseImagesDiv.className = 'release-images-div';
+            releaseDiv.appendChild(releaseImagesDiv);
+            groupDiv.appendChild(releaseDiv);
+        } else {
+            releaseImagesDiv = groupDiv.querySelector('.release-images-div') || document.createElement('div');
+            releaseImagesDiv.className = 'release-images-div';
+            if (!groupDiv.contains(releaseImagesDiv)) {
+                groupDiv.appendChild(releaseImagesDiv);
+            }
+        }
 
         const imgSrcList = imageSrcGroups[groupText]?.[releaseName] || [];
         const imgWidth = await getSetting('imgWidth', 100);
@@ -357,7 +385,6 @@
             imgSrcList.forEach(imgSrc => appendImage(imgSrc, releaseImagesDiv, imgWidth));
         }
 
-        groupDiv.appendChild(releaseDiv);
         console.log(`Images have been added to the group: ${groupText}, release: ${releaseName}`);
         console.timeEnd(displayTimer);
     }
@@ -399,7 +426,6 @@
         const img = document.createElement('img');
         img.src = imgSrc;
         img.style.width = `${imgWidth}px`;
-        img.style.marginRight = '5px';
         img.style.marginBottom = '5px';
         img.onclick = () => lightbox.init(img, 500);
 
@@ -417,10 +443,32 @@
 
     function updateReleaseNameVisibility() {
         GM.getValue('showReleaseNames', true).then(showReleaseNames => {
-            const releaseHeaders = document.querySelectorAll('.image-group strong');
+            const releaseHeaders = document.querySelectorAll('.release-div strong');
             releaseHeaders.forEach(header => {
                 header.style.display = showReleaseNames ? 'block' : 'none';
             });
+            const releaseDivs = document.querySelectorAll('.release-div');
+            releaseDivs.forEach(div => {
+                if (showReleaseNames) {
+                    div.classList.add('with-header');
+                } else {
+                    div.classList.remove('with-header');
+                }
+            });
+            if (!showReleaseNames) {
+                const groupDiv = document.querySelector('.panel__body');
+                const releaseImagesDiv = document.createElement('div');
+                releaseImagesDiv.className = 'release-images-div';
+                const allImages = [];
+                releaseDivs.forEach(div => {
+                    allImages.push(...div.querySelector('.release-images-div').childNodes);
+                });
+                releaseImagesDiv.append(...allImages);
+                groupDiv.innerHTML = '';
+                groupDiv.appendChild(releaseImagesDiv);
+            } else {
+                addHeaders(); // Re-add headers and reorganize layout
+            }
         });
     }
 
