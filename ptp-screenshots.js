@@ -69,11 +69,23 @@
         .release-images-div {
             display: flex;
             flex-wrap: wrap;
-            gap: 5px;
+            gap: 10px;
+        }
+        .release-images-div .image-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            border-radius: 10px;
+            background-color: rgb(51, 51, 51);
+            width: calc(100% / 4 - 10px); /* Default to 4 images per row with 10px gap */
+            max-width: 100%;
         }
         .release-images-div img {
-            margin-right: 0;
-            margin-bottom: 0;
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: auto;
         }
         .release-div {
             margin-bottom: 10px;
@@ -421,6 +433,12 @@
         const enableCheckImageStatus = await getSetting('enableCheckImageStatus', true);
         const enableCheckImageDimensions = await getSetting('checkImageDimensions', true);
 
+        const dimensionLimits = {
+            'Standard Definition': { min: { width: 500, height: 300 }, max: { width: 1024, height: 576 } },
+            'High Definition': { min: { width: 1000, height: 500 }, max: { width: 1920, height: 1080 } },
+            'Ultra High Definition': { min: { width: 2000, height: 1100 }, max: { width: 3840, height: 2160 } }
+        };
+
         const processImage = async (imgSrc) => {
             let status = true;
             if (enableCheckImageStatus) {
@@ -430,7 +448,8 @@
                 const dimensions = await getImageDimensions(imgSrc);
                 console.log(`Dimensions for ${imgSrc}: Width=${dimensions.width}, Height=${dimensions.height}`);
                 const limits = dimensionLimits[groupText];
-                if (dimensions.width > limits.width || dimensions.height > limits.height) {
+                if (dimensions.width > limits.max.width || dimensions.height > limits.max.height ||
+                    dimensions.width < limits.min.width || dimensions.height < limits.min.height) {
                     status = false;
                 }
             }
@@ -473,13 +492,20 @@
     }
 
     function appendImage(imgSrc, releaseImagesDiv, imgWidth) {
+        const container = document.createElement('div');
+        container.className = 'image-container';
+        container.style.width = `${imgWidth}px`;
+
         const img = document.createElement('img');
         img.src = imgSrc;
-        img.style.width = `${imgWidth}px`;
-        img.style.marginBottom = '5px';
+        img.style.width = '100%';
+        img.style.height = 'auto'; // Maintain aspect ratio
+        img.style.display = 'block';
+        img.style.margin = 'auto';
         img.onclick = () => lightbox.init(img, 500);
 
-        releaseImagesDiv.appendChild(img);
+        container.appendChild(img);
+        releaseImagesDiv.appendChild(container);
     }
 
     function checkImageStatus(url) {
