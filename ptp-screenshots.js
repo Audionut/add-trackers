@@ -397,6 +397,9 @@
             }
         }
 
+        // Clear the existing images to prevent duplication
+        releaseImagesDiv.innerHTML = '';
+
         const imgSrcList = imageSrcGroups[groupText]?.[releaseName] || [];
         const imgWidth = await getSetting('imgWidth', 100);
         const enableCheckImageStatus = await getSetting('enableCheckImageStatus', true);
@@ -521,6 +524,7 @@
             } else {
                 // Clear the panel body and reinitialize headers and images
                 screenshotsPanel.innerHTML = '';
+                Object.keys(imageSrcGroups).forEach(key => delete imageSrcGroups[key]); // Clear the image cache
                 addHeaders();
             }
         });
