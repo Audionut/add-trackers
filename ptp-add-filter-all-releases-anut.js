@@ -3911,6 +3911,7 @@
                         }
                     }
                 }
+                if (!hide_tags) {
                     if (improved_tags) {
                         const torrentInfoLink = cln.querySelector(".torrent-info-link");
 
@@ -3921,9 +3922,10 @@
                         } else if (torrent.discount != "None") {
                             torrentInfoLink.innerHTML += ` / <span class='torrent-info__download-modifier'>${torrent.discount}!</span>`;
                         }
-                } else {
-                    if (torrent.discount != "None") {
-                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__download-modifier torrent-info__download-modifier--free'>${torrent.discount}!</span>`;
+                    } else {
+                        if (torrent.discount != "None") {
+                            cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__download-modifier torrent-info__download-modifier--free'>${torrent.discount}!</span>`;
+                        }
                     }
                 }
                 if (!hide_tags) {
