@@ -241,6 +241,7 @@ async function processImagesForGroup(groupText, groupDiv) {
     const parentRows = document.querySelectorAll('.group_torrent.group_torrent_header');
     const rowGroupMap = new Map();
     const processedMatches = new Set(); // To track processed releaseGroup-size matches
+    const failedReleases = new Set(); // To track releases with failed images
 
     parentRows.forEach(row => {
         let currentRow = row;
@@ -297,7 +298,7 @@ async function processImagesForGroup(groupText, groupDiv) {
                             imageSrcGroups[groupText][releaseName].push(imgSrc);
                         });
                         processingStatus[groupText] += imageSrcGroups[groupText][releaseName].length;
-                        await displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, processingStatus);
+                        await displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, processingStatus, failedReleases);
                         console.log(`Processed UNIT3D images for row with releaseName: ${releaseName}, releaseGroup: ${releaseGroup}, size: ${size}`);
                         return; // Skip if no links or image spans
                     }
@@ -321,7 +322,7 @@ async function processImagesForGroup(groupText, groupDiv) {
                             imageSrcGroups[groupText][releaseName].push(imgSrc);
                         });
                         processingStatus[groupText] += imageSrcGroups[groupText][releaseName].length;
-                        await displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, processingStatus);
+                        await displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, processingStatus, failedReleases);
                         console.log(`Processed UNIT3D images for row with releaseName: ${releaseName}, releaseGroup: ${releaseGroup}, size: ${size}`);
                         return; // Skip if no links or image spans
                     }
@@ -345,7 +346,7 @@ async function processImagesForGroup(groupText, groupDiv) {
                 }
                 imageSrcGroups[groupText][releaseName].push(...cachedData);
                 processingStatus[groupText] += cachedData.length;
-                await displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, processingStatus);
+                await displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, processingStatus, failedReleases);
                 console.log(`Loaded cached images for movieId ${movieId}, torrentId ${torrentId}:`, cachedData);
                 processedMatches.add(matchKey);
                 return; // Skip delay
@@ -383,7 +384,7 @@ async function processImagesForGroup(groupText, groupDiv) {
                 });
                 GM.setValue(cacheKey, imgSrcList);
                 processingStatus[groupText] += imgSrcList.length;
-                await displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, processingStatus); // Display images for this release immediately
+                await displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, processingStatus, failedReleases); // Display images for this release immediately
                 console.log(`Processed images for movieId ${movieId}, torrentId ${torrentId}, releaseName: ${releaseName}`);
                 processedMatches.add(matchKey);
                 console.timeEnd(`processImages_${releaseName}`);
@@ -398,75 +399,84 @@ async function processImagesForGroup(groupText, groupDiv) {
 
     await Promise.all(rowsToProcess.map(row => processRow(row)));
     console.timeEnd(`processImagesForGroup_${groupText}`);
+
     // Ensure the status message is updated after all rows are processed and images added
     if (processingStatus[groupText] === 0) {
         statusMessage.textContent = `Finished fetching and processing all images for group: ${groupText}`;
+        if (failedReleases.size > 0) {
+            statusMessage.textContent += `\nFailed image checks for releases: ${Array.from(failedReleases).join(', ')}`;
+        }
     }
 }
 
-    async function displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, processingStatus) {
-        const displayTimer = `displayImagesForRelease_${releaseName}`;
-        console.time(displayTimer);
+async function displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, processingStatus, failedReleases) {
+    const displayTimer = `displayImagesForRelease_${releaseName}`;
+    console.time(displayTimer);
 
-        const releaseDiv = document.createElement('div');
-        releaseDiv.className = 'release-div';
-        if (showReleaseNames) {
-            releaseDiv.classList.add('with-header');
-        }
-
-        if (showReleaseNames) {
-            const releaseHeader = createReleaseHeader(releaseName);
-            releaseDiv.appendChild(releaseHeader);
-        }
-
-        let releaseImagesDiv;
-        if (showReleaseNames) {
-            releaseImagesDiv = document.createElement('div');
-            releaseImagesDiv.className = 'release-images-div';
-            releaseDiv.appendChild(releaseImagesDiv);
-            groupDiv.appendChild(releaseDiv);
-        } else {
-            releaseImagesDiv = groupDiv.querySelector('.release-images-div') || document.createElement('div');
-            releaseImagesDiv.className = 'release-images-div';
-            if (!groupDiv.contains(releaseImagesDiv)) {
-                groupDiv.appendChild(releaseImagesDiv);
-            }
-        }
-
-        const imgSrcList = imageSrcGroups[groupText]?.[releaseName] || [];
-        const imagesPerRow = await getSetting('imagesPerRow', 4);
-        const enableCheckImageStatus = await getSetting('enableCheckImageStatus', true);
-        const enableCheckImageDimensions = await getSetting('checkImageDimensions', true);
-
-        const processImage = async (imgSrc) => {
-            let status = true;
-            if (enableCheckImageStatus) {
-                status = await checkImageStatus(imgSrc);
-            }
-            if (status && enableCheckImageDimensions && dimensionLimits[groupText]) {
-                const dimensions = await getImageDimensions(imgSrc);
-                console.log(`Dimensions for ${imgSrc}: Width=${dimensions.width}, Height=${dimensions.height}`);
-                const limits = dimensionLimits[groupText];
-                if (dimensions.width > limits.max.width || dimensions.height > limits.max.height ||
-                    dimensions.width < limits.min.width || dimensions.height < limits.min.height) {
-                    status = false;
-                }
-            }
-            if (status) {
-                appendImage(imgSrc, releaseImagesDiv, imagesPerRow);
-            }
-            // Decrement the processing counter and check if all processing is done
-            processingStatus[groupText]--;
-            if (processingStatus[groupText] === 0) {
-                statusMessage.textContent = `Finished adding all images for group: ${groupText}`;
-            }
-        };
-
-        await Promise.all(imgSrcList.map(imgSrc => processImage(imgSrc)));
-
-        console.log(`Images have been added to the group: ${groupText}, release: ${releaseName}`);
-        console.timeEnd(displayTimer);
+    const releaseDiv = document.createElement('div');
+    releaseDiv.className = 'release-div';
+    if (showReleaseNames) {
+        releaseDiv.classList.add('with-header');
     }
+
+    if (showReleaseNames) {
+        const releaseHeader = createReleaseHeader(releaseName);
+        releaseDiv.appendChild(releaseHeader);
+    }
+
+    let releaseImagesDiv;
+    if (showReleaseNames) {
+        releaseImagesDiv = document.createElement('div');
+        releaseImagesDiv.className = 'release-images-div';
+        releaseDiv.appendChild(releaseImagesDiv);
+        groupDiv.appendChild(releaseDiv);
+    } else {
+        releaseImagesDiv = groupDiv.querySelector('.release-images-div') || document.createElement('div');
+        releaseImagesDiv.className = 'release-images-div';
+        if (!groupDiv.contains(releaseImagesDiv)) {
+            groupDiv.appendChild(releaseImagesDiv);
+        }
+    }
+
+    const imgSrcList = imageSrcGroups[groupText]?.[releaseName] || [];
+    const imagesPerRow = await getSetting('imagesPerRow', 4);
+    const enableCheckImageStatus = await getSetting('enableCheckImageStatus', true);
+    const enableCheckImageDimensions = await getSetting('checkImageDimensions', true);
+
+    const processImage = async (imgSrc) => {
+        let status = true;
+        if (enableCheckImageStatus) {
+            status = await checkImageStatus(imgSrc);
+        }
+        if (status && enableCheckImageDimensions && dimensionLimits[groupText]) {
+            const dimensions = await getImageDimensions(imgSrc);
+            console.log(`Dimensions for ${imgSrc}: Width=${dimensions.width}, Height=${dimensions.height}`);
+            const limits = dimensionLimits[groupText];
+            if (dimensions.width > limits.max.width || dimensions.height > limits.max.height ||
+                dimensions.width < limits.min.width || dimensions.height < limits.min.height) {
+                status = false;
+            }
+        }
+        if (status) {
+            appendImage(imgSrc, releaseImagesDiv, imagesPerRow);
+        } else {
+            failedReleases.add(releaseName);
+        }
+        // Decrement the processing counter and check if all processing is done
+        processingStatus[groupText]--;
+        if (processingStatus[groupText] === 0) {
+            statusMessage.textContent = `Finished adding all images for group: ${groupText}`;
+            if (failedReleases.size > 0) {
+                statusMessage.textContent += `\nFailed image checks for releases: ${Array.from(failedReleases).join(', ')}`;
+            }
+        }
+    };
+
+    await Promise.all(imgSrcList.map(imgSrc => processImage(imgSrc)));
+
+    console.log(`Images have been added to the group: ${groupText}, release: ${releaseName}`);
+    console.timeEnd(displayTimer);
+}
 
     function createReleaseHeader(releaseName) {
         const releaseHeader = document.createElement('strong');
