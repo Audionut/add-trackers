@@ -15,14 +15,14 @@
 
     const imageSrcGroups = {}; // Object to store image URLs grouped by the row group text
     const dimensionLimits = {
-        'Standard Definition': { width: 720, height: 576 },
+        'Standard Definition': { width: 1024, height: 576 },
         'High Definition': { width: 1920, height: 1080 },
         'Ultra High Definition': { width: 3840, height: 2160 }
     };
 
     // Create a new div element to hold the images and settings
     const newDiv = document.createElement('div');
-    newDiv.className = 'screenshots-panel panel'; // Add 'panel' class for default styling
+    newDiv.className = 'screenshots-panel panel';
 
     const panelHeading = document.createElement('div');
     panelHeading.className = 'panel__heading';
@@ -80,9 +80,6 @@
         }
         .release-div.with-header {
             margin-top: 10px;
-        }
-        .screenshots-panel {
-            /* Add necessary default styles here if needed */
         }
     `;
     document.head.appendChild(style);
@@ -397,15 +394,27 @@
             }
         }
 
-        // Clear the existing images to prevent duplication
-        releaseImagesDiv.innerHTML = '';
-
         const imgSrcList = imageSrcGroups[groupText]?.[releaseName] || [];
         const imgWidth = await getSetting('imgWidth', 100);
         const enableCheckImageStatus = await getSetting('enableCheckImageStatus', true);
 
         if (enableCheckImageStatus) {
-            await Promise.all(imgSrcList.map(imgSrc => processImageWithStatus(groupText, imgSrc, releaseImagesDiv, imgWidth)));
+            for (const imgSrc of imgSrcList) {
+                const status = await checkImageStatus(imgSrc);
+                if (status) {
+                    const checkImageDimensions = await getSetting('checkImageDimensions', true);
+                    if (checkImageDimensions && dimensionLimits[groupText]) {
+                        const dimensions = await getImageDimensions(imgSrc);
+                        console.log(`Dimensions for ${imgSrc}: Width=${dimensions.width}, Height=${dimensions.height}`);
+                        const limits = dimensionLimits[groupText];
+                        if (dimensions.width <= limits.width && dimensions.height <= limits.height) {
+                            appendImage(imgSrc, releaseImagesDiv, imgWidth);
+                        }
+                    } else {
+                        appendImage(imgSrc, releaseImagesDiv, imgWidth);
+                    }
+                }
+            }
         } else {
             imgSrcList.forEach(imgSrc => appendImage(imgSrc, releaseImagesDiv, imgWidth));
         }
@@ -433,34 +442,6 @@
         } catch (error) {
             console.error(`Error fetching setting ${settingName}:`, error);
             return defaultValue;
-        }
-    }
-
-    async function processImageWithStatus(groupText, imgSrc, releaseImagesDiv, imgWidth) {
-        try {
-            const status = await checkImageStatus(imgSrc);
-            console.time(`checkImageStatus_${imgSrc}`);
-            if (status) {
-                console.timeEnd(`checkImageStatus_${imgSrc}`);
-                const checkImageDimensions = await getSetting('checkImageDimensions', true);
-
-                if (checkImageDimensions && dimensionLimits[groupText]) {
-                    const dimensions = await getImageDimensions(imgSrc);
-                    console.log(`Dimensions for ${imgSrc}: Width=${dimensions.width}, Height=${dimensions.height}`);
-
-                    const limits = dimensionLimits[groupText];
-                    if (dimensions.width > limits.width || dimensions.height > limits.height) {
-                        console.log(`Skipping image ${imgSrc} due to dimension limits`);
-                        return; // Skip this image
-                    }
-                }
-
-                appendImage(imgSrc, releaseImagesDiv, imgWidth);
-            } else {
-                console.timeEnd(`checkImageStatus_${imgSrc}`);
-            }
-        } catch (error) {
-            console.error(`Error processing image ${imgSrc}:`, error);
         }
     }
 
@@ -524,7 +505,6 @@
             } else {
                 // Clear the panel body and reinitialize headers and images
                 screenshotsPanel.innerHTML = '';
-                Object.keys(imageSrcGroups).forEach(key => delete imageSrcGroups[key]); // Clear the image cache
                 addHeaders();
             }
         });
