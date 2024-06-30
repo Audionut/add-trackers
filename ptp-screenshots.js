@@ -381,8 +381,11 @@
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(description, 'text/html');
 
+                // Define the regex pattern for matching the "Source, Encode" section, even if "Source" or "Encode" is not present
+                const sourceEncodePattern = /<\/blockquote><br\s*\/>\s*<br\s*\/>\s*<strong>(?:Source, Encode)?<\/strong>.*?<a.*?onclick="BBCode\.ScreenshotComparisonToggleShow.*?<\/a><br\s*\/>\s*<br\s*\/>/;
+
                 // Skip images contained within the specified HTML snippet
-                if (description.includes('<strong>Source, Encode</strong>')) {
+                if (sourceEncodePattern.test(description)) {
                     console.log(`Skipping images within "Source, Encode" for movieId ${movieId}, torrentId ${torrentId}, releaseName: ${releaseName}`);
                     return;
                 }
