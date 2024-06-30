@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.0.3-A
+// @version      4.0.4-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -75,8 +75,10 @@
         "easysearch": {"label": "TVV easy searching", "type": "checkbox", "default": true, "tooltip": "TVV has strict searching limits, especially for lower user groups. Disable this to search with more expensive options, better feedback including seeding status, but you're more likely to hit searching to soon error."},
         "show_icon": {"label": "Show Tracker Icon", "type": "checkbox", "default": true, "tooltip": "Display the tracker icon next to releases"},
         "show_name": {"label": "Show Tracker Name", "type": "checkbox", "default": true, "tooltip": "Display the tracker name next to releases"},
-        "hide_same_size": {"label": "Hide torrents with same size", "type": "checkbox", "default": false, "tooltip": "Hide torrents that have the same file size as existing ones"},
-        "log_same_size": {"label": "Log torrents with same size", "type": "checkbox", "default": false, "tooltip": "Log torrents that have the same file size as existing ones"},
+        "hidesamesize": {"label": "Hide torrents with same size", "type": "checkbox", "default": false, "tooltip": "Hide torrents that have the same file size as existing ones"},
+        "logsamesize": {"label": "Log torrents with same size", "type": "checkbox", "default": false, "tooltip": "Log torrents that have the same file size as existing ones"},
+        "fuzzyMatching": {"label": "Fuzzy size matching", "type": "checkbox", "default": false, "tooltip": "Useful to catch torrents with or without additional nfo files or whatnot, or for non API sites"},
+        "valueinMIB": {"label": "Fuzzy size threshold (MiB)", "type": "int", "default": 6, "tooltip": "Set the threshold in MiB for the fuzzy size matching. 6 MiB will catch non API sites"},
         "hide_filters": {"label": "Hide filters box", "type": "checkbox", "default": false, "tooltip": "Hide the Filter Releases box in the UI"},
         "hide_dead": {"label": "Hide dead external torrents", "type": "checkbox", "default": false, "tooltip": "Hide torrents that have no seeders"},
         "new_tab": {"label": "Open in new tab", "type": "checkbox", "default": true, "tooltip": "Open links in a new browser tab"},
@@ -129,7 +131,8 @@
             "rtf": ["rtf_user", "rtf_pass", "rtf_token", "rtf_last_login_run_raw", "authloginwait"],
             "avistaz": ["avistaz_user", "avistaz_pass", "avistaz_pid", "avistaz_token", "avistaz_last_login_run_raw", "authloginwait"],
             "cinemaz": ["cinemaz_user", "cinemaz_pass", "cinemaz_pid", "cinemaz_token", "cinemaz_last_login_run_raw", "authloginwait"],
-            "phd": ["phd_user", "phd_pass", "phd_pid", "phd_token", "phd_last_login_run_raw", "authloginwait"]
+            "phd": ["phd_user", "phd_pass", "phd_pid", "phd_token", "phd_last_login_run_raw", "authloginwait"],
+            "hidesamesize": ["logsamesize", "fuzzyMatching", "valueinMIB"]
         };
 
         if (key in multi_auth) {
@@ -202,7 +205,8 @@
                     "rfx": GM_config.fields.rfx.node,
                     "rtf": GM_config.fields.rtf.node,
                     "tik": GM_config.fields.tik.node,
-                    "tvv": GM_config.fields.tvv.node
+                    "tvv": GM_config.fields.tvv.node,
+                    "hidesamesize": GM_config.fields.hidesamesize.node,
                 };
 
                 // Add event listeners for trackers with auth
@@ -366,8 +370,8 @@
     const hideBlankLinks = GM_config.get("hideBlankLinks");
     const show_tracker_icon = GM_config.get("show_icon"); // false = will show default green checked icon ||| true = will show tracker logo instead of checked icon
     const show_tracker_name = GM_config.get("show_name"); // false = will hide tracker name ||| true = will show tracker name
-    const hide_if_torrent_with_same_size_exists = GM_config.get("hide_same_size"); // true = will hide torrents with the same file size as existing PTP ones
-    const log_torrents_with_same_size = GM_config.get("log_same_size"); // true = will log torrents with the same file size as existing PTP ones in console (F12)
+    const hide_if_torrent_with_same_size_exists = GM_config.get("hidesamesize"); // true = will hide torrents with the same file size as existing PTP ones
+    const log_torrents_with_same_size = GM_config.get("logsamesize"); // true = will log torrents with the same file size as existing PTP ones in console (F12)
     const hide_filters_div = GM_config.get("hide_filters"); // false = will show filters box ||| true = will hide filters box
     const hide_dead_external_torrents = GM_config.get("hide_dead"); // true = won't display dead external torrents
     const open_in_new_tab = GM_config.get("new_tab"); // false : when you click external torrent, it will open the page in new tab. ||| true : it will replace current tab.
@@ -381,6 +385,8 @@
     const debug = GM_config.get("debugging");
     const authloginwait = GM_config.get("authloginwait");
     const easysearching = GM_config.get("easysearch");
+    const valueinMIB = GM_config.get("valueinMIB");
+    const fuzzyMatching = GM_config.get("fuzzyMatching");
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -3803,8 +3809,11 @@
         };
 
         const add_external_torrents = (external_torrents) => {
-            const existing_torrent_sizes = Array.from(document.querySelectorAll("span[style='float: left;']")).map(x => x.textContent);
-            // console.log(existing_torrent_sizes);
+            const existing_torrent_sizes = Array.from(document.querySelectorAll("span[style='float: left;']")).map(x => {
+                const sizeStr = x.title.replace(" bytes", "").replace(/,/g, '');
+                return parseInt(sizeStr, 10);
+            });
+            //console.warn("existing sizes", existing_torrent_sizes);
 
             let sd_ptp_torrents = get_filtered_torrents("SD").sort((a, b) => a.size < b.size ? 1 : -1);
             let hd_ptp_torrents = get_filtered_torrents("HD").sort((a, b) => a.size < b.size ? 1 : -1);
@@ -3993,15 +4002,30 @@
                     console.log("No elements found matching the criteria.");
                 }
 
+                let api_sized = torrent.api_size;
+                const menu_value = valueinMIB; // This value can be set dynamically based on your menu selection
+                const MIB_IN_BYTES = menu_value * 1024 * 1024;
+                const sizeWithinMiBExists = existing_torrent_sizes.some(existingSize =>
+                Math.abs(existingSize - api_sized) <= MIB_IN_BYTES
+                );
+
+                const exactSizeExists = existing_torrent_sizes.includes(api_sized);
                 const ptp_format_size = get_ptp_format_size(torrent.size);
-                if (hide_if_torrent_with_same_size_exists && existing_torrent_sizes.includes(ptp_format_size)) {
-                    if (log_torrents_with_same_size) {
-                        console.log(`[${torrent.site}] A ${ptp_format_size} torrent already exists:\n${torrent.info_text}\n${torrent.torrent_page}`);
+
+                if (hide_if_torrent_with_same_size_exists) {
+                    if (!fuzzyMatching && exactSizeExists) {
+                        if (log_torrents_with_same_size) {
+                            console.log(`[${torrent.site}] A ${ptp_format_size} torrent already exists:\n${torrent.datasetRelease}\n${torrent.torrent_page}`);
+                        }
+                        return;
+                    } else if (fuzzyMatching && sizeWithinMiBExists) {
+                        if (log_torrents_with_same_size) {
+                            console.log(`[${torrent.site}] A torrent within ${menu_value} MiB of ${ptp_format_size} already exists:\n${torrent.datasetRelease}\n${torrent.torrent_page}`);
+                        }
+                        return;
                     }
-                    return;
                 }
                 const element_size = get_element_size(torrent.size);
-                let api_sized = torrent.api_size;
 
                 if (api_sized !== undefined && api_sized !== null) {
                     api_sized = api_sized.toLocaleString() + " Bytes";
