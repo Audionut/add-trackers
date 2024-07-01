@@ -211,6 +211,21 @@
     showComparisonImagesLabel.appendChild(showComparisonImagesCheckbox);
     settingsDiv.appendChild(showComparisonImagesLabel);
 
+    const skipCacheLabel = document.createElement('label');
+    skipCacheLabel.textContent = 'Skip Cache: ';
+    const skipCacheCheckbox = document.createElement('input');
+    skipCacheCheckbox.type = 'checkbox';
+
+    GM.getValue('skipcache', true).then(value => {
+        skipCacheCheckbox.checked = value;
+    });
+
+    skipCacheCheckbox.onchange = function() {
+        GM.setValue('skipcache', skipCacheCheckbox.checked);
+    };
+    skipCacheLabel.appendChild(skipCacheCheckbox);
+    settingsDiv.appendChild(skipCacheLabel);
+
     newDiv.appendChild(settingsDiv);
 
     const panelBody = document.createElement('div');
@@ -328,6 +343,7 @@
         const showUNIT3D = await GM.getValue('showUNIT3D', true);
         const showFailedImageIndicator = await GM.getValue('showFailedImageIndicator', true);
         const showComparisonImages = await GM.getValue('showComparisonImages', true);
+        const skipcache = await GM.getValue('skipcache', true);
 
         const processRow = async (row) => {
             const rowClass = row.className;
@@ -374,16 +390,18 @@
                 const imgElements = doc.querySelectorAll('img.bbcode__image');
                 const cacheKey = `images_${movieId}_${torrentId}`;
                 const cachedData = await GM.getValue(cacheKey, null);
-                if (cachedData) {
-                    let isCached = true;
-                    if (!imageSrcGroups[groupText][releaseName]) {
-                        imageSrcGroups[groupText][releaseName] = [];
+                if (!skipcache) {
+                    if (cachedData) {
+                        let isCached = true;
+                        if (!imageSrcGroups[groupText][releaseName]) {
+                            imageSrcGroups[groupText][releaseName] = [];
+                        }
+                        imageSrcGroups[groupText][releaseName].push(...cachedData);
+                        processingStatus += cachedData.length;
+                        await displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, failedReleases, showFailedImageIndicator, showComparisonImages);
+                        console.log(`Loaded cached images for movieId ${movieId}, torrentId ${torrentId}:`, cachedData);
+                        return;
                     }
-                    imageSrcGroups[groupText][releaseName].push(...cachedData);
-                    processingStatus += cachedData.length;
-                    await displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, failedReleases, showFailedImageIndicator, showComparisonImages);
-                    console.log(`Loaded cached images for movieId ${movieId}, torrentId ${torrentId}:`, cachedData);
-                    return;
                 }
 
                 const comparisonLinks = Array.from(doc.querySelectorAll('a[onclick*="BBCode.ScreenshotComparisonToggleShow"]'));
