@@ -42,7 +42,12 @@
     settingsButton.style.cursor = 'pointer';
     settingsButton.onclick = function() {
         const settingsDiv = document.getElementById('settings-panel');
-        settingsDiv.style.display = settingsDiv.style.display === 'none' ? 'block' : 'none';
+        if (settingsDiv.style.display === 'none') {
+            refreshSettings();
+            settingsDiv.style.display = 'block';
+        } else {
+            settingsDiv.style.display = 'none';
+        }
     };
     panelHeading.appendChild(settingsButton);
 
@@ -59,15 +64,26 @@
     // Add CSS for better spacing and styling
     const style = document.createElement('style');
     style.innerHTML = `
-        #settings-panel label {
-            display: block;
+        .settings-table {
+            width: 100%;
+            margin: auto;
+            table-layout: fixed;
+        }
+        .settings-table td {
+            padding: 10px;
+            vertical-align: top;
+        }
+        .settings-table .setting {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             margin-bottom: 10px;
         }
-        #settings-panel input[type="checkbox"] {
+        .settings-table label {
             margin-right: 10px;
         }
-        #settings-panel input[type="number"] {
-            margin-right: 10px;
+        .settings-table input.small-input {
+            width: 50px; /* Adjust this width as needed */
         }
         .release-images-div {
             display: flex;
@@ -101,132 +117,108 @@
     `;
     document.head.appendChild(style);
 
-    const showReleaseNamesLabel = document.createElement('label');
-    showReleaseNamesLabel.textContent = 'Show Release Names: ';
-    const showReleaseNamesCheckbox = document.createElement('input');
-    showReleaseNamesCheckbox.type = 'checkbox';
+    // Create table for settings
+    const settingsTable = document.createElement('table');
+    settingsTable.className = 'settings-table';
 
-    GM.getValue('showReleaseNames', true).then(value => {
-        showReleaseNamesCheckbox.checked = value;
-    });
+    const row = document.createElement('tr');
 
-    showReleaseNamesCheckbox.onchange = function() {
-        GM.setValue('showReleaseNames', showReleaseNamesCheckbox.checked);
-        updateReleaseNameVisibility();
-    };
-    showReleaseNamesLabel.appendChild(showReleaseNamesCheckbox);
-    settingsDiv.appendChild(showReleaseNamesLabel);
+    const leftColumn = document.createElement('td');
+    const middleColumn = document.createElement('td');
+    const rightColumn = document.createElement('td');
 
-    const imagesPerRowLabel = document.createElement('label');
-    imagesPerRowLabel.textContent = 'Number of Images per Row: ';
-    const imagesPerRowInput = document.createElement('input');
-    imagesPerRowInput.type = 'number';
-    imagesPerRowInput.min = 1;
-    imagesPerRowInput.max = 10;
+    // Array to store the settings for easy access
+    const settings = [
+        { label: 'Show Release Names: ', type: 'checkbox', id: 'showReleaseNames', defaultValue: true, onChange: updateReleaseNameVisibility },
+        { label: 'Show UNIT3D Images: ', type: 'checkbox', id: 'showUNIT3D', defaultValue: true, onChange: () => {} },
+        { label: 'Show Comparison Images: ', type: 'checkbox', id: 'showComparisonImages', defaultValue: true, onChange: () => {} },
+        { label: 'Enable Check Image Status: ', type: 'checkbox', id: 'enableCheckImageStatus', defaultValue: true, onChange: () => {} },
+        { label: 'Show Failed Image Indicator: ', type: 'checkbox', id: 'showFailedImageIndicator', defaultValue: true, onChange: () => {} },
+        { label: 'Check Image Dimensions: ', type: 'checkbox', id: 'checkImageDimensions', defaultValue: true, onChange: () => {} },
+        { label: 'Skip Cache: ', type: 'checkbox', id: 'skipcache', defaultValue: false, onChange: () => {} },
+        { label: 'Number of Images per Row: ', type: 'number', id: 'imagesPerRow', defaultValue: 4, onChange: updateImageLayout, inputClass: 'small-input' }
+    ];
 
-    GM.getValue('imagesPerRow', 4).then(value => {
-        imagesPerRowInput.value = value;
-    });
+    // Helper function to create setting elements
+    function createSetting(labelText, inputType, inputId, defaultValuePromise, onChange, inputClass = '') {
+        const settingDiv = document.createElement('div');
+        settingDiv.className = 'setting';
 
-    imagesPerRowInput.onchange = function() {
-        GM.setValue('imagesPerRow', imagesPerRowInput.value);
-        updateImageLayout();
-    };
-    imagesPerRowLabel.appendChild(imagesPerRowInput);
-    settingsDiv.appendChild(imagesPerRowLabel);
+        const label = document.createElement('label');
+        label.textContent = labelText;
+        settingDiv.appendChild(label);
 
-    const showUNIT3DLabel = document.createElement('label');
-    showUNIT3DLabel.textContent = 'Show UNIT3D Images: ';
-    const showUNIT3DCheckbox = document.createElement('input');
-    showUNIT3DCheckbox.type = 'checkbox';
+        const input = document.createElement('input');
+        input.type = inputType;
+        input.id = inputId;
+        if (inputClass) input.className = inputClass;
 
-    GM.getValue('showUNIT3D', true).then(value => {
-        showUNIT3DCheckbox.checked = value;
-    });
+        if (inputType === 'checkbox') {
+            defaultValuePromise.then(value => {
+                input.checked = value;
+            });
 
-    showUNIT3DCheckbox.onchange = function() {
-        GM.setValue('showUNIT3D', showUNIT3DCheckbox.checked);
-    };
-    showUNIT3DLabel.appendChild(showUNIT3DCheckbox);
-    settingsDiv.appendChild(showUNIT3DLabel);
+            input.onchange = function() {
+                GM.setValue(inputId, input.checked);
+                onChange(input.checked);
+            };
+        } else if (inputType === 'number') {
+            input.min = 1;
+            input.max = 10;
 
-    const checkImageStatusLabel = document.createElement('label');
-    checkImageStatusLabel.textContent = 'Enable Check Image Status: ';
-    const checkImageStatusCheckbox = document.createElement('input');
-    checkImageStatusCheckbox.type = 'checkbox';
+            defaultValuePromise.then(value => {
+                input.value = value;
+            });
 
-    GM.getValue('enableCheckImageStatus', true).then(value => {
-        checkImageStatusCheckbox.checked = value;
-    });
+            input.onchange = function() {
+                GM.setValue(inputId, input.value);
+                onChange(input.value);
+            };
+        }
 
-    checkImageStatusCheckbox.onchange = function() {
-        GM.setValue('enableCheckImageStatus', checkImageStatusCheckbox.checked);
-    };
-    checkImageStatusLabel.appendChild(checkImageStatusCheckbox);
-    settingsDiv.appendChild(checkImageStatusLabel);
+        settingDiv.appendChild(input);
+        return settingDiv;
+    }
 
-    // Adding the new setting to the settings panel
-    const showFailedImageIndicatorLabel = document.createElement('label');
-    showFailedImageIndicatorLabel.textContent = 'Show Failed Image Indicator: ';
-    const showFailedImageIndicatorCheckbox = document.createElement('input');
-    showFailedImageIndicatorCheckbox.type = 'checkbox';
+    // Function to refresh settings values
+    function refreshSettings() {
+        settings.forEach(setting => {
+            GM.getValue(setting.id, setting.defaultValue).then(value => {
+                const input = document.getElementById(setting.id);
+                if (input.type === 'checkbox') {
+                    input.checked = value;
+                } else if (input.type === 'number') {
+                    input.value = value;
+                }
+            });
+        });
+    }
 
-    GM.getValue('showFailedImageIndicator', true).then(value => {
-        showFailedImageIndicatorCheckbox.checked = value;
-    });
+    // Append settings to columns based on the provided layout
+    leftColumn.appendChild(createSetting('Show Release Names: ', 'checkbox', 'showReleaseNames', GM.getValue('showReleaseNames', true), updateReleaseNameVisibility));
+    leftColumn.appendChild(createSetting('Show UNIT3D Images: ', 'checkbox', 'showUNIT3D', GM.getValue('showUNIT3D', true), () => {}));
+    leftColumn.appendChild(createSetting('Show Comparison Images: ', 'checkbox', 'showComparisonImages', GM.getValue('showComparisonImages', true), () => {}));
 
-    showFailedImageIndicatorCheckbox.onchange = function() {
-        GM.setValue('showFailedImageIndicator', showFailedImageIndicatorCheckbox.checked);
-    };
-    showFailedImageIndicatorLabel.appendChild(showFailedImageIndicatorCheckbox);
-    settingsDiv.appendChild(showFailedImageIndicatorLabel);
+    middleColumn.appendChild(createSetting('Enable Check Image Status: ', 'checkbox', 'enableCheckImageStatus', GM.getValue('enableCheckImageStatus', true), () => {}));
+    middleColumn.appendChild(createSetting('Show Failed Image Indicator: ', 'checkbox', 'showFailedImageIndicator', GM.getValue('showFailedImageIndicator', true), () => {}));
+    middleColumn.appendChild(createSetting('Check Image Dimensions: ', 'checkbox', 'checkImageDimensions', GM.getValue('checkImageDimensions', true), () => {}));
 
-    const checkImageDimensionsLabel = document.createElement('label');
-    checkImageDimensionsLabel.textContent = 'Check Image Dimensions: ';
-    const checkImageDimensionsCheckbox = document.createElement('input');
-    checkImageDimensionsCheckbox.type = 'checkbox';
+    rightColumn.appendChild(createSetting('Number of Images per Row: ', 'number', 'imagesPerRow', GM.getValue('imagesPerRow', 4), updateImageLayout, 'small-input'));
+    rightColumn.appendChild(createSetting('Skip Cache: ', 'checkbox', 'skipcache', GM.getValue('skipcache', false), () => {}));
 
-    GM.getValue('checkImageDimensions', true).then(value => {
-        checkImageDimensionsCheckbox.checked = value;
-    });
+    // Append columns to row
+    row.appendChild(leftColumn);
+    row.appendChild(middleColumn);
+    row.appendChild(rightColumn);
 
-    checkImageDimensionsCheckbox.onchange = function() {
-        GM.setValue('checkImageDimensions', checkImageDimensionsCheckbox.checked);
-    };
-    checkImageDimensionsLabel.appendChild(checkImageDimensionsCheckbox);
-    settingsDiv.appendChild(checkImageDimensionsLabel);
+    // Append row to table
+    settingsTable.appendChild(row);
 
-    const showComparisonImagesLabel = document.createElement('label');
-    showComparisonImagesLabel.textContent = 'Show Comparison Images: ';
-    const showComparisonImagesCheckbox = document.createElement('input');
-    showComparisonImagesCheckbox.type = 'checkbox';
-
-    GM.getValue('showComparisonImages', true).then(value => {
-        showComparisonImagesCheckbox.checked = value;
-    });
-
-    showComparisonImagesCheckbox.onchange = function() {
-        GM.setValue('showComparisonImages', showComparisonImagesCheckbox.checked);
-    };
-    showComparisonImagesLabel.appendChild(showComparisonImagesCheckbox);
-    settingsDiv.appendChild(showComparisonImagesLabel);
-
-    const skipCacheLabel = document.createElement('label');
-    skipCacheLabel.textContent = 'Skip Cache: ';
-    const skipCacheCheckbox = document.createElement('input');
-    skipCacheCheckbox.type = 'checkbox';
-
-    GM.getValue('skipcache', true).then(value => {
-        skipCacheCheckbox.checked = value;
-    });
-
-    skipCacheCheckbox.onchange = function() {
-        GM.setValue('skipcache', skipCacheCheckbox.checked);
-    };
-    skipCacheLabel.appendChild(skipCacheCheckbox);
-    settingsDiv.appendChild(skipCacheLabel);
+    // Append table to settingsDiv
+    settingsDiv.appendChild(settingsTable);
 
     newDiv.appendChild(settingsDiv);
+    document.body.appendChild(newDiv);
 
     const panelBody = document.createElement('div');
     panelBody.className = 'panel__body';
@@ -343,7 +335,7 @@
         const showUNIT3D = await GM.getValue('showUNIT3D', true);
         const showFailedImageIndicator = await GM.getValue('showFailedImageIndicator', true);
         const showComparisonImages = await GM.getValue('showComparisonImages', true);
-        const skipcache = await GM.getValue('skipcache', true);
+        const skipcache = await GM.getValue('skipcache', false);
 
         const processRow = async (row) => {
             const rowClass = row.className;
@@ -436,6 +428,7 @@
                         imageSrcGroups[groupText][releaseName].push(imgSrc);
                     });
                     GM.setValue(cacheKey, imgSrcList);
+                    GM.setValue('skipcache', false);
                     await displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, failedReleases, showFailedImageIndicator, showComparisonImages);
                     console.log(`Processed images for movieId ${movieId}, torrentId ${torrentId}, releaseName: ${releaseName}`);
                     console.timeEnd(`processImages_${releaseName}`);
