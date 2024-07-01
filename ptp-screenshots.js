@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Screenshots
-// @version      1.8
+// @version      1.9
 // @description  Load and display screenshots from all torrents on a movie page with dimension checks for different groups and status indicators.
 // @grant        GM.setValue
 // @grant        GM.getValue
@@ -281,7 +281,7 @@
 
     const checkProcessingCompletion = async (groupText, groupDiv, failedReleases, showFailedImageIndicator, showComparisonImages) => {
         console.log(`Final check for processing completion. Status: ${processingStatus}`);
-        if (processingStatus < 10) {
+        if (processingStatus === 0) {
             statusMessage.textContent = `Finished fetching and processing all images for group: ${groupText}`;
             if (failedReleases.size > 0) {
                 statusMessage.textContent += `\nFailed image checks for releases: ${Array.from(failedReleases).join(', ')}`;
@@ -299,6 +299,8 @@
             }
         }
     };
+
+    let isCached = false;
 
     async function processImagesForGroup(groupText, groupDiv) {
         statusMessage.textContent = `Fetching and processing images for group: ${groupText}...`;
@@ -326,7 +328,6 @@
         const showUNIT3D = await GM.getValue('showUNIT3D', true);
         const showFailedImageIndicator = await GM.getValue('showFailedImageIndicator', true);
         const showComparisonImages = await GM.getValue('showComparisonImages', true);
-        let processingStatus = 0;
 
         const processRow = async (row) => {
             const rowClass = row.className;
@@ -342,37 +343,24 @@
 
                 const linkElement = row.querySelector('a.torrent-info-link');
                 if (!linkElement) {
-                    console.log(`No link element found for row with releaseName: ${releaseName}, releaseGroup: ${releaseGroup}, size: ${size}`);
+                //    console.log(`No link element found for row with releaseName: ${releaseName}, releaseGroup: ${releaseGroup}, size: ${size}`);
                     return;
                 }
 
                 const onclickContent = linkElement.getAttribute('onclick');
                 if (!onclickContent) {
-                    console.log(`No onclickContent found for row with releaseName: ${releaseName}, releaseGroup: ${releaseGroup}, size: ${size}`);
+                //    console.log(`No onclickContent found for row with releaseName: ${releaseName}, releaseGroup: ${releaseGroup}, size: ${size}`);
                     return;
                 }
 
                 const match = onclickContent.match(/show_description\('(\d+)', '(\d+)'\);/);
                 if (!match) {
-                    console.log(`No show_description match found for row with releaseName: ${releaseName}, releaseGroup: ${releaseGroup}, size: ${size}`);
                     return;
                 }
-
-                const [_, movieId, torrentId] = match;
-                const cacheKey = `images_${movieId}_${torrentId}`;
-
-                const cachedData = await GM.getValue(cacheKey, null);
-                if (cachedData) {
-                    if (!imageSrcGroups[groupText][releaseName]) {
-                        imageSrcGroups[groupText][releaseName] = [];
-                    }
-                    imageSrcGroups[groupText][releaseName].push(...cachedData);
-                    decrementProcessingStatus(cachedData.length);
-                    await displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, failedReleases, showFailedImageIndicator, showComparisonImages);
-                    console.log(`Loaded cached images for movieId ${movieId}, torrentId ${torrentId}:`, cachedData);
-                    return;
-                }
-
+                const movieId = match[1];
+                const torrentId = match[2];
+                console.log('movieId:', movieId);
+                console.log('torentId:', torrentId);
                 console.time(`fetchRequest_${releaseName}`);
                 const url = `https://passthepopcorn.me/torrents.php?action=description&id=${movieId}&torrentid=${torrentId}`;
                 const fetchPromise = fetch(url).then(response => response.json());
@@ -383,8 +371,23 @@
                 const description = data.Description;
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(description, 'text/html');
+                const imgElements = doc.querySelectorAll('img.bbcode__image');
+                const cacheKey = `images_${movieId}_${torrentId}`;
+                const cachedData = await GM.getValue(cacheKey, null);
+                if (cachedData) {
+                    let isCached = true;
+                    if (!imageSrcGroups[groupText][releaseName]) {
+                        imageSrcGroups[groupText][releaseName] = [];
+                    }
+                    imageSrcGroups[groupText][releaseName].push(...cachedData);
+                    processingStatus += cachedData.length;
+                    await displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, failedReleases, showFailedImageIndicator, showComparisonImages);
+                    console.log(`Loaded cached images for movieId ${movieId}, torrentId ${torrentId}:`, cachedData);
+                    return;
+                }
 
                 const comparisonLinks = Array.from(doc.querySelectorAll('a[onclick*="BBCode.ScreenshotComparisonToggleShow"]'));
+                //const compareList = [];
                 if (comparisonLinks.length > 0) {
                     console.log(`Found ${comparisonLinks.length} comparison links for releaseName: ${releaseName}`);
                     comparisonLinks.forEach(link => {
@@ -400,7 +403,7 @@
                     });
                 }
 
-                const imgElements = doc.querySelectorAll('img.bbcode__image');
+
                 const imgSrcList = [];
                 if (imgElements.length > 0) {
                     console.time(`processImages_${releaseName}`);
@@ -428,8 +431,9 @@
                 decrementProcessingStatus(); // Decrement after processing each row
             }
         };
-
-        processingStatus = rowsToProcess.length; // Set initial processing status
+        if (isCached) {
+            processingStatus = rowsToProcess.length; // Set initial processing status
+        }
         incrementProcessingStatus(rowsToProcess.length); // Increment for the number of rows to process
 
         await Promise.all(rowsToProcess.map(row => processRow(row)));
@@ -440,6 +444,7 @@
     }
 
     async function displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, failedReleases, showFailedImageIndicator, showComparisonImages) {
+        //let isCached = 0;
         const displayTimer = `displayImagesForRelease_${releaseName}`;
         console.time(displayTimer);
 
@@ -492,6 +497,7 @@
             } else if (enableCheckImageStatus) {
                 failedReleases.add(releaseName);
             }
+
             decrementProcessingStatus(); // Decrement after processing each image
             if (processingStatus === 0) {
                 statusMessage.textContent = `Finished adding all images for group: ${groupText}`;
@@ -535,6 +541,7 @@
                     const container = document.createElement('div');
                     container.className = 'image-container';
                     container.style.width = '100%';
+                    container.style.color = 'green';
                     container.innerHTML = link;
                     comparisonDiv.appendChild(container);
                 });
