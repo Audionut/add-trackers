@@ -22,6 +22,15 @@
 
     const comparisonImages = [];
     let processingStatus = 0; // Store the processing status
+    let debug = false;
+
+    // Fetch the actual debug value asynchronously
+    GM.getValue('debug', false).then(value => {
+        debug = value;
+        if (debug) {
+            console.log('Debugging is enabled');
+        }
+    });
 
     // Create a new div element to hold the images and settings
     const newDiv = document.createElement('div');
@@ -136,6 +145,7 @@
         { label: 'Show Failed Image Indicator: ', type: 'checkbox', id: 'showFailedImageIndicator', defaultValue: true, onChange: () => {} },
         { label: 'Check Image Dimensions: ', type: 'checkbox', id: 'checkImageDimensions', defaultValue: true, onChange: () => {} },
         { label: 'Skip Cache: ', type: 'checkbox', id: 'skipcache', defaultValue: false, onChange: () => {} },
+        { label: 'Enable Debugging: ', type: 'checkbox', id: 'debug', defaultValue: false, onChange: () => {} },
         { label: 'Number of Images per Row: ', type: 'number', id: 'imagesPerRow', defaultValue: 4, onChange: updateImageLayout, inputClass: 'small-input' }
     ];
 
@@ -205,6 +215,7 @@
 
     rightColumn.appendChild(createSetting('Number of Images per Row: ', 'number', 'imagesPerRow', GM.getValue('imagesPerRow', 4), updateImageLayout, 'small-input'));
     rightColumn.appendChild(createSetting('Skip Cache: ', 'checkbox', 'skipcache', GM.getValue('skipcache', false), () => {}));
+    rightColumn.appendChild(createSetting('Enable Debugging: ', 'checkbox', 'debug', GM.getValue('debug', false), () => {}));
 
     // Append columns to row
     row.appendChild(leftColumn);
@@ -229,7 +240,9 @@
     panelBody.appendChild(statusMessage);
 
     function addHeaders() {
-        console.time('addHeaders');
+        if (debug) {
+            console.time('addHeaders');
+        }
         const rowGroups = document.querySelectorAll('.basic-movie-list__torrent-edition__sub');
 
         rowGroups.forEach(rowGroup => {
@@ -269,25 +282,35 @@
         const synopsisElement = document.getElementById('synopsis-and-trailer');
         if (synopsisElement) {
             synopsisElement.parentNode.insertBefore(newDiv, synopsisElement);
-            console.log('Inserted new div with images before #synopsis-and-trailer');
+            if (debug) {
+                console.log('Inserted new div with images before #synopsis-and-trailer');
+            }
         } else {
             console.warn('#synopsis-and-trailer element not found');
         }
-        console.timeEnd('addHeaders');
+        if (debug) {
+            console.timeEnd('addHeaders');
+        }
     }
 
     function incrementProcessingStatus(count = 0) {
         processingStatus += count;
-        console.log(`Incrementing processingStatus. New value: ${processingStatus}`);
+        if (debug) {
+            console.log(`Incrementing processingStatus. New value: ${processingStatus}`);
+        }
     }
 
     function decrementProcessingStatus(count = 1) {
         processingStatus -= count;
-        console.log(`Decrementing processingStatus. New value: ${processingStatus}`);
+        if (debug) {
+            console.log(`Decrementing processingStatus. New value: ${processingStatus}`);
+        }
     }
 
     const checkProcessingCompletion = async (groupText, groupDiv, failedReleases, showFailedImageIndicator, showComparisonImages) => {
-        console.log(`Final check for processing completion. Status: ${processingStatus}`);
+        if (debug) {
+            console.log(`Final check for processing completion. Status: ${processingStatus}`);
+        }
         if (processingStatus === 0) {
             statusMessage.textContent = `Finished fetching and processing all images for group: ${groupText}`;
             if (failedReleases.size > 0) {
@@ -310,8 +333,11 @@
     let isCached = false;
 
     async function processImagesForGroup(groupText, groupDiv) {
+        let debug = await GM.getValue('debug', false);
         statusMessage.textContent = `Fetching and processing images for group: ${groupText}...`;
-        console.time(`processImagesForGroup_${groupText}`);
+        if (debug) {
+            console.time(`processImagesForGroup_${groupText}`);
+        }
         const parentRows = document.querySelectorAll('.group_torrent.group_torrent_header');
         const rowGroupMap = new Map();
         const processedMatches = new Set();
@@ -340,7 +366,9 @@
         const processRow = async (row) => {
             const rowClass = row.className;
             const rowTimer = `processRow_${rowClass}`;
-            console.time(rowTimer);
+            if (debug) {
+                console.time(rowTimer);
+            }
             let releaseName, releaseGroup, size;
 
             try {
@@ -367,14 +395,18 @@
                 }
                 const movieId = match[1];
                 const torrentId = match[2];
-                console.log('movieId:', movieId);
-                console.log('torentId:', torrentId);
-                console.time(`fetchRequest_${releaseName}`);
+                if (debug) {
+                    console.log('movieId:', movieId);
+                    console.log('torentId:', torrentId);
+                    console.time(`fetchRequest_${releaseName}`);
+                }
                 const url = `https://passthepopcorn.me/torrents.php?action=description&id=${movieId}&torrentid=${torrentId}`;
                 const fetchPromise = fetch(url).then(response => response.json());
                 const delayPromise = new Promise(r => setTimeout(r, 600));
                 const [data] = await Promise.all([fetchPromise, delayPromise]);
-                console.timeEnd(`fetchRequest_${releaseName}`);
+                if (debug) {
+                    console.timeEnd(`fetchRequest_${releaseName}`);
+                }
 
                 const description = data.Description;
                 const parser = new DOMParser();
@@ -399,7 +431,9 @@
                 const comparisonLinks = Array.from(doc.querySelectorAll('a[onclick*="BBCode.ScreenshotComparisonToggleShow"]'));
                 //const compareList = [];
                 if (comparisonLinks.length > 0) {
-                    console.log(`Found ${comparisonLinks.length} comparison links for releaseName: ${releaseName}`);
+                    if (debug) {
+                        console.log(`Found ${comparisonLinks.length} comparison links for releaseName: ${releaseName}`);
+                    }
                     comparisonLinks.forEach(link => {
                         console.log(`Comparison link found: ${link.outerHTML}`);
                         const strongElement = link.previousElementSibling;
@@ -416,11 +450,15 @@
 
                 const imgSrcList = [];
                 if (imgElements.length > 0) {
-                    console.time(`processImages_${releaseName}`);
+                    if (debug) {
+                        console.time(`processImages_${releaseName}`);
+                    }
                     incrementProcessingStatus(imgElements.length); // Increment here for images found
                     imgElements.forEach(imgElement => {
                         const imgSrc = imgElement.src;
-                        console.log(`Image found: ${imgSrc}`);
+                        if (debug) {
+                            console.log(`Image found: ${imgSrc}`);
+                        }
                         imgSrcList.push(imgSrc);
                         if (!imageSrcGroups[groupText][releaseName]) {
                             imageSrcGroups[groupText][releaseName] = [];
@@ -430,15 +468,19 @@
                     GM.setValue(cacheKey, imgSrcList);
                     GM.setValue('skipcache', false);
                     await displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, failedReleases, showFailedImageIndicator, showComparisonImages);
-                    console.log(`Processed images for movieId ${movieId}, torrentId ${torrentId}, releaseName: ${releaseName}`);
-                    console.timeEnd(`processImages_${releaseName}`);
+                    if (debug) {
+                        console.log(`Processed images for movieId ${movieId}, torrentId ${torrentId}, releaseName: ${releaseName}`);
+                        console.timeEnd(`processImages_${releaseName}`);
+                    }
                 } else {
                     console.log(`No image elements found in description for movieId ${movieId}, torrentId ${torrentId}`);
                 }
             } catch (error) {
                 console.error(`Error processing row with releaseName: ${releaseName}, releaseGroup: ${releaseGroup}, size: ${size}`, error);
             } finally {
-                console.timeEnd(rowTimer);
+                if (debug) {
+                    console.timeEnd(rowTimer);
+                }
                 decrementProcessingStatus(); // Decrement after processing each row
             }
         };
@@ -448,16 +490,19 @@
         incrementProcessingStatus(rowsToProcess.length); // Increment for the number of rows to process
 
         await Promise.all(rowsToProcess.map(row => processRow(row)));
-        console.timeEnd(`processImagesForGroup_${groupText}`);
-
-        console.log(`Processing status: ${processingStatus}`);
+        if (debug) {
+            console.timeEnd(`processImagesForGroup_${groupText}`);
+            console.log(`Processing status: ${processingStatus}`);
+        }
         await checkProcessingCompletion(groupText, groupDiv, failedReleases, showFailedImageIndicator, showComparisonImages);
     }
 
     async function displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, failedReleases, showFailedImageIndicator, showComparisonImages) {
-        //let isCached = 0;
+        let debug = await GM.getValue('debug', false);
         const displayTimer = `displayImagesForRelease_${releaseName}`;
-        console.time(displayTimer);
+        if (debug) {
+            console.time(displayTimer);
+        }
 
         const releaseDiv = document.createElement('div');
         releaseDiv.className = 'release-div';
@@ -496,7 +541,9 @@
             }
             if (status && enableCheckImageDimensions && dimensionLimits[groupText]) {
                 const dimensions = await getImageDimensions(imgSrc);
-                console.log(`Dimensions for ${imgSrc}: Width=${dimensions.width}, Height=${dimensions.height}`);
+                if (debug) {
+                    console.log(`Dimensions for ${imgSrc}: Width=${dimensions.width}, Height=${dimensions.height}`);
+                }
                 const limits = dimensionLimits[groupText];
                 if (dimensions.width > limits.max.width || dimensions.height > limits.max.height ||
                     dimensions.width < limits.min.width || dimensions.height < limits.min.height) {
@@ -531,16 +578,20 @@
         } else {
             console.log(`No images to process for releaseName: ${releaseName}`);
         }
-
-        console.timeEnd(displayTimer);
+        if (debug) {
+            console.timeEnd(displayTimer);
+        }
     }
 
     async function displayComparisonLinks(groupText, groupDiv) {
+        let debug = await GM.getValue('debug', false);
         console.log("If comparison links were found they're being displayed now...");
         Object.keys(imageSrcGroups[groupText]).forEach(releaseName => {
             if (releaseName.endsWith('_comparison')) {
                 const links = imageSrcGroups[groupText][releaseName];
-                console.log(`Comparison Images for ${releaseName.replace('_comparison', '')}:`, links);
+                if (debug) {
+                    console.log(`Comparison Images for ${releaseName.replace('_comparison', '')}:`, links);
+                }
 
                 const comparisonDiv = document.createElement('div');
                 comparisonDiv.className = 'comparison-links-div';
@@ -548,7 +599,9 @@
                 comparisonDiv.appendChild(releaseHeader);
 
                 links.forEach(link => {
-                    console.log(`Adding comparison link to div: ${link}`);
+                    if (debug) {
+                        console.log(`Adding comparison link to div: ${link}`);
+                    }
                     const container = document.createElement('div');
                     container.className = 'image-container';
                     container.style.width = '100%';
