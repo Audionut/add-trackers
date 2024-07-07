@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Screenshots
-// @version      2.0
+// @version      2.1
 // @description  Load and display screenshots from all torrents on a movie page with dimension checks for different groups and status indicators.
 // @grant        GM.setValue
 // @grant        GM.getValue
@@ -407,13 +407,11 @@
 
                 const linkElement = row.querySelector('a.torrent-info-link');
                 if (!linkElement) {
-                //    console.log(`No link element found for row with releaseName: ${releaseName}, releaseGroup: ${releaseGroup}, size: ${size}`);
                     return;
                 }
 
                 const onclickContent = linkElement.getAttribute('onclick');
                 if (!onclickContent) {
-                //    console.log(`No onclickContent found for row with releaseName: ${releaseName}, releaseGroup: ${releaseGroup}, size: ${size}`);
                     return;
                 }
 
@@ -457,7 +455,8 @@
                 }
 
                 const comparisonLinks = Array.from(doc.querySelectorAll('a[onclick*="BBCode.ScreenshotComparisonToggleShow"]'));
-                //const compareList = [];
+                const slowPicsLinks = Array.from(doc.querySelectorAll('a[href*="slow.pics"]'));
+
                 if (comparisonLinks.length > 0) {
                     if (debug) {
                         console.log(`Found ${comparisonLinks.length} comparison links for releaseName: ${releaseName}`);
@@ -475,6 +474,22 @@
                     });
                 }
 
+                if (slowPicsLinks.length > 0) {
+                    if (debug) {
+                        console.log(`Found ${slowPicsLinks.length} slow.pics links for releaseName: ${releaseName}`);
+                    }
+                    slowPicsLinks.forEach(link => {
+                        console.log(`slow.pics link found: ${link.outerHTML}`);
+                        const strongElement = link.previousElementSibling;
+                        const strongText = strongElement && strongElement.tagName.toLowerCase() === 'strong' ? strongElement.outerHTML : '';
+                        const htmlString = `${strongText}: ${link.outerHTML}<br>`;
+                        if (!imageSrcGroups[groupText][`${releaseName}_comparison`]) {
+                            imageSrcGroups[groupText][`${releaseName}_comparison`] = [];
+                        }
+                        imageSrcGroups[groupText][`${releaseName}_comparison`].push(htmlString);
+                        incrementProcessingStatus();
+                    });
+                }
 
                 const imgSrcList = [];
                 if (imgElements.length > 0) {
