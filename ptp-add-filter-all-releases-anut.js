@@ -2024,9 +2024,8 @@
                                 NBL_API_TOKEN,
                                 {
                                     tvmaze: tvmazeId
-                                    //series: show_nbl_name
                                 },
-                                20, // Results per page
+                                //20, // Results per page
                                 0   // Page number
                             ]
                         };
@@ -3357,11 +3356,9 @@
                           let tikQuality = element.attributes.type;
                           if (tikQuality) {
                             if (tikQuality.includes("UHD")) {
-                              updatedInfoText = "2160p" + updatedInfoText;
+                              updatedInfoText = "2160p " + updatedInfoText;
                             } else if (tikQuality.includes("BD")) {
-                              updatedInfoText = "1080p" + updatedInfoText;
-                            } else {
-                              updatedInfoText = "SD" + updatedInfoText;
+                              updatedInfoText = "1080p " + updatedInfoText;
                             }
                           }
                         }
@@ -3375,11 +3372,15 @@
                         const descriptionText = element.attributes.description;
                         const imageUrls = [];
                         const regex = /\[img=\d+\](https?:\/\/[^ \[\]]+?\.png)\[\/img\]|(?:^|\s)(https?:\/\/[^ \[\]]+?\.png)(?=\s|$)/gi;
+                        const slowPicsRegex = /https?:\/\/slow\.pics\/\S+/gi;
                         let match;
 
                         while ((match = regex.exec(descriptionText)) !== null) {
                             const url = match[1] || match[2];
                             imageUrls.push(url);
+                        }
+                        while ((match = slowPicsRegex.exec(descriptionText)) !== null) {
+                            imageUrls.push(match[0]);
                         }
 
                         const torrentObj = {
