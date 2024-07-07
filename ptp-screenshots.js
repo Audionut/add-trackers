@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Screenshots
-// @version      1.9
+// @version      2.0
 // @description  Load and display screenshots from all torrents on a movie page with dimension checks for different groups and status indicators.
 // @grant        GM.setValue
 // @grant        GM.getValue
@@ -42,14 +42,17 @@
     const panelTitle = document.createElement('span');
     panelTitle.className = 'panel__heading__title';
     panelTitle.textContent = 'Screenshots from all torrents';
+
     panelHeading.appendChild(panelTitle);
 
     const settingsButton = document.createElement('span');
-    settingsButton.className = 'panel__heading__settings';
-    settingsButton.textContent = 'Settings';
-    settingsButton.style.float = 'right';
-    settingsButton.style.cursor = 'pointer';
-    settingsButton.onclick = function() {
+    settingsButton.style = 'float:right;font-size:0.9em';
+
+    const settingsButtonA = document.createElement('a');
+    settingsButtonA.textContent = '(Settings)';
+    settingsButtonA.style.cursor = 'pointer';
+    settingsButtonA.onclick = function(event) {
+        event.stopPropagation(); // Prevent this click from propagating to the panelHeading click event
         const settingsDiv = document.getElementById('settings-panel');
         if (settingsDiv.style.display === 'none') {
             refreshSettings();
@@ -58,6 +61,7 @@
             settingsDiv.style.display = 'none';
         }
     };
+    settingsButton.appendChild(settingsButtonA);
     panelHeading.appendChild(settingsButton);
 
     newDiv.appendChild(panelHeading);
@@ -146,7 +150,8 @@
         { label: 'Check Image Dimensions: ', type: 'checkbox', id: 'checkImageDimensions', defaultValue: true, onChange: () => {} },
         { label: 'Skip Cache: ', type: 'checkbox', id: 'skipcache', defaultValue: false, onChange: () => {} },
         { label: 'Enable Debugging: ', type: 'checkbox', id: 'debug', defaultValue: false, onChange: () => {} },
-        { label: 'Number of Images per Row: ', type: 'number', id: 'imagesPerRow', defaultValue: 4, onChange: updateImageLayout, inputClass: 'small-input' }
+        { label: 'Number of Images per Row: ', type: 'number', id: 'imagesPerRow', defaultValue: 4, onChange: updateImageLayout, inputClass: 'small-input' },
+        { label: 'Hide Panel Body by Default: ', type: 'checkbox', id: 'hidePanelBody', defaultValue: false, onChange: updateHidePanelBodySetting }
     ];
 
     // Helper function to create setting elements
@@ -213,9 +218,10 @@
     middleColumn.appendChild(createSetting('Show Failed Image Indicator: ', 'checkbox', 'showFailedImageIndicator', GM.getValue('showFailedImageIndicator', true), () => {}));
     middleColumn.appendChild(createSetting('Check Image Dimensions: ', 'checkbox', 'checkImageDimensions', GM.getValue('checkImageDimensions', true), () => {}));
 
-    rightColumn.appendChild(createSetting('Number of Images per Row: ', 'number', 'imagesPerRow', GM.getValue('imagesPerRow', 4), updateImageLayout, 'small-input'));
+    rightColumn.appendChild(createSetting('Hide Panel Body by Default: ', 'checkbox', 'hidePanelBody', GM.getValue('hidePanelBody', false), updateHidePanelBodySetting));
     rightColumn.appendChild(createSetting('Skip Cache: ', 'checkbox', 'skipcache', GM.getValue('skipcache', false), () => {}));
     rightColumn.appendChild(createSetting('Enable Debugging: ', 'checkbox', 'debug', GM.getValue('debug', false), () => {}));
+    rightColumn.appendChild(createSetting('Number of Images per Row: ', 'number', 'imagesPerRow', GM.getValue('imagesPerRow', 4), updateImageLayout, 'small-input'));
 
     // Append columns to row
     row.appendChild(leftColumn);
@@ -238,6 +244,28 @@
     const statusMessage = document.createElement('div');
     statusMessage.className = 'status-message';
     panelBody.appendChild(statusMessage);
+
+    // Function to toggle panel body visibility
+    function togglePanelBodyVisibility(isHidden) {
+        panelBody.style.display = isHidden ? 'none' : 'block';
+    }
+
+    // Function to update hide panel body setting without toggling panel body
+    function updateHidePanelBodySetting(isHidden) {
+        GM.setValue('hidePanelBody', isHidden);
+    }
+
+    // Initialize panel body visibility based on the setting
+    GM.getValue('hidePanelBody', false).then(hidePanelBody => {
+        togglePanelBodyVisibility(hidePanelBody);
+    });
+
+    // Add toggle functionality to panel heading
+    panelHeading.onclick = function() {
+        const isHidden = panelBody.style.display === 'none';
+        panelBody.style.display = isHidden ? 'block' : 'none';
+        GM.setValue('hidePanelBody', !isHidden); // Update the setting
+    };
 
     function addHeaders() {
         if (debug) {
