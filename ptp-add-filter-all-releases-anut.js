@@ -3380,7 +3380,10 @@
                             imageUrls.push(url);
                         }
                         while ((match = slowPicsRegex.exec(descriptionText)) !== null) {
-                            imageUrls.push(match[0]);
+                            let url = match[0];
+                            // Remove [url] and [/url] tags if present
+                            url = url.replace(/\[\/?url\]/gi, '');
+                            imageUrls.push(url);
                         }
 
                         const torrentObj = {
