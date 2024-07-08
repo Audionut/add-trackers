@@ -3371,7 +3371,7 @@
 
                         const descriptionText = element.attributes.description;
                         const imageUrls = [];
-                        const regex = /\[img=\d+\](https?:\/\/[^ \[\]]+?\.png)\[\/img\]|(?:^|\s)(https?:\/\/[^ \[\]]+?\.png)(?=\s|$)/gi;
+                        const regex = /\[img(?:=\d+)?\](https?:\/\/[^\s\[\]]+?\.png)\[\/img\]|(?:^|\s)(https?:\/\/[^\s\[\]]+?\.png)(?=\s|$)/gi;
                         const slowPicsRegex = /https?:\/\/slow\.pics\/\S+/gi;
                         let match;
 
