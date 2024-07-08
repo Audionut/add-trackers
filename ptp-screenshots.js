@@ -406,118 +406,149 @@
                 size = sizeElement ? sizeElement.getAttribute('title') : 'Unknown Size';
 
                 const linkElement = row.querySelector('a.torrent-info-link');
-                if (!linkElement) {
-                    return;
-                }
+                const imgSrcList = new Set();
 
-                const onclickContent = linkElement.getAttribute('onclick');
-                if (!onclickContent) {
-                    return;
-                }
+                if (linkElement) {
+                    const onclickContent = linkElement.getAttribute('onclick');
+                    if (onclickContent) {
+                        const match = onclickContent.match(/show_description\('(\d+)', '(\d+)'\);/);
+                        if (match) {
+                            const movieId = match[1];
+                            const torrentId = match[2];
+                            if (debug) {
+                                console.log('movieId:', movieId);
+                                console.log('torrentId:', torrentId);
+                                console.time(`fetchRequest_${releaseName}`);
+                            }
+                            const url = `https://passthepopcorn.me/torrents.php?action=description&id=${movieId}&torrentid=${torrentId}`;
+                            const fetchPromise = fetch(url).then(response => response.json());
+                            const delayPromise = new Promise(r => setTimeout(r, 600));
+                            const [data] = await Promise.all([fetchPromise, delayPromise]);
+                            if (debug) {
+                                console.timeEnd(`fetchRequest_${releaseName}`);
+                            }
 
-                const match = onclickContent.match(/show_description\('(\d+)', '(\d+)'\);/);
-                if (!match) {
-                    return;
-                }
-                const movieId = match[1];
-                const torrentId = match[2];
-                if (debug) {
-                    console.log('movieId:', movieId);
-                    console.log('torentId:', torrentId);
-                    console.time(`fetchRequest_${releaseName}`);
-                }
-                const url = `https://passthepopcorn.me/torrents.php?action=description&id=${movieId}&torrentid=${torrentId}`;
-                const fetchPromise = fetch(url).then(response => response.json());
-                const delayPromise = new Promise(r => setTimeout(r, 600));
-                const [data] = await Promise.all([fetchPromise, delayPromise]);
-                if (debug) {
-                    console.timeEnd(`fetchRequest_${releaseName}`);
-                }
+                            const description = data.Description;
+                            const parser = new DOMParser();
+                            const doc = parser.parseFromString(description, 'text/html');
+                            const imgElements = doc.querySelectorAll('img.bbcode__image');
+                            const cacheKey = `images_${movieId}_${torrentId}`;
+                            const cachedData = await GM.getValue(cacheKey, null);
+                            if (!skipcache) {
+                                if (cachedData) {
+                                    let isCached = true;
+                                    if (!imageSrcGroups[groupText][releaseName]) {
+                                        imageSrcGroups[groupText][releaseName] = [];
+                                    }
+                                    imageSrcGroups[groupText][releaseName].push(...cachedData);
+                                    cachedData.forEach(src => imgSrcList.add(src));
+                                    processingStatus += cachedData.length;
+                                    await displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, failedReleases, showFailedImageIndicator, showComparisonImages);
+                                    console.log(`Loaded cached images for movieId ${movieId}, torrentId ${torrentId}:`, cachedData);
+                                    return;
+                                }
+                            }
 
-                const description = data.Description;
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(description, 'text/html');
-                const imgElements = doc.querySelectorAll('img.bbcode__image');
-                const cacheKey = `images_${movieId}_${torrentId}`;
-                const cachedData = await GM.getValue(cacheKey, null);
-                if (!skipcache) {
-                    if (cachedData) {
-                        let isCached = true;
-                        if (!imageSrcGroups[groupText][releaseName]) {
-                            imageSrcGroups[groupText][releaseName] = [];
+                            const comparisonLinks = Array.from(doc.querySelectorAll('a[onclick*="BBCode.ScreenshotComparisonToggleShow"]'));
+                            const slowPicsLinks = Array.from(doc.querySelectorAll('a[href*="slow.pics"]'));
+
+                            if (comparisonLinks.length > 0) {
+                                if (debug) {
+                                    console.log(`Found ${comparisonLinks.length} comparison links for releaseName: ${releaseName}`);
+                                }
+                                comparisonLinks.forEach(link => {
+                                    console.log(`Comparison link found: ${link.outerHTML}`);
+                                    const strongElement = link.previousElementSibling;
+                                    const strongText = strongElement && strongElement.tagName.toLowerCase() === 'strong' ? strongElement.outerHTML : '';
+                                    const htmlString = `${strongText}: ${link.outerHTML}<br>`;
+                                    if (!imageSrcGroups[groupText][`${releaseName}_comparison`]) {
+                                        imageSrcGroups[groupText][`${releaseName}_comparison`] = [];
+                                    }
+                                    imageSrcGroups[groupText][`${releaseName}_comparison`].push(htmlString);
+                                    incrementProcessingStatus();
+                                });
+                            }
+
+                            if (slowPicsLinks.length > 0) {
+                                if (debug) {
+                                    console.log(`Found ${slowPicsLinks.length} slow.pics links for releaseName: ${releaseName}`);
+                                }
+                                slowPicsLinks.forEach(link => {
+                                    console.log(`slow.pics link found: ${link.outerHTML}`);
+                                    const strongElement = link.previousElementSibling;
+                                    const strongText = strongElement && strongElement.tagName.toLowerCase() === 'strong' ? strongElement.outerHTML : '';
+                                    const htmlString = `${strongText}: ${link.outerHTML}<br>`;
+                                    if (!imageSrcGroups[groupText][`${releaseName}_comparison`]) {
+                                        imageSrcGroups[groupText][`${releaseName}_comparison`] = [];
+                                    }
+                                    imageSrcGroups[groupText][`${releaseName}_comparison`].push(htmlString);
+                                    incrementProcessingStatus();
+                                });
+                            }
+
+                            if (imgElements.length > 0) {
+                                if (debug) {
+                                    console.time(`processImages_${releaseName}`);
+                                }
+                                incrementProcessingStatus(imgElements.length); // Increment here for images found
+                                imgElements.forEach(imgElement => {
+                                    const imgSrc = imgElement.src;
+                                    if (debug) {
+                                        console.log(`Image found: ${imgSrc}`);
+                                    }
+                                    imgSrcList.add(imgSrc);
+                                    if (!imageSrcGroups[groupText][releaseName]) {
+                                        imageSrcGroups[groupText][releaseName] = [];
+                                    }
+                                    imageSrcGroups[groupText][releaseName].push(imgSrc);
+                                });
+                                GM.setValue(cacheKey, Array.from(imgSrcList));
+                                GM.setValue('skipcache', false);
+                                await displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, failedReleases, showFailedImageIndicator, showComparisonImages);
+                                if (debug) {
+                                    console.log(`Processed images for movieId ${movieId}, torrentId ${torrentId}, releaseName: ${releaseName}`);
+                                    console.timeEnd(`processImages_${releaseName}`);
+                                }
+                            } else {
+                                console.log(`No image elements found in description for movieId ${movieId}, torrentId ${torrentId}`);
+                            }
                         }
-                        imageSrcGroups[groupText][releaseName].push(...cachedData);
-                        processingStatus += cachedData.length;
+                    }
+                }
+
+                // Process UNIT3D image links
+                const unit3dImageElements = row.querySelectorAll('.UNIT3D.images');
+                if (unit3dImageElements.length > 0) {
+                    const showUNIT3D = await GM.getValue('showUNIT3D', true);
+                    if (showUNIT3D) {
+                        incrementProcessingStatus(unit3dImageElements.length);
+                        unit3dImageElements.forEach(imgElement => {
+                            const imgSrc = imgElement.getAttribute('title'); // Get the image link from the title attribute
+                            if (debug) {
+                                console.log(`UNIT3D image found: ${imgSrc}`);
+                            }
+                            if (!imageSrcGroups[groupText][releaseName]) {
+                                imageSrcGroups[groupText][releaseName] = [];
+                            }
+                            if (!imgSrcList.has(imgSrc)) { // Ensure no duplication
+                                imageSrcGroups[groupText][releaseName].push(imgSrc);
+                                imgSrcList.add(imgSrc); // Add UNIT3D images to the imgSrcList to be processed for dimensions
+                                if (imgSrc.includes('slow.pics')) {
+                                    const strongText = imgElement.previousElementSibling ? imgElement.previousElementSibling.outerHTML : '';
+                                    const htmlString = `${strongText}: <a href="${imgSrc}" target="_blank">${imgSrc}</a><br>`;
+                                    if (!imageSrcGroups[groupText][`${releaseName}_comparison`]) {
+                                        imageSrcGroups[groupText][`${releaseName}_comparison`] = [];
+                                    }
+                                    imageSrcGroups[groupText][`${releaseName}_comparison`].push(htmlString);
+                                }
+                            }
+                        });
+
+                        // Process the UNIT3D images for status and dimensions
                         await displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, failedReleases, showFailedImageIndicator, showComparisonImages);
-                        console.log(`Loaded cached images for movieId ${movieId}, torrentId ${torrentId}:`, cachedData);
-                        return;
                     }
                 }
 
-                const comparisonLinks = Array.from(doc.querySelectorAll('a[onclick*="BBCode.ScreenshotComparisonToggleShow"]'));
-                const slowPicsLinks = Array.from(doc.querySelectorAll('a[href*="slow.pics"]'));
-
-                if (comparisonLinks.length > 0) {
-                    if (debug) {
-                        console.log(`Found ${comparisonLinks.length} comparison links for releaseName: ${releaseName}`);
-                    }
-                    comparisonLinks.forEach(link => {
-                        console.log(`Comparison link found: ${link.outerHTML}`);
-                        const strongElement = link.previousElementSibling;
-                        const strongText = strongElement && strongElement.tagName.toLowerCase() === 'strong' ? strongElement.outerHTML : '';
-                        const htmlString = `${strongText}: ${link.outerHTML}<br>`;
-                        if (!imageSrcGroups[groupText][`${releaseName}_comparison`]) {
-                            imageSrcGroups[groupText][`${releaseName}_comparison`] = [];
-                        }
-                        imageSrcGroups[groupText][`${releaseName}_comparison`].push(htmlString);
-                        incrementProcessingStatus();
-                    });
-                }
-
-                if (slowPicsLinks.length > 0) {
-                    if (debug) {
-                        console.log(`Found ${slowPicsLinks.length} slow.pics links for releaseName: ${releaseName}`);
-                    }
-                    slowPicsLinks.forEach(link => {
-                        console.log(`slow.pics link found: ${link.outerHTML}`);
-                        const strongElement = link.previousElementSibling;
-                        const strongText = strongElement && strongElement.tagName.toLowerCase() === 'strong' ? strongElement.outerHTML : '';
-                        const htmlString = `${strongText}: ${link.outerHTML}<br>`;
-                        if (!imageSrcGroups[groupText][`${releaseName}_comparison`]) {
-                            imageSrcGroups[groupText][`${releaseName}_comparison`] = [];
-                        }
-                        imageSrcGroups[groupText][`${releaseName}_comparison`].push(htmlString);
-                        incrementProcessingStatus();
-                    });
-                }
-
-                const imgSrcList = [];
-                if (imgElements.length > 0) {
-                    if (debug) {
-                        console.time(`processImages_${releaseName}`);
-                    }
-                    incrementProcessingStatus(imgElements.length); // Increment here for images found
-                    imgElements.forEach(imgElement => {
-                        const imgSrc = imgElement.src;
-                        if (debug) {
-                            console.log(`Image found: ${imgSrc}`);
-                        }
-                        imgSrcList.push(imgSrc);
-                        if (!imageSrcGroups[groupText][releaseName]) {
-                            imageSrcGroups[groupText][releaseName] = [];
-                        }
-                        imageSrcGroups[groupText][releaseName].push(imgSrc);
-                    });
-                    GM.setValue(cacheKey, imgSrcList);
-                    GM.setValue('skipcache', false);
-                    await displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, failedReleases, showFailedImageIndicator, showComparisonImages);
-                    if (debug) {
-                        console.log(`Processed images for movieId ${movieId}, torrentId ${torrentId}, releaseName: ${releaseName}`);
-                        console.timeEnd(`processImages_${releaseName}`);
-                    }
-                } else {
-                    console.log(`No image elements found in description for movieId ${movieId}, torrentId ${torrentId}`);
-                }
             } catch (error) {
                 console.error(`Error processing row with releaseName: ${releaseName}, releaseGroup: ${releaseGroup}, size: ${size}`, error);
             } finally {
