@@ -3168,10 +3168,16 @@
                                   const id = d.fid;
                                   const down = d.filename;
 
-                                  const match = infoText.match("TS");
+                                  const match = infoText.match(" TS ");
                                   if (match) {
                                       if (improved_tags) {
-                                          infoText = infoText.replace("TS", 'CAM').trim();
+                                          infoText = infoText.replace(" TS ", 'CAM').trim();
+                                      }
+                                  }
+                                  const match1 = infoText.match("HDTS");
+                                  if (match1) {
+                                      if (improved_tags) {
+                                          infoText = infoText.replace("HDTS", 'CAM').trim();
                                       }
                                   }
 
