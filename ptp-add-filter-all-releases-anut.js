@@ -3168,6 +3168,13 @@
                                   const id = d.fid;
                                   const down = d.filename;
 
+                                  const match = infoText.match("TS");
+                                  if (match) {
+                                      if (improved_tags) {
+                                          infoText = infoText.replace("TS", 'CAM').trim();
+                                      }
+                                  }
+
                                   const torrentObj = {
                                       api_size: api_size,
                                       datasetRelease: originalInfoText,
@@ -3831,6 +3838,7 @@
             if (anthologyMatch && yearMatch && anthologyMatch.index < yearMatch.index) {
                 bonuses.push("Anthology");
             }
+            if (lower.includes("cam")) bonuses.push("CAM");
             if (lower.includes("2in1")) bonuses.push("2in1");
             if (lower.includes("3in1")) bonuses.push("3in1");
             if (lower.includes("4in1")) bonuses.push("4in1");
