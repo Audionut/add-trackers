@@ -86,6 +86,7 @@
         "hide_tags": {"label": "Hide tags", "type": "checkbox", "default": false, "tooltip": "Hide tags such as Featured, DU, reported, etc."},
         "run_default": {"label": "Run by default?", "type": "checkbox", "default": true, "tooltip": "Run this script by default on page load, else click Other Trackers under title to run the script"},
         "ptp_name": {"label": "Show release name", "type": "checkbox", "default": true, "tooltip": "Display the PTP release (file) name instead of the default display"},
+        "filterhidden": {"label": "Minimize the filter box by default", "type": "checkbox", "default": false, "tooltip": "Toggle visibility by clicking header"},
         "funky_tags": {"label": "Improved Tags", "type": "checkbox", "default": false, "tooltip": "Work with jmxd' PTP Improved Tags script"},
         "btntimer": {"label": "Timer for BTN TVDB ID searches via Sonarr (ms)", "type": "int", "default": 800, "tooltip": "If you don't use Sonarr you can set this very low, but the main script delay is overall site response, not this response"},
         "tracker_by_default": {"label": "Only these sites by default", "type": "text", "default": "", "tooltip": "Show only these sites by default. Comma separated. PTP, BHD, ANT, etc"},
@@ -219,6 +220,12 @@
                 }
             },
             "save": function () {
+                const filterBox = document.querySelector(".panel__body");
+                if (GM_config.get('filterhidden')) {
+                    filterBox.style.display = "none";
+                } else {
+                    filterBox.style.display = "block";
+                }
                 //alert("Saved Successfully!");
                 console.log("Settings saved");
             },
@@ -2036,8 +2043,9 @@
                                     tvmaze: tvmazeId
                                     //imdb: imdb_id
                                 },
-                                //20, // Results per page
-                                0   // Page number
+                                100, // Results per page
+                                0,   // Page number
+                                1
                             ]
                         };
                     } else {
@@ -2053,7 +2061,8 @@
                                     //imdb: imdb_id
                                 },
                                 20, // Results per page
-                                0   // Page number
+                                0,   // Page number
+                                1
                             ]
                         };
                     }
@@ -4666,9 +4675,12 @@
             let div = document.createElement("div");
             div.className = "panel__body";
             div.style.padding = "0 10px 5px 10px";
+            div.style.display = GM_config.get('filterhidden') ? "none" : "block";
 
+            // Filter by tracker section
             let filterByTracker = document.createElement("div");
             filterByTracker.style = "display: flex; align-items: baseline";
+            filterByTracker.style.margin = "4px 0";
 
             let label = document.createElement("div");
             label.textContent = "Tracker: ";
@@ -4676,10 +4688,7 @@
             label.style.flex = "0 0 60px";
             filterByTracker.appendChild(label);
 
-            filterByTracker.style.margin = "4px 0";
-
             let trackerContents = document.createElement("div");
-
             trackers.forEach((tracker_name) => {
                 let div = document.createElement("div");
                 div.id = `filter-${tracker_name.toLowerCase()}`;
@@ -4690,7 +4699,6 @@
                 div.style.color = "#eee";
                 div.style.display = "inline-block";
                 div.style.cursor = "pointer";
-                // div.style.width = "40px"
                 div.style.border = "1px dashed #606060";
                 div.style.fontSize = "1em";
                 div.style.textAlign = "center";
@@ -4701,11 +4709,11 @@
 
                 trackerContents.append(div);
             });
-
             filterByTracker.append(trackerContents);
             div.append(filterByTracker);
 
-            let additional_settings = document.createElement("div"); // discounts
+            // Filter by discount section
+            let additional_settings = document.createElement("div");
             additional_settings.style = "display: flex; align-items: baseline";
 
             let label_2 = document.createElement("div");
@@ -4715,7 +4723,6 @@
             additional_settings.appendChild(label_2);
 
             let discountContents = document.createElement("div");
-
             discounts.forEach((discount_name) => {
                 let only_discount = document.createElement("div");
                 only_discount.className = "filter-box";
@@ -4733,13 +4740,13 @@
                 });
                 discountContents.append(only_discount);
             });
-
             additional_settings.append(discountContents);
             div.append(additional_settings);
 
-            ///////
+            // Filter by quality section
             let filterByQuality = document.createElement("div");
             filterByQuality.style = "display: flex; align-items: baseline";
+            filterByQuality.style.margin = "4px 0";
 
             let label_3 = document.createElement("div");
             label_3.textContent = "Quality: ";
@@ -4747,12 +4754,8 @@
             label_3.style.flex = "0 0 60px";
             filterByQuality.appendChild(label_3);
 
-            filterByQuality.style.margin = "4px 0";
-
             let qualityContents = document.createElement("div");
-
             qualities.forEach((quality_name) => {
-
                 let quality = document.createElement("div");
                 quality.className = "filter-box";
                 quality.textContent = quality_name;
@@ -4771,11 +4774,10 @@
 
                 qualityContents.append(quality);
             });
-
             filterByQuality.append(qualityContents);
             div.append(filterByQuality);
 
-            /////////////////////
+            // Search box
             let filterByText = document.createElement("div");
             filterByText.style.margin = "8px 0 0";
 
@@ -4790,13 +4792,11 @@
             input.addEventListener("input", (e) => {
                 filter_torrents();
             });
-
             filterByText.appendChild(input);
 
-            // reset btn
+            // Reset button
             let rst = document.createElement("div");
             rst.textContent = "⟳";
-
             rst.style.padding = "4px 8px";
             rst.style.margin = "0px 4px";
             rst.style.color = "#eee";
@@ -4810,13 +4810,13 @@
                 document.querySelector(".torrent-search").value = "";
                 filters = {
                     "trackers": trackers.map((e) => {
-                        return ({ "name": e, "status": "default" });
+                        return { "name": e, "status": "default" };
                     }),
                     "discounts": discounts.map((e) => {
-                        return ({ "name": e, "status": "default" });
+                        return { "name": e, "status": "default" };
                     }),
                     "qualities": qualities.map((e) => {
-                        return ({ "name": e, "status": "default" });
+                        return { "name": e, "status": "default" };
                     }),
                 };
 
@@ -4827,27 +4827,31 @@
                     d.style.color = "#eee";
                 });
             });
-
             filterByText.appendChild(rst);
 
             div.appendChild(filterByText);
 
+            // Panel setup
             const panel = document.createElement("div");
             panel.className = "panel";
             const panelHeading = document.createElement("div");
             panelHeading.className = "panel__heading";
+            panelHeading.style.cursor = "pointer"; // Make the header clickable
 
             const panelHeadingTitle = document.createElement("span");
             panelHeadingTitle.textContent = "Filter Releases";
             panelHeadingTitle.className = "panel__heading__title";
             panelHeading.append(panelHeadingTitle);
 
+            // Toggle functionality
+            panelHeading.addEventListener("click", () => {
+                let isHidden = div.style.display === "none";
+                div.style.display = isHidden ? "block" : "none";
+                GM_config.set('filterhidden', !isHidden);
+            });
+
             panel.append(panelHeading, div);
-
-
             addBeforeThis.insertAdjacentElement("beforeBegin", panel);
-
-            // done.
         };
 
         const get_example_div = () => {
@@ -5255,7 +5259,7 @@
                 const timeoutId = setTimeout(() => {
                     reject(new Error("TVmaze ID fetch timed out."));
                     cleanup();
-                }, 1000); // Adjusted timeout to 10 seconds for better reliability
+                }, 2000); // Adjusted timeout to 10 seconds for better reliability
             });
         }
 
