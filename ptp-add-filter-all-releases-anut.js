@@ -1877,7 +1877,7 @@
         };
 
         const fetch_url = async (query_url, tracker) => {
-            const response = await new Promise(async (resolve, reject) => {
+            const response = await new Promise((resolve, reject) => {
                 GM_xmlhttpRequest({
                     url: query_url,
                     method: "GET",
@@ -1904,47 +1904,25 @@
                 if (contentType.includes("xml")) {
                     const xmlDoc = parser.parseFromString(response.responseText, "text/xml");
 
-                    if (debug) {
-                    // Function to convert XML item to a JavaScript object
-                    function parseItem(item) {
-                        const getTextContent = (tagName) => item.getElementsByTagName(tagName)[0]?.textContent || "";
-
-                        const attributes = Array.from(item.getElementsByTagName('torznab:attr')).reduce((acc, attr) => {
-                            acc[attr.getAttribute('name')] = attr.getAttribute('value');
-                            return acc;
-                        }, {});
-
-                        return {
-                            title: getTextContent('title'),
-                            guid: getTextContent('guid'),
-                            link: getTextContent('link'),
-                            comments: getTextContent('comments'),
-                            pubDate: getTextContent('pubDate'),
-                            size: getTextContent('size'),
-                            files: getTextContent('files'),
-                            grabs: getTextContent('grabs'),
-                            categories: Array.from(item.getElementsByTagName('category')).map(cat => cat.textContent),
-                            description: getTextContent('description'),
-                            enclosure: {
-                                url: item.getElementsByTagName('enclosure')[0]?.getAttribute('url') || "",
-                                length: item.getElementsByTagName('enclosure')[0]?.getAttribute('length') || "",
-                                type: item.getElementsByTagName('enclosure')[0]?.getAttribute('type') || ""
-                            },
-                            torznabAttributes: attributes
-                        };
+                    if (tracker === "MTV") {
+                        if (debug) {
+                            const items = parseMTVItems(xmlDoc);
+                            if (items.length === 0) {
+                                console.log(`No response XML from ${tracker}`, response.responseText);
+                            }
+                            console.log(`XML array from ${tracker}`, items);
+                        }
+                        result = xmlDoc;
+                    } else if (tracker === "TVV") {
+                        if (debug) {
+                            const items = parseTVVItems(xmlDoc);
+                            if (items.length === 0) {
+                                console.log(`No response XML from ${tracker}`, response.responseText);
+                            }
+                            console.log(`XML array from ${tracker}`, items);
+                        }
+                        result = xmlDoc;
                     }
-
-                    // Extract all <item> elements and parse them
-                    const items = Array.from(xmlDoc.getElementsByTagName('item')).map(parseItem);
-
-                    if (items.length === 0) {
-                        console.log(`No resopnse XML from ${tracker}`, response.responseText);
-                    }
-
-                    console.log(`XML array from ${tracker}`, items); // Log the items array
-                    }
-
-                    result = xmlDoc; // Return the XML document for further processing
                 } else {
                     result = parser.parseFromString(response.responseText, "text/html").body;
                 }
@@ -1955,6 +1933,80 @@
                 displayAlert(`${tracker} returned not ok`);
                 return null;
             }
+        };
+
+        const parseMTVItems = (xmlDoc) => {
+            const parseItem = (item) => {
+                const getTextContent = (tagName) => item.getElementsByTagName(tagName)[0]?.textContent || "";
+                const attributes = Array.from(item.getElementsByTagName('torznab:attr')).reduce((acc, attr) => {
+                    acc[attr.getAttribute('name')] = attr.getAttribute('value');
+                    return acc;
+                }, {});
+
+                return {
+                    title: getTextContent('title'),
+                    guid: getTextContent('guid'),
+                    link: getTextContent('link'),
+                    comments: getTextContent('comments'),
+                    pubDate: getTextContent('pubDate'),
+                    size: getTextContent('size'),
+                    files: getTextContent('files'),
+                    grabs: getTextContent('grabs'),
+                    categories: Array.from(item.getElementsByTagName('category')).map(cat => cat.textContent),
+                    description: getTextContent('description'),
+                    enclosure: {
+                        url: item.getElementsByTagName('enclosure')[0]?.getAttribute('url') || "",
+                        length: item.getElementsByTagName('enclosure')[0]?.getAttribute('length') || "",
+                        type: item.getElementsByTagName('enclosure')[0]?.getAttribute('type') || ""
+                    },
+                    torznabAttributes: attributes
+                };
+            };
+
+            return Array.from(xmlDoc.getElementsByTagName('item')).map(parseItem);
+        };
+
+        const parseTVVItems = (xmlDoc) => {
+            const parseShow = (show) => {
+                const getTextContent = (tagName) => show.getElementsByTagName(tagName)[0]?.textContent || "";
+                const torrents = Array.from(show.getElementsByTagName('torrent')).map(torrent => ({
+                    title: getTextContent('title'),
+                    year: getTextContent('year'),
+                    torrentInfo: Array.from(torrent.getElementsByTagName('torrentinfo')).map(info => ({
+                        type: info.getAttribute('type'),
+                        value: info.textContent
+                    })),
+                    link: getTextContent('link'),
+                    fileCount: getTextContent('filecount'),
+                    dateRelative: getTextContent('date[type="relative"]'),
+                    dateUnix: getTextContent('date[type="UNIX"]'),
+                    sizeFormatted: getTextContent('size[type="formatted"]'),
+                    sizeBytes: getTextContent('size[type="bytes"]'),
+                    snatches: getTextContent('snatches'),
+                    seeders: getTextContent('seeders'),
+                    leechers: getTextContent('leechers')
+                }));
+
+                return {
+                    title: getTextContent('title'),
+                    year: getTextContent('year'),
+                    imdb: getTextContent('imdb'),
+                    link: getTextContent('link'),
+                    category: getTextContent('category'),
+                    tags: getTextContent('tags'),
+                    dateRelative: getTextContent('date[type="relative"]'),
+                    dateUnix: getTextContent('date[type="UNIX"]'),
+                    sizeFormatted: getTextContent('size[type="formatted"]'),
+                    sizeBytes: getTextContent('size[type="bytes"]'),
+                    comments: getTextContent('comments'),
+                    snatches: getTextContent('snatches'),
+                    seeders: getTextContent('seeders'),
+                    leechers: getTextContent('leechers'),
+                    torrents: torrents
+                };
+            };
+
+            return Array.from(xmlDoc.getElementsByTagName('show')).map(parseShow);
         };
 
         const generateGUID = () => {
