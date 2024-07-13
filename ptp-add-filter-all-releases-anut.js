@@ -1075,19 +1075,22 @@
 
                                     return tempText;
                                 };
-                            let formatted = replaceFullStops(cleanTheText);
-                            if (groupText && groupText.includes("FraMeSToR")) {
-                                if (formatted.includes("DV")) {
-                                    if (improved_tags) {
+                            let formatted = "";
+                            if (improved_tags) {
+                                formatted = replaceFullStops(cleanTheText);
+                                if (groupText && groupText.includes("FraMeSToR")) {
+                                    if (formatted.includes("DV")) {
                                         formatted = formatted.replace("DV", "DV HDR");
                                     }
                                 }
-                            }
-                            let files = parseInt(torrent.querySelector('files').textContent);
+                                let files = parseInt(torrent.querySelector('files').textContent);
 
-                            if (formatted.includes("BluRay") && (!isMiniSeriesFromSpan) && torrent_obj.size && files > 10) {
-                                const bdType = get_bd_type(torrent_obj.size);
-                                formatted = `${bdType} ${formatted}`;
+                                if (formatted.includes("BluRay") && (!isMiniSeriesFromSpan) && torrent_obj.size && files > 10) {
+                                    const bdType = get_bd_type(torrent_obj.size);
+                                    formatted = `${bdType} ${formatted}`;
+                                }
+                            } else {
+                                formatted = infoText;
                             }
 
                             torrent_obj.info_text = formatted;
