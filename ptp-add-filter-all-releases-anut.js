@@ -4949,13 +4949,15 @@
             span.innerHTML += "]"; // Append closing bracket to the span element
 
             let a2 = document.createElement("a");
-            a2.href = "#";
+            //a2.href = "#";
             a2.className = "link_2";
-            a2.style.marginRight = "4px";
+            //a2.style.marginRight = "4px";
 
             let img = document.createElement("img");
             img.style.width = "12px";
             img.style.height = "12px";
+            img.height = "12";
+            img.width = "12";
             img.src = "static/common/check.png";
             img.alt = "☑";
             img.title = "Tracker title";
@@ -4967,8 +4969,11 @@
             a3.className = "torrent-info-link link_3";
             a3.textContent = "INFO_TEXT_HERE";
 
+            let whitespace = document.createTextNode(' ');
+
             td.appendChild(span);
             td.appendChild(a2);
+            td.appendChild(whitespace);
             td.appendChild(a3);
 
             let td2 = document.createElement("td");
@@ -5008,9 +5013,6 @@
             document.querySelector("table.torrent_table > thead").addEventListener("mousedown", function (event) {
                 if (event.detail > 1) {
                     event.preventDefault();
-                    // of course, you still do not know what you prevent here...
-                    // You could also check event.ctrlKey/event.shiftKey/event.altKey
-                    // to not prevent something useful.
                 }
             }, false);
         };
@@ -5057,6 +5059,7 @@
                 else if (q === "FL") arr.push({ "value": 12, "name": q });
                 else if (q === "Golden") arr.push({ "value": 13, "name": q });
                 else if (q === "Pollination") arr.push({ "value": 14, "name": q });
+                else if (q === "Pollin") arr.push({ "value": 14, "name": q });
             });
 
             return arr.sort((a, b) => (a.value < b.value) ? 1 : -1).map(e => e.name);
