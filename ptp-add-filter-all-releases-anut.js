@@ -76,11 +76,12 @@
         "easysearch": {"label": "TVV easy searching", "type": "checkbox", "default": true, "tooltip": "TVV has strict searching limits, especially for lower user groups. Disable this to search with more expensive options, better feedback including seeding status, but you're more likely to hit searching to soon error."},
         "show_icon": {"label": "Show Tracker Icon", "type": "checkbox", "default": true, "tooltip": "Display the tracker icon next to releases"},
         "show_name": {"label": "Show Tracker Name", "type": "checkbox", "default": true, "tooltip": "Display the tracker name next to releases"},
+        "hide_filters": {"label": "Hide filter releases box", "type": "checkbox", "default": false, "tooltip": "Hide the filter releases box in the UI"},
+        "filterboxlocation": {"label": "Where to display the filter box", "type": "select", "options": ["Above", "Below", "Torrents"], "default": "Below", "tooltip": "Choose where to display the filter box. Above places above the movie poster, below places below. Torrents places it above the torrent group OG style."},
         "hidesamesize": {"label": "Hide torrents with same size", "type": "checkbox", "default": false, "tooltip": "Hide torrents that have the same file size as existing ones"},
         "logsamesize": {"label": "Log torrents with same size", "type": "checkbox", "default": false, "tooltip": "Log torrents that have the same file size as existing ones"},
         "fuzzyMatching": {"label": "Fuzzy size matching", "type": "checkbox", "default": false, "tooltip": "Useful to catch torrents with or without additional nfo files or whatnot, or for non API sites"},
         "valueinMIB": {"label": "Fuzzy size threshold (MiB)", "type": "int", "default": 6, "tooltip": "Set the threshold in MiB for the fuzzy size matching. 6 MiB will catch non API sites"},
-        "hide_filters": {"label": "Hide filters box", "type": "checkbox", "default": false, "tooltip": "Hide the Filter Releases box in the UI"},
         "hide_dead": {"label": "Hide dead external torrents", "type": "checkbox", "default": false, "tooltip": "Hide torrents that have no seeders"},
         "new_tab": {"label": "Open in new tab", "type": "checkbox", "default": true, "tooltip": "Open links in a new browser tab"},
         "hide_tags": {"label": "Hide tags", "type": "checkbox", "default": false, "tooltip": "Hide tags such as Featured, DU, reported, etc."},
@@ -377,6 +378,7 @@
     const TVV_TORR_PASS = GM_config.get("tvv_torr"); // We also need the torrent pass - find your torrent_pass from a torrent download link
 
     const hideBlankLinks = GM_config.get("hideBlankLinks");
+    const filterboxlocation = GM_config.get("filterboxlocation");
     const show_tracker_icon = GM_config.get("show_icon"); // false = will show default green checked icon ||| true = will show tracker logo instead of checked icon
     const show_tracker_name = GM_config.get("show_name"); // false = will hide tracker name ||| true = will show tracker name
     const hide_if_torrent_with_same_size_exists = GM_config.get("hidesamesize"); // true = will hide torrents with the same file size as existing PTP ones
@@ -739,7 +741,8 @@
                 "BluDragon",
                 "AdBlue",
                 "EML HDTeam",
-                "FTW-HD"
+                "FTW-HD",
+                "de[42]"
                 //"ExampleText3"
             ];
         };
@@ -748,11 +751,14 @@
             return [
                 "NOGRP",
                 "nogroup",
+                "NOGROUP",
                 "VC-1",
                 "MIXED",
                 "Mixed",
                 "MiXED",
-                "BTN"
+                "BTN",
+                "Unknown",
+                "-UNK-"
                 //"ExampleText2",
                 //"ExampleText3"
             ];
@@ -4432,7 +4438,7 @@
                     if (trackerFilter) {
                         trackerFilter.status = "include";
                         dom_path.style.background = "#40E0D0";
-                        dom_path.style.color = "#111";
+                        //dom_path.style.color = "#111";
                         console.log(`Applied tracker filter for ${tracker}`);
                     } else {
                         console.log(`Tracker ${tracker} not found in filters.`);
@@ -4453,7 +4459,7 @@
                         if (qualityFilter) {
                             qualityFilter.status = "include";
                             dom_path.style.background = "#40E0D0";
-                            dom_path.style.color = "#111";
+                            //dom_path.style.color = "#111";
                             qualityFound = true;
                             console.log(`Applied quality filter for ${quality}`);
                         } else {
@@ -4477,11 +4483,11 @@
                 if (current_status === "default") {
                     filters.trackers.find(e => e.name === value).status = "include";
                     dom_path.style.background = "#40E0D0";
-                    dom_path.style.color = "#111";
+                    //dom_path.style.color = "#111";
                 } else if (current_status === "include") {
                     filters.trackers.find(e => e.name === value).status = "exclude";
                     dom_path.style.background = "#920000";
-                    dom_path.style.color = "#eee";
+                    //dom_path.style.color = "#eee";
                 } else {
                     filters.trackers.find(e => e.name === value).status = "default";
                     dom_path.style.background = "";
@@ -4494,11 +4500,11 @@
                 if (current_status === "default") {
                     filters.discounts.find(e => e.name === value).status = "include";
                     dom_path.style.background = "#40E0D0";
-                    dom_path.style.color = "#111";
+                    //dom_path.style.color = "#111";
                 } else if (current_status === "include") {
                     filters.discounts.find(e => e.name === value).status = "exclude";
                     dom_path.style.background = "#920000";
-                    dom_path.style.color = "#eee";
+                    //dom_path.style.color = "#eee";
                 } else {
                     filters.discounts.find(e => e.name === value).status = "default";
                     dom_path.style.background = "";
@@ -4511,11 +4517,11 @@
                 if (current_status === "default") {
                     filters.qualities.find(e => e.name === value).status = "include";
                     dom_path.style.background = "#40E0D0";
-                    dom_path.style.color = "#111";
+                    //dom_path.style.color = "#111";
                 } else if (current_status === "include") {
                     filters.qualities.find(e => e.name === value).status = "exclude";
                     dom_path.style.background = "#920000";
-                    dom_path.style.color = "#eee";
+                    //dom_path.style.color = "#eee";
                 } else {
                     filters.qualities.find(e => e.name === value).status = "default";
                     dom_path.style.background = "";
@@ -4670,7 +4676,13 @@
         };
 
         const add_filters_div = (trackers, discounts, qualities) => {
-            let addBeforeThis = document.querySelector("#movieinfo");
+            const filterboxlocationMap = {
+                "Above": ".box_albumart",
+                "Below": "#movieinfo",
+                "Torrents": "#torrent-table",
+            };
+
+            const addBeforeThis = document.querySelector(filterboxlocationMap[filterboxlocation] || "#movieinfo");
 
             let div = document.createElement("div");
             div.className = "panel__body";
@@ -4696,7 +4708,7 @@
                 div.textContent = tracker_name;
                 div.style.padding = "2px 5px";
                 div.style.margin = "3px";
-                div.style.color = "#eee";
+                //div.style.color = "#eee";
                 div.style.display = "inline-block";
                 div.style.cursor = "pointer";
                 div.style.border = "1px dashed #606060";
@@ -4729,7 +4741,7 @@
                 only_discount.textContent = discount_name;
                 only_discount.style.padding = "2px 5px";
                 only_discount.style.margin = "3px";
-                only_discount.style.color = "#eee";
+                //only_discount.style.color = "#eee";
                 only_discount.style.display = "inline-block";
                 only_discount.style.cursor = "pointer";
                 only_discount.style.border = "1px dashed #606060";
@@ -4761,7 +4773,7 @@
                 quality.textContent = quality_name;
                 quality.style.padding = "2px 5px";
                 quality.style.margin = "3px";
-                quality.style.color = "#eee";
+                //quality.style.color = "#eee";
                 quality.style.display = "inline-block";
                 quality.style.cursor = "pointer";
                 quality.style.border = "1px dashed #606060";
@@ -4799,7 +4811,7 @@
             rst.textContent = "⟳";
             rst.style.padding = "4px 8px";
             rst.style.margin = "0px 4px";
-            rst.style.color = "#eee";
+            //rst.style.color = "#eee";
             rst.style.display = "inline-block";
             rst.style.cursor = "pointer";
             rst.style.border = "1px dashed #606060";
@@ -4824,7 +4836,7 @@
 
                 document.querySelectorAll(".filter-box").forEach(d => {
                     d.style.background = "";
-                    d.style.color = "#eee";
+                    //d.style.color = "#eee";
                 });
             });
             filterByText.appendChild(rst);
