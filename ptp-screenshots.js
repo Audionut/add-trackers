@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Screenshots
-// @version      2.1
+// @version      2.2
 // @description  Load and display screenshots from all torrents on a movie page with dimension checks for different groups and status indicators.
 // @grant        GM.setValue
 // @grant        GM.getValue
@@ -307,19 +307,29 @@
             panelBody.appendChild(groupContainer);
         });
 
-        const synopsisElement = document.getElementById('synopsis-and-trailer');
-        if (synopsisElement) {
-            synopsisElement.parentNode.insertBefore(newDiv, synopsisElement);
-            if (debug) {
-                console.log('Inserted new div with images before #synopsis-and-trailer');
+        function getNextVisibleSibling(node) {
+            var sibling = node.nextSibling;
+            while (sibling && (sibling.nodeType !== 1 || sibling.style.display === 'none')) {
+              sibling = sibling.nextSibling;
             }
-        } else {
-            console.warn('#synopsis-and-trailer element not found');
-        }
-        if (debug) {
-            console.timeEnd('addHeaders');
-        }
-    }
+            return sibling;
+          }
+  
+          const synopsisElement = document.getElementById('torrent-table');
+          if (synopsisElement) {
+              var nextVisibleSibling = getNextVisibleSibling(synopsisElement);
+              synopsisElement.parentNode.insertBefore(newDiv, nextVisibleSibling);
+  
+              if (debug) {
+                  console.log('Inserted new div with images after #synopsis-and-trailer');
+              }
+          } else {
+              console.warn('#synopsis-and-trailer element not found');
+          }
+          if (debug) {
+              console.timeEnd('addHeaders');
+          }
+      }
 
     function incrementProcessingStatus(count = 0) {
         processingStatus += count;
