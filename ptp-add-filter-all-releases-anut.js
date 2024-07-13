@@ -4748,7 +4748,7 @@
                 //div.style.color = "#eee";
                 div.style.display = "inline-block";
                 div.style.cursor = "pointer";
-                div.style.border = "1px dashed #606060";
+                //div.style.border = "1px dashed #606060";
                 div.style.fontSize = "1em";
                 div.style.textAlign = "center";
 
@@ -4781,7 +4781,7 @@
                 //only_discount.style.color = "#eee";
                 only_discount.style.display = "inline-block";
                 only_discount.style.cursor = "pointer";
-                only_discount.style.border = "1px dashed #606060";
+                //only_discount.style.border = "1px dashed #606060";
                 only_discount.style.fontSize = "1em";
 
                 only_discount.addEventListener("click", () => {
@@ -4813,7 +4813,7 @@
                 //quality.style.color = "#eee";
                 quality.style.display = "inline-block";
                 quality.style.cursor = "pointer";
-                quality.style.border = "1px dashed #606060";
+                //quality.style.border = "1px dashed #606060";
                 quality.style.fontSize = "1em";
                 quality.style.textAlign = "center";
 
@@ -4851,7 +4851,7 @@
             //rst.style.color = "#eee";
             rst.style.display = "inline-block";
             rst.style.cursor = "pointer";
-            rst.style.border = "1px dashed #606060";
+            //rst.style.border = "1px dashed #606060";
             rst.style.fontSize = "1em";
             rst.style.textAlign = "center";
 
