@@ -77,6 +77,7 @@
         "show_icon": {"label": "Show Tracker Icon", "type": "checkbox", "default": true, "tooltip": "Display the tracker icon next to releases"},
         "show_name": {"label": "Show Tracker Name", "type": "checkbox", "default": true, "tooltip": "Display the tracker name next to releases"},
         "hide_filters": {"label": "Hide filter releases box", "type": "checkbox", "default": false, "tooltip": "Hide the filter releases box in the UI"},
+        "filterhidden": {"label": "Minimize the filter box by default", "type": "checkbox", "default": false, "tooltip": "Toggle visibility by clicking header"},
         "filterboxlocation": {"label": "Where to display the filter box", "type": "select", "options": ["Above", "Below", "Torrents"], "default": "Below", "tooltip": "Choose where to display the filter box. Above places above the movie poster, below places below. Torrents places it above the torrent group OG style."},
         "simplediscounts": {"label": "Show simple discounts", "type": "checkbox", "default": false, "tooltip": "Change 75% Freeleech > 75%"},
         "hidesamesize": {"label": "Hide torrents with same size", "type": "checkbox", "default": false, "tooltip": "Hide torrents that have the same file size as existing ones"},
@@ -88,7 +89,6 @@
         "hide_tags": {"label": "Hide tags", "type": "checkbox", "default": false, "tooltip": "Hide tags such as Featured, DU, reported, etc."},
         "run_default": {"label": "Run by default?", "type": "checkbox", "default": true, "tooltip": "Run this script by default on page load, else click Other Trackers under title to run the script"},
         "ptp_name": {"label": "Show release name", "type": "checkbox", "default": true, "tooltip": "Display the PTP release (file) name instead of the default display"},
-        "filterhidden": {"label": "Minimize the filter box by default", "type": "checkbox", "default": false, "tooltip": "Toggle visibility by clicking header"},
         "funky_tags": {"label": "Improved Tags", "type": "checkbox", "default": false, "tooltip": "Work with jmxd' PTP Improved Tags script"},
         "btntimer": {"label": "Timer for BTN TVDB ID searches via Sonarr (ms)", "type": "int", "default": 800, "tooltip": "If you don't use Sonarr you can set this very low, but the main script delay is overall site response, not this response"},
         "tracker_by_default": {"label": "Only these sites by default", "type": "text", "default": "", "tooltip": "Show only these sites by default. Comma separated. PTP, BHD, ANT, etc"},
@@ -786,12 +786,12 @@
                     return "BD25";
                 } else if (sizeInGB <= 50) {
                     return "BD50";
-                } else if (sizeInGB <= 66) {
-                    return "BD66";
-                } else if (sizeInGB <= 100) {
-                    return "BD100";
-                } else {
-                    return "BDSET";
+                //} else if (sizeInGB <= 66) {
+                //    return "BD66";
+                //} else if (sizeInGB <= 100) {
+                //    return "BD100";
+                //} else {
+                //    return "BDSET";
                 }
             };
             let torrent_objs = [];
@@ -839,6 +839,8 @@
                         const combinedInfo = torrent.querySelector('torrentinfo[type="combined"]');
                         if (combinedInfo) {
                             let infoText = combinedInfo.textContent.replace(/\/?Freeleech\/?/g, "").replace(/\//g, " ");
+                            infoText = infoText.replace(/ &#x25a2;&#8;&#xfe4d; /g, " Subs ");
+                            infoText = infoText.replace(/ &#x1f4ac;&#xfe0e; /g, " Commentary ");
 
                             if (improved_tags) {
                                 infoText = infoText.replace("VOB IFO", "VOB");
@@ -858,6 +860,7 @@
                                 if (documentTitle.includes("(Special Edition)")) {
                                     infoText += " (Special Edition)";
                                 }
+                                infoText = infoText.replace("HDRdovi", " HDR DoVi")
                                 if (infoText.includes("VOB") && torrent_obj.size) {
                                     const dvdType = get_dvd_type(torrent_obj.size, documentTitle);
                                     infoText = `${dvdType} ${infoText}`;
@@ -867,7 +870,7 @@
                                 }
                             } else {
                                 // Remove "Freeleech" and any surrounding forward slashes
-                                infoText = combinedInfo.textContent.replace(/\/?Freeleech\/?/g, "").replace(/\//g, " / ");
+                                //infoText = combinedInfo.textContent.replace(/\/?Freeleech\/?/g, "").replace(/\//g, " / ");
                                 // Append resolution tags if necessary
                                 if (documentTitle.includes("(720p)")) {
                                     infoText += " / 720p";
@@ -884,6 +887,7 @@
                             }
 
                             torrent_obj.info_text = infoText;
+                            torrent_obj.datasetRelease = infoText;
                         } else {
                             console.error("Missing combined torrent info.");
                             return; // Skip this torrent if critical information is missing
@@ -1141,6 +1145,7 @@
             else if (tracker === "FL") {
                 html.querySelectorAll(".torrentrow").forEach((d) => {
                     let torrent_obj = {};
+
                     let size = [...d.querySelectorAll("font")].find((font) => {
                         return (font.textContent.includes("[") === false) && (font.textContent.includes("TB") || font.textContent.includes("GB") || font.textContent.includes("MB"));
                     }).textContent;
@@ -1152,9 +1157,12 @@
                     } else if (size.includes("MB")) {
                         size = parseInt(parseFloat(size.split("MB")[0]));
                     }
+
                     torrent_obj.size = size;
+
                     let releaseName = [...d.querySelectorAll("a")].find(a => a.href.includes("details.php?id=")).title;
                     torrent_obj.datasetRelease = releaseName;
+
                     let groupText = "";
                     const groups = goodGroups();
                     const badGroupsList = badGroups();
@@ -1194,6 +1202,7 @@
                             }
                         }
                     }
+
                     torrent_obj.info_text = releaseName.replace(/\./g, " ");
                     torrent_obj.groupId = groupText;
                     torrent_obj.site = "FL";
@@ -2591,11 +2600,11 @@
                                 if (!extention && releaseName.includes("Blu-ray") || releaseName.includes("BluRay") || releaseName.includes("BLURAY")) {
                                     let lower = releaseName.toLowerCase();
                                     if (!lower.includes("remux")) {
-                                    infoText = "m2ts" + infoText;
+                                    infoText = "m2ts " + infoText;
                                     }
                                 }
                                 if (releaseName && releaseName.includes("Blu-ray") || releaseName.includes("BluRay") || releaseName.includes("BLURAY") && (!infoText.includes("Blu-ray"))) {
-                                    infoText = infoText += "Blu-ray";
+                                    infoText = infoText += " Blu-ray";
                                 }
                             }
                             const isRemux = d.type_medium === 5 ? true : false;
@@ -3877,6 +3886,7 @@
             else if (lower.includes("hdr10 / dv")) return "Dolby Vision / HDR10 / ";
             else if (lower.includes("hdr / dv")) return "Dolby Vision / HDR10 / ";
             else if (lower.includes("hdr dv")) return "Dolby Vision / HDR10 / ";
+            else if (lower.includes("hdr dovi")) return "Dolby Vision / HDR10 / ";
             else if (lower.includes("dovi hdr10+")) return "Dolby Vision / HDR10+ / ";
             else if (lower.includes("dovi hdr10")) return "Dolby Vision / HDR10 / ";
             else if (lower.includes("dovi hdr")) return "Dolby Vision / HDR10 / ";
@@ -4468,12 +4478,12 @@
 
             if (current_status === "default") {
                 filter.status = "include";
-                dom_path.style.background = "#e3eedb";
-                dom_path.style.color = "#000000";
+                dom_path.style.background = "#e1f5dc";
+                dom_path.style.color = "#575757";
             } else if (current_status === "include") {
                 filter.status = "exclude";
                 dom_path.style.background = "#f8e4d6";
-                dom_path.style.color = "#000000";
+                dom_path.style.color = "#575757";
             } else {
                 filter.status = "default";
                 dom_path.style.background = "";
@@ -4500,7 +4510,7 @@
                     if (trackerFilter) {
                         trackerFilter.status = "include";
                         dom_path.style.background = "#e3eedb";
-                        dom_path.style.color = "#000000";
+                        dom_path.style.color = "#575757";
                         console.log(`Applied tracker filter for ${tracker}`);
                     } else {
                         console.log(`Tracker ${tracker} not found in filters.`);
