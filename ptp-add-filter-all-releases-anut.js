@@ -4468,14 +4468,17 @@
 
             if (current_status === "default") {
                 filter.status = "include";
-                dom_path.style.background = "#40E0D0";
+                dom_path.style.background = "#e3eedb";
+                dom_path.style.color = "#000000";
             } else if (current_status === "include") {
                 filter.status = "exclude";
-                dom_path.style.background = "#920000";
+                dom_path.style.background = "#f8e4d6";
+                dom_path.style.color = "#000000";
             } else {
                 filter.status = "default";
                 dom_path.style.background = "";
                 dom_path.style.opacity = 1;
+                dom_path.style.removeProperty("color");
             }
 
             const event = new CustomEvent('AddReleasesStatusChanged');
@@ -4496,8 +4499,8 @@
                     const trackerFilter = filters.trackers.find(e => e.name === tracker);
                     if (trackerFilter) {
                         trackerFilter.status = "include";
-                        dom_path.style.background = "#40E0D0";
-                        //dom_path.style.color = "#111";
+                        dom_path.style.background = "#e3eedb";
+                        dom_path.style.color = "#000000";
                         console.log(`Applied tracker filter for ${tracker}`);
                     } else {
                         console.log(`Tracker ${tracker} not found in filters.`);
