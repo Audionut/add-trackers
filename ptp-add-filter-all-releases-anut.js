@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.0.5-A
+// @version      4.0.6-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -78,6 +78,7 @@
         "show_name": {"label": "Show Tracker Name", "type": "checkbox", "default": true, "tooltip": "Display the tracker name next to releases"},
         "hide_filters": {"label": "Hide filter releases box", "type": "checkbox", "default": false, "tooltip": "Hide the filter releases box in the UI"},
         "filterboxlocation": {"label": "Where to display the filter box", "type": "select", "options": ["Above", "Below", "Torrents"], "default": "Below", "tooltip": "Choose where to display the filter box. Above places above the movie poster, below places below. Torrents places it above the torrent group OG style."},
+        "simplediscounts": {"label": "Show simple discounts", "type": "checkbox", "default": false, "tooltip": "Change 75% Freeleech > 75%"},
         "hidesamesize": {"label": "Hide torrents with same size", "type": "checkbox", "default": false, "tooltip": "Hide torrents that have the same file size as existing ones"},
         "logsamesize": {"label": "Log torrents with same size", "type": "checkbox", "default": false, "tooltip": "Log torrents that have the same file size as existing ones"},
         "fuzzyMatching": {"label": "Fuzzy size matching", "type": "checkbox", "default": false, "tooltip": "Useful to catch torrents with or without additional nfo files or whatnot, or for non API sites"},
@@ -398,6 +399,7 @@
     const easysearching = GM_config.get("easysearch");
     const valueinMIB = GM_config.get("valueinMIB");
     const fuzzyMatching = GM_config.get("fuzzyMatching");
+    const simplediscounts = GM_config.get("simplediscounts");
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -580,8 +582,14 @@
             }
         }
 
-        let discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "40% Bonus", "30% Bonus", "25% Freeleech", "Copper", "Bronze", "Silver", "Golden", "Refundable", "Rewind", "Rescuable", "Pollination", "None"];
-        let qualities = ["SD", "480p", "576p", "720p", "1080p", "2160p"];
+        let discounts;
+        if (simplediscounts) {
+            discounts = ["FL", "75%", "50%", "40%", "30%", "25%", "Refund", "Rewind", "Rescue", "Pollin", "None"];
+        } else {
+            discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "40% Bonus", "30% Bonus", "25% Freeleech", "Copper", "Bronze", "Silver", "Golden", "Refundable", "Rewind", "Rescuable", "Pollination", "None"];
+        }
+
+        let qualities = ["SD", "720p", "1080p", "2160p"];
         let filters = {
             "trackers": trackers.map((e) => {
                 return ({ "name": e, "status": "default" });
@@ -602,8 +610,6 @@
             if (text.includes("720p")) return "720p";
             else if (text.includes("1080p") || text.includes("1080i")) return "1080p";
             else if (text.includes("2160p")) return "2160p";
-            else if (text.includes("576p")) return "576p";
-            else if (text.includes("480p")) return "480p";
             else return "SD";
         };
 
@@ -613,6 +619,23 @@
                 let dom_path = d;
                 let quality = dom_get_quality(d.textContent);
                 let discount = "None";
+                const modifiers = d.querySelectorAll(".torrent-info__download-modifier");
+                modifiers.forEach(modifier => {
+                    const text = modifier.textContent.trim().toLowerCase();
+                    if (text.includes("freeleech") || text.includes("freeleech!")) {
+                        if (simplediscounts) {
+                            discount = "FL";
+                        } else {
+                            discount = "Freeleech";
+                        }
+                    } else if (text.includes("half-leech") || text.includes("half-leech!")) {
+                        if (simplediscounts) {
+                            discount = "50%"
+                        } else {
+                            discount = "50% Freeleech";
+                        }
+                    }
+                });
                 let releaseName = d.closest('tr.group_torrent_header');
                 let groupName = d.closest('tr.group_torrent_header');
                 let info_text = releaseName.dataset.releasename;
@@ -641,25 +664,6 @@
         };
 
         get_default_doms();
-
-        function insertAfter(newNode, referenceNode) {
-            referenceNode.parentNode.insertBefore(newNode, referenceNode.nextSibling);
-        }
-
-        const get_discount_text = (div, tracker) => {
-            if (["BLU", "Aither", "RFX", "OE", "TIK", "HUNO", "LST"].includes(tracker)) {
-                return true;
-            }
-            else if (tracker === "FL") {
-                if ([...div.querySelectorAll("img")].find(e => e.alt === "FreeLeech") != undefined) return "Freeleech";
-            }
-            else if (tracker === "CG") {
-                if ([...div.querySelectorAll("img")].find(e => e.alt === "100% bonus")) return "Freeleech";
-                else if ([...div.querySelectorAll("img")].find(e => e.alt === "30% bonus")) return "30% Bonus";
-                else if ([...div.querySelectorAll("img")].find(e => e.alt === "40% bonus")) return "40% Bonus";
-            }
-            return "None";
-        };
 
         const trackerIcons = {
             "BHD": " data:image/png;base64,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",
@@ -908,12 +912,13 @@
                         }
 
                         torrent_obj.site = "TVV";
-                        const discountTVVFind = torrent.querySelector('torrentinfo[type="freeleech"]');
-                        if (discountTVVFind) {
-                            torrent_obj.discount = discountTVVFind.textContent.includes("Freeleech") ? "Freeleech" : "None";
-                        } else {
-                            torrent_obj.discount = "None";
+                        const discountTVVElement = torrent.querySelector('torrentinfo[type="freeleech"]');
+                        let discountType = "None";
+                        if (discountTVVElement) {
+                            const isFreeLeech = discountTVVElement.textContent.includes("Freeleech");
+                            discountType = isFreeLeech ? (simplediscounts ? "FL" : "Freeleech") : "None";
                         }
+                        torrent_obj.discount = discountType;
                         const statusFind = torrent.querySelector('seeders[currentseed="true"]');
                         if (statusFind) {
                             torrent_obj.status = "seeding";
@@ -1104,12 +1109,18 @@
                             }
 
                             torrent_obj.site = "MTV";
-                            const discountTVVFind = torrent.querySelector('torznab\\:attr[name="downloadvolumefactor"]');
-                            if (discountTVVFind) {
-                                torrent_obj.discount = discountTVVFind.getAttribute('value') === "0" ? "Freeleech" : "None";
-                            } else {
-                                torrent_obj.discount = "None";
+                            const discountMTVElement = torrent.querySelector('torznab\\:attr[name="downloadvolumefactor"]');
+                            let discountType = "None";
+                            if (discountMTVElement) {
+                                const discountValue = discountMTVElement.getAttribute('value');
+                                const isFreeLeech = discountValue === "0";
+                                if (simplediscounts) {
+                                    discountType = isFreeLeech ? "FL" : "None";
+                                } else {
+                                    discountType = isFreeLeech ? "Freeleech" : "None";
+                                }
                             }
+                            torrent_obj.discount = discountType;
                             const inputTimeElement = torrent.querySelector('pubDate');
                             if (inputTimeElement) {
                                 const inputTime = inputTimeElement.textContent.trim();
@@ -1130,8 +1141,8 @@
             else if (tracker === "FL") {
                 html.querySelectorAll(".torrentrow").forEach((d) => {
                     let torrent_obj = {};
-                    let size = [...d.querySelectorAll("font")].find((d) => {
-                        return (d.textContent.includes("[") === false) && (d.textContent.includes("TB") || d.textContent.includes("GB") || d.textContent.includes("MB"));
+                    let size = [...d.querySelectorAll("font")].find((font) => {
+                        return (font.textContent.includes("[") === false) && (font.textContent.includes("TB") || font.textContent.includes("GB") || font.textContent.includes("MB"));
                     }).textContent;
 
                     if (size.includes("TB")) {
@@ -1141,28 +1152,25 @@
                     } else if (size.includes("MB")) {
                         size = parseInt(parseFloat(size.split("MB")[0]));
                     }
-
                     torrent_obj.size = size;
                     let releaseName = [...d.querySelectorAll("a")].find(a => a.href.includes("details.php?id=")).title;
                     torrent_obj.datasetRelease = releaseName;
                     let groupText = "";
-                    const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
-                    const badGroupsList = badGroups(); // Get the list of bad group names
+                    const groups = goodGroups();
+                    const badGroupsList = badGroups();
                     let matchedGroup = null;
                     let badGroupFound = false;
 
-                    // Check for bad groups
                     for (const badGroup of badGroupsList) {
                         if (releaseName.includes(badGroup)) {
                             badGroupFound = true;
-                            releaseName = releaseName.replace(badGroup, '').trim(); // Remove the bad group text
-                            groupText = ""; // Set groupText to an empty string
+                            releaseName = releaseName.replace(badGroup, '').trim();
+                            groupText = "";
                             break;
                         }
                     }
 
                     if (!badGroupFound) {
-                        // Check for good groups if no bad group was found
                         for (const group of groups) {
                             if (releaseName.includes(group)) {
                                 matchedGroup = group;
@@ -1178,7 +1186,7 @@
                         } else {
                             const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
                             if (match) {
-                                groupText = match[1]; // Use match[1] to get the capturing group
+                                groupText = match[1];
                                 groupText = groupText.replace(/[^a-z0-9]/gi, '');
                                 if (improved_tags) {
                                     releaseName = releaseName.replace(`-${match[1]}`, '').trim();
@@ -1195,7 +1203,9 @@
                     torrent_obj.download_link = [...d.querySelectorAll("a")].find(a => a.href.includes("download.php?id=")).href.replace("passthepopcorn.me", "filelist.io");
                     torrent_obj.torrent_page = [...d.querySelectorAll("a")].find(a => a.href.includes("/details.php?id=")).href.replace("passthepopcorn.me", "filelist.io");
                     torrent_obj.status = "default";
-                    torrent_obj.discount = get_discount_text(d, tracker);
+                    const discountImage = [...document.querySelectorAll("img")].find(image => image.alt.includes("FreeLeech"));
+                    const discountType = discountImage ? (simplediscounts ? "FL" : "FreeLeech") : "None";
+                    torrent_obj.discount = discountType;
                     torrent_objs.push(torrent_obj);
                 });
             }
@@ -1213,35 +1223,34 @@
                     let size = d.querySelector("td:nth-child(5)").textContent;
 
                     if (size.includes("TB")) {
-                        size = parseInt(parseFloat(size.split("TB")[0]) * 1024 * 1024); // Convert TiB to MiB
+                        size = parseInt(parseFloat(size.split("TB")[0]) * 1024 * 1024);
                     } else if (size.includes("GB")) {
-                        size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // Convert GB to MiB
+                        size = parseInt(parseFloat(size.split("GB")[0]) * 1024);
                     } else if (size.includes("MB")) {
                         size = parseInt(parseFloat(size.split("MB")[0]));
+                    } else {
+                        size = 1;
                     }
-                    else size = 1; // must be kiloBytes, so lets assume 1mb.
 
                     torrent_obj.size = size;
                     let releaseName = d.querySelectorAll("td")[1].querySelector("b").textContent.trim();
                     torrent_obj.datasetRelease = releaseName;
                     let groupText = "";
-                    const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
-                    const badGroupsList = badGroups(); // Get the list of bad group names
+                    const groups = goodGroups();
+                    const badGroupsList = badGroups();
                     let matchedGroup = null;
                     let badGroupFound = false;
 
-                    // Check for bad groups
                     for (const badGroup of badGroupsList) {
                         if (releaseName.includes(badGroup)) {
                             badGroupFound = true;
-                            releaseName = releaseName.replace(badGroup, '').trim(); // Remove the bad group text
-                            groupText = ""; // Set groupText to an empty string
+                            releaseName = releaseName.replace(badGroup, '').trim();
+                            groupText = "";
                             break;
                         }
                     }
 
                     if (!badGroupFound) {
-                        // Check for good groups if no bad group was found
                         for (const group of groups) {
                             if (releaseName.includes(group)) {
                                 matchedGroup = group;
@@ -1257,7 +1266,7 @@
                         } else {
                             const match = releaseName.match(/-(?![^(]*[()[]])[a-zA-Z]([a-zA-Z0-9]*$|[^-]*\([^()]*\)[^-]*)/);
                             if (match) {
-                                groupText = match[1]; // Use match[1] to get the capturing group
+                                groupText = match[1];
                                 groupText = groupText.replace(/[^a-z0-9]/gi, '');
                                 if (improved_tags) {
                                     releaseName = releaseName.replace(`-${match[1]}`, '').trim();
@@ -1265,6 +1274,7 @@
                             }
                         }
                     }
+
                     const inputTimeElement = d.querySelector('.torrenttable > tbody > tr > td:nth-child(4)');
                     if (inputTimeElement) {
                         let inputTime = inputTimeElement.innerHTML.trim();
@@ -1285,7 +1295,34 @@
                     torrent_obj.download_link = [...d.querySelectorAll("a")].find(a => a.href.includes("download.php?id=")).href.replace("passthepopcorn.me", "cinemageddon.net");
                     torrent_obj.torrent_page = [...d.querySelectorAll("a")].find(a => a.href.includes("/details.php?id=")).href.replace("passthepopcorn.me", "cinemageddon.net");
                     torrent_obj.status = d.className.includes("torrenttable_usersnatched") ? "seeding" : "default";
-                    torrent_obj.discount = get_discount_text(d, tracker);
+
+                    const discountImg = [...document.querySelectorAll("img")].find(e => e.alt.includes("bonus"));
+                    let discountType = "None";
+                    if (discountImg) {
+                        const altText = discountImg.alt;
+                        if (simplediscounts) {
+                            if (altText === "100% bonus") {
+                                discountType = "FL";
+                            } else if (altText === "30% bonus") {
+                                discountType = "30%";
+                            } else if (altText === "40% bonus") {
+                                discountType = "40%";
+                            } else {
+                                discountType = "None";
+                            }
+                        } else {
+                            if (altText === "100% bonus") {
+                                discountType = "FreeLeech";
+                            } else if (altText === "30% bonus") {
+                                discountType = "30% Bonus";
+                            } else if (altText === "40% bonus") {
+                                discountType = "40% Bonus";
+                            } else {
+                                discountType = "None";
+                            }
+                        }
+                    }
+                    torrent_obj.discount = discountType;
                     torrent_objs.push(torrent_obj);
                 });
             }
@@ -1359,7 +1396,7 @@
                         torrent_obj.download_link = [...d.querySelectorAll("a")].find(a => a.href.includes("/down.php/")).href.replace("passthepopcorn.me", "karagarga.in");
                         torrent_obj.torrent_page = [...d.querySelectorAll("a")].find(a => a.href.includes("/details.php?id=")).href.replace("passthepopcorn.me", "karagarga.in");
                         torrent_obj.status = d.className.includes("snatchedrow") ? "seeding" : "default";
-                        torrent_obj.discount = get_discount_text(d, tracker);
+                        torrent_obj.discount = "None";
                         torrent_objs.push(torrent_obj);
                     } catch (e) {
                         console.error("An error has occurred: ", e);
@@ -2382,17 +2419,15 @@
                             const is75 = d.promo75 === 1 ? true : false;
                             const is100 = d.freeleech === 1 ? true : false;
 
-                            let discounted = "";
+                            let discounted = "None";
                             if (is25) {
-                                discounted = "25% Freeleech";
+                                discounted = simplediscounts ? "25%" : "25% Freeleech";
                             } else if (is50) {
-                                discounted = "50% Freeleech";
+                                discounted = simplediscounts ? "50%" : "50% Freeleech";
                             } else if (is75) {
-                                discounted = "75% Freeleech";
+                                discounted = simplediscounts ? "75%" : "75% Freeleech";
                             } else if (is100) {
-                                discounted = "Freeleech";
-                            } else {
-                                discounted = "None";
+                                discounted = simplediscounts ? "FL" : "Freeleech";
                             }
 
                             const inputTime = d.created_at;
@@ -2562,21 +2597,22 @@
                             const isDoco = d.type_category === 3 ? true : false;
                             const isTv = d.type_category === 2 ? true : false;
                             const get_hdb_discount = () => {
-                                let discountText = "";
+                                let discountText = "None";
+
                                 if (d.freeleech === "yes") {
-                                    discountText = "Freeleech";
+                                    discountText = simplediscounts ? "FL" : "Freeleech";
                                 } else {
-                                    if (isInternal || isRemux || isDisc || isCapture ||  isTv || isDoco) {
-                                    discountText = "50% Freeleech";
+                                    if (isInternal || isRemux || isDisc || isCapture || isTv || isDoco) {
+                                        discountText = simplediscounts ? "50%" : "50% Freeleech";
+                                    } else if (isWeb && isInternal) {
+                                        discountText = simplediscounts ? "25%" : "25% Freeleech";
+                                    } else {
+                                        discountText = "None";
                                     }
-                                  else if (isWeb && isInternal) {
-                                    discountText = "25% Freeleech";
-                                  } else {
-                                    discountText = "None";
-                                  }
                                 }
+
                                 return discountText;
-                            }
+                            };
                             const status = d.torrent_status || "default";
 
                             const time = parseInt(d.utadded);
@@ -3238,33 +3274,31 @@
 
         const get_api_discount = (text, refundable) => {
             let discountText = "";
-
             if (refundable === true) {
                 discountText += "Refundable";
             } else {
                 if (text === 0 || text === "0%") {
                     discountText = "None";
                 } else if (text === "25%") {
-                    discountText = "25% Freeleech";
+                    discountText = simplediscounts ? "25%" : "25% Freeleech";
                 } else if (text === "Copper") {
-                    discountText = "Copper";
+                    discountText = simplediscounts ? "25% " : "Copper";
                 } else if (text === "50%") {
-                    discountText = "50% Freeleech";
+                    discountText = simplediscounts ? "50%" : "50% Freeleech";
                 } else if (text === "Bronze") {
-                    discountText = "Bronze";
+                    discountText = simplediscounts ? "50%" : "Bronze";
                 } else if (text === "75%") {
-                    discountText = "75% Freeleech";
+                    discountText = simplediscounts ? "75%" : "75% Freeleech";
                 } else if (text === "Silver") {
-                    discountText = "Silver";
+                    discountText = simplediscounts ? "75%" : "Silver";
                 } else if (text === "100%") {
-                    discountText = "Freeleech";
+                    discountText = simplediscounts ? "FL" : "Freeleech";
                 } else if (text === "Golden") {
-                    discountText = "Golden";
+                    discountText = simplediscounts ? "FL" : "Golden";
                 } else {
-                    discountText = text + " Freeleech";
+                    discountText = text + (simplediscounts ? " FL" : " Freeleech");
                 }
             }
-
             return discountText;
         };
 
@@ -3583,6 +3617,10 @@
                 return torrent_objs;
             }
         };
+
+        function insertAfter(newNode, referenceNode) {
+            referenceNode.parentNode.insertBefore(newNode, referenceNode.nextSibling);
+        }
 
         const get_filtered_torrents = (quality) => {
             let all_trs = [...document.querySelectorAll("tr.group_torrent")];
@@ -4082,10 +4120,9 @@
                 if (!hide_tags) {
                     if (improved_tags) {
                         const torrentInfoLink = cln.querySelector(".torrent-info-link");
-
-                        if (torrent.discount === "Freeleech" || torrent.discount === "Golden") {
+                        if (torrent.discount === "Freeleech" || torrent.discount === "FL" || torrent.discount === "Golden") {
                             torrentInfoLink.innerHTML += " / <span class='torrent-info__download-modifier torrent-info__download-modifier--free'>Freeleech!</span>";
-                        } else if (torrent.discount === "50% Freeleech" || torrent.discount === "Bronze") {
+                        } else if (torrent.discount === "50% Freeleech" || torrent.discount === "50%" || torrent.discount === "Bronze") {
                             torrentInfoLink.innerHTML += " / <span class='torrent-info__download-modifier torrent-info__download-modifier--half'>Half-leech!</span>";
                         } else if (torrent.discount != "None") {
                             torrentInfoLink.innerHTML += ` / <span class='torrent-info__download-modifier'>${torrent.discount}!</span>`;
@@ -4984,8 +5021,6 @@
             qualities.forEach(q => {
 
                 if (q === "SD") arr.push({ "value": 0, "name": q });
-                else if (q === "480p") arr.push({ "value": 1, "name": q });
-                else if (q === "576p") arr.push({ "value": 2, "name": q });
                 else if (q === "720p") arr.push({ "value": 3, "name": q });
                 else if (q === "1080p") arr.push({ "value": 4, "name": q });
                 else if (q === "2160p") arr.push({ "value": 5, "name": q });
@@ -4995,7 +5030,7 @@
             return arr.sort((a, b) => (a.value > b.value) ? 1 : -1).map(e => e.name);
         };
 
-        const get_sorted_discounts = (discounts) => {
+        const get_sorted_discounts = (discounts, simplediscounts) => {
             let arr = [];
 
             discounts.forEach(q => {
@@ -5003,15 +5038,15 @@
                 else if (q === "Rescuable") arr.push({ "value": 1, "name": q });
                 else if (q === "Rewind") arr.push({ "value": 2, "name": q });
                 else if (q === "Refundable") arr.push({ "value": 3, "name": q });
-                else if (q === "25% Freeleech") arr.push({ "value": 4, "name": q });
+                else if (q === "25% Freeleech" || (simplediscounts && q === "25%")) arr.push({ "value": 4, "name": q });
                 else if (q === "Copper") arr.push({ "value": 5, "name": q });
                 else if (q === "30% Bonus") arr.push({ "value": 6, "name": q });
                 else if (q === "40% Bonus") arr.push({ "value": 7, "name": q });
-                else if (q === "50% Freeleech") arr.push({ "value": 8, "name": q });
+                else if (q === "50% Freeleech" || (simplediscounts && q === "50%")) arr.push({ "value": 8, "name": q });
                 else if (q === "Bronze") arr.push({ "value": 9, "name": q });
-                else if (q === "75% Freeleech") arr.push({ "value": 10, "name": q });
+                else if (q === "75% Freeleech" || (simplediscounts && q === "75%")) arr.push({ "value": 10, "name": q });
                 else if (q === "Silver") arr.push({ "value": 11, "name": q });
-                else if (q === "Freeleech") arr.push({ "value": 12, "name": q });
+                else if (q === "Freeleech" || (simplediscounts && q === "FL")) arr.push({ "value": 12, "name": q });
                 else if (q === "Golden") arr.push({ "value": 13, "name": q });
                 else if (q === "Pollination") arr.push({ "value": 14, "name": q });
             });
