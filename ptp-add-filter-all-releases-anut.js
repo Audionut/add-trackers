@@ -4878,7 +4878,7 @@
 
             let span = document.createElement("span");
             span.className = "basic-movie-list__torrent__action";
-            span.style.marginLeft = "12px";
+            //span.style.marginLeft = "12px";
             span.textContent = "[";
 
             if (hideBlankLinks === "DL") {
@@ -5368,7 +5368,7 @@
                 .then(torrents_lists => {
                     var all_torrents = [].concat.apply([], torrents_lists).sort((a, b) => a.size < b.size ? 1 : -1);
                     add_external_torrents(all_torrents);
-                    document.querySelectorAll(".basic-movie-list__torrent__action").forEach(d => { d.style.marginLeft = "12px"; });
+                    //document.querySelectorAll(".basic-movie-list__torrent__action").forEach(d => { d.style.marginLeft = "12px"; });
                     original_table = document.querySelector("table.torrent_table").cloneNode(true);
 
                     // Only apply default filters if there are any specified
