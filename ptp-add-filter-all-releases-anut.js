@@ -2418,6 +2418,9 @@
                             const is50 = d.promo50 === 1 ? true : false;
                             const is75 = d.promo75 === 1 ? true : false;
                             const is100 = d.freeleech === 1 ? true : false;
+                            const refund = d.refund === 1 ? true : false;
+                            const rewind = d.rewind === 1 ? true : false;
+                            const rescue = d.rescue === 1 ? true : false;
 
                             let discounted = "None";
                             if (is25) {
@@ -2428,6 +2431,12 @@
                                 discounted = simplediscounts ? "75%" : "75% Freeleech";
                             } else if (is100) {
                                 discounted = simplediscounts ? "FL" : "Freeleech";
+                            } else if (refund) {
+                                discounted = simplediscounts ? "Refund" : "Refundable";
+                            } else if (rewind) {
+                                discounted = simplediscounts ? "Rewind" : "Rewind";
+                            } else if (rescue) {
+                                discounted = simplediscounts ? "Rescue" : "Rescuable";
                             }
 
                             const inputTime = d.created_at;
