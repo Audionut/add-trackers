@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.0.6-A
+// @version      4.0.7-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -4380,81 +4380,72 @@
             let any_exclude = false;
             let empties = [...document.querySelectorAll("tr.empty-row")];
 
-            doms.forEach((e, i) => {
-                let include_tracker = false;
-                let include_discount = false;
-                let include_quality = false;
+            doms.forEach((e) => {
+                let include_tracker = true;
+                let include_discount = true;
+                let include_quality = true;
                 let include_text = true;
 
-                let status = filters.trackers.find(d => d.name === e.tracker)?.status;
-
-                if (status === "include") {
+                let tracker_status = filters.trackers.find(d => d.name === e.tracker)?.status;
+                if (tracker_status === "include") {
                     include_tracker = true;
                     any_include = true;
-                } else if (status === "exclude") {
+                } else if (tracker_status === "exclude") {
                     include_tracker = false;
                     any_exclude = true;
-                    e.dom_path.style.removeProperty('display');
-                    e.dom_path.classList.add("hidden", "initially-hidden");
-                    return;  // Skip further checks as this element is excluded
                 } else {
                     include_tracker = filters.trackers.filter(d => d.status === "include").length === 0;
                 }
 
-                let status_2 = filters.discounts.find(d => d.name === e.discount)?.status;
-
-                if (status_2 === "include") {
+                let discount_status = filters.discounts.find(d => d.name === e.discount)?.status;
+                if (discount_status === "include") {
                     include_discount = true;
                     any_include = true;
-                } else if (status_2 === "exclude") {
+                } else if (discount_status === "exclude") {
                     include_discount = false;
                     any_exclude = true;
-                    e.dom_path.style.removeProperty('display');
-                    e.dom_path.classList.add("hidden", "initially-hidden");
-                    return;  // Skip further checks as this element is excluded
                 } else {
                     include_discount = filters.discounts.filter(d => d.status === "include").length === 0;
                 }
 
-                let status_3 = filters.qualities.find(d => d.name === e.quality)?.status;
-
-                if (status_3 === "include") {
+                let quality_status = filters.qualities.find(d => d.name === e.quality)?.status;
+                if (quality_status === "include") {
                     include_quality = true;
                     any_include = true;
-                } else if (status_3 === "exclude") {
+                } else if (quality_status === "exclude") {
                     include_quality = false;
                     any_exclude = true;
-                    e.dom_path.style.removeProperty('display');
-                    e.dom_path.classList.add("hidden", "initially-hidden");
-                    return;  // Skip further checks as this element is excluded
                 } else {
                     include_quality = filters.qualities.filter(d => d.status === "include").length === 0;
                 }
 
                 const torrentSearchElement = document.querySelector(".torrent-search");
                 if (torrentSearchElement) {
-                    let must_include_words = torrentSearchElement.value.split(" ").map((w) => w.toLowerCase());
-                    include_text = must_include_words.every(word => e.info_text.toLowerCase().includes(word));
+                    let must_include_words = torrentSearchElement.value.toLowerCase().split(" ").filter(w => w);
+                    if (must_include_words.length > 0) {
+                        include_text = must_include_words.every(word => e.info_text.toLowerCase().includes(word));
+                        if (include_text) {
+                            any_include = true;
+                        } else {
+                            any_exclude = true;
+                        }
+                    } else {
+                        // If the text search is empty, consider all rows for inclusion
+                        include_text = true;
+                    }
                 }
 
                 if (include_tracker && include_discount && include_quality && include_text) {
-                    if (status === "include" || status_2 === "include" || status_3 === "include") {
-                        e.dom_path.style.display = "table-row";
-                        e.dom_path.classList.remove("hidden", "initially-hidden");
-                    } else {
-                        e.dom_path.style.removeProperty('display');
-                        e.dom_path.classList.remove("hidden", "initially-hidden");
-                    }
+                    e.dom_path.style.display = "table-row";
                 } else {
-                    e.dom_path.style.removeProperty('display');
-                    e.dom_path.classList.add("hidden", "initially-hidden");
+                    e.dom_path.style.display = "none";
                 }
             });
 
             if (!any_include) {
-                doms.forEach((e, i) => {
-                    if (!any_exclude || !e.dom_path.classList.contains("hidden")) {
-                        e.dom_path.classList.remove("hidden", "initially-hidden");
+                doms.forEach((e) => {
+                    if (!any_exclude || e.dom_path.style.display !== "none") {
+                        e.dom_path.style.display = "table-row";
                     }
                 });
             }
@@ -4469,6 +4460,28 @@
                     e.classList.remove("hidden", "initially-hidden");
                 });
             }
+        };
+
+        const update_filter_box_status = (object_key, value, dom_path) => {
+            let filter = filters[object_key].find(e => e.name === value);
+            let current_status = filter.status;
+
+            if (current_status === "default") {
+                filter.status = "include";
+                dom_path.style.background = "#40E0D0";
+            } else if (current_status === "include") {
+                filter.status = "exclude";
+                dom_path.style.background = "#920000";
+            } else {
+                filter.status = "default";
+                dom_path.style.background = "";
+                dom_path.style.opacity = 1;
+            }
+
+            const event = new CustomEvent('AddReleasesStatusChanged');
+            document.dispatchEvent(event);
+
+            filter_torrents(); // big update
         };
 
         function apply_default_filters() {
@@ -4521,64 +4534,6 @@
 
             filter_torrents(); // Applies the filters to the page
         }
-
-        const update_filter_box_status = (object_key, value, dom_path) => {
-            if (object_key === "trackers") {
-                let current_status = filters.trackers.find(e => e.name === value).status;
-
-                if (current_status === "default") {
-                    filters.trackers.find(e => e.name === value).status = "include";
-                    dom_path.style.background = "#40E0D0";
-                    //dom_path.style.color = "#111";
-                } else if (current_status === "include") {
-                    filters.trackers.find(e => e.name === value).status = "exclude";
-                    dom_path.style.background = "#920000";
-                    //dom_path.style.color = "#eee";
-                } else {
-                    filters.trackers.find(e => e.name === value).status = "default";
-                    dom_path.style.background = "";
-                    dom_path.style.opacity = 1;
-                }
-            }
-            else if (object_key === "discounts") {
-                let current_status = filters.discounts.find(e => e.name === value).status;
-
-                if (current_status === "default") {
-                    filters.discounts.find(e => e.name === value).status = "include";
-                    dom_path.style.background = "#40E0D0";
-                    //dom_path.style.color = "#111";
-                } else if (current_status === "include") {
-                    filters.discounts.find(e => e.name === value).status = "exclude";
-                    dom_path.style.background = "#920000";
-                    //dom_path.style.color = "#eee";
-                } else {
-                    filters.discounts.find(e => e.name === value).status = "default";
-                    dom_path.style.background = "";
-                    dom_path.style.opacity = 1;
-                }
-            }
-            else if (object_key === "qualities") {
-                let current_status = filters.qualities.find(e => e.name === value).status;
-
-                if (current_status === "default") {
-                    filters.qualities.find(e => e.name === value).status = "include";
-                    dom_path.style.background = "#40E0D0";
-                    //dom_path.style.color = "#111";
-                } else if (current_status === "include") {
-                    filters.qualities.find(e => e.name === value).status = "exclude";
-                    dom_path.style.background = "#920000";
-                    //dom_path.style.color = "#eee";
-                } else {
-                    filters.qualities.find(e => e.name === value).status = "default";
-                    dom_path.style.background = "";
-                    dom_path.style.opacity = 1;
-                }
-            }
-            const event = new CustomEvent('AddReleasesStatusChanged');
-            document.dispatchEvent(event);
-
-            filter_torrents(); // big update
-        };
 
         const fix_ptp_names = () => {
             document.querySelectorAll("tr.group_torrent").forEach(d => {
