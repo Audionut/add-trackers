@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Cross-Seed Checker
-// @version      0.1.2
+// @version      0.1.3
 // @author       Ignacio (additions by Audionut)
 // @description  Find cross-seedable and add cross-seed markers to non-ptp releases
 // @match        https://passthepopcorn.me/torrents.php*
@@ -747,8 +747,10 @@ function PCSfinder(ptpRowsData, otherRow, pnum, dnum) {
                     if (idMatch) {
                         const idNumber = idMatch[1];
                         const hiddenRow = document.querySelector(`#torrent_${idNumber}`);
-                        if (hiddenRow && hiddenRow.classList.contains('hidden')) {
+                        if (hiddenRow) {
                             row.parentNode.insertBefore(hiddenRow, row.nextSibling);
+                        } else {
+                            console.warn(`No element found with id #torrent_${idNumber}`);
                         }
                     }
                 });
