@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Cross-Seed Checker
-// @version      0.1.1
+// @version      0.1.2
 // @author       Ignacio (additions by Audionut)
 // @description  Find cross-seedable and add cross-seed markers to non-ptp releases
 // @match        https://passthepopcorn.me/torrents.php*
@@ -432,7 +432,8 @@ function TCSfinder(ptpRowsData, otherRow, num) {
     // Prioritize exact size and group match
     const exactMatch = ptpRowsData.find(ptpRow => {
         const match = ptpRow.size === otherRow.size && ptpRow.group.toLowerCase() === otherRow.group.toLowerCase();
-        return match;
+        const match1 = ptpRow.size === otherRow.size && ptpRow.rawName.toLowerCase() === otherRow.rawName.toLowerCase();
+        return match || match1;
     });
 
     if (exactMatch) {
@@ -442,7 +443,8 @@ function TCSfinder(ptpRowsData, otherRow, num) {
     // Fallback to within tolerance size match
     const toleranceMatch = ptpRowsData.find(ptpRow => {
         const match = ptpRow.group.toLowerCase() === otherRow.group.toLowerCase() && Math.abs(ptpRow.size - otherRow.size) <= toleranceBytes;
-        return match;
+        const match1 = ptpRow.rawName.toLowerCase() === otherRow.rawName.toLowerCase() && Math.abs(ptpRow.size - otherRow.size) <= toleranceBytes;
+        return match || match1;
     });
 
     return toleranceMatch;
