@@ -589,7 +589,7 @@
             discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "40% Bonus", "30% Bonus", "25% Freeleech", "Copper", "Bronze", "Silver", "Golden", "Refundable", "Rewind", "Rescuable", "Pollination", "None"];
         }
 
-        let qualities = ["SD", "720p", "1080p", "2160p"];
+        let qualities = ["SD", "720p", "1080p", "2160p", "4K"];
         let filters = {
             "trackers": trackers.map((e) => {
                 return ({ "name": e, "status": "default" });
@@ -3772,7 +3772,7 @@
 
                     let text = torrent.info_text.toLowerCase();
 
-                    if (text.includes("2160p")) return "UHD";
+                    if (text.includes("2160p") || text.includes("4K")) return "UHD";
                     else if (text.includes("1080p") || text.includes("720p") || text.includes("1080i") || text.includes("720i")) return "HD";
                     else return "SD";
                 };
@@ -5118,6 +5118,7 @@
                 else if (q === "720p") arr.push({ "value": 3, "name": q });
                 else if (q === "1080p") arr.push({ "value": 4, "name": q });
                 else if (q === "2160p") arr.push({ "value": 5, "name": q });
+                else if (q === "4K") arr.push({ "value": 6, "name": q });
 
             });
 
