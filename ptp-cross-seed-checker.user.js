@@ -772,14 +772,6 @@ function PCSfinder(ptpRowsData, otherRow, pnum, dnum) {
                 const allRows = document.querySelectorAll('.torrent_table tr');
                 let previousRowWasEmpty = false;
     
-                allRows.forEach((row, index) => {
-                    console.log(`Row ${index}:`, {
-                        id: row.id,
-                        className: row.className,
-                        innerText: row.innerText.trim()
-                    });
-                });
-    
                 //allRows.forEach((row, index) => {
                 //    if (row.className === '' && row.innerText.trim() === '') {
                 //        const prevRow = allRows[index - 1];
