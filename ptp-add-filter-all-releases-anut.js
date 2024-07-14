@@ -2020,10 +2020,10 @@
         const fetch_tracker = async (tracker, imdb_id, show_name, show_nbl_name, tvdbId, tvmazeId, timeout = timer) => {
             return new Promise(async (resolve, reject) => {
                 const timer = setTimeout(() => {
-                    console.warn(`Error fetching data from ${tracker}`);
-                    displayAlert(`Error fetching data from ${tracker}`);
-                    resolve([]);
-                }, timeout);
+                    console.warn(`${tracker} is timing out`);
+                    displayAlert(`${tracker} is timing out`);
+            resolve([]);
+        }, timeout);
                 let query_url = "";
                 let api_query_url = "";
                 let post_query_url = "";
@@ -2510,9 +2510,11 @@
                                 return null;
                             }
 
+                            let releasenaming = d.name.replace(/ /g, '.');
+
                             const torrentObj = {
                                 api_size: api_size,
-                                datasetRelease: originalInfoText,
+                                datasetRelease: releasenaming,
                                 size: size,
                                 info_text: infoText,
                                 tracker: tracker,
@@ -2603,8 +2605,15 @@
                             const pageURL = 'https://hdbits.org/details.php?id=';
                             const torrent = d.filename;
                             let releaseName = d.filename.replace(/\.torrent$/, "");
-                            if (releaseName.length < 20) {
-                                releaseName = d.name;
+                            if (releaseName.length > 20) {
+                                const lastDotIndex = releaseName.lastIndexOf('.');
+                                if (lastDotIndex !== -1) {
+                                    releaseName = releaseName.substring(0, lastDotIndex);
+                                }
+                            } else {
+                                if (releaseName.length < 20) {
+                                    releaseName = d.name;
+                                }
                             }
                             const pullExtention = releaseName.match(/[^.]+$/);
                             const extention = pullExtention ? pullExtention[0] : null;
@@ -2612,21 +2621,17 @@
                             // Check if web.dl, web-dl, or webdl is present in the infoText
                             const isWebDL = /web.dl|web-dl|webdl/i.test(infoText);
                             let finalReleaseName = releaseName;
-
+                            let webtags = "";
                             if (isWebDL) {
                                 const tagsArray = d.tags.filter(tag => !infoText.includes(tag));
 
                                 // Create webTagsArray only if web.dl, web-dl, or webdl is present
                                 const webTagsArray = tagsArray.map(tag => `${tag.toLowerCase()}.web.dl`);
                                 const tags = webTagsArray.join(' ');
+                                webtags = tags;
 
                                 if (tags && improved_tags) {
                                     infoText += ` ${tags}`;
-                                }
-
-                                let finalReleaseName = releaseName;
-                                if (improved_tags) {
-                                    finalReleaseName = `${tags} ${releaseName}`;
                                 }
                             } else {
                                 const tagsArray = d.tags.filter(tag => !infoText.includes(tag));
@@ -2634,11 +2639,6 @@
 
                                 if (tags && improved_tags) {
                                     infoText += ` ${tags}`;
-                                }
-
-                                let finalReleaseName = releaseName;
-                                if (improved_tags) {
-                                    finalReleaseName = `${tags} ${releaseName}`;
                                 }
                             }
                             if (improved_tags) {
@@ -2712,6 +2712,7 @@
                                 status: status,
                                 groupId: groupText,
                                 time: time,
+                                tags: webtags,
                             };
 
                             const mappedObj = {
@@ -3411,28 +3412,29 @@
                 if (lastDotIndex !== -1) {
                     const extension = singleFileName.substring(lastDotIndex + 1).toLowerCase();
                     if (containerExtensions.includes(extension)) {
-                        return extension; // Return the container if it's one of the specified extensions
+                        return { extension, filename: singleFileName }; // Return the container and filename
                     }
                 }
             }
 
             // If no specific container found, return default behavior
             if (files.length > 1) {
-                return "m2ts";
+                return { extension: "m2ts", filename: null };
             } else if (files.length === 1) {
                 const singleFileName = files[0].name;
                 const lastDotIndex = singleFileName.lastIndexOf('.');
                 if (lastDotIndex !== -1) {
-                    return singleFileName.substring(lastDotIndex + 1);
+                    return { extension: singleFileName.substring(lastDotIndex + 1), filename: singleFileName };
                 } else {
                     // Handle case where there is no full stop in the name
-                    return singleFileName;
+                    return { extension: null, filename: singleFileName };
                 }
             } else {
                 // Handle case where there are no files, if necessary
-                return null;
+                return { extension: null, filename: null };
             }
         };
+
         const get_blu_ray_disc_type = (size) => {
             const sizeInGB = size / (1024 * 1024 * 1024); // Convert size to GB
             if (sizeInGB <= 25) {
@@ -3501,6 +3503,17 @@
                         // If the info text does not contain the pattern, proceed with further processing
                         const files = element.attributes.files || []; // Ensure files is defined
                         const container = get_api_files(files); // Call the function with files as argument
+                        const extension = container.extension;
+                        let filenaming;
+                        if (container.filename != null) {
+                            filenaming = container.filename;
+                            const lastDotIndex = filenaming.lastIndexOf('.');
+                            if (lastDotIndex !== -1) {
+                                filenaming = filenaming.substring(0, lastDotIndex);
+                            }
+                        } else {
+                            filenaming = originalInfoText;
+                        }
                         // Step 1: Identify the year
                         const yearMatch = infoText.match(/\((\d{4})\)/);
                         let relevantText = infoText;
@@ -3569,7 +3582,7 @@
                             updatedInfoText = updatedInfoText.replace(groupText, '').trim();
                             if (container) {
                                 //updatedInfoText = updatedInfoText.replace(/\[.*?\]/g, '').trim();
-                                updatedInfoText = `${container} ${updatedInfoText}`; // Append container to info_text
+                                updatedInfoText = `${extension} ${updatedInfoText}`; // Append container to info_text
                                 // Add BD type if container is m2ts or iso
                                 if (container === "m2ts" || container === "iso") {
                                     const bdType = get_blu_ray_disc_type(element.attributes.size);
@@ -3644,7 +3657,7 @@
 
                         const torrentObj = {
                             api_size: parseInt(element.attributes.size),
-                            datasetRelease: getRelease,
+                            datasetRelease: filenaming,
                             size: parseInt(element.attributes.size / (1024 * 1024)),
                             info_text: updatedInfoText,
                             tracker: tracker,
@@ -4231,6 +4244,13 @@
                         });
                     }
                 }
+                if (improved_tags) {
+                    if (torrent.tags != null && torrent.tags != false) {
+                        if (groupTorrent) {
+                            newHtml += `<span class='WEB_tags' title="${torrent.tags}"></span>`;
+                        }
+                    }
+                }
 
                 if (groupTorrent) {
                     groupTorrent.outerHTML = newHtml;
@@ -4325,9 +4345,9 @@
                     cln.dataset.releasename = `[${torrent.site}] ` + torrent.info_text;
                 }
 
-                if (improved_tags && cln?.dataset?.releasename) {
-                    cln.dataset.releasename = cln.dataset.releasename.replace(/\./g, ' ');
-                }
+                //if (improved_tags && cln?.dataset?.releasename) {
+                //    cln.dataset.releasename = cln.dataset.releasename.replace(/\./g, ' ');
+                //}
                 if (group_id && cln.dataset.releasegroup) {
                     cln.dataset.releasegroup += group_id;
                 } else if (group_id || group_id === "") {
