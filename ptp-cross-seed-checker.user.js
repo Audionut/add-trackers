@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Cross-Seed Checker
-// @version      0.1.0
+// @version      0.1.1
 // @author       Ignacio (additions by Audionut)
 // @description  Find cross-seedable and add cross-seed markers to non-ptp releases
 // @match        https://passthepopcorn.me/torrents.php*
@@ -488,7 +488,11 @@ function PCSfinder(ptpRowsData, otherRow, pnum, dnum) {
         const match = (otherRow.group.length === 0 || ptpRow.group.toLowerCase() === otherRow.group.toLowerCase()) &&
                       ptpRowResolution === otherRowResolution &&
                       sizeDifference <= toleranceBytes && // Size within PCS tolerance
-                      !(ptpRow.group.toLowerCase() === otherRow.group.toLowerCase() && sizeDifference <= exactToleranceBytes); // Ensure not a TCS match
+                      !(ptpRow.group.toLowerCase() === otherRow.group.toLowerCase() && sizeDifference <= exactToleranceBytes) && // Ensure not a TCS match
+                      otherRowHasDV === ptpRowHasDV &&
+                      otherRowHas3D === ptpRowHas3D &&
+                      otherRowHasHDR === ptpRowHasHDR &&
+                      ptpRowTitle === otherRowTitle;
         return match;
     });
     return toleranceMatch;
@@ -575,243 +579,277 @@ function PCSfinder(ptpRowsData, otherRow, pnum, dnum) {
         });
     }
 
-function rearranger(size) {
-    const showMarkers = GM_getValue('showMarkers', true);
-    let spx = `${size}px`;
-
-    return new Promise((resolve, reject) => {
-        try {
-            function getMatchedRows(matchedClass) {
-                const allRows = document.querySelectorAll('.torrent_table tr.group_torrent.group_torrent_header');
-                const filteredRows = Array.from(allRows).filter(row => row.classList.contains(matchedClass));
-                return filteredRows;
-            }
-
-            function getRowsWithPLAnchors() {
-                const allRows = document.querySelectorAll('.torrent_table tr.group_torrent.group_torrent_header');
-                const filteredRows = Array.from(allRows).filter(row => {
-                    const plAnchor = row.querySelector('a[title="Permalink"]');
-                    return plAnchor !== null;
-                });
-                return filteredRows;
-            }
-
-            const rowsWithTCS = getMatchedRows('tcs-matched');
-            const rowsWithPCS = getMatchedRows('pcs-matched');
-            const rowsWithPLAnchors = getRowsWithPLAnchors();
-
-            rowsWithPLAnchors.forEach(plRow => {
-                const plAnchor = plRow.querySelector('a[title="Permalink"]');
-                if (plAnchor) {
-                    const plHref = plAnchor.getAttribute('href');
-                    const matchingTCSRows = rowsWithTCS.filter(tcsRow => {
-                        const tcsAnchor = tcsRow.getAttribute('data-pl-href');
-                        return tcsAnchor === plHref;
-                    });
-                    const matchingPCSRows = rowsWithPCS.filter(pcsRow => {
-                        const pcsAnchor = pcsRow.getAttribute('data-pl-href');
-                        return pcsAnchor === plHref;
-                    });
-
-                    const combinedRows = [...matchingTCSRows, ...matchingPCSRows]; // TCS rows first, then PCS rows
-
-                    combinedRows.forEach((combinedRow, index) => {
-                        let emptyRowAbovePl = plRow.previousElementSibling;
-                        if (!emptyRowAbovePl || !emptyRowAbovePl.classList.contains('empty-row')) {
-                            emptyRowAbovePl = document.createElement('tr');
-                            emptyRowAbovePl.className = 'empty-row';
-                            emptyRowAbovePl.style.height = spx;
-                            plRow.parentNode.insertBefore(emptyRowAbovePl, plRow);
-                        }
-
-                        let siblingRow = plRow.nextElementSibling;
-                        while (siblingRow && !siblingRow.classList.contains('torrent_info_row')) {
-                            siblingRow = siblingRow.nextElementSibling;
-                        }
-
-                        if (siblingRow) {
-                            plRow.parentNode.insertBefore(combinedRow, siblingRow.nextSibling);
-                        } else {
-                            plRow.parentNode.insertBefore(combinedRow, plRow.nextSibling);
-                        }
-
-                        if (index === 0) {
-                            const emptyRowAfterFirstCombined = document.createElement('tr');
-                            emptyRowAfterFirstCombined.className = 'empty-row';
-                            emptyRowAfterFirstCombined.style.height = spx;
-                            plRow.parentNode.insertBefore(emptyRowAfterFirstCombined, combinedRow.nextSibling);
-                        }
-                    });
-
-                    // Ensure empty rows are added if showMarkers is false
-                    if (!showMarkers) {
-                        let emptyRowAbovePl = plRow.previousElementSibling;
-                        if (!emptyRowAbovePl || !emptyRowAbovePl.classList.contains('empty-row')) {
-                            emptyRowAbovePl = document.createElement('tr');
-                            emptyRowAbovePl.className = 'empty-row';
-                            emptyRowAbovePl.style.height = spx;
-                            plRow.parentNode.insertBefore(emptyRowAbovePl, plRow);
-                        }
-
-                        let siblingRow = plRow.nextElementSibling;
-                        if (!siblingRow || (!siblingRow.classList.contains('torrent_info_row') && !siblingRow.classList.contains('empty-row'))) {
-                            const emptyRowBelow = document.createElement('tr');
-                            emptyRowBelow.className = 'empty-row';
-                            emptyRowBelow.style.height = spx;
-                            plRow.parentNode.insertBefore(emptyRowBelow, siblingRow);
-                        }
-                    }
+    function rearranger(size) {
+        const showMarkers = GM_getValue('showMarkers', true);
+        let spx = `${size}px`;
+    
+        return new Promise((resolve, reject) => {
+            try {
+                function getMatchedRows(matchedClass) {
+                    const allRows = document.querySelectorAll('.torrent_table tr.group_torrent.group_torrent_header');
+                    return Array.from(allRows).filter(row => row.classList.contains(matchedClass));
                 }
-            });
-
-            // Additional logic to handle grouping when markers are not shown
-            if (!showMarkers) {
-                const allRows = document.querySelectorAll('.torrent_table tr.group_torrent.group_torrent_header');
-                const groupedByHref = {};
-
-                allRows.forEach(row => {
-                    const plAnchor = row.querySelector('a[title="Permalink"]');
+    
+                function getRowsWithPLAnchors() {
+                    const allRows = document.querySelectorAll('.torrent_table tr.group_torrent.group_torrent_header');
+                    return Array.from(allRows).filter(row => {
+                        const plAnchor = row.querySelector('a[title="Permalink"]');
+                        return plAnchor !== null;
+                    });
+                }
+    
+                const rowsWithTCS = getMatchedRows('tcs-matched');
+                const rowsWithPCS = getMatchedRows('pcs-matched');
+                const rowsWithPLAnchors = getRowsWithPLAnchors();
+    
+                rowsWithPLAnchors.forEach(plRow => {
+    
+                    const plAnchor = plRow.querySelector('a[title="Permalink"]');
                     if (plAnchor) {
                         const plHref = plAnchor.getAttribute('href');
-                        if (!groupedByHref[plHref]) {
-                            groupedByHref[plHref] = [];
-                        }
-                        groupedByHref[plHref].push(row);
-                    }
-                });
-
-                Object.values(groupedByHref).forEach(group => {
-                    if (group.length > 1) {
-                        group.forEach((row, index) => {
-                            if (index === 0) return;
-                            let siblingRow = group[0].nextElementSibling;
-                            while (siblingRow && !siblingRow.classList.contains('torrent_info_row')) {
-                                siblingRow = siblingRow.nextElementSibling;
-                            }
-
-                            if (siblingRow) {
-                                group[0].parentNode.insertBefore(row, siblingRow.nextSibling);
-                            } else {
-                                group[0].parentNode.insertBefore(row, group[0].nextSibling);
-                            }
+                        const matchingTCSRows = rowsWithTCS.filter(tcsRow => {
+                            const tcsAnchor = tcsRow.getAttribute('data-pl-href');
+                            return tcsAnchor === plHref;
                         });
+                        const matchingPCSRows = rowsWithPCS.filter(pcsRow => {
+                            const pcsAnchor = pcsRow.getAttribute('data-pl-href');
+                            return pcsAnchor === plHref;
+                        });
+    
+                        const combinedRows = [...matchingTCSRows, ...matchingPCSRows]; // TCS rows first, then PCS rows
+    
+                        if (combinedRows.length > 0) {
+                            let emptyRowAbovePl = plRow.previousElementSibling;
+                            if (!emptyRowAbovePl || !emptyRowAbovePl.classList.contains('empty-row')) {
+                                emptyRowAbovePl = document.createElement('tr');
+                                emptyRowAbovePl.className = 'empty-row';
+                                emptyRowAbovePl.style.height = spx;
+                                plRow.parentNode.insertBefore(emptyRowAbovePl, plRow);
+                            }
+    
+                            let lastInsertedRow = plRow;
+                            combinedRows.forEach(combinedRow => {
+                                lastInsertedRow.parentNode.insertBefore(combinedRow, lastInsertedRow.nextSibling);
+                                lastInsertedRow = combinedRow;
+                            });
+    
+                            const emptyRowAfterCombined = lastInsertedRow.nextElementSibling;
+                            if (!emptyRowAfterCombined || !emptyRowAfterCombined.classList.contains('empty-row')) {
+                                const emptyRow = document.createElement('tr');
+                                emptyRow.className = 'empty-row';
+                                emptyRow.style.height = spx;
+                                lastInsertedRow.parentNode.insertBefore(emptyRow, lastInsertedRow.nextSibling);
+                            }
+                        }
+    
+                        if (!showMarkers) {
+                            let emptyRowAbovePl = plRow.previousElementSibling;
+                            if (!emptyRowAbovePl || !emptyRowAbovePl.classList.contains('empty-row')) {
+                                emptyRowAbovePl = document.createElement('tr');
+                                emptyRowAbovePl.className = 'empty-row';
+                                emptyRowAbovePl.style.height = spx;
+                                plRow.parentNode.insertBefore(emptyRowAbovePl, plRow);
+                            }
+                        }
                     }
                 });
+    
+                if (!showMarkers) {
+                    const allRows = document.querySelectorAll('.torrent_table tr.group_torrent.group_torrent_header');
+                    const groupedByHref = {};
+    
+                    allRows.forEach(row => {
+                        const plAnchor = row.querySelector('a[title="Permalink"]');
+                        if (plAnchor) {
+                            const plHref = plAnchor.getAttribute('href');
+                            if (!groupedByHref[plHref]) {
+                                groupedByHref[plHref] = [];
+                            }
+                            groupedByHref[plHref].push(row);
+                        }
+                    });
+    
+                    Object.values(groupedByHref).forEach(group => {
+                        if (group.length > 1) {
+                            group.forEach((row, index) => {
+                                if (index === 0) return;
+                                group[0].parentNode.insertBefore(row, group[0].nextSibling);
+                            });
+                            const lastRow = group[group.length - 1];
+                            const emptyRowAfterGroup = lastRow.nextElementSibling;
+                            if (!emptyRowAfterGroup || !emptyRowAfterGroup.classList.contains('empty-row')) {
+                                const emptyRow = document.createElement('tr');
+                                emptyRow.className = 'empty-row';
+                                emptyRow.style.height = spx;
+                                lastRow.parentNode.insertBefore(emptyRow, lastRow.nextSibling);
+                            }
+                        }
+                    });
+                }
+    
+                resolve();
+            } catch (error) {
+                console.error('Error in rearranger:', error);
+                reject("Error in rearranger: " + error);
             }
-
-            resolve();
-        } catch (error) {
-            console.error('Error in rearranger:', error);
-            reject("Error in rearranger: " + error);
-        }
-    });
-}
-
-function cleaner() {
-    const showMarkers = GM_getValue('showMarkers', true);
-
-    return new Promise((resolve, reject) => {
-        try {
-            const allRows = document.querySelectorAll('.torrent_table tr');
-
-            const featureFilmRows = Array.from(allRows).filter(row => {
-                const spanElements = row.querySelectorAll('span');
-                return Array.from(spanElements).some(span =>
-                    span.textContent.includes('Feature Film') || span.textContent.includes('Miniseries') || span.textContent.includes('Short Film') || span.textContent.includes('Stand-up Comedy') || span.textContent.includes('Live Performance') || span.textContent.includes('Movie Collection')
-                );
-            });
-
-            featureFilmRows.forEach(featureFilmRow => {
-                let prevSibling = featureFilmRow.previousElementSibling;
-                while (prevSibling && prevSibling.classList.contains('empty-row')) {
-                    featureFilmRow.parentNode.removeChild(prevSibling);
-                    prevSibling = featureFilmRow.previousElementSibling;
-                }
-
-                let nxtSibling = featureFilmRow.nextElementSibling;
-                while (nxtSibling && nxtSibling.classList.contains('empty-row')) {
-                    featureFilmRow.parentNode.removeChild(nxtSibling);
-                    nxtSibling = featureFilmRow.nextElementSibling;
-                }
-            });
-
-            const updatedAllRows = document.querySelectorAll('.torrent_table tr');
-            let previousRowWasEmpty = false;
-            Array.from(updatedAllRows).forEach(row => {
-                if (row.classList.contains('empty-row')) {
-                    if (previousRowWasEmpty) {
-                        row.parentNode.removeChild(row);
-                    } else {
-                        previousRowWasEmpty = true;
-                    }
-                } else {
-                    previousRowWasEmpty = false;
-                }
-            });
-
-            // Ensure empty rows are added if showMarkers is false
-            if (!showMarkers) {
+        });
+    }
+    
+    function cleaner() {
+        return new Promise((resolve, reject) => {
+            try {
+                const allRows = document.querySelectorAll('.torrent_table tr');
+    
+                const featureFilmRows = Array.from(allRows).filter(row => {
+                    const spanElements = row.querySelectorAll('span');
+                    return Array.from(spanElements).some(span =>
+                        span.textContent.includes('Feature Film') ||
+                        span.textContent.includes('Miniseries') ||
+                        span.textContent.includes('Short Film') ||
+                        span.textContent.includes('Stand-up Comedy') ||
+                        span.textContent.includes('Live Performance') ||
+                        span.textContent.includes('Movie Collection')
+                    );
+                });
+    
                 featureFilmRows.forEach(featureFilmRow => {
                     let prevSibling = featureFilmRow.previousElementSibling;
-                    if (!prevSibling || !prevSibling.classList.contains('empty-row')) {
-                        prevSibling = document.createElement('tr');
-                        prevSibling.className = 'empty-row';
-                        prevSibling.style.height = `${size}px`;
-                        featureFilmRow.parentNode.insertBefore(prevSibling, featureFilmRow);
+                    while (prevSibling && prevSibling.classList.contains('empty-row')) {
+                        featureFilmRow.parentNode.removeChild(prevSibling);
+                        prevSibling = featureFilmRow.previousElementSibling;
                     }
-
-                    let nxtSibling = featureFilmRow.nextElementSibling;
-                    if (!nxtSibling || !nxtSibling.classList.contains('empty-row')) {
-                        nxtSibling = document.createElement('tr');
-                        nxtSibling.className = 'empty-row';
-                        nxtSibling.style.height = `${size}px`;
-                        featureFilmRow.parentNode.insertBefore(nxtSibling, featureFilmRow.nextSibling);
+    
+                    let nextSibling = featureFilmRow.nextElementSibling;
+                    while (nextSibling && nextSibling.classList.contains('empty-row')) {
+                        featureFilmRow.parentNode.removeChild(nextSibling);
+                        nextSibling = featureFilmRow.nextElementSibling;
                     }
                 });
-            }
-
-            resolve();
-        } catch (error) {
-            reject("Error in cleaner: " + error);
-        }
-    });
-}
-
-function recleaner() {
-    return new Promise((resolve, reject) => {
-        try {
-            const allRows = document.querySelectorAll('.torrent_table tr');
-            const lastRow = allRows[allRows.length - 1];
-
-            if (lastRow && lastRow.classList.contains('empty-row')) {
-                lastRow.remove();
+    
+                const updatedAllRows = document.querySelectorAll('.torrent_table tr');
+                let previousRowWasEmpty = false;
+                Array.from(updatedAllRows).forEach(row => {
+                    if (row.classList.contains('empty-row')) {
+                        if (previousRowWasEmpty) {
+                            row.parentNode.removeChild(row);
+                        } else {
+                            previousRowWasEmpty = true;
+                        }
+                    } else {
+                        previousRowWasEmpty = false;
+                    }
+                });
+    
+                Array.from(updatedAllRows).forEach(row => {
+                    const idMatch = row.id.match(/group_torrent_header_(\d+)/);
+                    if (idMatch) {
+                        const idNumber = idMatch[1];
+                        const hiddenRow = document.querySelector(`#torrent_${idNumber}`);
+                        if (hiddenRow && hiddenRow.classList.contains('hidden')) {
+                            row.parentNode.insertBefore(hiddenRow, row.nextSibling);
+                        }
+                    }
+                });
+    
+                featureFilmRows.forEach(row => {
+                    let prevSibling = row.previousElementSibling;
+                    if (prevSibling && prevSibling.classList.contains('empty-row')) {
+                        row.parentNode.removeChild(prevSibling);
+                    }
+                });
+    
                 resolve();
-            } else {
-                resolve();
+            } catch (error) {
+                console.error('Error in cleaner:', error);
+                reject("Error in cleaner: " + error);
             }
-        } catch (error) {
-            reject("Error in recleaner: " + error);
-        }
+        });
+    }
+    
+    function recleaner() {
+        return new Promise((resolve, reject) => {
+            try {
+                const allRows = document.querySelectorAll('.torrent_table tr');
+                let previousRowWasEmpty = false;
+    
+                allRows.forEach((row, index) => {
+                    console.log(`Row ${index}:`, {
+                        id: row.id,
+                        className: row.className,
+                        innerText: row.innerText.trim()
+                    });
+                });
+    
+                //allRows.forEach((row, index) => {
+                //    if (row.className === '' && row.innerText.trim() === '') {
+                //        const prevRow = allRows[index - 1];
+                //        const nextRow = allRows[index + 1];
+    
+                //        if (prevRow && prevRow.classList.contains('empty-row')) {
+                //            console.log('recleaner: removing empty row before a non-ID row', prevRow);
+                //            prevRow.remove();
+                //        }
+    
+                //        if (nextRow && nextRow.classList.contains('empty-row')) {
+                //            console.log('recleaner: removing empty row after a non-ID row', nextRow);
+                //            nextRow.remove();
+                //        }
+                //    }
+                //});
+    
+                allRows.forEach((row, index) => {
+                    if (row.classList.contains('torrent_info_row') || (row.className === '' && row.id === '')) {
+                        const prevRow = allRows[index - 1];
+    
+                        if (prevRow && prevRow.classList.contains('empty-row')) {
+                            prevRow.remove();
+                        }
+                    }
+                });
+    
+                allRows.forEach(row => {
+                    if (row.classList.contains('empty-row')) {
+                        if (previousRowWasEmpty) {
+                            row.remove();
+                        } else {
+                            previousRowWasEmpty = true;
+                        }
+                    } else if (row.id && !row.classList.contains('torrent_info_row')) {
+                        previousRowWasEmpty = false;
+                    }
+                });
+    
+                // Check the final row to ensure no trailing empty row
+                const lastRow = allRows[allRows.length - 1];
+                if (lastRow && lastRow.classList.contains('empty-row')) {
+                    lastRow.remove();
+                }
+    
+                resolve();
+            } catch (error) {
+                console.error('Error in recleaner:', error);
+                reject("Error in recleaner: " + error);
+            }
+        });
+    }
+    
+    document.addEventListener('PTPAddReleasesFromOtherTrackersComplete', function(event) {
+        rowSorter(pcs, dnum, pnum)
+            .then(() => rearranger(size))
+            .then(() => cleaner())
+            .then(() => recleaner())
+            .catch(error => {
+                console.error('An error occurred:', error);
+            });
     });
-}
-
-document.addEventListener('PTPAddReleasesFromOtherTrackersComplete', function(event) {
-    rowSorter(pcs, dnum, pnum)
-        .then(() => rearranger(size))
-        .then(() => cleaner())
-        .then(() => recleaner())
-        .catch(error => {
-            console.error('An error occurred:', error);
-        });
-});
-
-document.addEventListener('SortingComplete', function(event) {
-    rowSorter(pcs, dnum, pnum)
-        .then(() => rearranger(size))
-        .then(() => cleaner())
-        .then(() => recleaner())
-        .catch(error => {
-            console.error('An error occurred:', error);
-        });
-});
-})();
+    
+    document.addEventListener('SortingComplete', function(event) {
+        rowSorter(pcs, dnum, pnum)
+            .then(() => rearranger(size))
+            .then(() => cleaner())
+            .then(() => recleaner())
+            .catch(error => {
+                console.error('An error occurred:', error);
+            });
+    });
+    })();
