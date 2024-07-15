@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Screenshots
-// @version      2.2
+// @version      2.3
 // @description  Load and display screenshots from all torrents on a movie page with dimension checks for different groups and status indicators.
 // @grant        GM.setValue
 // @grant        GM.getValue
@@ -307,29 +307,37 @@
             panelBody.appendChild(groupContainer);
         });
 
-        function getNextVisibleSibling(node) {
-            var sibling = node.nextSibling;
-            while (sibling && (sibling.nodeType !== 1 || sibling.style.display === 'none')) {
-              sibling = sibling.nextSibling;
+        const synopsisElement = document.getElementById('torrent-table');
+
+        if (synopsisElement) {
+            function getNextVisibleSibling(element) {
+                var sibling = element.nextElementSibling;
+                while (sibling) {
+                    if (sibling.offsetParent !== null) {
+                        return sibling;
+                    }
+                    sibling = sibling.nextElementSibling;
+                }
+                return null;
             }
-            return sibling;
-          }
-  
-          const synopsisElement = document.getElementById('torrent-table');
-          if (synopsisElement) {
-              var nextVisibleSibling = getNextVisibleSibling(synopsisElement);
-              synopsisElement.parentNode.insertBefore(newDiv, nextVisibleSibling);
-  
-              if (debug) {
-                  console.log('Inserted new div with images after #synopsis-and-trailer');
-              }
-          } else {
-              console.warn('#synopsis-and-trailer element not found');
-          }
-          if (debug) {
-              console.timeEnd('addHeaders');
-          }
-      }
+
+            var nextVisibleSibling = getNextVisibleSibling(synopsisElement);
+            if (nextVisibleSibling) {
+                synopsisElement.parentNode.insertBefore(newDiv, nextVisibleSibling);
+            } else {
+                synopsisElement.parentNode.appendChild(newDiv);
+            }
+
+            if (debug) {
+                console.log('Inserted new div with images after the torrent table and any hidden siblings');
+            }
+        } else {
+            console.warn('Correct element not found');
+        }
+        if (debug) {
+            console.timeEnd('addHeaders');
+        }
+    }
 
     function incrementProcessingStatus(count = 0) {
         processingStatus += count;
