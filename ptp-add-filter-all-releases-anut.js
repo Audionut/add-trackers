@@ -2510,7 +2510,9 @@
                                 return null;
                             }
 
-                            let releasenaming = d.name.replace(/ /g, '.');
+                            let releasenaming = d.name.replace(/DDP \d\.\d/g, (match) => {
+                                return match.replace(' ', '');
+                            }).replace(/ /g, '.');
 
                             const torrentObj = {
                                 api_size: api_size,
@@ -2605,16 +2607,17 @@
                             const pageURL = 'https://hdbits.org/details.php?id=';
                             const torrent = d.filename;
                             let releaseName = d.filename.replace(/\.torrent$/, "");
+
                             if (releaseName.length > 20) {
-                                const lastDotIndex = releaseName.lastIndexOf('.');
-                                if (lastDotIndex !== -1) {
-                                    releaseName = releaseName.substring(0, lastDotIndex);
+                                const pattern = /-\w+\.\w{3}$/;
+                                const match = releaseName.match(pattern);
+                                if (match) {
+                                    releaseName = releaseName.substring(0, releaseName.length - match[0].length);
                                 }
                             } else {
-                                if (releaseName.length < 20) {
-                                    releaseName = d.name;
-                                }
+                                releaseName = d.name;
                             }
+
                             const pullExtention = releaseName.match(/[^.]+$/);
                             const extention = pullExtention ? pullExtention[0] : null;
 
@@ -2696,7 +2699,7 @@
 
                             const torrentObj = {
                                 api_size: api_size,
-                                datasetRelease: finalReleaseName,
+                                datasetRelease: releaseName,
                                 size: size,
                                 info_text: infoText,
                                 tracker: tracker,
@@ -3064,6 +3067,10 @@
                         let filesCount = d.fileCount;
                         if (filesCount === 1 && d.files.length > 0) {
                           infoText = d.files[0].name;
+                          const lastDotIndex = infoText.lastIndexOf('.');
+                          if (lastDotIndex !== -1) {
+                              infoText = infoText.substring(0, lastDotIndex);
+                          }
                         } else {
                           infoText = d.fileName;
                         }
