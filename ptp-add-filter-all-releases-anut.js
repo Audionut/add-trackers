@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.0.8-A
+// @version      4.0.9-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -791,8 +791,8 @@
                 //    return "BD66";
                 //} else if (sizeInGB <= 100) {
                 //    return "BD100";
-                //} else {
-                //    return "BDSET";
+                } else {
+                    return "BDSET";
                 }
             };
             let torrent_objs = [];
@@ -3411,116 +3411,107 @@
         };
 
         const get_api_files = (files) => {
-            const containerExtensions = ["m2ts", "mkv", "vob", "iso", "mpg", "mp4"]; // List of possible containers you might be looking for
-
-            for (const file of files) {
-                const singleFileName = file.name;
+            const containerExtensions = ["mkv", "iso", "mpg", "mp4", "avi"]; // List of possible containers you might be looking for
+        
+            if (files.length === 1) {
+                const singleFileName = files[0].name;
                 const lastDotIndex = singleFileName.lastIndexOf('.');
                 if (lastDotIndex !== -1) {
                     const extension = singleFileName.substring(lastDotIndex + 1).toLowerCase();
                     if (containerExtensions.includes(extension)) {
                         return { extension, filename: singleFileName }; // Return the container and filename
+                    } else {
+                        return { extension, filename: null };
                     }
-                }
-            }
-
-            // If no specific container found, return default behavior
-            if (files.length > 1) {
-                return { extension: "m2ts", filename: null };
-            } else if (files.length === 1) {
-                const singleFileName = files[0].name;
-                const lastDotIndex = singleFileName.lastIndexOf('.');
-                if (lastDotIndex !== -1) {
-                    return { extension: singleFileName.substring(lastDotIndex + 1), filename: singleFileName };
                 } else {
                     // Handle case where there is no full stop in the name
-                    return { extension: null, filename: singleFileName };
+                    return { extension: null, filename: null };
                 }
             } else {
-                // Handle case where there are no files, if necessary
+                // If more than one file or no files, return default behavior
                 return { extension: null, filename: null };
             }
         };
-
-        const get_blu_ray_disc_type = (size) => {
-            const sizeInGB = size / (1024 * 1024 * 1024); // Convert size to GB
-            if (sizeInGB <= 25) {
-                return "BD25";
-            } else if (sizeInGB <= 50) {
-                return "BD50";
-            } else if (sizeInGB <= 66) {
-                return "BD66";
-            } else if (sizeInGB <= 100) {
-                return "BD100";
-            } else {
-                return "BDSET";
-            }
-        };
-
-        const get_api_torrent_objects = (tracker, json) => {
-            let torrent_objs = [];
-
-            if (
-                tracker === "BLU" ||
-                tracker === "Aither" ||
-                tracker === "RFX" ||
-                tracker === "OE" ||
-                tracker === "HUNO" ||
-                tracker === "TIK" ||
-                tracker === "LST"
-            ) {
-                torrent_objs = json.data.map((element) => {
-                    let originalInfoText;
-
-                    if (tracker === "HUNO") {
-                      originalInfoText = element.attributes.name ? element.attributes.name.replace(/[()]/g, "") : null;
-                    } else if (tracker === "TIK") {
-                      originalInfoText = element.attributes.bd_info ? element.attributes.bd_info : (element.attributes.name ? element.attributes.name : null);
+        
+                const get_blu_ray_disc_type = (size) => {
+                    const sizeInGB = size / (1024 * 1024 * 1024); // Convert size to GB
+                    if (sizeInGB <= 25) {
+                        return "BD25";
+                    } else if (sizeInGB <= 50) {
+                        return "BD50";
+                    //} else if (sizeInGB <= 66) {
+                    //    return "BD66";
+                    //} else if (sizeInGB <= 100) {
+                    //    return "BD100";
                     } else {
-                      originalInfoText = element.attributes.name ? element.attributes.name : null;
+                        return "BDSET";
                     }
-
-                    const parseDiscLabel = (text) => {
-                      // Regular expression to match "Disc Label" line
-                      const discLabelRegex = /Disc Label:\s*(.*)/;
-                      // Extract the "Disc Label" line
-                      const match = text.match(discLabelRegex);
-
-                      if (match && match[1]) {
-                        return match[1].trim();
-                      }
-                      return null;
-                    };
-
-                    if (tracker === "TIK") {
-                      if (originalInfoText) {
-                        const parsedText = parseDiscLabel(originalInfoText);
-                        if (parsedText) {
-                          originalInfoText = parsedText;
-                        } else {
-                          originalInfoText = element.attributes.name ? element.attributes.name : originalInfoText;
-                        }
-                      }
-                    }
-                    let getRelease = originalInfoText;
-                    let infoText = originalInfoText;
-
-                    // Check if the info text contains "SxxExx" where "xx" is not known beforehand
-                    if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
-                        // If the info text does not contain the pattern, proceed with further processing
-                        const files = element.attributes.files || []; // Ensure files is defined
-                        const container = get_api_files(files); // Call the function with files as argument
-                        const extension = container.extension;
-                        let filenaming;
-                        if (container.filename != null) {
-                            filenaming = container.filename;
-                            const lastDotIndex = filenaming.lastIndexOf('.');
-                            if (lastDotIndex !== -1) {
-                                filenaming = filenaming.substring(0, lastDotIndex);
+                };
+        
+                const get_api_torrent_objects = (tracker, json) => {
+                    let torrent_objs = [];
+        
+                    if (
+                        tracker === "BLU" ||
+                        tracker === "Aither" ||
+                        tracker === "RFX" ||
+                        tracker === "OE" ||
+                        tracker === "HUNO" ||
+                        tracker === "TIK" ||
+                        tracker === "LST"
+                    ) {
+                        torrent_objs = json.data.map((element) => {
+                            let originalInfoText;
+        
+                            if (tracker === "HUNO") {
+                              originalInfoText = element.attributes.name ? element.attributes.name.replace(/[()]/g, "") : null;
+                            } else if (tracker === "TIK") {
+                              originalInfoText = element.attributes.bd_info ? element.attributes.bd_info : (element.attributes.name ? element.attributes.name : null);
+                            } else {
+                              originalInfoText = element.attributes.name ? element.attributes.name : null;
                             }
-                        } else {
-                            filenaming = originalInfoText;
-                        }
+        
+                            const parseDiscLabel = (text) => {
+                              // Regular expression to match "Disc Label" line
+                              const discLabelRegex = /Disc Label:\s*(.*)/;
+                              // Extract the "Disc Label" line
+                              const match = text.match(discLabelRegex);
+        
+                              if (match && match[1]) {
+                                return match[1].trim();
+                              }
+                              return null;
+                            };
+        
+                            if (tracker === "TIK") {
+                              if (originalInfoText) {
+                                const parsedText = parseDiscLabel(originalInfoText);
+                                if (parsedText) {
+                                  originalInfoText = parsedText;
+                                } else {
+                                  originalInfoText = element.attributes.name ? element.attributes.name : originalInfoText;
+                                }
+                              }
+                            }
+                            let getRelease = originalInfoText;
+                            let infoText = originalInfoText;
+        
+                            // Check if the info text contains "SxxExx" where "xx" is not known beforehand
+                            if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
+                                // If the info text does not contain the pattern, proceed with further processing
+                                const files = element.attributes.files || []; // Ensure files is defined
+                                const container = get_api_files(files); // Call the function with files as argument
+                                const extension = container.extension;
+                                let filenaming;
+                                if (container.filename != null) {
+                                        filenaming = container.filename;
+                                        const lastDotIndex = filenaming.lastIndexOf('.');
+                                        if (lastDotIndex !== -1) {
+                                            filenaming = filenaming.substring(0, lastDotIndex);
+                                        }
+                                } else {
+                                    filenaming = originalInfoText;
+                                }
                         // Step 1: Identify the year
                         const yearMatch = infoText.match(/\((\d{4})\)/);
                         let relevantText = infoText;
