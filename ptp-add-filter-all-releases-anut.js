@@ -609,7 +609,7 @@
         const dom_get_quality = (text) => {
             if (text.includes("720p")) return "720p";
             else if (text.includes("1080p") || text.includes("1080i")) return "1080p";
-            else if (text.includes("2160p")) return "2160p";
+            else if (text.includes("2160p") || text.includes("4K")) return "2160p";
             else return "SD";
         };
 
@@ -5235,60 +5235,55 @@
 
                 // Collecting main rows and their hidden siblings
                 document.querySelectorAll("tr.group_torrent.group_torrent_header").forEach(row => {
+                    let sizeElement = row.querySelector('td.nobr span');
+                    if (!sizeElement) return;
+
                     let keyElement;
                     let parsedKey = null; // Default value for rows without key elements
+                    const sizeTd = sizeElement.closest('td');
+                    const tds = Array.from(row.children);
+                    const sizeIndex = tds.indexOf(sizeTd);
+
                     switch(key) {
                         case 'seeders':
-                            keyElement = row.children[3];
+                            keyElement = tds[sizeIndex + 2]; // Assuming seeders column is 3 columns after size
                             parsedKey = keyElement ? parseInt(keyElement.textContent.trim().replace(/,/g, '')) || 0 : 0;
                             break;
                         case 'leechers':
-                            keyElement = row.children[4];
+                            keyElement = tds[sizeIndex + 3]; // Assuming leechers column is 4 columns after size
                             parsedKey = keyElement ? parseInt(keyElement.textContent.trim().replace(/,/g, '')) || 0 : 0;
                             break;
                         case 'snatchers':
-                            keyElement = row.children[2];
+                            keyElement = tds[sizeIndex + 1]; // Assuming snatchers column is 2 columns after size
                             parsedKey = keyElement ? parseInt(keyElement.textContent.trim().replace(/,/g, '')) || 0 : 0;
                             break;
                         case 'size':
-                            keyElement = row.querySelector('td.nobr span');
-                            if (keyElement) {
-                                let sizeText = keyElement.getAttribute('title');
-                                if (sizeText) {
-                                    parsedKey = parseInt(sizeText.replace(/,/g, '')) || 0;
-                                }
-                            }
+                            let sizeText = sizeElement.getAttribute('title');
+                            parsedKey = sizeText ? parseInt(sizeText.replace(/,/g, '')) || 0 : 0;
                             break;
                         default:
-                            keyElement = null;
                             parsedKey = 0;
                     }
 
-                    if (parsedKey !== null) {
-                        let dataObj = {
-                            key: parsedKey,
-                            mainRow: row,
-                            hiddenRows: []
-                        };
+                    let dataObj = {
+                        key: parsedKey,
+                        mainRow: row,
+                        hiddenRows: []
+                    };
 
-                        // Track hidden sibling rows
-                        let nextRow = row.nextElementSibling;
-                        while (nextRow && nextRow.classList.contains('torrent_info_row')) {
-                            dataObj.hiddenRows.push(nextRow);
-                            nextRow = nextRow.nextElementSibling;
-                        }
-
-                        rowsData.push(dataObj);
-                    } else {
-                        console.log('Skipping row due to null key:', row);
+                    // Track hidden sibling rows
+                    let nextRow = row.nextElementSibling;
+                    while (nextRow && nextRow.classList.contains('torrent_info_row')) {
+                        dataObj.hiddenRows.push(nextRow);
+                        nextRow = nextRow.nextElementSibling;
                     }
+
+                    rowsData.push(dataObj);
                 });
 
                 // Filter and sort rows with valid keys
                 let sortableRows = rowsData.filter(row => row.key !== null);
                 sortableRows.sort((a, b) => desc ? b.key - a.key : a.key - b.key);
-
-                // Debugging output
 
                 // Remove existing rows from the DOM
                 document.querySelectorAll(".group_torrent, .torrent_info_row").forEach(d => d.remove());
