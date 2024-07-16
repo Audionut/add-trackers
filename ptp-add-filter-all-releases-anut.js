@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.0.9-A
+// @version      4.1.0-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -3313,6 +3313,24 @@
                                           infoText = infoText.replace("HDTS", 'CAM').trim();
                                       }
                                   }
+                                  const cat = d.categoryID;
+                                  let uhd = "2160p";
+                                  let hd = "1080p";
+                                  if (cat === 47 || infoText.includes("2160P")) {
+                                      if (infoText.includes("2160P")) {
+                                          infoText = infoText.replace("2160P", uhd);
+                                      } else {
+                                          infoText = `${uhd} ${infoText}`;
+                                      }
+                                  }
+
+                                  if (cat === 13 || infoText.includes("1080P")) {
+                                      if (infoText.includes("1080P")) {
+                                          infoText = infoText.replace("1080P", hd);
+                                      } else {
+                                          infoText = `${hd} ${infoText}`;
+                                      }
+                                  }
 
                                   const torrentObj = {
                                       api_size: api_size,
@@ -3326,7 +3344,7 @@
                                       leech: parseInt(d.Leechers) || 0,
                                       download_link: `https://www.torrentleech.cc/download/${id}/${down}`,
                                       torrent_page: `https://www.torrentleech.cc/torrent/${id}`,
-                                      discount: "None",
+                                      discount: d.tags.includes("FREELEECH") ? "Freeleech" : "None",
                                       status: "default",
                                       groupId: groupText,
                                       time: time,
@@ -3412,7 +3430,7 @@
 
         const get_api_files = (files) => {
             const containerExtensions = ["mkv", "iso", "mpg", "mp4", "avi"]; // List of possible containers you might be looking for
-        
+
             if (files.length === 1) {
                 const singleFileName = files[0].name;
                 const lastDotIndex = singleFileName.lastIndexOf('.');
@@ -3432,86 +3450,86 @@
                 return { extension: null, filename: null };
             }
         };
-        
-                const get_blu_ray_disc_type = (size) => {
-                    const sizeInGB = size / (1024 * 1024 * 1024); // Convert size to GB
-                    if (sizeInGB <= 25) {
-                        return "BD25";
-                    } else if (sizeInGB <= 50) {
-                        return "BD50";
-                    //} else if (sizeInGB <= 66) {
-                    //    return "BD66";
-                    //} else if (sizeInGB <= 100) {
-                    //    return "BD100";
+
+        const get_blu_ray_disc_type = (size) => {
+            const sizeInGB = size / (1024 * 1024 * 1024); // Convert size to GB
+            if (sizeInGB <= 25) {
+                return "BD25";
+            } else if (sizeInGB <= 50) {
+                return "BD50";
+            //} else if (sizeInGB <= 66) {
+            //    return "BD66";
+            //} else if (sizeInGB <= 100) {
+            //    return "BD100";
+            } else {
+                return "BDSET";
+            }
+        };
+
+        const get_api_torrent_objects = (tracker, json) => {
+            let torrent_objs = [];
+
+            if (
+                tracker === "BLU" ||
+                tracker === "Aither" ||
+                tracker === "RFX" ||
+                tracker === "OE" ||
+                tracker === "HUNO" ||
+                tracker === "TIK" ||
+                tracker === "LST"
+            ) {
+                torrent_objs = json.data.map((element) => {
+                    let originalInfoText;
+
+                    if (tracker === "HUNO") {
+                      originalInfoText = element.attributes.name ? element.attributes.name.replace(/[()]/g, "") : null;
+                    } else if (tracker === "TIK") {
+                      originalInfoText = element.attributes.bd_info ? element.attributes.bd_info : (element.attributes.name ? element.attributes.name : null);
                     } else {
-                        return "BDSET";
+                      originalInfoText = element.attributes.name ? element.attributes.name : null;
                     }
-                };
-        
-                const get_api_torrent_objects = (tracker, json) => {
-                    let torrent_objs = [];
-        
-                    if (
-                        tracker === "BLU" ||
-                        tracker === "Aither" ||
-                        tracker === "RFX" ||
-                        tracker === "OE" ||
-                        tracker === "HUNO" ||
-                        tracker === "TIK" ||
-                        tracker === "LST"
-                    ) {
-                        torrent_objs = json.data.map((element) => {
-                            let originalInfoText;
-        
-                            if (tracker === "HUNO") {
-                              originalInfoText = element.attributes.name ? element.attributes.name.replace(/[()]/g, "") : null;
-                            } else if (tracker === "TIK") {
-                              originalInfoText = element.attributes.bd_info ? element.attributes.bd_info : (element.attributes.name ? element.attributes.name : null);
-                            } else {
-                              originalInfoText = element.attributes.name ? element.attributes.name : null;
-                            }
-        
-                            const parseDiscLabel = (text) => {
-                              // Regular expression to match "Disc Label" line
-                              const discLabelRegex = /Disc Label:\s*(.*)/;
-                              // Extract the "Disc Label" line
-                              const match = text.match(discLabelRegex);
-        
-                              if (match && match[1]) {
-                                return match[1].trim();
-                              }
-                              return null;
-                            };
-        
-                            if (tracker === "TIK") {
-                              if (originalInfoText) {
-                                const parsedText = parseDiscLabel(originalInfoText);
-                                if (parsedText) {
-                                  originalInfoText = parsedText;
-                                } else {
-                                  originalInfoText = element.attributes.name ? element.attributes.name : originalInfoText;
+
+                    const parseDiscLabel = (text) => {
+                      // Regular expression to match "Disc Label" line
+                      const discLabelRegex = /Disc Label:\s*(.*)/;
+                      // Extract the "Disc Label" line
+                      const match = text.match(discLabelRegex);
+
+                      if (match && match[1]) {
+                        return match[1].trim();
+                      }
+                      return null;
+                    };
+
+                    if (tracker === "TIK") {
+                      if (originalInfoText) {
+                        const parsedText = parseDiscLabel(originalInfoText);
+                        if (parsedText) {
+                          originalInfoText = parsedText;
+                        } else {
+                          originalInfoText = element.attributes.name ? element.attributes.name : originalInfoText;
+                        }
+                      }
+                    }
+                    let getRelease = originalInfoText;
+                    let infoText = originalInfoText;
+
+                    // Check if the info text contains "SxxExx" where "xx" is not known beforehand
+                    if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
+                        // If the info text does not contain the pattern, proceed with further processing
+                        const files = element.attributes.files || []; // Ensure files is defined
+                        const container = get_api_files(files); // Call the function with files as argument
+                        const extension = container.extension;
+                        let filenaming;
+                        if (container.filename != null) {
+                                filenaming = container.filename;
+                                const lastDotIndex = filenaming.lastIndexOf('.');
+                                if (lastDotIndex !== -1) {
+                                    filenaming = filenaming.substring(0, lastDotIndex);
                                 }
-                              }
-                            }
-                            let getRelease = originalInfoText;
-                            let infoText = originalInfoText;
-        
-                            // Check if the info text contains "SxxExx" where "xx" is not known beforehand
-                            if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
-                                // If the info text does not contain the pattern, proceed with further processing
-                                const files = element.attributes.files || []; // Ensure files is defined
-                                const container = get_api_files(files); // Call the function with files as argument
-                                const extension = container.extension;
-                                let filenaming;
-                                if (container.filename != null) {
-                                        filenaming = container.filename;
-                                        const lastDotIndex = filenaming.lastIndexOf('.');
-                                        if (lastDotIndex !== -1) {
-                                            filenaming = filenaming.substring(0, lastDotIndex);
-                                        }
-                                } else {
-                                    filenaming = originalInfoText;
-                                }
+                        } else {
+                            filenaming = originalInfoText;
+                        }
                         // Step 1: Identify the year
                         const yearMatch = infoText.match(/\((\d{4})\)/);
                         let relevantText = infoText;
@@ -3718,6 +3736,9 @@
                 let last_idx = sliced.findIndex((a) => a.className === "group_torrent");
                 if (last_idx === -1) last_idx = all_trs.length;
                 filtered_torrents = sliced.slice(0, last_idx);
+                if (debug) {
+                    console.log("SD filtered torrents", filtered_torrents);
+                }
             }
             else if (quality === "HD") {
                 let first_idx = all_trs.findIndex((a) => a.textContent.includes("High Definition") && !a.textContent.includes("Ultra High Definition"));
@@ -3726,6 +3747,9 @@
                 let last_idx = sliced.findIndex((a) => a.className === "group_torrent");
                 if (last_idx === -1) last_idx = all_trs.length;
                 filtered_torrents = sliced.slice(0, last_idx);
+                if (debug) {
+                    console.log("HD filtered torrents", filtered_torrents);
+                }
             }
             else if (quality === "UHD") {
                 let first_idx = all_trs.findIndex((a) => a.textContent.includes("Ultra High Definition"));
@@ -3734,6 +3758,9 @@
                 let last_idx = sliced.findIndex((a) => a.className === "group_torrent");
                 if (last_idx === -1) last_idx = all_trs.length;
                 filtered_torrents = sliced.slice(0, last_idx);
+                if (debug) {
+                    console.log("UHD filtered torrents", filtered_torrents);
+                }
             }
 
             // part 2 !
@@ -3765,15 +3792,15 @@
             return group_torrent_objs;
         };
 
-                const get_torrent_quality = (torrent) => {
-                    if (torrent.quality) return torrent.quality;
+        const get_torrent_quality = (torrent) => {
+            if (torrent.quality) return torrent.quality;
 
-                    let text = torrent.info_text.toLowerCase();
+            let text = torrent.info_text.toLowerCase();
 
-                    if (text.includes("2160p")) return "UHD";
-                    else if (text.includes("1080p") || text.includes("720p") || text.includes("1080i") || text.includes("720i")) return "HD";
-                    else return "SD";
-                };
+            if (text.includes("2160p")) return "UHD";
+            else if (text.includes("1080p") || text.includes("720p") || text.includes("1080i") || text.includes("720i")) return "HD";
+            else return "SD";
+        };
 
         const get_ref_div = (torrent, ptp_torrent_group) => {
             let my_size = torrent.size;
@@ -4506,11 +4533,14 @@
             let any_exclude = false;
             let empties = [...document.querySelectorAll("tr.empty-row")];
 
-            doms.forEach((e) => {
+            doms.forEach((e, index) => {
                 let include_tracker = true;
                 let include_discount = true;
                 let include_quality = true;
                 let include_text = true;
+                if (debug) {
+                    console.log(`Processing dom element ${index + 1}`, e);
+                }
 
                 let tracker_status = filters.trackers.find(d => d.name === e.tracker)?.status;
                 if (tracker_status === "include") {
