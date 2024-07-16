@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.1.1-A
+// @version      4.1.2-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -609,7 +609,7 @@
         const dom_get_quality = (text) => {
             if (text.includes("720p")) return "720p";
             else if (text.includes("1080p") || text.includes("1080i")) return "1080p";
-            else if (text.includes("2160p") || text.includes("4K")) return "2160p";
+            else if (text.includes("2160p")) return "2160p";
             else return "SD";
         };
 
