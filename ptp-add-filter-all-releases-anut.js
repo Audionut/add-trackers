@@ -1355,7 +1355,15 @@
                         else size = 1; // must be kiloBytes, so lets assume 1mb.
 
                         const images = d.querySelectorAll("[style='position:absolute;top:0px; left:0px'] > img");
-                        torrent_obj.quality = Array.from(images).some(img => img.title.includes("HD")) ? "HD" : "SD";
+                        torrent_obj.quality = Array.from(images).some(img => {
+                            if (img.title.includes("HD")) return "HD";
+                            if (img.title.includes("SD")) return "SD";
+                            if (img.title.includes("720")) return "720p";
+                            if (img.title.includes("1080")) return "1080p";
+                            if (img.title.includes("DVD5") || img.title.includes("DVD9")) return "SD";
+                            if (img.title.includes("BD25") || img.title.includes("BD50")) return "1080p";
+                            return false;
+                        }) ? torrent_obj.quality : "SD";
                         torrent_obj.size = size;
                         let releaseName = d.querySelectorAll("td")[1].querySelector("a").textContent.trim();
                         torrent_obj.datasetRelease = releaseName;
