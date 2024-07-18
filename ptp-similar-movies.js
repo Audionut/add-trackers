@@ -66,7 +66,6 @@
     newPanel.appendChild(panelHeading);
 
     var panelBody = document.createElement('div');
-    panelBody.className = 'panel__body';
     panelBody.style.position = 'relative';
     panelBody.style.display = 'block';
     panelBody.style.paddingTop = "0px";
