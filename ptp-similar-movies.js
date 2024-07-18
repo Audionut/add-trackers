@@ -14,7 +14,6 @@
 
 (function () {
     'use strict';
-    console.warn("Movies like this script initialized");
 
     let style = document.createElement('style');
     style.type = 'text/css';
@@ -69,7 +68,7 @@
         return;
     }
 
-    console.warn("IMDB URL: " + imdbUrl);
+    console.log("IMDB URL: " + imdbUrl);
 
     var newPanel = document.createElement('div');
     newPanel.className = 'panel';
@@ -105,8 +104,6 @@
         console.error("IMDB ID not found");
         return;
     }
-
-    console.warn("IMDB ID: " + imdbId);
 
     const fetchSimilarMovies = async (imdbId) => {
         const url = `https://api.graphql.imdb.com/`;
