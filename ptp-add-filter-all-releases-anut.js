@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.1.2-A
+// @version      4.1.3-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -1340,7 +1340,8 @@
                 });
             }
             else if (tracker === "KG") {
-                html.querySelector("#browse > tbody").querySelectorAll("tr").forEach((d) => {
+                let rows = Array.from(html.querySelector("#browse > tbody").querySelectorAll("tr")).filter((row, index) => index & 1); // Only odd rows contain titles
+                rows.forEach((d) => {
                     try {
                         let torrent_obj = {};
                         let size = d.querySelector("td:nth-child(11)").textContent.replace(",", "");
@@ -1351,65 +1352,82 @@
                             size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // Convert GB to MiB
                         } else if (size.includes("MB")) {
                             size = parseInt(parseFloat(size.split("MB")[0]));
+                        } else size = 1; // must be kiloBytes, so lets assume 1mb.
+                        let downloadLink = [...d.querySelectorAll("a")].find(a => a.href.includes("/down.php/")).href;
+                        let releaseName = decodeURI(downloadLink).split(".torrent?")[0].split("/").pop();
+                        if (releaseName.includes('.mkv')) {
+                            releaseName = releaseName.replace('.mkv', '');
+                            torrent_obj.info_text = releaseName;
+                            torrent_obj.info_text += " / MKV";
+                        } else {
+                            torrent_obj.info_text = releaseName;
                         }
-                        else size = 1; // must be kiloBytes, so lets assume 1mb.
 
                         const images = d.querySelectorAll("[style='position:absolute;top:0px; left:0px'] > img");
-                        torrent_obj.quality = Array.from(images).some(img => img.title.includes("HD")) ? "HD" : "SD";
+                        Array.from(images).forEach(img => {
+                            if (img.src.includes("720")) {
+                                torrent_obj.info_text += ' / 720p';
+                                torrent_obj.quality = "HD";
+                            } else if (img.src.includes("1080")) {
+                                torrent_obj.info_text += ' / 1080p';
+                                torrent_obj.quality = "HD";
+                            } else if (img.src.includes("bluray")) {
+                                torrent_obj.info_text = `Blu-ray / ${torrent_obj.info_text} 1080p`;
+                                torrent_obj.quality = "HD";
+                            } else if (img.src.includes("dvd")) {
+                                torrent_obj.info_text = `DVD / ${torrent_obj.info_text}`;
+                                torrent_obj.quality = "SD";
+                            } else {
+                                torrent_obj.quality = "SD";
+                            }
+                        });
                         torrent_obj.size = size;
-                        let releaseName = d.querySelectorAll("td")[1].querySelector("a").textContent.trim();
                         torrent_obj.datasetRelease = releaseName;
                         let groupText = "";
-                        const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
-                        const badGroupsList = badGroups(); // Get the list of bad group names
-                        let matchedGroup = null;
-                        let badGroupFound = false;
-
-                        // Check for bad groups
-                        for (const badGroup of badGroupsList) {
-                            if (releaseName.includes(badGroup)) {
-                                badGroupFound = true;
-                                releaseName = releaseName.replace(badGroup, '').trim(); // Remove the bad group text
-                                groupText = ""; // Set groupText to an empty string
-                                break;
+                        let needs_group = releaseName.includes('.mkv') || releaseName.includes('.avi') || releaseName.includes('.mp4') || releaseName.includes('.ts');
+                        if (improved_tags) {
+                            const match = releaseName.match(/-([^- ]+)$/);
+                            if (match && needs_group) {
+                                groupText = match[0].substring(1);
+                                groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                releaseName = releaseName.replace(groupText, '');
                             }
-                        }
-
-                        if (!badGroupFound) {
-                            // Check for good groups if no bad group was found
-                            for (const group of groups) {
-                                if (releaseName.includes(group)) {
-                                    matchedGroup = group;
-                                    break;
-                                }
-                            }
-
-                            if (matchedGroup) {
-                                groupText = matchedGroup;
-                                if (improved_tags) {
-                                    releaseName = releaseName.replace(groupText, '').trim();
+                            if (releaseName.includes('.iso')) {
+                                if (torrent_obj.info_text.includes('DVD /')) {
+                                    torrent_obj.info_text = torrent_obj.info_text.replace('DVD /', 'ISO / DVD /');
+                                } else if (torrent_obj.info_text.includes('Blu-ray /')) {
+                                    torrent_obj.info_text = torrent_obj.info_text.replace('Blu-ray /', 'ISO / Blu-ray');
                                 }
                             } else {
-                                const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
-                                if (match) {
-                                    groupText = match[1]; // Use match[1] to get the capturing group
-                                    groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                                    if (improved_tags) {
-                                        releaseName = releaseName.replace(`-${match[1]}`, '').trim();
-                                    }
+                                if (torrent_obj.info_text.includes('DVD /')) {
+                                    torrent_obj.info_text = torrent_obj.info_text.replace('DVD /', 'vob');
+                                } else if (torrent_obj.info_text.includes('Blu-ray /')) {
+                                    torrent_obj.info_text = torrent_obj.info_text.replace('Blu-ray /', 'm2ts Blu-ray');
                                 }
                             }
+                            if (torrent_obj.info_text.includes("vob") && torrent_obj.size) {
+                                const dvdType = get_dvd_type(torrent_obj.size);
+                                torrent_obj.info_text = `${dvdType} ${torrent_obj.info_text}`;
+                            } else if (torrent_obj.info_text.includes("m2ts") && torrent_obj.size) {
+                                const bdType = get_bd_type(torrent_obj.size);
+                                torrent_obj.info_text = `${bdType} ${torrent_obj.info_text}`;
+                            }
+                            const distributor = d.querySelectorAll("td")[1].querySelector("a").textContent.trim().match(/\[(.*?)\]/);
+                            if (distributor) {
+                                torrent_obj.distributor = distributor[1];
+                                torrent_obj.info_text = torrent_obj.info_text.replace(distributor[0], '');
+                            }
                         }
-                        torrent_obj.info_text = releaseName;
                         torrent_obj.groupId = groupText;
+
                         torrent_obj.site = "KG";
                         torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(12)").textContent);
                         torrent_obj.seed = parseInt(d.querySelector("td:nth-child(13)").textContent);
                         torrent_obj.leech = parseInt(d.querySelector("td:nth-child(14)").textContent);
-                        torrent_obj.download_link = [...d.querySelectorAll("a")].find(a => a.href.includes("/down.php/")).href.replace("passthepopcorn.me", "karagarga.in");
+                        torrent_obj.download_link = downloadLink;
                         torrent_obj.torrent_page = [...d.querySelectorAll("a")].find(a => a.href.includes("/details.php?id=")).href.replace("passthepopcorn.me", "karagarga.in");
                         torrent_obj.status = d.className.includes("snatchedrow") ? "seeding" : "default";
-                        torrent_obj.discount = "None";
+                        torrent_obj.discount = 'None';
                         torrent_objs.push(torrent_obj);
                     } catch (e) {
                         console.error("An error has occurred: ", e);
