@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP Similar Movies Helper
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.1
+// @version      1.0.2
 // @description  Add "Movies Like This" onto PTP from IMDB API
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -111,12 +111,17 @@
     panelBody.style.paddingTop = "0px";
     newPanel.appendChild(panelBody);
 
-    var sidebar = document.querySelector('div.sidebar');
-    if (!sidebar) {
-        console.error("Sidebar not found");
-        return;
+    var parentGuidePanel = document.querySelector('div.panel#parents_guide');
+    if (parentGuidePanel) {
+        parentGuidePanel.parentNode.insertBefore(newPanel, parentGuidePanel.nextSibling);
+    } else {
+        var sidebar = document.querySelector('div.sidebar');
+        if (!sidebar) {
+            console.error("Sidebar not found");
+            return;
+        }
+        sidebar.insertBefore(newPanel, sidebar.childNodes[4]);
     }
-    sidebar.insertBefore(newPanel, sidebar.childNodes[4]);
 
     let imdbId = imdbUrl.split("/")[4];
     if (!imdbId) {
