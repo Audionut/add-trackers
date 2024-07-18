@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP Technical Specifications
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.1.0
+// @version      1.1.1
 // @description  Add "Technical Specifications" onto PTP from IMDB API
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -102,7 +102,7 @@
 
         if (cachedData && cacheTimestamp) {
             const currentTime = new Date().getTime();
-            if (currentTime - cacheTimestamp < 24 * 60 * 60 * 1000) {
+            if (currentTime - cacheTimestamp < 1 * 1 * 1 * 1000) {
                 console.log("Using cached data for technical specifications");
                 displayTechnicalSpecifications(JSON.parse(cachedData));
                 return;
@@ -197,6 +197,15 @@
                                     }
                                 }
                             }
+                            filmLengths {
+                                items {
+                                    filmLength
+                                    countries {
+                                        text
+                                    }
+                                    numReels
+                                }
+                            }
                         }
                     }
                 }
@@ -213,7 +222,6 @@
             onload: function (response) {
                 if (response.status >= 200 && response.status < 300) {
                     const data = JSON.parse(response.responseText);
-                    console.log("Fetched data:", JSON.stringify(data, null, 2));
                     GM.setValue(cachespecsKey, JSON.stringify(data));
                     GM.setValue(`${cachespecsKey}_timestamp`, new Date().getTime());
                     displayTechnicalSpecifications(data);
@@ -228,41 +236,54 @@
     };
 
     const displayTechnicalSpecifications = (data) => {
-        console.log("Displaying technical specifications with data:", JSON.stringify(data, null, 2));
-        const specs = data.data.title.technicalSpecifications;
-        console.log("Specs:", specs);
-        const runtime = data.data.title.runtime.displayableProperty.value.plainText;
+        const specs = data.data.title.technicalSpecifications || {};
+        const runtime = data.data.title.runtime?.displayableProperty?.value?.plainText || 'N/A';
         const panelBody = document.getElementById('technical_specifications').querySelector('.panel__body');
 
         const specContainer = document.createElement('div');
         specContainer.className = 'technicalSpecification';
 
         const formatSpec = (title, items, key, attributesKey) => {
-            console.log(`Formatting ${title}:`, items);
             if (items && items.length > 0) {
                 let values = items.map(item => {
-                    console.log("Item:", item);
                     let value = item[key];
                     if (item[attributesKey] && item[attributesKey].length > 0) {
                         value += ` (${item[attributesKey].map(attr => attr.text).join(", ")})`;
                     }
                     return value;
                 }).filter(value => value).join(", ");
-                console.log(`${title} values:`, values);
                 return `<strong>${title}:</strong> ${values}<br>`;
             }
             return "";
         };
 
+        const formatFilmLengths = (items) => {
+            if (items && items.length > 0) {
+                let values = items.map(item => {
+                    let value = `${item.filmLength} m`;
+                    if (item.countries && item.countries.length > 0) {
+                        value += ` (${item.countries.map(country => country.text).join(", ")})`;
+                    }
+                    if (item.numReels) {
+                        value += ` (${item.numReels} reels)`;
+                    }
+                    return value;
+                }).filter(value => value).join(", ");
+                return `<strong>Film Length:</strong> ${values}<br>`;
+            }
+            return "";
+        };
+
         specContainer.innerHTML += `<strong>Runtime:</strong> ${runtime}<br>`;
-        specContainer.innerHTML += formatSpec("Aspect Ratio", specs.aspectRatios.items, "aspectRatio", "attributes");
-        specContainer.innerHTML += formatSpec("Camera", specs.cameras.items, "camera", "attributes");
-        specContainer.innerHTML += formatSpec("Color", specs.colorations.items, "text", "attributes");
-        specContainer.innerHTML += formatSpec("Laboratory", specs.laboratories.items, "laboratory", "attributes");
-        specContainer.innerHTML += formatSpec("Negative Format", specs.negativeFormats.items, "negativeFormat", "attributes");
-        specContainer.innerHTML += formatSpec("Printed Film Format", specs.printedFormats.items, "printedFormat", "attributes");
-        specContainer.innerHTML += formatSpec("Cinematographic Process", specs.processes.items, "process", "attributes");
-        specContainer.innerHTML += formatSpec("Sound Mix", specs.soundMixes.items, "text", "attributes");
+        specContainer.innerHTML += formatSpec("Aspect Ratio", specs.aspectRatios?.items || [], "aspectRatio", "attributes");
+        specContainer.innerHTML += formatSpec("Camera", specs.cameras?.items || [], "camera", "attributes");
+        specContainer.innerHTML += formatSpec("Color", specs.colorations?.items || [], "text", "attributes");
+        specContainer.innerHTML += formatSpec("Laboratory", specs.laboratories?.items || [], "laboratory", "attributes");
+        specContainer.innerHTML += formatSpec("Negative Format", specs.negativeFormats?.items || [], "negativeFormat", "attributes");
+        specContainer.innerHTML += formatSpec("Printed Film Format", specs.printedFormats?.items || [], "printedFormat", "attributes");
+        specContainer.innerHTML += formatSpec("Cinematographic Process", specs.processes?.items || [], "process", "attributes");
+        specContainer.innerHTML += formatSpec("Sound Mix", specs.soundMixes?.items || [], "text", "attributes");
+        specContainer.innerHTML += formatFilmLengths(specs.filmLengths?.items || []);
 
         panelBody.appendChild(specContainer);
     };
