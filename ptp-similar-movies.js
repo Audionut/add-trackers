@@ -86,7 +86,7 @@
     imdb.style.color = '#F2DB83';
     imdb.textContent = 'iMDB';
     title.appendChild(imdb);
-    title.appendChild(document.createTextNode(' Similar Movies'));
+    title.appendChild(document.createTextNode(' More like this'));
 
     var toggle = document.createElement('a');
     toggle.className = 'panel__heading__toggler';

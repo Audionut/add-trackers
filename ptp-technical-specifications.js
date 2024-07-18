@@ -125,41 +125,76 @@
                             aspectRatios {
                                 items {
                                     aspectRatio
+                                    attributes {
+                                        text
+                                    }
+                                    displayableProperty {
+                                        qualifiersInMarkdownList {
+                                            markdown
+                                        }
+                                        value {
+                                            markdown
+                                            expandedMarkdown
+                                            plaidHtml
+                                            plainText
+                                        }
+                                    }
                                 }
                             }
                             cameras {
                                 items {
                                     camera
+                                    attributes {
+                                        text
+                                    }
                                 }
                             }
                             colorations {
                                 items {
                                     text
+                                    attributes {
+                                        text
+                                    }
                                 }
                             }
                             laboratories {
                                 items {
                                     laboratory
+                                    attributes {
+                                        text
+                                    }
                                 }
                             }
                             negativeFormats {
                                 items {
                                     negativeFormat
+                                    attributes {
+                                        text
+                                    }
                                 }
                             }
                             printedFormats {
                                 items {
                                     printedFormat
+                                    attributes {
+                                        text
+                                    }
                                 }
                             }
                             processes {
                                 items {
                                     process
+                                    attributes {
+                                        text
+                                    }
                                 }
                             }
                             soundMixes {
                                 items {
                                     text
+                                    attributes {
+                                        text
+                                    }
                                 }
                             }
                         }
@@ -178,6 +213,7 @@
             onload: function (response) {
                 if (response.status >= 200 && response.status < 300) {
                     const data = JSON.parse(response.responseText);
+                    console.log("Fetched data:", JSON.stringify(data, null, 2));
                     GM.setValue(cachespecsKey, JSON.stringify(data));
                     GM.setValue(`${cachespecsKey}_timestamp`, new Date().getTime());
                     displayTechnicalSpecifications(data);
@@ -192,30 +228,41 @@
     };
 
     const displayTechnicalSpecifications = (data) => {
+        console.log("Displaying technical specifications with data:", JSON.stringify(data, null, 2));
         const specs = data.data.title.technicalSpecifications;
+        console.log("Specs:", specs);
         const runtime = data.data.title.runtime.displayableProperty.value.plainText;
         const panelBody = document.getElementById('technical_specifications').querySelector('.panel__body');
 
         const specContainer = document.createElement('div');
         specContainer.className = 'technicalSpecification';
 
-        const formatSpec = (title, items, key) => {
+        const formatSpec = (title, items, key, attributesKey) => {
+            console.log(`Formatting ${title}:`, items);
             if (items && items.length > 0) {
-                let values = items.map(item => item[key]).filter(value => value).join(", ");
+                let values = items.map(item => {
+                    console.log("Item:", item);
+                    let value = item[key];
+                    if (item[attributesKey] && item[attributesKey].length > 0) {
+                        value += ` (${item[attributesKey].map(attr => attr.text).join(", ")})`;
+                    }
+                    return value;
+                }).filter(value => value).join(", ");
+                console.log(`${title} values:`, values);
                 return `<strong>${title}:</strong> ${values}<br>`;
             }
             return "";
         };
 
         specContainer.innerHTML += `<strong>Runtime:</strong> ${runtime}<br>`;
-        specContainer.innerHTML += formatSpec("Aspect Ratio", specs.aspectRatios.items, "aspectRatio");
-        specContainer.innerHTML += formatSpec("Camera", specs.cameras.items, "camera");
-        specContainer.innerHTML += formatSpec("Color", specs.colorations.items, "text");
-        specContainer.innerHTML += formatSpec("Laboratory", specs.laboratories.items, "laboratory");
-        specContainer.innerHTML += formatSpec("Negative Format", specs.negativeFormats.items, "negativeFormat");
-        specContainer.innerHTML += formatSpec("Printed Film Format", specs.printedFormats.items, "printedFormat");
-        specContainer.innerHTML += formatSpec("Cinematographic Process", specs.processes.items, "process");
-        specContainer.innerHTML += formatSpec("Sound Mix", specs.soundMixes.items, "text");
+        specContainer.innerHTML += formatSpec("Aspect Ratio", specs.aspectRatios.items, "aspectRatio", "attributes");
+        specContainer.innerHTML += formatSpec("Camera", specs.cameras.items, "camera", "attributes");
+        specContainer.innerHTML += formatSpec("Color", specs.colorations.items, "text", "attributes");
+        specContainer.innerHTML += formatSpec("Laboratory", specs.laboratories.items, "laboratory", "attributes");
+        specContainer.innerHTML += formatSpec("Negative Format", specs.negativeFormats.items, "negativeFormat", "attributes");
+        specContainer.innerHTML += formatSpec("Printed Film Format", specs.printedFormats.items, "printedFormat", "attributes");
+        specContainer.innerHTML += formatSpec("Cinematographic Process", specs.processes.items, "process", "attributes");
+        specContainer.innerHTML += formatSpec("Sound Mix", specs.soundMixes.items, "text", "attributes");
 
         panelBody.appendChild(specContainer);
     };
