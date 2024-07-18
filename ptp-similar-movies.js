@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP Similar Movies Helper
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.0
+// @version      1.0.1
 // @description  Add "Movies Like This" onto PTP from IMDB API
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -53,6 +53,10 @@
             color: #fff;
             font-size: 0.8em;
         }
+        .panel__heading__toggler {
+            margin-left: auto;
+            cursor: pointer;
+        }
     `;
     document.getElementsByTagName('head')[0].appendChild(style);
 
@@ -68,8 +72,6 @@
         return;
     }
 
-    console.log("IMDB URL: " + imdbUrl);
-
     var newPanel = document.createElement('div');
     newPanel.className = 'panel';
     newPanel.id = 'similar_movies';
@@ -84,14 +86,29 @@
     title.appendChild(imdb);
     title.appendChild(document.createTextNode(' Similar Movies'));
 
+    var toggle = document.createElement('a');
+    toggle.className = 'panel__heading__toggler';
+    toggle.title = 'Toggle';
+    toggle.href = '#';
+    toggle.textContent = 'Toggle';
+
+    toggle.onclick = function () {
+        var panelBody = document.querySelector('#similar_movies .panel__body');
+        panelBody.style.display = (panelBody.style.display === 'none') ? 'block' : 'none';
+        return false;
+    };
+
     panelHeading.appendChild(title);
+    panelHeading.appendChild(toggle);
     newPanel.appendChild(panelHeading);
+
     var panelBody = document.createElement('div');
     panelBody.className = 'panel__body';
     panelBody.style.position = 'relative';
     panelBody.style.display = 'block';
     panelBody.style.paddingTop = "0px";
     newPanel.appendChild(panelBody);
+
     var sidebar = document.querySelector('div.sidebar');
     if (!sidebar) {
         console.error("Sidebar not found");
@@ -106,6 +123,19 @@
     }
 
     const fetchSimilarMovies = async (imdbId) => {
+        const cacheKey = `similarMovies_${imdbId}`;
+        const cachedData = localStorage.getItem(cacheKey);
+        const cacheTimestamp = localStorage.getItem(`${cacheKey}_timestamp`);
+
+        if (cachedData && cacheTimestamp) {
+            const currentTime = new Date().getTime();
+            if (currentTime - cacheTimestamp < 24 * 60 * 60 * 1000) {
+                console.log("Using cached data for similar movies");
+                displaySimilarMovies(JSON.parse(cachedData));
+                return;
+            }
+        }
+
         const url = `https://api.graphql.imdb.com/`;
         const query = {
             query: `
@@ -145,40 +175,9 @@
                         return;
                     }
 
-                    var similarMoviesDiv = document.createElement('div');
-                    similarMoviesDiv.className = 'similarMoviesPanel';
-
-                    let count = 0;
-                    let rows = 0;
-                    var rowDiv = document.createElement('div');
-                    rowDiv.className = 'similarMoviesRow';
-                    similarMoviesDiv.appendChild(rowDiv);
-
-                    similarMovies.forEach((edge) => {
-                        let movie = edge.node;
-                        if (rows >= 3) {
-                            return;
-                        }
-
-                        let title = movie.titleText.text;
-                        let searchLink = `https://passthepopcorn.me/torrents.php?action=advanced&searchstr=${movie.id}`;
-                        let image = movie.primaryImage.url;
-
-                        var movieDiv = document.createElement('div');
-                        movieDiv.className = 'similarMovie';
-                        movieDiv.innerHTML = `<a href="${searchLink}" target="_blank"><img src="${image}" alt="${title}" /></a><span>${title}</span>`;
-                        rowDiv.appendChild(movieDiv);
-
-                        count++;
-                        if (count % 3 === 0) {
-                            rowDiv = document.createElement('div');
-                            rowDiv.className = 'similarMoviesRow';
-                            similarMoviesDiv.appendChild(rowDiv);
-                            rows++;
-                        }
-                    });
-
-                    panelBody.appendChild(similarMoviesDiv);
+                    localStorage.setItem(cacheKey, JSON.stringify(similarMovies));
+                    localStorage.setItem(`${cacheKey}_timestamp`, new Date().getTime());
+                    displaySimilarMovies(similarMovies);
                 } else {
                     console.error("Failed to fetch similar movies", response);
                 }
@@ -187,6 +186,43 @@
                 console.error("Request error", response);
             }
         });
+    };
+
+    const displaySimilarMovies = (similarMovies) => {
+        var similarMoviesDiv = document.createElement('div');
+        similarMoviesDiv.className = 'similarMoviesPanel';
+
+        let count = 0;
+        let rows = 0;
+        var rowDiv = document.createElement('div');
+        rowDiv.className = 'similarMoviesRow';
+        similarMoviesDiv.appendChild(rowDiv);
+
+        similarMovies.forEach((edge) => {
+            let movie = edge.node;
+            if (rows >= 3) {
+                return;
+            }
+
+            let title = movie.titleText.text;
+            let searchLink = `https://passthepopcorn.me/torrents.php?action=advanced&searchstr=${movie.id}`;
+            let image = movie.primaryImage.url;
+
+            var movieDiv = document.createElement('div');
+            movieDiv.className = 'similarMovie';
+            movieDiv.innerHTML = `<a href="${searchLink}" target="_blank"><img src="${image}" alt="${title}" /></a><span>${title}</span>`;
+            rowDiv.appendChild(movieDiv);
+
+            count++;
+            if (count % 3 === 0) {
+                rowDiv = document.createElement('div');
+                rowDiv.className = 'similarMoviesRow';
+                similarMoviesDiv.appendChild(rowDiv);
+                rows++;
+            }
+        });
+
+        panelBody.appendChild(similarMoviesDiv);
     };
 
     fetchSimilarMovies(imdbId);
