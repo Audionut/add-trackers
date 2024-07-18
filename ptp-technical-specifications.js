@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP Technical Specifications
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.1.1
+// @version      1.1.2
 // @description  Add "Technical Specifications" onto PTP from IMDB API
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -102,7 +102,7 @@
 
         if (cachedData && cacheTimestamp) {
             const currentTime = new Date().getTime();
-            if (currentTime - cacheTimestamp < 1 * 1 * 1 * 1000) {
+            if (currentTime - cacheTimestamp < 24 * 60 * 60 * 1000) {
                 console.log("Using cached data for technical specifications");
                 displayTechnicalSpecifications(JSON.parse(cachedData));
                 return;
