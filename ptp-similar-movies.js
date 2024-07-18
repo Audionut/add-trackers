@@ -9,6 +9,8 @@
 // @downloadURL  https://github.com/Audionut/add-trackers/raw/main/ptp-similar-movies.js
 // @updateURL    https://github.com/Audionut/add-trackers/raw/main/ptp-similar-movies.js
 // @grant        GM_xmlhttpRequest
+// @grant        GM.setValue
+// @grant        GM.getValue
 // @connect      api.graphql.imdb.com
 // ==/UserScript==
 
@@ -124,8 +126,8 @@
 
     const fetchSimilarMovies = async (imdbId) => {
         const cacheKey = `similarMovies_${imdbId}`;
-        const cachedData = localStorage.getItem(cacheKey);
-        const cacheTimestamp = localStorage.getItem(`${cacheKey}_timestamp`);
+        const cachedData = await GM.getValue(cacheKey);
+        const cacheTimestamp = await GM.getValue(`${cacheKey}_timestamp`);
 
         if (cachedData && cacheTimestamp) {
             const currentTime = new Date().getTime();
@@ -175,8 +177,8 @@
                         return;
                     }
 
-                    localStorage.setItem(cacheKey, JSON.stringify(similarMovies));
-                    localStorage.setItem(`${cacheKey}_timestamp`, new Date().getTime());
+                    GM.setValue(cacheKey, JSON.stringify(similarMovies));
+                    GM.setValue(`${cacheKey}_timestamp`, new Date().getTime());
                     displaySimilarMovies(similarMovies);
                 } else {
                     console.error("Failed to fetch similar movies", response);
