@@ -2081,7 +2081,7 @@
                                 {
                                     search: show_name
                                 },
-                                20,
+                                6,
                             ]
                         };
                     }
@@ -2186,7 +2186,7 @@
                                     series: show_nbl_name
                                     //imdb: imdb_id
                                 },
-                                20, // Results per page
+                                6, // Results per page
                                 0,   // Page number
                                 1
                             ]
