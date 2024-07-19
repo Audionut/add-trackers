@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         iMDB query
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.0
+// @version      1.0.1
 // @description  Run iMDB queries
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -22,12 +22,23 @@
                         name
                         fields {
                             name
+                            args {
+                                name
+                                type {
+                                    name
+                                    kind
+                                }
+                            }
                             type {
                                 name
                                 kind
                                 ofType {
                                     name
                                     kind
+                                    ofType {
+                                        name
+                                        kind
+                                    }
                                 }
                             }
                         }
