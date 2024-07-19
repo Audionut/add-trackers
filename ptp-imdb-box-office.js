@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP iMDB Box Office
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.1
+// @version      1.0.2
 // @description  Add "Box Office" details onto PTP from IMDB API
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -181,19 +181,31 @@
         let output = '';
 
         if (boxOfficeArea === 'WORLDWIDE') {
-            output += formatProductionBudget(titleData.productionBudget.budget);
-            output += formatRankedGross("Gross", titleData.rankedLifetimeGross);
+            if (titleData.productionBudget && titleData.productionBudget.budget) {
+                output += formatProductionBudget(titleData.productionBudget.budget);
+            }
+            if (titleData.rankedLifetimeGross) {
+                output += formatRankedGross("Gross", titleData.rankedLifetimeGross);
+            }
         } else if (boxOfficeArea === 'DOMESTIC') {
-            output += formatRankedGross("Gross", titleData.rankedLifetimeGross);
-            output += formatOpeningWeekendGross("Opening Weekend Gross", titleData.openingWeekendGross);
+            if (titleData.rankedLifetimeGross) {
+                output += formatRankedGross("Gross", titleData.rankedLifetimeGross);
+            }
             if (titleData.openingWeekendGross) {
-                output += `<strong>Theater Count:</strong> ${titleData.openingWeekendGross.theaterCount}<br>
-                           <strong>Weekend Start Date:</strong> ${titleData.openingWeekendGross.weekendStartDate}<br>
-                           <strong>Weekend End Date:</strong> ${titleData.openingWeekendGross.weekendEndDate}<br>`;
+                output += formatOpeningWeekendGross("Opening Weekend Gross", titleData.openingWeekendGross);
+                if (titleData.openingWeekendGross) {
+                    output += `<strong>Theater Count:</strong> ${titleData.openingWeekendGross.theaterCount}<br>
+                               <strong>Weekend Start Date:</strong> ${titleData.openingWeekendGross.weekendStartDate}<br>
+                               <strong>Weekend End Date:</strong> ${titleData.openingWeekendGross.weekendEndDate}<br>`;
+                }
             }
         } else if (boxOfficeArea === 'INTERNATIONAL') {
-            output += formatRankedGross("Gross", titleData.rankedLifetimeGross);
-            output += formatOpeningWeekendGross("Opening Weekend Gross", titleData.openingWeekendGross);
+            if (titleData.rankedLifetimeGross) {
+                output += formatRankedGross("Gross", titleData.rankedLifetimeGross);
+            }
+            if (titleData.openingWeekendGross) {
+                output += formatOpeningWeekendGross("Opening Weekend Gross", titleData.openingWeekendGross);
+            }
         }
 
         boxOfficeContainer.innerHTML = output;
