@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP Similar Movies Helper
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.3
+// @version      1.0.4
 // @description  Add "Movies Like This" onto PTP from IMDB API
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -56,9 +56,8 @@
     title.appendChild(document.createTextNode(' More like this'));
 
     var toggle = document.createElement('a');
-    toggle.className = 'panel__heading__toggler';
-    toggle.title = 'Toggle';
     toggle.href = 'javascript:void(0);';
+    toggle.style.float = "right";
     toggle.textContent = '(Show all movies)';
 
     panelHeading.appendChild(title);
@@ -94,6 +93,14 @@
             parentGuidePanel.parentNode.insertBefore(newPanel, parentGuidePanel.nextSibling);
             displayMethod = 'flex';
             console.log("Inserted panel after parent guide panel");
+            // Update toggle for sidebar
+            toggle.textContent = 'Toggle';
+            toggle.className = 'panel__heading__toggler';
+            toggle.title = 'Toggle';
+            toggle.onclick = function () {
+                panelBody.style.display = (panelBody.style.display === 'none') ? 'block' : 'none';
+                return false;
+            };
         } else {
             const sidebar = document.querySelector('div.sidebar');
             if (!sidebar) {
@@ -103,6 +110,15 @@
             sidebar.insertBefore(newPanel, sidebar.childNodes[4]);
             displayMethod = 'flex';
             console.log("Inserted panel in the sidebar");
+
+            // Update toggle for sidebar
+            toggle.textContent = 'Toggle';
+            toggle.className = 'panel__heading__toggler';
+            toggle.title = 'Toggle';
+            toggle.onclick = function () {
+                panelBody.style.display = (panelBody.style.display === 'none') ? 'block' : 'none';
+                return false;
+            };
         }
     }
 
@@ -256,14 +272,16 @@
             Array.from(similarMoviesDiv.children).slice(3).forEach(child => child.style.display = 'none');
         }
 
-        toggle.addEventListener('click', function () {
-            const rows = Array.from(similarMoviesDiv.children);
-            const isHidden = rows.slice(displayMethod === 'table' ? 2 : 3).some(row => row.style.display === 'none');
-            rows.slice(displayMethod === 'table' ? 2 : 3).forEach(row => {
-                row.style.display = isHidden ? (displayMethod === 'table' ? 'table-row' : 'flex') : 'none';
+        if (displayMethod === 'table') {
+            toggle.addEventListener('click', function () {
+                const rows = Array.from(similarMoviesDiv.children);
+                const isHidden = rows.slice(2).some(row => row.style.display === 'none');
+                rows.slice(2).forEach(row => {
+                    row.style.display = isHidden ? 'table-row' : 'none';
+                });
+                toggle.textContent = isHidden ? '(Hide extra movies)' : '(Show all movies)';
             });
-            toggle.textContent = isHidden ? 'Hide extra movies' : 'Show all movies';
-        });
+        }
 
         panelBody.appendChild(similarMoviesDiv);
         console.log("Displayed similar movies");
