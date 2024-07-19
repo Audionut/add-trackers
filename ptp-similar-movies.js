@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP Similar Movies Helper
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.4
+// @version      1.0.5
 // @description  Add "Movies Like This" onto PTP from IMDB API
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -82,7 +82,6 @@
         if (targetTable) {
             insertAfterElement(targetTable, newPanel);
             displayMethod = 'table';
-            console.log("Inserted panel after the specified table");
         } else {
             console.error("Target table not found");
             return;
@@ -92,7 +91,6 @@
         if (parentGuidePanel) {
             parentGuidePanel.parentNode.insertBefore(newPanel, parentGuidePanel.nextSibling);
             displayMethod = 'flex';
-            console.log("Inserted panel after parent guide panel");
             // Update toggle for sidebar
             toggle.textContent = 'Toggle';
             toggle.className = 'panel__heading__toggler';
@@ -109,7 +107,6 @@
             }
             sidebar.insertBefore(newPanel, sidebar.childNodes[4]);
             displayMethod = 'flex';
-            console.log("Inserted panel in the sidebar");
 
             // Update toggle for sidebar
             toggle.textContent = 'Toggle';
@@ -226,6 +223,11 @@
         similarMovies.forEach((edge) => {
             let movie = edge.node;
 
+            if (!movie.primaryImage) {
+                console.warn("No like this image found for movie:", movie.titleText.text);
+                return;
+            }
+
             let title = movie.titleText.text;
             let searchLink = `https://passthepopcorn.me/torrents.php?action=advanced&searchstr=${movie.id}`;
             let image = movie.primaryImage.url;
@@ -284,7 +286,6 @@
         }
 
         panelBody.appendChild(similarMoviesDiv);
-        console.log("Displayed similar movies");
     };
 
     fetchSimilarMovies(imdbId);
