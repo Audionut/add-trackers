@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP Technical Specifications
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.1.2
+// @version      1.1.3
 // @description  Add "Technical Specifications" onto PTP from IMDB API
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -17,22 +17,6 @@
 (function () {
     'use strict';
 
-    let style = document.createElement('style');
-    style.type = 'text/css';
-    style.innerHTML = `
-        .technicalSpecification {
-            padding: 5px;
-            margin: 5px 0;
-            color: #fff;
-            font-size: 1em;
-        }
-        .panel__heading__toggler {
-            margin-left: auto;
-            cursor: pointer;
-        }
-    `;
-    document.getElementsByTagName('head')[0].appendChild(style);
-
     var link = document.querySelector("a#imdb-title-link.rating");
     if (!link) {
         console.error("IMDB link not found");
@@ -42,6 +26,12 @@
     var imdbUrl = link.getAttribute("href");
     if (!imdbUrl) {
         console.error("IMDB URL not found");
+        return;
+    }
+
+    let imdbId = imdbUrl.split("/")[4];
+    if (!imdbId) {
+        console.error("IMDB ID not found");
         return;
     }
 
@@ -59,6 +49,13 @@
     title.appendChild(imdb);
     title.appendChild(document.createTextNode(' Technical Specifications'));
 
+    var imdbLink = document.createElement('a');
+    imdbLink.href = `https://www.imdb.com/title/${imdbId}/technical/?ref_=tt_spec_sm`;
+    imdbLink.title = 'IMDB Url';
+    imdbLink.textContent = 'IMDB Url';
+    imdbLink.target = '_blank';
+    imdbLink.style.marginLeft = '5px';
+
     var toggle = document.createElement('a');
     toggle.className = 'panel__heading__toggler';
     toggle.title = 'Toggle';
@@ -72,14 +69,12 @@
     };
 
     panelHeading.appendChild(title);
+    panelHeading.appendChild(imdbLink);
     panelHeading.appendChild(toggle);
     newPanel.appendChild(panelHeading);
 
     var panelBody = document.createElement('div');
     panelBody.className = 'panel__body';
-    panelBody.style.position = 'relative';
-    panelBody.style.display = 'block';
-    panelBody.style.paddingTop = "0px";
     newPanel.appendChild(panelBody);
 
     var sidebar = document.querySelector('div.sidebar');
@@ -88,12 +83,6 @@
         return;
     }
     sidebar.insertBefore(newPanel, sidebar.childNodes[4]);
-
-    let imdbId = imdbUrl.split("/")[4];
-    if (!imdbId) {
-        console.error("IMDB ID not found");
-        return;
-    }
 
     const fetchTechnicalSpecifications = async () => {
         const cachespecsKey = `technicalSpecifications_${imdbId}`;
@@ -242,6 +231,8 @@
 
         const specContainer = document.createElement('div');
         specContainer.className = 'technicalSpecification';
+        specContainer.style.color = "#fff";
+        specContainer.style.fontSize = "1em";
 
         const formatSpec = (title, items, key, attributesKey) => {
             if (items && items.length > 0) {
