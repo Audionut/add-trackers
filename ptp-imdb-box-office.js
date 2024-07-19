@@ -77,6 +77,19 @@
     sidebar.insertBefore(newPanel, sidebar.childNodes[4]);
 
     const fetchBoxOfficeData = async (imdbId, boxOfficeArea) => {
+        const cacheboxKey = `boxOffice_${imdbId}_${boxOfficeArea}`;
+        const cachedData = await GM.getValue(cacheboxKey);
+        const cacheTimestamp = await GM.getValue(`${cacheboxKey}_timestamp`);
+
+        if (cachedData && cacheTimestamp) {
+            const currentTime = new Date().getTime();
+            if (currentTime - cacheTimestamp < 24 * 60 * 60 * 1000) {
+                console.log("Using cached data for box office");
+                displayBoxOffice(JSON.parse(cachedData), boxOfficeArea);
+                return;
+            }
+        }
+
         const url = `https://api.graphql.imdb.com/`;
         const query = {
             query: `
@@ -115,6 +128,8 @@
             onload: function (response) {
                 if (response.status >= 200 && response.status < 300) {
                     const data = JSON.parse(response.responseText);
+                    GM.setValue(cacheboxKey, JSON.stringify(data));
+                    GM.setValue(`${cacheboxKey}_timestamp`, new Date().getTime());
                     displayBoxOffice(data, boxOfficeArea);
                 } else {
                     console.error("Failed to fetch box office data", response);
