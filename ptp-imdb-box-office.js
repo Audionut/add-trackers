@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP iMDB Box Office
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.0
+// @version      1.0.1
 // @description  Add "Box Office" details onto PTP from IMDB API
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -98,7 +98,6 @@
                         rankedLifetimeGross(boxOfficeArea: ${boxOfficeArea}) {
                             total {
                                 amount
-                                currency
                             }
                             rank
                         }
@@ -106,12 +105,16 @@
                             gross {
                                 total {
                                     amount
-                                    currency
                                 }
                             }
                             theaterCount
                             weekendEndDate
                             weekendStartDate
+                        }
+                        productionBudget {
+                            budget {
+                                amount
+                            }
                         }
                     }
                 }
@@ -151,38 +154,49 @@
         boxOfficeContainer.style.fontSize = "1em";
 
         const formatCurrency = (amount) => {
-            return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+            return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(amount);
         };
 
-        const formatBoxOffice = (title, boxOfficeData, boxOfficeArea) => {
+        const formatRankedGross = (title, boxOfficeData) => {
             if (boxOfficeData && boxOfficeData.total && boxOfficeData.total.amount) {
-                return `<strong>Gross (${boxOfficeArea}):</strong> USD ${formatCurrency(boxOfficeData.total.amount)} (Rank: ${boxOfficeData.rank})<br>`;
+                return `<strong>${title} (${boxOfficeArea}):</strong> USD ${formatCurrency(boxOfficeData.total.amount)} (Rank: ${boxOfficeData.rank})<br>`;
             }
             return "";
         };
 
-        const formatOpeningWeekendGross = (boxOfficeData) => {
+        const formatOpeningWeekendGross = (title, boxOfficeData) => {
             if (boxOfficeData && boxOfficeData.gross && boxOfficeData.gross.total.amount) {
-                return `<strong>Opening Weekend Gross (${boxOfficeArea}):</strong> USD ${formatCurrency(boxOfficeData.gross.total.amount)}<br>`;
+                return `<strong>${title} (${boxOfficeArea}):</strong> USD ${formatCurrency(boxOfficeData.gross.total.amount)}<br>`;
             }
             return "";
         };
+
+        const formatProductionBudget = (budgetData) => {
+            if (budgetData && budgetData.amount) {
+                return `<strong>Production Budget:</strong> USD ${formatCurrency(budgetData.amount)}<br>`;
+            }
+            return "";
+        };
+
+        let output = '';
 
         if (boxOfficeArea === 'WORLDWIDE') {
-            boxOfficeContainer.innerHTML += formatBoxOffice("Ranked Lifetime Gross", titleData.rankedLifetimeGross, boxOfficeArea);
+            output += formatProductionBudget(titleData.productionBudget.budget);
+            output += formatRankedGross("Gross", titleData.rankedLifetimeGross);
         } else if (boxOfficeArea === 'DOMESTIC') {
-            boxOfficeContainer.innerHTML += formatBoxOffice("Ranked Lifetime Gross", titleData.rankedLifetimeGross, boxOfficeArea);
-            boxOfficeContainer.innerHTML += formatOpeningWeekendGross(titleData.openingWeekendGross);
+            output += formatRankedGross("Gross", titleData.rankedLifetimeGross);
+            output += formatOpeningWeekendGross("Opening Weekend Gross", titleData.openingWeekendGross);
             if (titleData.openingWeekendGross) {
-                boxOfficeContainer.innerHTML += `<strong>Theater Count:</strong> ${titleData.openingWeekendGross.theaterCount}<br>
-                        <strong>Weekend Start Date:</strong> ${titleData.openingWeekendGross.weekendStartDate}<br>
-                        <strong>Weekend End Date:</strong> ${titleData.openingWeekendGross.weekendEndDate}<br>`;
+                output += `<strong>Theater Count:</strong> ${titleData.openingWeekendGross.theaterCount}<br>
+                           <strong>Weekend Start Date:</strong> ${titleData.openingWeekendGross.weekendStartDate}<br>
+                           <strong>Weekend End Date:</strong> ${titleData.openingWeekendGross.weekendEndDate}<br>`;
             }
         } else if (boxOfficeArea === 'INTERNATIONAL') {
-            boxOfficeContainer.innerHTML += formatBoxOffice("Ranked Lifetime Gross", titleData.rankedLifetimeGross, boxOfficeArea);
-            boxOfficeContainer.innerHTML += formatOpeningWeekendGross(titleData.openingWeekendGross);
+            output += formatRankedGross("Gross", titleData.rankedLifetimeGross);
+            output += formatOpeningWeekendGross("Opening Weekend Gross", titleData.openingWeekendGross);
         }
 
+        boxOfficeContainer.innerHTML = output;
         panelBody.appendChild(boxOfficeContainer);
     };
 
