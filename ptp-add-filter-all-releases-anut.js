@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.1.3-A
+// @version      4.1.4-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -132,10 +132,10 @@
             "bhd": ["bhd_api", "bhd_rss"],
             "hdb": ["hdb_user", "hdb_pass"],
             "tvv": ["tvv_auth", "tvv_torr", "easysearch"],
-            "rtf": ["rtf_user", "rtf_pass", "rtf_token", "rtf_last_login_run_raw", "authloginwait"],
-            "avistaz": ["avistaz_user", "avistaz_pass", "avistaz_pid", "avistaz_token", "avistaz_last_login_run_raw", "authloginwait"],
-            "cinemaz": ["cinemaz_user", "cinemaz_pass", "cinemaz_pid", "cinemaz_token", "cinemaz_last_login_run_raw", "authloginwait"],
-            "phd": ["phd_user", "phd_pass", "phd_pid", "phd_token", "phd_last_login_run_raw", "authloginwait"],
+            "rtf": ["rtf_user", "rtf_pass", "rtf_token", "rtf_last_login_run_raw"],
+            "avistaz": ["avistaz_user", "avistaz_pass", "avistaz_pid", "avistaz_token", "avistaz_last_login_run_raw"],
+            "cinemaz": ["cinemaz_user", "cinemaz_pass", "cinemaz_pid", "cinemaz_token", "cinemaz_last_login_run_raw"],
+            "phd": ["phd_user", "phd_pass", "phd_pid", "phd_token", "phd_last_login_run_raw"],
             "hidesamesize": ["logsamesize", "fuzzyMatching", "valueinMIB"]
         };
 
