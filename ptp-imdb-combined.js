@@ -554,6 +554,7 @@
         };
 
         panelHeading.appendChild(title);
+        panelHeading.appendChild(toggle);
         newPanel.appendChild(panelHeading);
 
         var panelBody = document.createElement('div');
