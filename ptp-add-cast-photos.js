@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP Add cast photos
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.0.2
+// @version      3.0.3
 // @description  Adds cast photos to movie pages
 // @author       Chameleon (mods by Audionut to use IMDB API)
 // @include      http*://*passthepopcorn.me/torrents.php?id=*

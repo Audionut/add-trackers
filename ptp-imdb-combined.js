@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.2
+// @version      1.0.3
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -451,7 +451,7 @@
         title.appendChild(document.createTextNode(' Technical Specifications'));
 
         var imdbLink = document.createElement('a');
-        imdbLink.href = `https://www.imdb.com/title/${imdbId}/technical/?ref_=tt_spec_sm`;
+        imdbLink.href = `https://www.imdb.com/title/${imdbId}/technical`;
         imdbLink.title = 'IMDB Url';
         imdbLink.textContent = 'IMDb Url';
         imdbLink.target = '_blank';

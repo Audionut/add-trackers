@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add iMDB Soundtracks
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.8
+// @version      0.9
 // @description  Add soundtracks from IMDB API
 // @author       passthepopcorn_cc (mods by Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
