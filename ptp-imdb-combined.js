@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.1
+// @version      1.0.2
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -22,6 +22,21 @@
     const PLACE_UNDER_CAST = false;
     const SHOW_TECHNICAL_SPECIFICATIONS = true; // Change to false to hide "Technical Specifications"
     const SHOW_BOX_OFFICE = true; // Change to false to hide "Box Office"
+
+    // Function to format the IMDb text
+    function formatIMDbText() {
+        // Find the element containing the IMDb text
+        var imdbElement = document.querySelector('div.box_tags .panel__heading__title');
+
+        if (imdbElement) {
+            // Create the new formatted HTML
+            var formattedHTML = '<span class="panel__heading__title"><span style="color: rgb(242, 219, 131);">iMDB</span> tags</span>';
+            // Set the inner HTML of the element to the formatted HTML
+            imdbElement.innerHTML = formattedHTML;
+        }
+    }
+    // Run the function when the DOM is fully loaded
+    window.addEventListener('load', formatIMDbText);
 
     var link = document.querySelector("a#imdb-title-link.rating");
     if (!link) {
