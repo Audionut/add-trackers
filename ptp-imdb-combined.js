@@ -144,7 +144,7 @@
                                 }
                             }
                         }
-                        moreLikeThisTitles(first: 10) {
+                        moreLikeThisTitles(first: 12) {
                             edges {
                                 node {
                                     titleText {
