@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.0
+// @version      1.0.1
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -43,6 +43,20 @@
 
     // Function to fetch data from IMDB API
     const fetchIMDBData = async (imdbId) => {
+
+        const cacheiMDBKey = `iMDB_data_${imdbId}`;
+        const cachedData = await GM.getValue(cacheiMDBKey);
+        const cacheTimestamp = await GM.getValue(`${cacheiMDBKey}_timestamp`);
+
+        if (cachedData && cacheTimestamp) {
+            const currentTime = new Date().getTime();
+            if (currentTime - cacheTimestamp < 24 * 60 * 60 * 1000) {
+                console.log("Using cached data for iMDB");
+                const data = JSON.parse(cachedData);
+                return data;
+            }
+        }
+
         const url = `https://api.graphql.imdb.com/`;
         const query = {
             query: `
@@ -198,7 +212,15 @@
                 data: JSON.stringify(query),
                 onload: function (response) {
                     if (response.status >= 200 && response.status < 300) {
-                        resolve(JSON.parse(response.responseText));
+                        const data = JSON.parse(response.responseText);
+                        if (data && data.data && data.data.title) {
+                            GM.setValue(cacheiMDBKey, JSON.stringify(data));
+                            GM.setValue(`${cacheiMDBKey}_timestamp`, new Date().getTime());
+                            resolve(data);
+                        } else {
+                            console.error("Invalid data structure", data);
+                            reject(new Error("Invalid data structure"));
+                        }
                     } else {
                         console.error("Failed to fetch data", response);
                         reject(new Error("Failed to fetch data"));
@@ -314,7 +336,6 @@
             similarMoviesDiv.style.justifyContent = 'center';
             similarMoviesDiv.style.padding = '4px';
             similarMoviesDiv.style.width = '100%';
-            similarMoviesDiv.style.borderCollapse = 'separate';
         }
 
         let count = 0;
@@ -533,7 +554,6 @@
         };
 
         panelHeading.appendChild(title);
-        panelHeading.appendChild(toggle);
         newPanel.appendChild(panelHeading);
 
         var panelBody = document.createElement('div');
@@ -612,22 +632,26 @@
 
     // Initialize panels
     fetchIMDBData(imdbId).then(data => {
-        if (SHOW_SIMILAR_MOVIES && data.data.title.moreLikeThisTitles) {
-            displaySimilarMovies(data.data.title.moreLikeThisTitles.edges);
-        } else if (SHOW_SIMILAR_MOVIES) {
-            console.warn("No similar movies found");
-        }
+        if (data && data.data && data.data.title) {
+            if (SHOW_SIMILAR_MOVIES && data.data.title.moreLikeThisTitles) {
+                displaySimilarMovies(data.data.title.moreLikeThisTitles.edges);
+            } else if (SHOW_SIMILAR_MOVIES) {
+                console.warn("No similar movies found");
+            }
 
-        if (SHOW_TECHNICAL_SPECIFICATIONS && data.data.title) {
-            displayTechnicalSpecifications(data);
-        } else if (SHOW_TECHNICAL_SPECIFICATIONS) {
-            console.warn("No technical specifications found");
-        }
+            if (SHOW_TECHNICAL_SPECIFICATIONS && data.data.title.technicalSpecifications) {
+                displayTechnicalSpecifications(data);
+            } else if (SHOW_TECHNICAL_SPECIFICATIONS) {
+                console.warn("No technical specifications found");
+            }
 
-        if (SHOW_BOX_OFFICE && data.data.title) {
-            displayBoxOffice(data);
-        } else if (SHOW_BOX_OFFICE) {
-            console.warn("No box office data found");
+            if (SHOW_BOX_OFFICE && (data.data.title.worldwideGross || data.data.title.domesticGross || data.data.title.internationalGross)) {
+                displayBoxOffice(data);
+            } else if (SHOW_BOX_OFFICE) {
+                console.warn("No box office data found");
+            }
+        } else {
+            console.error("Failed to retrieve valid data");
         }
     }).catch(err => {
         console.error(err);
