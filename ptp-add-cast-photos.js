@@ -146,7 +146,7 @@
 
     const cDiv = document.createElement('div');
     cDiv.setAttribute('class', 'panel');
-    cDiv.innerHTML = '<div class="panel__heading"><span class="panel__heading__title"><span style="color: rgb(242, 219, 131);">iMDB</span> Cast</a></span></div>';
+    cDiv.innerHTML = '<div class="panel__heading"><span class="panel__heading__title"><span style="color: rgb(242, 219, 131);">IMDb</span> Cast</a></span></div>';
     const castDiv = document.createElement('div');
     castDiv.setAttribute('style', 'text-align:center; display:table; width:100%; border-collapse: separate; border-spacing:4px;');
     cDiv.appendChild(castDiv);

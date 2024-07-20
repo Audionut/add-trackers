@@ -272,7 +272,7 @@
 
         var imdb = document.createElement('span');
         imdb.style.color = '#F2DB83';
-        imdb.textContent = 'iMDB';
+        imdb.textContent = 'IMDb';
         title.appendChild(imdb);
         title.appendChild(document.createTextNode(' More like this'));
 
@@ -446,14 +446,14 @@
 
         var imdb = document.createElement('span');
         imdb.style.color = '#F2DB83';
-        imdb.textContent = 'iMDB';
+        imdb.textContent = 'IMDb';
         title.appendChild(imdb);
         title.appendChild(document.createTextNode(' Technical Specifications'));
 
         var imdbLink = document.createElement('a');
         imdbLink.href = `https://www.imdb.com/title/${imdbId}/technical/?ref_=tt_spec_sm`;
         imdbLink.title = 'IMDB Url';
-        imdbLink.textContent = 'IMDB Url';
+        imdbLink.textContent = 'IMDb Url';
         imdbLink.target = '_blank';
         imdbLink.style.marginLeft = '5px';
 
@@ -552,7 +552,7 @@
 
         var imdb = document.createElement('span');
         imdb.style.color = '#F2DB83';
-        imdb.textContent = 'iMDB';
+        imdb.textContent = 'IMDb';
         title.appendChild(imdb);
         title.appendChild(document.createTextNode(' Box Office'));
 

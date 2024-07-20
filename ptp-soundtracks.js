@@ -210,7 +210,7 @@
         new_panel.style.padding = 0;
         new_panel.style.margin = "18px 0";
 
-        new_panel.innerHTML = '<div class="panel__heading"><span class="panel__heading__title"><a href="https://www.imdb.com/title/' + imdb_id + '/soundtrack"><span style="color: rgb(242, 219, 131);">iMDB</span> Soundtrack</a></span></div>';
+        new_panel.innerHTML = '<div class="panel__heading"><span class="panel__heading__title"><a href="https://www.imdb.com/title/' + imdb_id + '/soundtrack"><span style="color: rgb(242, 219, 131);">IMDb</span> Soundtrack</a></span></div>';
 
         new_panel.querySelector(".panel__heading").style.display = "flex";
         new_panel.querySelector(".panel__heading").style.justifyContent = "space-between";
