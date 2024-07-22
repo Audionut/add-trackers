@@ -19,7 +19,7 @@
 
     // Options to display each script type
     const SHOW_SIMILAR_MOVIES = true; // Change to false to hide "Movies Like This"
-    const PLACE_UNDER_CAST = false;
+    const PLACE_UNDER_CAST = false; // Put more  like this under the cast list
     const SHOW_TECHNICAL_SPECIFICATIONS = true; // Change to false to hide "Technical Specifications"
     const SHOW_BOX_OFFICE = true; // Change to false to hide "Box Office"
 

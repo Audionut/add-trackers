@@ -1353,7 +1353,7 @@
                         } else if (size.includes("MB")) {
                             size = parseInt(parseFloat(size.split("MB")[0]));
                         } else size = 1; // must be kiloBytes, so lets assume 1mb.
-                        let downloadLink = [...d.querySelectorAll("a")].find(a => a.href.includes("/down.php/")).href;
+                        let downloadLink = [...d.querySelectorAll("a")].find(a => a.href.includes("/down.php/")).href.replace("passthepopcorn.me", "karagarga.in");
                         let releaseName = decodeURI(downloadLink).split(".torrent?")[0].split("/").pop();
                         if (releaseName.includes('.mkv')) {
                             releaseName = releaseName.replace('.mkv', '');
