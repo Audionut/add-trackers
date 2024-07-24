@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.1.4-A
+// @version      4.1.5-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -42,6 +42,8 @@
         "cinemaz_pass": {"label": "CinemaZ Password", "type": "text", "default": ""},
         "cinemaz_pid": {"label": "CinemaZ PID", "type": "text", "default": ""},
         "fl": {"label": "FL", "type": "checkbox", "default": false},
+        "fl_user": {"label": "FL_USER_NAME *", "type": "text", "default": "", "tooltip": "Requires 2fa enabled at HDB"},
+        "fl_pass": {"label": "FL_PASS_KEY *", "type": "text", "default": "", "tooltip": "Passkey from your HDB profile page"},
         "hdb": {"label": "HDB *", "type": "checkbox", "default": false, "tooltip": "Enter username and passkey below"},
         "hdb_user": {"label": "HDB_USER_NAME *", "type": "text", "default": "", "tooltip": "Requires 2fa enabled at HDB"},
         "hdb_pass": {"label": "HDB_PASS_KEY *", "type": "text", "default": "", "tooltip": "Passkey from your HDB profile page"},
@@ -130,6 +132,7 @@
     function toggleAuthFields(key, isAuthEnabled) {
         const multi_auth = {
             "bhd": ["bhd_api", "bhd_rss"],
+            "fl": ["fl_user", "fl_pass"],
             "hdb": ["hdb_user", "hdb_pass"],
             "tvv": ["tvv_auth", "tvv_torr", "easysearch"],
             "rtf": ["rtf_user", "rtf_pass", "rtf_token", "rtf_last_login_run_raw"],
@@ -199,6 +202,7 @@
                     "blu": GM_config.fields.blu.node,
                     "btn": GM_config.fields.btn.node,
                     "cinemaz": GM_config.fields.cinemaz.node,
+                    "fl": GM_config.fields.fl.node,
                     "hdb": GM_config.fields.hdb.node,
                     "lst": GM_config.fields.lst.node,
                     "mtv": GM_config.fields.mtv.node,
@@ -373,6 +377,8 @@
     const avistaz_token = GM_config.get("avistaz_token");
     const cinemaz_token = GM_config.get("cinemaz_token");
     const phd_token = GM_config.get("phd_token");
+    const FL_USER_NAME = GM_config.get("fl_user");
+    const FL_PASS_KEY = GM_config.get("fl_pass");
 
     // We need to use XML response with TVV and have to define some parameters for it to work correctly.
     const TVV_AUTH_KEY = GM_config.get("tvv_auth"); // If you want to use TVV - find your authkey from a torrent download link
@@ -514,73 +520,96 @@
         console.log("Active trackers:", trackers);
         console.log("Excluded trackers:", excludedTrackers.map(e => `${e.tracker} - ${e.reason}`));
 
-        function toUnixTime(dateString) {
-            // Check if the date string is in the ISO 8601 format (ends with 'Z' or includes time zone offset)
-            if (dateString.endsWith('Z') || dateString.includes('+') || dateString.includes('-')) {
-                return Math.floor(new Date(dateString).getTime() / 1000);
-            }
+function toUnixTime(dateString) {
+    // Check if the date string is in the format "DD/MM/YYYY HH:MM:SS"
+    const regexDDMMYYYY = /^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2}):(\d{2})$/;
+    const matchDDMMYYYY = dateString.match(regexDDMMYYYY);
+    if (matchDDMMYYYY) {
+        const day = parseInt(matchDDMMYYYY[1], 10);
+        const month = parseInt(matchDDMMYYYY[2], 10) - 1;
+        const year = parseInt(matchDDMMYYYY[3], 10);
+        const hours = parseInt(matchDDMMYYYY[4], 10);
+        const minutes = parseInt(matchDDMMYYYY[5], 10);
+        const seconds = parseInt(matchDDMMYYYY[6], 10);
 
-            // Check if the date string is in 'YYYY-MM-DD HH:MM:SS' format
-            else if (dateString.includes('-') && dateString.includes(':')) {
-                return Math.floor(new Date(dateString.replace(' ', 'T') + 'Z').getTime() / 1000);
-            }
+        const date = new Date(year, month, day, hours, minutes, seconds);
+        return Math.floor(date.getTime() / 1000); // Convert to Unix timestamp in seconds
+    }
 
-            // Check if the date string is in the format "Sat, 20 Jun 2015 01:58:58 +0000"
-            else if (Date.parse(dateString)) {
-                return Math.floor(new Date(dateString).getTime() / 1000);
-            }
+    // Check if the date string is in 'YYYY-MM-DD HH:MM:SS' format
+    const regexYYYYMMDD = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/;
+    const matchYYYYMMDD = dateString.match(regexYYYYMMDD);
+    if (matchYYYYMMDD) {
+        const year = parseInt(matchYYYYMMDD[1], 10);
+        const month = parseInt(matchYYYYMMDD[2], 10) - 1;
+        const day = parseInt(matchYYYYMMDD[3], 10);
+        const hours = parseInt(matchYYYYMMDD[4], 10);
+        const minutes = parseInt(matchYYYYMMDD[5], 10);
+        const seconds = parseInt(matchYYYYMMDD[6], 10);
 
-            // Parse relative time strings
-            else {
-                const now = new Date();
-                const regex = /(\d+)\s*(years?|months?|weeks?|days?|hours?|mins?|minutes?|secs?|seconds?)/g;
-                let match;
+        const date = new Date(year, month, day, hours, minutes, seconds);
+        return Math.floor(date.getTime() / 1000); // Convert to Unix timestamp in seconds
+    }
 
-                while ((match = regex.exec(dateString)) !== null) {
-                    const value = parseInt(match[1], 10);
-                    const unit = match[2].toLowerCase();
+    // Check if the date string is in the ISO 8601 format (ends with 'Z' or includes time zone offset)
+    if (dateString.endsWith('Z') || dateString.includes('+') || dateString.includes('-')) {
+        return Math.floor(new Date(dateString).getTime() / 1000);
+    }
 
-                    switch (unit) {
-                        case 'year':
-                        case 'years':
-                            now.setFullYear(now.getFullYear() - value);
-                            break;
-                        case 'month':
-                        case 'months':
-                            now.setMonth(now.getMonth() - value);
-                            break;
-                        case 'week':
-                        case 'weeks':
-                            now.setDate(now.getDate() - (value * 7));
-                            break;
-                        case 'day':
-                        case 'days':
-                            now.setDate(now.getDate() - value);
-                            break;
-                        case 'hour':
-                        case 'hours':
-                            now.setHours(now.getHours() - value);
-                            break;
-                        case 'min':
-                        case 'mins':
-                        case 'minute':
-                        case 'minutes':
-                            now.setMinutes(now.getMinutes() - value);
-                            break;
-                        case 'sec':
-                        case 'secs':
-                        case 'second':
-                        case 'seconds':
-                            now.setSeconds(now.getSeconds() - value);
-                            break;
-                        default:
-                            break;
-                    }
-                }
+    // Check if the date string is in the format "Sat, 20 Jun 2015 01:58:58 +0000"
+    const parsedDate = Date.parse(dateString);
+    if (!isNaN(parsedDate)) {
+        return Math.floor(new Date(parsedDate).getTime() / 1000);
+    }
 
-                return Math.floor(now.getTime() / 1000);
-            }
+    // Parse relative time strings
+    const now = new Date();
+    const regexRelative = /(\d+)\s*(years?|months?|weeks?|days?|hours?|mins?|minutes?|secs?|seconds?)/g;
+    let match;
+    while ((match = regexRelative.exec(dateString)) !== null) {
+        const value = parseInt(match[1], 10);
+        const unit = match[2].toLowerCase();
+
+        switch (unit) {
+            case 'year':
+            case 'years':
+                now.setFullYear(now.getFullYear() - value);
+                break;
+            case 'month':
+            case 'months':
+                now.setMonth(now.getMonth() - value);
+                break;
+            case 'week':
+            case 'weeks':
+                now.setDate(now.getDate() - (value * 7));
+                break;
+            case 'day':
+            case 'days':
+                now.setDate(now.getDate() - value);
+                break;
+            case 'hour':
+            case 'hours':
+                now.setHours(now.getHours() - value);
+                break;
+            case 'min':
+            case 'mins':
+            case 'minute':
+            case 'minutes':
+                now.setMinutes(now.getMinutes() - value);
+                break;
+            case 'sec':
+            case 'secs':
+            case 'second':
+            case 'seconds':
+                now.setSeconds(now.getSeconds() - value);
+                break;
+            default:
+                break;
         }
+    }
+
+    return Math.floor(now.getTime() / 1000);
+}
 
         let discounts;
         if (simplediscounts) {
@@ -720,7 +749,8 @@
               (tracker === "AvistaZ") ||
               (tracker === "CinemaZ") ||
               (tracker === "PHD") ||
-              (tracker === "TL")
+              (tracker === "TL") ||
+              (tracker === "FL")
               ) {
                 return true;
             } else {
@@ -1146,82 +1176,6 @@
                     console.error("Error processing XML from MTV:", error);
                 }
             }
-            else if (tracker === "FL") {
-                html.querySelectorAll(".torrentrow").forEach((d) => {
-                    let torrent_obj = {};
-
-                    let size = [...d.querySelectorAll("font")].find((font) => {
-                        return (font.textContent.includes("[") === false) && (font.textContent.includes("TB") || font.textContent.includes("GB") || font.textContent.includes("MB"));
-                    }).textContent;
-
-                    if (size.includes("TB")) {
-                        size = parseInt(parseFloat(size.split("TB")[0]) * 1024 * 1024); // Convert TiB to MiB
-                    } else if (size.includes("GB")) {
-                        size = parseInt(parseFloat(size.split("GB")[0]) * 1024); // Convert GB to MiB
-                    } else if (size.includes("MB")) {
-                        size = parseInt(parseFloat(size.split("MB")[0]));
-                    }
-
-                    torrent_obj.size = size;
-
-                    let releaseName = [...d.querySelectorAll("a")].find(a => a.href.includes("details.php?id=")).title;
-                    torrent_obj.datasetRelease = releaseName;
-
-                    let groupText = "";
-                    const groups = goodGroups();
-                    const badGroupsList = badGroups();
-                    let matchedGroup = null;
-                    let badGroupFound = false;
-
-                    for (const badGroup of badGroupsList) {
-                        if (releaseName.includes(badGroup)) {
-                            badGroupFound = true;
-                            releaseName = releaseName.replace(badGroup, '').trim();
-                            groupText = "";
-                            break;
-                        }
-                    }
-
-                    if (!badGroupFound) {
-                        for (const group of groups) {
-                            if (releaseName.includes(group)) {
-                                matchedGroup = group;
-                                break;
-                            }
-                        }
-
-                        if (matchedGroup) {
-                            groupText = matchedGroup;
-                            if (improved_tags) {
-                                releaseName = releaseName.replace(groupText, '').trim();
-                            }
-                        } else {
-                            const match = releaseName.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
-                            if (match) {
-                                groupText = match[1];
-                                groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                                if (improved_tags) {
-                                    releaseName = releaseName.replace(`-${match[1]}`, '').trim();
-                                }
-                            }
-                        }
-                    }
-
-                    torrent_obj.info_text = releaseName.replace(/\./g, " ");
-                    torrent_obj.groupId = groupText;
-                    torrent_obj.site = "FL";
-                    torrent_obj.snatch = parseInt(d.querySelector("div:nth-child(8)").textContent.replace(/,/g, ""));
-                    torrent_obj.seed = parseInt(d.querySelector("div:nth-child(9)").textContent.replace(/,/g, ""));
-                    torrent_obj.leech = parseInt(d.querySelector("div:nth-child(10)").textContent.replace(/,/g, ""));
-                    torrent_obj.download_link = [...d.querySelectorAll("a")].find(a => a.href.includes("download.php?id=")).href.replace("passthepopcorn.me", "filelist.io");
-                    torrent_obj.torrent_page = [...d.querySelectorAll("a")].find(a => a.href.includes("/details.php?id=")).href.replace("passthepopcorn.me", "filelist.io");
-                    torrent_obj.status = "default";
-                    const discountImage = [...document.querySelectorAll("img")].find(image => image.alt.includes("FreeLeech"));
-                    const discountType = discountImage ? (simplediscounts ? "FL" : "FreeLeech") : "None";
-                    torrent_obj.discount = discountType;
-                    torrent_objs.push(torrent_obj);
-                });
-            }
             else if (tracker === "CG") {
                 let ar1 = [...html.querySelectorAll("tr.prim")];
                 let ar2 = [...html.querySelectorAll("tr.sec")];
@@ -1572,10 +1526,6 @@
                 if (html.querySelector(".torrent-search--list__no-result") === null) return true;
                 else return false;
             }
-            else if (tracker === "FL") {
-                if (html.querySelectorAll(".torrentrow").length === 0) return false;
-                else return true;
-            }
             else if (tracker === "CG") {
                 let ar1 = [...html.querySelectorAll("tr.prim")];
                 let ar2 = [...html.querySelectorAll("tr.even")];
@@ -1830,6 +1780,7 @@
                 'CinemaZ': 'GET',
                 'PHD': 'GET',
                 'TL': 'GET',
+                'FL': 'GET',
             };
             const method = methodMapping[tracker] || 'POST';
 
@@ -2203,7 +2154,7 @@
                     post_query_url = "https://privatehd.to/api/v1/jackett/torrents?imdb=" + imdb_id;
                 }
                 else if (tracker === "FL") {
-                    query_url = "https://filelist.io/browse.php?search=" + imdb_id + "&cat=0&searchin=1&sort=3";
+                    post_query_url = "https://filelist.io/api.php?username=" + FL_USER_NAME + "&passkey=" + FL_PASS_KEY + "&action=search-torrents&type=imdb&query=" + imdb_id;
                 }
                 else if (tracker === "CG") {
                     query_url = "https://cinemageddon.net/browse.php?search=" + imdb_id + "&orderby=size&dir=DESC";
@@ -2309,6 +2260,14 @@
                                                 resolve([]);
                                             } else {
                                                 console.log("Data fetched successfully from TL");
+                                                resolve(get_post_torrent_objects(tracker, result));
+                                            }
+                                        } else if (result && tracker === "FL") {
+                                            if (result.length ===  0) {
+                                                console.log("FL reached successfully but no results were returned");
+                                                resolve([]);
+                                            } else {
+                                                console.log(`Data fetched successfully from ${tracker}`);
                                                 resolve(get_post_torrent_objects(tracker, result));
                                             }
                                         } else {
@@ -3384,6 +3343,100 @@
                     console.error("An error occurred while processing BTN tracker:", error);
                 }
             }
+            else if (tracker === "FL") {
+                try {
+                    torrent_objs = postData.map((d) => {
+                        const size = parseInt(d.size / (1024 * 1024)); // Convert size to MiB
+                        const api_size = parseInt(d.size); // Original size
+                        let infoText = d.name;
+                        if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
+                          if (!isMiniSeriesFromSpan && /S\d{2}/.test(infoText)) {
+                              return null;
+                          } else {
+                              const inputTime = d.upload_date;
+                              let time = toUnixTime(inputTime);
+                              if (isNaN(time)) {
+                                  return null;
+                              }
+                                  let groupText = "";
+                                  const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
+                                  const badGroupsList = badGroups(); // Get the list of bad group names
+                                  let matchedGroup = null;
+                                  let badGroupFound = false;
+
+                                  // Check for bad groups
+                                  for (const badGroup of badGroupsList) {
+                                      if (infoText.includes(badGroup)) {
+                                          badGroupFound = true;
+                                          infoText = infoText.replace(badGroup, '').trim(); // Remove the bad group text
+                                          groupText = ""; // Set groupText to an empty string
+                                          break;
+                                      }
+                                  }
+
+                                  if (!badGroupFound) {
+                                      // Check for good groups if no bad group was found
+                                      for (const group of groups) {
+                                          if (infoText.includes(group)) {
+                                              matchedGroup = group;
+                                              break;
+                                          }
+                                      }
+
+                                      if (matchedGroup) {
+                                          groupText = matchedGroup;
+                                          if (improved_tags) {
+                                              infoText = infoText.replace(groupText, '').trim();
+                                          }
+                                      } else {
+                                          const match = infoText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
+                                          if (match) {
+                                              groupText = match[1]; // Use match[1] to get the capturing group
+                                              groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                              groupText = groupText.replace("Z0N3", "D-Z0N3");
+                                              if (improved_tags) {
+                                                  infoText = infoText.replace(`-${match[1]}`, '').trim();
+                                              }
+                                          }
+                                      }
+                                  }
+                              const url ="https://filelist.io/details.php?id=";
+                              const id = d.id;
+
+                                  const torrentObj = {
+                                      api_size: api_size,
+                                      datasetRelease: d.name,
+                                      size: size,
+                                      info_text: infoText,
+                                      tracker: tracker,
+                                      site: tracker,
+                                      snatch: d.times_completed || 0,
+                                      seed: d.seeders || 0,
+                                      leech: d.leechers || 0,
+                                      download_link: d.download_link,
+                                      torrent_page: `${url}${id}`,
+                                      discount: d.freeleech === 1 ? "FREELEECH" : "None",
+                                      internal: d.internal === 1 ? true : false,
+                                      double_upload: d.doubleup === 1 ? true : false,
+                                      groupId: groupText,
+                                      time: time,
+                                  };
+
+                                  // Map additional properties if necessary
+                                  const mappedObj = {
+                                      ...torrentObj,
+                                      quality: get_torrent_quality(torrentObj),
+                                  };
+                                  return mappedObj;
+                              }
+                          } else {
+                            return null;
+                          }
+                    }).filter(obj => obj !== null); // Filter out any null objects
+                } catch (error) {
+                    console.error("An error occurred while processing ANT tracker:", error);
+                }
+            }
             if (debug) {
                 console.log(`${tracker} processed torrent objects`, torrent_objs);
             }
@@ -4204,7 +4257,7 @@
                         if (torrent.site === "MTV") {
                             torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__tags torrent-info__tags--internal'>Internal</span>" : false;
                         }
-                        if (torrent.site === "BLU" || torrent.site === "Aither" || torrent.site === "RFX" || torrent.site === "OE" || torrent.site === "HUNO" || torrent.site === "LST") {
+                        if (torrent.site === "BLU" || torrent.site === "Aither" || torrent.site === "RFX" || torrent.site === "OE" || torrent.site === "HUNO" || torrent.site === "LST" || torrent.site === "FL") {
                             get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__tags torrent-info__tags--internal'>Internal</span>") : false;
                             get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__download-modifier'>DU</span>") : false;
                             get_api_featured(torrent.featured) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__download-modifier'>Featured</span>") : false;
@@ -4232,7 +4285,7 @@
                         if (torrent.site === "MTV") {
                             torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
                         }
-                        if (torrent.site === "BLU" || torrent.site === "Aither" || torrent.site === "RFX" || torrent.site === "OE" || torrent.site === "HUNO" || torrent.site === "LST") {
+                        if (torrent.site === "BLU" || torrent.site === "Aither" || torrent.site === "RFX" || torrent.site === "OE" || torrent.site === "HUNO" || torrent.site === "LST" || torrent.site === "FL") {
                             get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #baaf92'>Internal</span>") : false;
                             get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__DU' style='font-weight: bold; color: #279d29'>DU</span>") : false;
                             get_api_featured(torrent.featured) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__Featured' style='font-weight: bold; color: #997799'>Featured</span>") : false;
@@ -4359,7 +4412,7 @@
 
                 cln.querySelector(".size-span").textContent = ptp_format_size;
 
-                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV", "LST", "ANT", "RTF", "AvistaZ", "CinemaZ", "PHD", "TL"];
+                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV", "LST", "ANT", "RTF", "AvistaZ", "CinemaZ", "PHD", "TL", "FL"];
                 if (byteSizedTrackers.includes(torrent.site)) {
                     cln.querySelector(".size-span").setAttribute("title", api_sized);
                 } else {
