@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.1.5-A
+// @version      4.1.6-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -2328,6 +2328,10 @@ function toUnixTime(dateString) {
                                     console.log(`Data array from ${tracker}`, data);
                                     }
                                     console.log(`${tracker} reached successfully but no results were returned`);
+                                } else if (data.data === "404") {
+                                    console.warn(`${tracker} API is down`);
+                                    displayAlert(`${tracker} API is down`);
+                                    resolve([]);
                                 } else {
                                     if (debug) {
                                         console.log(`Data array from ${tracker}`, data.data);
