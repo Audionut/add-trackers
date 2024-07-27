@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.1.6-A
+// @version      4.1.7-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -41,9 +41,9 @@
         "cinemaz_user": {"label": "CinemaZ Username", "type": "text", "default": ""},
         "cinemaz_pass": {"label": "CinemaZ Password", "type": "text", "default": ""},
         "cinemaz_pid": {"label": "CinemaZ PID", "type": "text", "default": ""},
-        "fl": {"label": "FL", "type": "checkbox", "default": false},
-        "fl_user": {"label": "FL_USER_NAME *", "type": "text", "default": "", "tooltip": "Requires 2fa enabled at HDB"},
-        "fl_pass": {"label": "FL_PASS_KEY *", "type": "text", "default": "", "tooltip": "Passkey from your HDB profile page"},
+        "fl": {"label": "FL *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
+        "fl_user": {"label": "FL_USER_NAME", "type": "text", "default": ""},
+        "fl_pass": {"label": "FL_PASS_KEY *", "type": "text", "default": "", "tooltip": "Passkey from your user settings page, the upload form or a torrent in your client"},
         "hdb": {"label": "HDB *", "type": "checkbox", "default": false, "tooltip": "Enter username and passkey below"},
         "hdb_user": {"label": "HDB_USER_NAME *", "type": "text", "default": "", "tooltip": "Requires 2fa enabled at HDB"},
         "hdb_pass": {"label": "HDB_PASS_KEY *", "type": "text", "default": "", "tooltip": "Passkey from your HDB profile page"},
