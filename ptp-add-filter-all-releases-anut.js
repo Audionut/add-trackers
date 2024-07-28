@@ -3324,6 +3324,17 @@ function toUnixTime(dateString) {
                                           infoText = `${hd} ${infoText}`;
                                       }
                                   }
+                                  let isFL = d.tags;
+                                  let discount;
+                                  if (isFL.includes("FREELEECH")) {
+                                      if (simplediscounts) {
+                                          discount = "FL";
+                                      } else {
+                                          discount = "Freeleech";
+                                      }
+                                  } else {
+                                      discount = "None";
+                                  }
 
                                   const torrentObj = {
                                       api_size: api_size,
@@ -3337,7 +3348,7 @@ function toUnixTime(dateString) {
                                       leech: parseInt(d.Leechers) || 0,
                                       download_link: `https://www.torrentleech.cc/download/${id}/${down}`,
                                       torrent_page: `https://www.torrentleech.cc/torrent/${id}`,
-                                      discount: d.tags.includes("FREELEECH") ? "Freeleech" : "None",
+                                      discount: discount,
                                       status: "default",
                                       groupId: groupText,
                                       time: time,
