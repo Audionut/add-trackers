@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.1.7-A
+// @version      4.1.8-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -1758,11 +1758,11 @@ function toUnixTime(dateString) {
                     'Accept': 'application/json',
                     'Authorization': `Bearer ${GM_config.get("phd_token")}`,
                 },
-                'TL': {
-                    'Content-Type': 'application/json',
+                //'FL': {
+                    //'Content-Type': 'application/json',
                     //'Accept': 'application/json',
-                    //'Authorization': GM_config.get("rtf_token"),
-                },
+                    //'Authorization': '',
+                //},
                 // Add more trackers and their headers as needed
             };
 
@@ -3285,13 +3285,25 @@ function toUnixTime(dateString) {
                                   const match = infoText.match(" TS ");
                                   if (match) {
                                       if (improved_tags) {
-                                          infoText = infoText.replace(" TS ", 'CAM').trim();
+                                          infoText = infoText.replace(" TS ", 'CAM_RIP').trim();
                                       }
                                   }
                                   const match1 = infoText.match("HDTS");
                                   if (match1) {
                                       if (improved_tags) {
-                                          infoText = infoText.replace("HDTS", 'CAM').trim();
+                                          infoText = infoText.replace("HDTS", 'CAM_RIP').trim();
+                                      }
+                                  }
+                                  const match2 = infoText.match("TELESYNC");
+                                  if (match2) {
+                                      if (improved_tags) {
+                                          infoText = infoText.replace("TELESYNC", 'CAM_RIP').trim();
+                                      }
+                                  }
+                                  const match3 = infoText.match(" CAM ");
+                                  if (match2) {
+                                      if (improved_tags) {
+                                          infoText = infoText.replace(" CAM ", 'CAM_RIP').trim();
                                       }
                                   }
                                   const cat = d.categoryID;
@@ -3406,6 +3418,17 @@ function toUnixTime(dateString) {
                                   }
                               const url ="https://filelist.io/details.php?id=";
                               const id = d.id;
+                              let isFL = d.freeleech
+                              let discount;
+                              if (isFL === 1) {
+                                  if (simplediscounts) {
+                                      discount = "FL";
+                                  } else {
+                                      discount = "Freeleech";
+                                  }
+                              } else {
+                                  discount = "None";
+                              }
 
                                   const torrentObj = {
                                       api_size: api_size,
@@ -3419,7 +3442,7 @@ function toUnixTime(dateString) {
                                       leech: d.leechers || 0,
                                       download_link: d.download_link,
                                       torrent_page: `${url}${id}`,
-                                      discount: d.freeleech === 1 ? "FREELEECH" : "None",
+                                      discount: discount,
                                       internal: d.internal === 1 ? true : false,
                                       double_upload: d.doubleup === 1 ? true : false,
                                       groupId: groupText,
@@ -4083,7 +4106,7 @@ function toUnixTime(dateString) {
             if (anthologyMatch && yearMatch && anthologyMatch.index < yearMatch.index) {
                 bonuses.push("Anthology");
             }
-            if (lower.includes("cam")) bonuses.push("CAM");
+            if (lower.includes("cam_rip")) bonuses.push("CAM");
             if (lower.includes("2in1")) bonuses.push("2in1");
             if (lower.includes("3in1")) bonuses.push("3in1");
             if (lower.includes("4in1")) bonuses.push("4in1");
