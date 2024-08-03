@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP upcoming releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.0
+// @version      1.0.1
 // @description  Get a list of upcoming releases from IMDB.
 // @author       Audionut
 // @match        https://passthepopcorn.me/upcoming.php*
@@ -22,6 +22,8 @@
     const NAME_IMAGES_CACHE_KEY = 'nameImagesData';
     const CURRENT_PAGE_KEY = 'currentPage';
     const RESULTS_PER_PAGE = 20;
+    const MAX_RESULTS = 45;  // per API call - Maximum 45 per call
+    const ALLOWED_GENRES = new Set([]); // Define your allowed genres here. ["Crime", "Drama", "Thriller"] for example.
 
     const clearCache = () => {
         GM_setValue(CACHE_KEY, null);
@@ -30,16 +32,17 @@
         GM_setValue(CURRENT_PAGE_KEY, 1);
     };
 
-    const fetchComingSoonData = async () => {
+    const fetchComingSoonData = async (afterDate = null) => {
         const url = `https://api.graphql.imdb.com/`;
         const today = new Date().toISOString().split('T')[0];
+        const dateFilter = afterDate ? afterDate : today;
         const comingSoonQuery = {
             query: `
                 query {
                     comingSoon(
                         comingSoonType: MOVIE,
-                        first: 45,
-                        releasingOnOrAfter: "${today}",
+                        first: ${MAX_RESULTS},
+                        releasingOnOrAfter: "${dateFilter}",
                         sort: {sortBy: RELEASE_DATE, sortOrder: ASC}
                     ) {
                         edges {
@@ -104,47 +107,70 @@
             `
         };
 
-        GM_xmlhttpRequest({
-            method: "POST",
-            url: url,
-            headers: {
-                "Content-Type": "application/json"
-            },
-            data: JSON.stringify(comingSoonQuery),
-            onload: async function (response) {
-                if (response.status >= 200 && response.status < 300) {
-                    const comingSoonData = JSON.parse(response.responseText);
-                    console.log("Coming Soon data:", comingSoonData);
+        return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: "POST",
+                url: url,
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                data: JSON.stringify(comingSoonQuery),
+                onload: function (response) {
+                    if (response.status >= 200 && response.status < 300) {
+                        const comingSoonData = JSON.parse(response.responseText);
+                        console.log("Coming Soon data:", comingSoonData);
 
-                    if (!comingSoonData.data || !comingSoonData.data.comingSoon || comingSoonData.data.comingSoon.edges.length === 0) {
-                        console.log("No more data available or received empty data.");
-                        return;
+                        if (!comingSoonData.data || !comingSoonData.data.comingSoon || comingSoonData.data.comingSoon.edges.length === 0) {
+                            console.log("No more data available or received empty data.");
+                            resolve([]);
+                            return;
+                        }
+
+                        const edges = comingSoonData.data.comingSoon.edges;
+                        resolve(edges);
+                    } else {
+                        console.error("Failed to fetch coming soon data", response);
+                        reject(response);
                     }
-
-                    const edges = comingSoonData.data.comingSoon.edges;
-                    const cachedData = { edges: edges };
-                    GM_setValue(CACHE_KEY, cachedData);
-                    GM_setValue(CACHE_EXPIRATION_KEY, Date.now() + 24 * 60 * 60 * 1000);
-
-                    const nameIds = [];
-                    cachedData.edges.forEach(edge => {
-                        edge.node.credits.edges.forEach(credit => {
-                            nameIds.push(credit.node.name.id);
-                        });
-                    });
-
-                    const primaryImageUrls = await fetchPrimaryImageUrls(nameIds);
-                    GM_setValue(NAME_IMAGES_CACHE_KEY, primaryImageUrls);
-
-                    displayResults(1);
-                } else {
-                    console.error("Failed to fetch coming soon data", response);
+                },
+                onerror: function (response) {
+                    console.error("Request error", response);
+                    reject(response);
                 }
-            },
-            onerror: function (response) {
-                console.error("Request error", response);
-            }
+            });
         });
+    };
+
+    const fetchAllComingSoonData = async () => {
+        let allEdges = [];
+        let lastReleaseDate = null;
+
+        while (true) {
+            const newEdges = await fetchComingSoonData(lastReleaseDate ? lastReleaseDate : null);
+            if (newEdges.length === 0) break;
+
+            allEdges = allEdges.concat(newEdges);
+            const lastEdge = newEdges[newEdges.length - 1];
+            lastReleaseDate = `${lastEdge.node.releaseDate.year}-${String(lastEdge.node.releaseDate.month).padStart(2, '0')}-${String(lastEdge.node.releaseDate.day).padStart(2, '0')}`;
+
+            if (newEdges.length < MAX_RESULTS) break;
+        }
+
+        const cachedData = { edges: allEdges };
+        GM_setValue(CACHE_KEY, cachedData);
+        GM_setValue(CACHE_EXPIRATION_KEY, Date.now() + 24 * 60 * 60 * 1000);
+
+        const nameIds = [];
+        cachedData.edges.forEach(edge => {
+            edge.node.credits.edges.forEach(credit => {
+                nameIds.push(credit.node.name.id);
+            });
+        });
+
+        const primaryImageUrls = await fetchPrimaryImageUrls(nameIds);
+        GM_setValue(NAME_IMAGES_CACHE_KEY, primaryImageUrls);
+
+        displayResults(1);
     };
 
     const fetchPrimaryImageUrls = async (nameIds) => {
@@ -209,7 +235,7 @@
         const nameImagesData = GM_getValue(NAME_IMAGES_CACHE_KEY);
         if (!cachedData || !cachedData.edges || !nameImagesData) {
             console.log("No cached data available");
-            fetchComingSoonData(); // Fetch fresh data if no cached data is available
+            fetchAllComingSoonData(); // Fetch fresh data if no cached data is available
             return;
         }
 
@@ -221,7 +247,13 @@
 
         const startIndex = (page - 1) * RESULTS_PER_PAGE;
         const endIndex = startIndex + RESULTS_PER_PAGE;
-        const pageData = cachedData.edges.slice(startIndex, endIndex);
+        let pageData = cachedData.edges.slice(startIndex, endIndex);
+
+        if (ALLOWED_GENRES.size > 0) {
+            pageData = pageData.filter(movie => {
+                return movie.node.genres.genres.some(genre => ALLOWED_GENRES.has(genre.text));
+            });
+        }
 
         console.log(`Displaying results for page ${page}`);
         console.log(`Showing results from ${startIndex} to ${endIndex}`);
@@ -236,7 +268,7 @@
                 console.log("Skipping movie due to missing release date:", movie);
                 return acc;
             }
-            const dateStr = new Date(`${releaseDate.year}-${releaseDate.month}-${releaseDate.day}`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+            const dateStr = new Date(`${releaseDate.year}-${String(releaseDate.month).padStart(2, '0')}-${String(releaseDate.day).padStart(2, '0')}`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
             if (!acc[dateStr]) acc[dateStr] = [];
             acc[dateStr].push(movie);
             return acc;
@@ -262,8 +294,8 @@
                 const imageLink = document.createElement("a");
                 imageLink.href = `https://passthepopcorn.me/requests.php?search=${node.id}`;
                 const image = document.createElement("img");
-                image.src = node.primaryImage.url;
-                image.alt = node.primaryImage.caption.plainText;
+                image.src = node.primaryImage && node.primaryImage.url ? node.primaryImage.url : 'https://ptpimg.me/w6l4kj.png';
+                image.alt = node.primaryImage && node.primaryImage.caption ? node.primaryImage.caption.plainText : 'No image available';
                 image.style.maxWidth = "200px";
                 image.style.marginRight = "10px";
                 imageLink.appendChild(image);
@@ -285,7 +317,7 @@
                 infoDiv.appendChild(titleLink);
 
                 const plot = document.createElement("p");
-                plot.textContent = node.plot.plotText.plainText;
+                plot.textContent = node.plot ? node.plot.plotText.plainText : "No plot available.";
                 infoDiv.appendChild(plot);
 
                 const genres = document.createElement("p");
@@ -398,7 +430,7 @@
             GM_setValue(CURRENT_PAGE_KEY, page);
             displayResults(page);
         } else {
-            fetchComingSoonData();
+            fetchAllComingSoonData();
         }
     };
 
@@ -408,9 +440,9 @@
         const isCacheExpired = Date.now() > cacheExpiration;
 
         if (isCacheExpired) {
-            //clearCache();
+            clearCache();
             console.log("Fetching fresh data for upcoming releases");
-            fetchComingSoonData();
+            fetchAllComingSoonData();
         } else {
             console.log("Using cached data for upcoming releases");
             const cachedData = GM_getValue(CACHE_KEY);
@@ -418,7 +450,7 @@
             if (cachedData && cachedData.edges.length > 0 && nameImagesData) {
                 displayResults(currentPage);
             } else {
-                fetchComingSoonData();
+                fetchAllComingSoonData();
             }
         }
     };
