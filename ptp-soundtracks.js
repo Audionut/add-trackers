@@ -153,7 +153,7 @@
                                     const performedByMatch = comment.markdown.match(/Performed by (.*)/);
                                     if (performedByMatch) {
                                         artistName = performedByMatch[1];
-                                        artistLink = `https://www.imdb.com/find/?q=${encodeURIComponent(artistName)}`;
+                                        artistLink = `https://duckduckgo.com/?q=${encodeURIComponent(artistName)}`;
                                         console.log(`Performed by match: Artist Name: ${artistName}, Artist Link: ${artistLink}`); // Log performed by match
                                     }
                                 }
@@ -165,11 +165,11 @@
                             const product = soundtrack.amazonMusicProducts[0];
                             if (product.artists && product.artists.length > 0) {
                                 artistName = product.artists[0].artistName.text;
-                                artistLink = `https://www.imdb.com/find/?q=${encodeURIComponent(artistName)}`;
+                                artistLink = `https://duckduckgo.com/?q=${encodeURIComponent(artistName)}`;
                                 console.log(`Amazon Music Product Artist: Artist Name: ${artistName}, Artist Link: ${artistLink}`); // Log amazon music product artist
                             } else {
                                 artistName = product.productTitle.text;
-                                artistLink = `https://www.imdb.com/find/?q=${encodeURIComponent(artistName)}`;
+                                artistLink = `https://duckduckgo.com/?q=${encodeURIComponent(artistName)}`;
                                 console.log(`Amazon Music Product Title: Artist Name: ${artistName}, Artist Link: ${artistLink}`); // Log amazon music product title
                             }
                         }
@@ -177,7 +177,7 @@
                         // Final fallback to text
                         if (!artistName) {
                             artistName = soundtrack.text;
-                            artistLink = `https://www.imdb.com/find/?q=${encodeURIComponent(artistName)}`;
+                            artistLink = `https://duckduckgo.com/?q=${encodeURIComponent(artistName)}`;
                             console.log(`Fallback to soundtrack text: Artist Name: ${artistName}, Artist Link: ${artistLink}`); // Log fallback to soundtrack text
                         }
 
