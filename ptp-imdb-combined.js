@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.3
+// @version      1.0.4
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -19,7 +19,7 @@
 
     // Options to display each script type
     const SHOW_SIMILAR_MOVIES = true; // Change to false to hide "Movies Like This"
-    const PLACE_UNDER_CAST = false; // Put more  like this under the cast list
+    const PLACE_UNDER_CAST = false; // Put more like this under the cast list
     const SHOW_TECHNICAL_SPECIFICATIONS = true; // Change to false to hide "Technical Specifications"
     const SHOW_BOX_OFFICE = true; // Change to false to hide "Box Office"
 
@@ -77,10 +77,26 @@
             query: `
                 query {
                     title(id: "${imdbId}") {
-                        runtime {
-                            displayableProperty {
-                                value {
-                                    plainText
+                        id
+                        titleText {
+                            text
+                        }
+                        releaseYear {
+                            year
+                        }
+                        runtimes(first: 5) {
+                            edges {
+                                node {
+                                    id
+                                    seconds
+                                    displayableProperty {
+                                        value {
+                                            plainText
+                                        }
+                                    }
+                                    attributes {
+                                        text
+                                    }
                                 }
                             }
                         }
@@ -434,110 +450,124 @@
     };
 
     // Function to display technical specifications
-    const displayTechnicalSpecifications = (data) => {
+const displayTechnicalSpecifications = (data) => {
 
-        var newPanel = document.createElement('div');
-        newPanel.className = 'panel';
-        newPanel.id = 'technical_specifications';
-        var panelHeading = document.createElement('div');
-        panelHeading.className = 'panel__heading';
-        var title = document.createElement('span');
-        title.className = 'panel__heading__title';
+    var newPanel = document.createElement('div');
+    newPanel.className = 'panel';
+    newPanel.id = 'technical_specifications';
+    var panelHeading = document.createElement('div');
+    panelHeading.className = 'panel__heading';
+    var title = document.createElement('span');
+    title.className = 'panel__heading__title';
 
-        var imdb = document.createElement('span');
-        imdb.style.color = '#F2DB83';
-        imdb.textContent = 'IMDb';
-        title.appendChild(imdb);
-        title.appendChild(document.createTextNode(' Technical Specifications'));
+    var imdb = document.createElement('span');
+    imdb.style.color = '#F2DB83';
+    imdb.textContent = 'IMDb';
+    title.appendChild(imdb);
+    title.appendChild(document.createTextNode(' Technical Specifications'));
 
-        var imdbLink = document.createElement('a');
-        imdbLink.href = `https://www.imdb.com/title/${imdbId}/technical`;
-        imdbLink.title = 'IMDB Url';
-        imdbLink.textContent = 'IMDb Url';
-        imdbLink.target = '_blank';
-        imdbLink.style.marginLeft = '5px';
+    var imdbLink = document.createElement('a');
+    imdbLink.href = `https://www.imdb.com/title/${imdbId}/technical`;
+    imdbLink.title = 'IMDB Url';
+    imdbLink.textContent = 'IMDb Url';
+    imdbLink.target = '_blank';
+    imdbLink.style.marginLeft = '5px';
 
-        var toggle = document.createElement('a');
-        toggle.className = 'panel__heading__toggler';
-        toggle.title = 'Toggle';
-        toggle.href = '#';
-        toggle.textContent = 'Toggle';
+    var toggle = document.createElement('a');
+    toggle.className = 'panel__heading__toggler';
+    toggle.title = 'Toggle';
+    toggle.href = '#';
+    toggle.textContent = 'Toggle';
 
-        toggle.onclick = function () {
-            var panelBody = document.querySelector('#technical_specifications .panel__body');
-            panelBody.style.display = (panelBody.style.display === 'none') ? 'block' : 'none';
-            return false;
-        };
-
-        panelHeading.appendChild(title);
-        panelHeading.appendChild(imdbLink);
-        panelHeading.appendChild(toggle);
-        newPanel.appendChild(panelHeading);
-
-        var panelBody = document.createElement('div');
-        panelBody.className = 'panel__body';
-        newPanel.appendChild(panelBody);
-
-        var sidebar = document.querySelector('div.sidebar');
-        if (!sidebar) {
-            console.error("Sidebar not found");
-            return;
-        }
-        sidebar.insertBefore(newPanel, sidebar.childNodes[4]);
-
-        const specs = data.data.title.technicalSpecifications || {};
-        const runtime = data.data.title.runtime?.displayableProperty?.value?.plainText || 'N/A';
-        const panelBodyElement = document.getElementById('technical_specifications').querySelector('.panel__body');
-
-        const specContainer = document.createElement('div');
-        specContainer.className = 'technicalSpecification';
-        specContainer.style.color = "#fff";
-        specContainer.style.fontSize = "1em";
-
-        const formatSpec = (title, items, key, attributesKey) => {
-            if (items && items.length > 0) {
-                let values = items.map(item => {
-                    let value = item[key];
-                    if (item[attributesKey] && item[attributesKey].length > 0) {
-                        value += ` (${item[attributesKey].map(attr => attr.text).join(", ")})`;
-                    }
-                    return value;
-                }).filter(value => value).join(", ");
-                return `<strong>${title}:</strong> ${values}<br>`;
-            }
-            return "";
-        };
-
-        const formatFilmLengths = (items) => {
-            if (items && items.length > 0) {
-                let values = items.map(item => {
-                    let value = `${item.filmLength} m`;
-                    if (item.countries && item.countries.length > 0) {
-                        value += ` (${item.countries.map(country => country.text).join(", ")})`;
-                    }
-                    if (item.numReels) {
-                        value += ` (${item.numReels} reels)`;
-                    }
-                    return value;
-                }).filter(value => value).join(", ");
-                return `<strong>Film Length:</strong> ${values}<br>`;
-            }
-            return "";
-        };
-
-        specContainer.innerHTML += `<strong>Runtime:</strong> ${runtime}<br>`;
-        specContainer.innerHTML += formatSpec("Aspect Ratio", specs.aspectRatios?.items || [], "aspectRatio", "attributes");
-        specContainer.innerHTML += formatSpec("Camera", specs.cameras?.items || [], "camera", "attributes");
-        specContainer.innerHTML += formatSpec("Color", specs.colorations?.items || [], "text", "attributes");
-        specContainer.innerHTML += formatSpec("Laboratory", specs.laboratories?.items || [], "laboratory", "attributes");
-        specContainer.innerHTML += formatSpec("Negative Format", specs.negativeFormats?.items || [], "negativeFormat", "attributes");
-        specContainer.innerHTML += formatSpec("Printed Film Format", specs.printedFormats?.items || [], "printedFormat", "attributes");
-        specContainer.innerHTML += formatSpec("Cinematographic Process", specs.processes?.items || [], "process", "attributes");
-        specContainer.innerHTML += formatSpec("Sound Mix", specs.soundMixes?.items || [], "text", "attributes");
-        specContainer.innerHTML += formatFilmLengths(specs.filmLengths?.items || []);
-
-        panelBodyElement.appendChild(specContainer);
+    toggle.onclick = function () {
+        var panelBody = document.querySelector('#technical_specifications .panel__body');
+        panelBody.style.display = (panelBody.style.display === 'none') ? 'block' : 'none';
+        return false;
     };
+
+    panelHeading.appendChild(title);
+    panelHeading.appendChild(imdbLink);
+    panelHeading.appendChild(toggle);
+    newPanel.appendChild(panelHeading);
+
+    var panelBody = document.createElement('div');
+    panelBody.className = 'panel__body';
+    newPanel.appendChild(panelBody);
+
+    var sidebar = document.querySelector('div.sidebar');
+    if (!sidebar) {
+        console.error("Sidebar not found");
+        return;
+    }
+    sidebar.insertBefore(newPanel, sidebar.childNodes[4]);
+
+    const specs = data.data.title.technicalSpecifications || {};
+    const runtimes = data.data.title.runtimes?.edges || [];
+    const panelBodyElement = document.getElementById('technical_specifications').querySelector('.panel__body');
+
+    const specContainer = document.createElement('div');
+    specContainer.className = 'technicalSpecification';
+    specContainer.style.color = "#fff";
+    specContainer.style.fontSize = "1em";
+
+    const formatSpec = (title, items, key, attributesKey) => {
+        if (items && items.length > 0) {
+            let values = items.map(item => {
+                let value = item[key];
+                if (item[attributesKey] && item[attributesKey].length > 0) {
+                    value += ` (${item[attributesKey].map(attr => attr.text).join(", ")})`;
+                }
+                return value;
+            }).filter(value => value).join(", ");
+            return `<strong>${title}:</strong> ${values}<br>`;
+        }
+        return "";
+    };
+
+    const formatFilmLengths = (items) => {
+        if (items && items.length > 0) {
+            let values = items.map(item => {
+                let value = `${item.filmLength} m`;
+                if (item.countries && item.countries.length > 0) {
+                    value += ` (${item.countries.map(country => country.text).join(", ")})`;
+                }
+                if (item.numReels) {
+                    value += ` (${item.numReels} reels)`;
+                }
+                return value;
+            }).filter(value => value).join(", ");
+            return `<strong>Film Length:</strong> ${values}<br>`;
+        }
+        return "";
+    };
+
+    const formatRuntimes = (runtimes) => {
+        if (runtimes && runtimes.length > 0) {
+            let values = runtimes.map(runtime => {
+                let value = `${runtime.node.displayableProperty.value.plainText}`;
+                if (runtime.node.attributes && runtime.node.attributes.length > 0) {
+                    value += ` (${runtime.node.attributes.map(attr => attr.text).join(", ")})`;
+                }
+                return value;
+            }).join(", ");
+            return `<strong>Runtime:</strong> ${values}<br>`;
+        }
+        return "";
+    };
+
+    specContainer.innerHTML += formatRuntimes(runtimes);
+    specContainer.innerHTML += formatSpec("Sound mix", specs.soundMixes?.items || [], "text", "attributes");
+    specContainer.innerHTML += formatSpec("Color", specs.colorations?.items || [], "text", "attributes");
+    specContainer.innerHTML += formatSpec("Aspect ratio", specs.aspectRatios?.items || [], "aspectRatio", "attributes");
+    specContainer.innerHTML += formatSpec("Camera", specs.cameras?.items || [], "camera", "attributes");
+    specContainer.innerHTML += formatSpec("Laboratory", specs.laboratories?.items || [], "laboratory", "attributes");
+    specContainer.innerHTML += formatFilmLengths(specs.filmLengths?.items || []);
+    specContainer.innerHTML += formatSpec("Negative Format", specs.negativeFormats?.items || [], "negativeFormat", "attributes");
+    specContainer.innerHTML += formatSpec("Cinematographic Process", specs.processes?.items || [], "process", "attributes");
+    specContainer.innerHTML += formatSpec("Printed Film Format", specs.printedFormats?.items || [], "printedFormat", "attributes");
+
+    panelBodyElement.appendChild(specContainer);
+};
 
     // Function to display box office details
     const displayBoxOffice = (data) => {
