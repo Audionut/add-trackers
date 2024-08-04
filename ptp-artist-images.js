@@ -6,6 +6,8 @@
 // @match        https://passthepopcorn.me/artist.php?id=*
 // @icon         https://passthepopcorn.me/favicon.ico
 // @grant        GM_xmlhttpRequest
+// @grant        GM.setValue
+// @grant        GM.getValue
 // @connect      api.graphql.imdb.com
 // ==/UserScript==
 
@@ -15,14 +17,13 @@
     // Helper function to fetch image URLs from IMDb API
     const fetchImageUrls = async (nameIds, callback) => {
         const cacheKey = `imdb_images_${nameIds[0]}`;
-        const cachedData = localStorage.getItem(cacheKey);
+        const cachedData = await GM.getValue(cacheKey);
         if (cachedData) {
-            console.log("Using cached data");
+            console.log("Using cached data for artist images");
             callback(JSON.parse(cachedData));
             return;
         }
 
-        console.log("Fetching image URLs for IMDb IDs:", nameIds);
         const url = `https://api.graphql.imdb.com/`;
         const query = {
             query: `
@@ -54,13 +55,10 @@
                 "Content-Type": "application/json"
             },
             data: JSON.stringify(query),
-            onload: function (response) {
-                console.log("Response status:", response.status);
+            onload: async function (response) {
                 if (response.status >= 200 && response.status < 300) {
-                    console.log("Response received:", response.responseText);
                     const data = JSON.parse(response.responseText);
-                    console.log("Parsed data:", data);
-                    localStorage.setItem(cacheKey, JSON.stringify(data.data.names));
+                    await GM.setValue(cacheKey, JSON.stringify(data.data.names));
                     callback(data.data.names);
                 } else {
                     console.error("Failed to fetch image URLs", response);
@@ -74,7 +72,6 @@
 
     // Helper function to add a new panel with the fetched image URLs
     const addImagePanel = (names) => {
-        console.log("Adding image panel for names:", names);
         if (names.length > 0) {
             const nameData = names[0];
             const primaryImage = nameData.primaryImage ? nameData.primaryImage.url : null;
@@ -82,14 +79,11 @@
             if (primaryImage) {
                 images.unshift(primaryImage);
             }
-            console.log("Using image URLs:", images);
 
             const sidebar = document.querySelector('.sidebar');
-            console.log("Sidebar found:", sidebar);
             if (sidebar) {
                 let existingPanel = sidebar.querySelector('.panel img.sidebar-cover-image');
                 if (existingPanel) {
-                    console.log("Existing panel found");
                     images.unshift(existingPanel.src);
                 } else {
                     existingPanel = document.createElement('img');
@@ -115,8 +109,6 @@
                     newPanel.appendChild(headingDiv);
                     newPanel.appendChild(bodyDiv);
                     sidebar.insertBefore(newPanel, sidebar.firstChild);
-
-                    console.log("New panel added to sidebar");
                 }
 
                 // Function to cycle through images every 5 seconds
@@ -134,16 +126,12 @@
 
     // Main function to initialize the script
     const init = () => {
-        console.log("Initializing script");
         const artistInfoPanel = document.querySelector('#artistinfo');
-        console.log("Artist info panel found:", artistInfoPanel);
         if (artistInfoPanel) {
             const imdbLink = artistInfoPanel.querySelector('a[href*="http://www.imdb.com/name/"]');
-            console.log("IMDb link found:", imdbLink);
             if (imdbLink) {
                 const imdbUrl = new URL(imdbLink.href);
                 const imdbId = imdbUrl.pathname.split('/')[2];
-                console.log("Extracted IMDb ID:", imdbId);
                 fetchImageUrls([imdbId], addImagePanel);
             }
         }
