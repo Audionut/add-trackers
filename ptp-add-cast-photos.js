@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         PTP Add cast photos
+// @name         PTP Add cast photos with awards
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      3.0.3
-// @description  Adds cast photos to movie pages
+// @version      3.0.4
+// @description  Adds cast photos and awards to movie pages
 // @author       Chameleon (mods by Audionut to use IMDB API)
 // @include      http*://*passthepopcorn.me/torrents.php?id=*
 // @grant        GM_xmlhttpRequest
@@ -12,82 +12,110 @@
 (function () {
   'use strict';
 
-  const fetchPrimaryImageUrl = async (nameIds) => {
+  const fetchIMDbData = async (imdbId, afterCursor = null, allNominations = []) => {
     const url = `https://api.graphql.imdb.com/`;
     const query = {
       query: `
-        query {
-          names(ids: ${JSON.stringify(nameIds)}) {
+        query getTitleDetails($id: ID!, $first: Int!, $after: ID) {
+          title(id: $id) {
             id
-            nameText {
+            titleText {
               text
             }
-            primaryImage {
-              url
-            }
-          }
-        }
-      `
-    };
-
-    GM_xmlhttpRequest({
-      method: "POST",
-      url: url,
-      headers: {
-        "Content-Type": "application/json"
-      },
-      data: JSON.stringify(query),
-      onload: function (response) {
-        if (response.status >= 200 && response.status < 300) {
-          const data = JSON.parse(response.responseText);
-          console.log("Primary image URLs:", data);
-          gotCredits(data.data.names);
-        } else {
-          console.error("Failed to fetch primary image URLs", response);
-        }
-      },
-      onerror: function (response) {
-        console.error("Request error", response);
-      }
-    });
-  };
-
-  const fetchCreditsData = async () => {
-    const imdb_id = document.getElementById('imdb-title-link');
-    if (imdb_id) {
-      const imdbId = imdb_id.href.split('/title/tt')[1].split('/')[0];
-      const url = `https://api.graphql.imdb.com/`;
-      const query = {
-        query: `
-          query {
-            title(id: "tt${imdbId}") {
-              credits(first: 40) {
-                edges {
-                  node {
-                    name {
-                      id
-                      nameText {
+            prestigiousAwardSummary {
+                award {
+                    year
+                    category {
                         text
+                    }
+                }
+                wins
+                nominations
+            }
+            awardNominations(first: $first, after: $after) {
+              edges {
+                node {
+                  id
+                  award {
+                    id
+                    text
+                  }
+                  awardedEntities {
+                    ... on AwardedNames {
+                      names {
+                        id
+                        nameText {
+                          text
+                        }
                       }
                     }
-                    category {
-                      id
+                    ... on AwardedTitles {
+                      titles {
+                        id
+                        titleText {
+                          text
+                        }
+                      }
+                    }
+                  }
+                  category {
+                    text
+                  }
+                  forEpisodes {
+                    id
+                    titleText {
                       text
                     }
-                    title {
-                      id
-                      titleText {
-                        text
-                      }
+                  }
+                  forSongTitles
+                  isWinner
+                  notes {
+                    plainText
+                  }
+                  winAnnouncementDate {
+                    date
+                  }
+                  winningRank
+                }
+              }
+              pageInfo {
+                endCursor
+                hasNextPage
+              }
+            }
+            credits(first: 48) {
+              edges {
+                node {
+                  name {
+                    id
+                    nameText {
+                      text
+                    }
+                  }
+                  category {
+                    id
+                    text
+                  }
+                  title {
+                    id
+                    titleText {
+                      text
                     }
                   }
                 }
               }
             }
           }
-        `
-      };
+        }
+      `,
+      variables: {
+        id: imdbId,
+        first: 250,
+        after: afterCursor
+      }
+    };
 
+    return new Promise((resolve, reject) => {
       GM_xmlhttpRequest({
         method: "POST",
         url: url,
@@ -98,30 +126,212 @@
         onload: function (response) {
           if (response.status >= 200 && response.status < 300) {
             const data = JSON.parse(response.responseText);
-            console.log("Credits data:", data);
-            const nameIds = data.data.title.credits.edges.map(edge => edge.node.name.id);
-            fetchPrimaryImageUrl(nameIds);
+            console.log("API response data:", data);
+            const titleData = data.data.title;
+            if (!titleData) {
+              console.error("No title data returned from IMDB API", data);
+              reject(new Error("No title data returned from IMDB API"));
+              return;
+            }
+            const nominations = titleData.awardNominations.edges.map(edge => edge.node);
+            allNominations.push(...nominations);
+
+            if (titleData.awardNominations.pageInfo.hasNextPage) {
+              fetchIMDbData(imdbId, titleData.awardNominations.pageInfo.endCursor, allNominations)
+                .then(resolve)
+                .catch(reject);
+            } else {
+              resolve({
+                nominations: allNominations,
+                credits: titleData.credits.edges.map(edge => edge.node),
+                prestigiousAwardSummary: titleData.prestigiousAwardSummary
+              });
+            }
           } else {
-            console.error("Failed to fetch credits data", response);
+            console.error("Failed to fetch IMDb data: ", response);
+            reject(new Error(`Failed to fetch IMDb data: ${response.statusText}`));
           }
         },
         onerror: function (response) {
-          console.error("Request error", response);
+          console.error("Request error: ", response);
+          reject(new Error("Request error"));
         }
       });
-    }
+    });
+  };
+
+  const fetchPrimaryImagesAndAwardNominations = async (nameIds) => {
+    const url = `https://api.graphql.imdb.com/`;
+    const query = {
+      query: `
+        query getNamesDetails($ids: [ID!]!) {
+          names(ids: $ids) {
+            id
+            nameText {
+              text
+            }
+            primaryImage {
+              url
+            }
+            prestigiousAwardSummary {
+                award {
+                    year
+                    category {
+                        text
+                    }
+                }
+                wins
+                nominations
+            }
+            awardNominations(first: 250) {
+              edges {
+                node {
+                  id
+                  award {
+                    id
+                    text
+                  }
+                  awardedEntities {
+                    ... on AwardedNames {
+                      names {
+                        id
+                        nameText {
+                          text
+                        }
+                      }
+                    }
+                    ... on AwardedTitles {
+                      titles {
+                        id
+                        titleText {
+                          text
+                        }
+                      }
+                    }
+                  }
+                  category {
+                    text
+                  }
+                  forEpisodes {
+                    id
+                    titleText {
+                      text
+                    }
+                  }
+                  forSongTitles
+                  isWinner
+                  notes {
+                    plainText
+                  }
+                  winAnnouncementDate {
+                    date
+                  }
+                  winningRank
+                }
+              }
+              pageInfo {
+                endCursor
+                hasNextPage
+              }
+            }
+          }
+        }
+      `,
+      variables: {
+        ids: nameIds
+      }
+    };
+
+    return new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method: "POST",
+        url: url,
+        headers: {
+          "Content-Type": "application/json"
+        },
+        data: JSON.stringify(query),
+        onload: function (response) {
+          if (response.status >= 200 && response.status < 300) {
+            const data = JSON.parse(response.responseText);
+            resolve(data.data.names);
+          } else {
+            console.error("Failed to fetch primary images and award nominations", response);
+            reject(new Error("Failed to fetch primary images and award nominations"));
+          }
+        },
+        onerror: function (response) {
+          console.error("Request error: ", response);
+          reject(new Error("Request error"));
+        }
+      });
+    });
+  };
+
+  const logCredits = (credits, titleNominations, prestigiousAwardSummary) => {
+    const nameIds = credits.map(credit => credit.name.id);
+
+    fetchPrimaryImagesAndAwardNominations(nameIds)
+      .then(namesData => {
+        let cast = namesData
+          .filter(name => name.nameText) // Ensure nameText exists
+          .map(name => ({
+            photo: name.primaryImage ? name.primaryImage.url.replace('w66_and_h66', 'w300_and_h300') : 'https://ptpimg.me/9wv452.png',
+            name: name.nameText ? name.nameText.text : 'Unknown',
+            imdbId: name.id,
+            awardNominations: name.awardNominations.edges.map(edge => edge.node),
+            prestigiousAwardSummary: name.prestigiousAwardSummary
+          }));
+
+        console.log("Cast data with primary images and award nominations:", cast);
+
+        cast.forEach(castMember => {
+          console.log(`Award Nominations for ${castMember.name}:`, castMember.awardNominations);
+          console.log(`Prestigious Award Summary for ${castMember.name}:`, castMember.prestigiousAwardSummary);
+          castMember.matchedNominations = castMember.awardNominations.filter(castNomination => {
+            return titleNominations.some(titleNomination => {
+              return (
+                castNomination.award && titleNomination.award &&
+                castNomination.award.id === titleNomination.award.id &&
+                castNomination.category && titleNomination.category &&
+                castNomination.category.text === titleNomination.category.text &&
+                (!castNomination.winAnnouncementDate || !titleNomination.winAnnouncementDate || castNomination.winAnnouncementDate.date === titleNomination.winAnnouncementDate.date)
+              );
+            });
+          });
+
+          console.log(`Matched Nominations for ${castMember.name}:`, castMember.matchedNominations);
+        });
+
+        // Call gotCredits to update the display
+        gotCredits(cast);
+      })
+      .catch(error => {
+        console.error("Error fetching primary images and award nominations:", error);
+      });
+
+    // Log the prestigious award summary for the title
+    console.log("Prestigious Award Summary for the Title:", prestigiousAwardSummary);
   };
 
   const gotCredits = (names) => {
+    console.log("Names data received in gotCredits:", names); // Log the names data
+
     const castPhotosCount = window.localStorage.castPhotosCount ? parseInt(window.localStorage.castPhotosCount) : 4;
 
-    let cast = names.map(name => ({
-      photo: name.primaryImage ? name.primaryImage.url.replace('w66_and_h66', 'w300_and_h300') : 'https://ptpimg.me/9wv452.png',
-      name: name.nameText.text,
-      imdbId: name.id,
-      role: 'Unknown', // Role data will be updated below
-      link: '' // Link will be updated below
-    }));
+    let cast = names.map(name => {
+      console.log("Processing name:", name); // Log each name being processed
+      return {
+        photo: name.photo,
+        name: name.name ? name.name : 'Unknown',
+        imdbId: name.imdbId,
+        awardNominations: name.awardNominations,
+        prestigiousAwardSummary: name.prestigiousAwardSummary,
+        role: 'Unknown', // Role data will be updated below
+        link: '' // Link will be updated below
+      };
+    });
+
+    console.log("Processed cast data:", cast); // Log the processed cast data
 
     const actorRows = document.querySelectorAll('.table--panel-like tbody tr');
     actorRows.forEach(row => {
@@ -146,7 +356,7 @@
 
     const cDiv = document.createElement('div');
     cDiv.setAttribute('class', 'panel');
-    cDiv.innerHTML = '<div class="panel__heading"><span class="panel__heading__title"><span style="color: rgb(242, 219, 131);">IMDb</span> Cast</a></span></div>';
+    cDiv.innerHTML = '<div class="panel__heading"><span class="panel__heading__title"><span style="color: rgb(242, 219, 131);">iMDB</span> Cast</a></span></div>';
     const castDiv = document.createElement('div');
     castDiv.setAttribute('style', 'text-align:center; display:table; width:100%; border-collapse: separate; border-spacing:4px;');
     cDiv.appendChild(castDiv);
@@ -208,6 +418,25 @@
       d.firstElementChild.nextElementSibling.nextElementSibling.nextElementSibling.innerHTML = person.role;
       count++;
     });
+  };
+
+  const fetchCreditsData = async () => {
+    const imdb_id = document.getElementById('imdb-title-link');
+    if (imdb_id) {
+      const imdbId = imdb_id.href.match(/title\/(tt\d+)/)[1];
+      console.log("Extracted IMDb ID:", imdbId);
+
+      try {
+        const { nominations, credits, prestigiousAwardSummary } = await fetchIMDbData(imdbId);
+        console.log("All Award Nominations:", nominations);
+        console.log("Credits data:", credits);
+        console.log("Prestigious Award Summary for the Title:", prestigiousAwardSummary);
+
+        logCredits(credits, nominations, prestigiousAwardSummary); // Call logCredits to process and log the data
+      } catch (error) {
+        console.error(error);
+      }
+    }
   };
 
   fetchCreditsData();
