@@ -267,120 +267,27 @@
     });
   };
 
-  const logCredits = (credits, titleNominations, prestigiousAwardSummary) => {
-    const nameIds = credits.map(credit => credit.name.id);
-
-    fetchPrimaryImagesAndAwardNominations(nameIds)
-      .then(namesData => {
-        let cast = namesData
-          .filter(name => name.nameText) // Ensure nameText exists
-          .map(name => ({
-            photo: name.primaryImage ? name.primaryImage.url.replace('w66_and_h66', 'w300_and_h300') : 'https://ptpimg.me/9wv452.png',
-            name: name.nameText ? name.nameText.text : 'Unknown',
-            imdbId: name.id,
-            awardNominations: name.awardNominations.edges.map(edge => edge.node),
-            prestigiousAwardSummary: name.prestigiousAwardSummary,
-            matchedNominations: name.awardNominations.edges.map(edge => edge.node).filter(castNomination => {
-              return titleNominations.some(titleNomination => {
-                return (
-                  castNomination.award && titleNomination.award &&
-                  castNomination.award.id === titleNomination.award.id &&
-                  castNomination.category && titleNomination.category &&
-                  castNomination.category.text === titleNomination.category.text &&
-                  (!castNomination.winAnnouncementDate || !titleNomination.winAnnouncementDate || castNomination.winAnnouncementDate.date === titleNomination.winAnnouncementDate.date)
-                );
-              });
-            })
-          }));
-
-        console.log("Cast data with primary images and award nominations:", cast);
-
-        cast.forEach(castMember => {
-          console.log(`Award Nominations for ${castMember.name}:`, castMember.awardNominations);
-          console.log(`Prestigious Award Summary for ${castMember.name}:`, castMember.prestigiousAwardSummary);
-          console.log(`Matched Nominations for ${castMember.name}:`, castMember.matchedNominations);
-        });
-
-        // Call gotCredits to update the display
-        gotCredits(cast);
-      })
-      .catch(error => {
-        console.error("Error fetching primary images and award nominations:", error);
-      });
-
-    // Log the prestigious award summary for the title
-    console.log("Prestigious Award Summary for the Title:", prestigiousAwardSummary);
-  };
-
-  const gotCredits = (names) => {
-    console.log("Names data received in gotCredits:", names); // Log the names data
-
-    const castPhotosCount = window.localStorage.castPhotosCount ? parseInt(window.localStorage.castPhotosCount) : 4;
-
-    let cast = names.map(name => {
-      console.log("Processing name:", name); // Log each name being processed
-      return {
-        photo: name.photo,
-        name: name.name ? name.name : 'Unknown',
-        imdbId: name.imdbId,
-        awardNominations: name.awardNominations,
-        prestigiousAwardSummary: name.prestigiousAwardSummary,
-        matchedNominations: name.matchedNominations,
-        role: 'Unknown', // Role data will be updated below
-        link: '' // Link will be updated below
-      };
-    });
-
-    console.log("Processed cast data:", cast); // Log the processed cast data
-
-  // Create the awards panel
-  const aDiv = document.createElement('div');
-  aDiv.setAttribute('id', 'imdb-award');
-  aDiv.setAttribute('class', 'panel');
-  aDiv.innerHTML = '<div class="panel__heading"><span class="panel__heading__title"><span style="color: rgb(242, 219, 131);">iMDB</span> Awards</span><a id="show-all-awards" href="javascript:void(0);" style="float:right; font-size:0.9em;">(Show all awards)</a></div>';
-  const awardDiv = document.createElement('div');
-  awardDiv.setAttribute('style', 'text-align:center; display:table; width:100%; border-collapse: separate; border-spacing:4px;');
-  aDiv.appendChild(awardDiv);
+  const createAwardPanel = () => {
+    const aDiv = document.createElement('div');
+    aDiv.setAttribute('id', 'imdb-award');
+    aDiv.setAttribute('class', 'panel');
+    aDiv.innerHTML = '<div class="panel__heading"><span class="panel__heading__title"><span style="color: rgb(242, 219, 131);">iMDB</span> Awards</span><a id="show-all-awards" href="javascript:void(0);" style="float:right; font-size:0.9em;">(Show all awards)</a></div>';
+    const awardDiv = document.createElement('div');
+    awardDiv.setAttribute('style', 'text-align:center; display:table; width:100%; border-collapse: separate; border-spacing:4px;');
+    aDiv.appendChild(awardDiv);
 
     // Placeholder for the awards content
     const awardsContent = document.createElement('div');
     awardsContent.setAttribute('id', 'awards-content');
     aDiv.appendChild(awardsContent);
 
-    // Mutation observer to detect when the imdb-cast div is added to the DOM
-    const observer = new MutationObserver((mutationsList, observer) => {
-      for (const mutation of mutationsList) {
-        if (mutation.type === 'childList') {
-          const awardsBefore = document.querySelector('#imdb-cast');
-          if (awardsBefore) {
-            awardsBefore.parentNode.insertBefore(aDiv, awardsBefore);
-            observer.disconnect(); // Stop observing once the element is found and the panel is inserted
-          }
-        }
-      }
-    });
+    const awardsBefore = document.querySelector('#imdb-cast');
+    if (awardsBefore) {
+      awardsBefore.parentNode.insertBefore(aDiv, awardsBefore);
+    }
+  };
 
-    observer.observe(document.body, { childList: true, subtree: true });
-
-    const actorRows = document.querySelectorAll('.table--panel-like tbody tr');
-    actorRows.forEach(row => {
-      const actorNameElement = row.querySelector('.movie-page__actor-column a');
-      const roleNameElement = row.querySelector('td:nth-child(2)');
-      if (actorNameElement && roleNameElement) {
-        const actorName = actorNameElement.textContent;
-        const roleName = roleNameElement.textContent;
-        const actorLink = actorNameElement.href;
-        const castMember = cast.find(member => member.name === actorName);
-        if (castMember) {
-          castMember.role = roleName;
-          castMember.link = actorLink;
-        }
-      }
-    });
-
-    // Sort cast members, those with primary image first
-    cast.sort((a, b) => (a.photo === 'https://ptpimg.me/9wv452.png') - (b.photo === 'https://ptpimg.me/9wv452.png'));
-
+  const createCastPanel = (cast, castPhotosCount, bg) => {
     const actors = document.getElementsByClassName('movie-page__actor-column');
 
     const cDiv = document.createElement('div');
@@ -418,9 +325,8 @@
     dr.setAttribute('class', 'castRow');
     castDiv.appendChild(dr);
 
-    const bg = getComputedStyle(document.getElementsByClassName('movie-page__torrent__panel')[0]).backgroundColor;
-    const width = 100 / castPhotosCount;
     let fontSize = 1;
+    const width = 100 / castPhotosCount;
     cast.forEach(person => {
       const d = document.createElement('div');
       dr.appendChild(d);
@@ -436,18 +342,105 @@
       }
       d.setAttribute('style', `width:${width}%; display:table-cell; text-align:center; background-color:${bg}; border-radius:10px; overflow:hidden; font-size:${fontSize}em;`);
       d.innerHTML = `
-        <a href="${person.link}">
+        <a href="${person.link}" rel="noreferrer">
           <div style="width: 100%; height: 300px; overflow: hidden;">
             <img style="width: 100%; height: 100%; object-fit: cover;" src="${person.photo}" />
           </div>
         </a>
         <span style="padding:2px;"></span><br />
-        <a href="https://www.imdb.com/name/${person.imdbId}" target="_blank">${person.name}</a><br />
+        <a href="https://www.imdb.com/name/${person.imdbId}" target="_blank" rel="noreferrer">${person.name}</a><br />
         <span style="padding:2px;"></span>`;
       d.firstElementChild.nextElementSibling.innerHTML = person.name;
       d.firstElementChild.nextElementSibling.nextElementSibling.nextElementSibling.innerHTML = person.role;
       count++;
     });
+  };
+
+  const logCredits = (credits, titleNominations, prestigiousAwardSummary) => {
+    const nameIds = credits.map(credit => credit.name.id);
+
+    fetchPrimaryImagesAndAwardNominations(nameIds)
+      .then(namesData => {
+        let cast = namesData
+          .filter(name => name.nameText) // Ensure nameText exists
+          .map(name => ({
+            photo: name.primaryImage ? name.primaryImage.url.replace('w66_and_h66', 'w300_and_h300') : 'https://ptpimg.me/9wv452.png',
+            name: name.nameText ? name.nameText.text : 'Unknown',
+            imdbId: name.id,
+            awardNominations: name.awardNominations.edges.map(edge => edge.node),
+            prestigiousAwardSummary: name.prestigiousAwardSummary,
+            matchedNominations: name.awardNominations.edges.map(edge => edge.node).filter(castNomination => {
+              return titleNominations.some(titleNomination => {
+                return (
+                  castNomination.award && titleNomination.award &&
+                  castNomination.award.id === titleNomination.award.id &&
+                  castNomination.category && titleNomination.category &&
+                  castNomination.category.text === titleNomination.category.text &&
+                  (!castNomination.winAnnouncementDate || !titleNomination.winAnnouncementDate || castNomination.winAnnouncementDate.date === titleNomination.winAnnouncementDate.date)
+                );
+              });
+            })
+          }));
+
+        console.log("Cast data with primary images and award nominations:", cast);
+
+        cast.forEach(castMember => {
+          console.log(`Award Nominations for ${castMember.name}:`, castMember.awardNominations);
+          console.log(`Prestigious Award Summary for ${castMember.name}:`, castMember.prestigiousAwardSummary);
+          console.log(`Matched Nominations for ${castMember.name}:`, castMember.matchedNominations);
+        });
+
+        const castPhotosCount = window.localStorage.castPhotosCount ? parseInt(window.localStorage.castPhotosCount) : 4;
+        const bg = getComputedStyle(document.getElementsByClassName('movie-page__torrent__panel')[0]).backgroundColor;
+        createCastPanel(cast, castPhotosCount, bg);
+
+        // Call gotCredits to update the display
+        gotCredits(cast);
+      })
+      .catch(error => {
+        console.error("Error fetching primary images and award nominations:", error);
+      });
+
+    // Log the prestigious award summary for the title
+    console.log("Prestigious Award Summary for the Title:", prestigiousAwardSummary);
+  };
+
+  const gotCredits = (names) => {
+    console.log("Names data received in gotCredits:", names); // Log the names data
+
+    let cast = names.map(name => {
+      console.log("Processing name:", name); // Log each name being processed
+      return {
+        photo: name.photo,
+        name: name.name ? name.name : 'Unknown',
+        imdbId: name.imdbId,
+        awardNominations: name.awardNominations,
+        prestigiousAwardSummary: name.prestigiousAwardSummary,
+        matchedNominations: name.matchedNominations,
+        role: 'Unknown', // Role data will be updated below
+        link: '' // Link will be updated below
+      };
+    });
+
+    console.log("Processed cast data:", cast); // Log the processed cast data
+
+    const actorRows = document.querySelectorAll('.table--panel-like tbody tr');
+    actorRows.forEach(row => {
+      const actorNameElement = row.querySelector('.movie-page__actor-column a');
+      const roleNameElement = row.querySelector('td:nth-child(2)');
+      if (actorNameElement && roleNameElement) {
+        const actorName = actorNameElement.textContent;
+        const roleName = roleNameElement.textContent;
+        const actorLink = actorNameElement.href;
+        const castMember = cast.find(member => member.name === actorName);
+        if (castMember) {
+          castMember.role = roleName;
+          castMember.link = actorLink;
+        }
+      }
+    });
+
+    createAwardPanel(); // Move the call to create the award panel here
   };
 
   const fetchCreditsData = async () => {
