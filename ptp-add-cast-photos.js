@@ -23,14 +23,14 @@
               text
             }
             prestigiousAwardSummary {
-                award {
-                    year
-                    category {
-                        text
-                    }
+              wins
+              nominations
+              award {
+                year
+                category {
+                  text
                 }
-                wins
-                nominations
+              }
             }
             awardNominations(first: $first, after: $after) {
               edges {
@@ -174,14 +174,14 @@
               url
             }
             prestigiousAwardSummary {
-                award {
-                    year
-                    category {
-                        text
-                    }
+              wins
+              nominations
+              award {
+                year
+                category {
+                  text
                 }
-                wins
-                nominations
+              }
             }
             awardNominations(first: 250) {
               edges {
@@ -279,7 +279,18 @@
             name: name.nameText ? name.nameText.text : 'Unknown',
             imdbId: name.id,
             awardNominations: name.awardNominations.edges.map(edge => edge.node),
-            prestigiousAwardSummary: name.prestigiousAwardSummary
+            prestigiousAwardSummary: name.prestigiousAwardSummary,
+            matchedNominations: name.awardNominations.edges.map(edge => edge.node).filter(castNomination => {
+              return titleNominations.some(titleNomination => {
+                return (
+                  castNomination.award && titleNomination.award &&
+                  castNomination.award.id === titleNomination.award.id &&
+                  castNomination.category && titleNomination.category &&
+                  castNomination.category.text === titleNomination.category.text &&
+                  (!castNomination.winAnnouncementDate || !titleNomination.winAnnouncementDate || castNomination.winAnnouncementDate.date === titleNomination.winAnnouncementDate.date)
+                );
+              });
+            })
           }));
 
         console.log("Cast data with primary images and award nominations:", cast);
@@ -287,18 +298,6 @@
         cast.forEach(castMember => {
           console.log(`Award Nominations for ${castMember.name}:`, castMember.awardNominations);
           console.log(`Prestigious Award Summary for ${castMember.name}:`, castMember.prestigiousAwardSummary);
-          castMember.matchedNominations = castMember.awardNominations.filter(castNomination => {
-            return titleNominations.some(titleNomination => {
-              return (
-                castNomination.award && titleNomination.award &&
-                castNomination.award.id === titleNomination.award.id &&
-                castNomination.category && titleNomination.category &&
-                castNomination.category.text === titleNomination.category.text &&
-                (!castNomination.winAnnouncementDate || !titleNomination.winAnnouncementDate || castNomination.winAnnouncementDate.date === titleNomination.winAnnouncementDate.date)
-              );
-            });
-          });
-
           console.log(`Matched Nominations for ${castMember.name}:`, castMember.matchedNominations);
         });
 
@@ -326,6 +325,7 @@
         imdbId: name.imdbId,
         awardNominations: name.awardNominations,
         prestigiousAwardSummary: name.prestigiousAwardSummary,
+        matchedNominations: name.matchedNominations,
         role: 'Unknown', // Role data will be updated below
         link: '' // Link will be updated below
       };
