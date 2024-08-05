@@ -267,11 +267,21 @@
     });
   };
 
-  const createAwardPanel = () => {
+const createAwardPanel = (imdbId, prestigiousAwardSummary) => {
+    const wins = prestigiousAwardSummary?.wins ?? 0;
+    const nominations = prestigiousAwardSummary?.nominations ?? 0;
+
     const aDiv = document.createElement('div');
     aDiv.setAttribute('id', 'imdb-award');
     aDiv.setAttribute('class', 'panel');
-    aDiv.innerHTML = '<div class="panel__heading"><span class="panel__heading__title"><span style="color: rgb(242, 219, 131);">iMDB</span> Awards</span><a id="show-all-awards" href="javascript:void(0);" style="float:right; font-size:0.9em;">(Show all awards)</a></div>';
+    aDiv.innerHTML = `
+      <div class="panel__heading">
+        <span class="panel__heading__title">
+          <span style="color: rgb(242, 219, 131);">iMDB</span> Awards
+        </span>
+        <a id="show-all-awards" href="javascript:void(0);" style="float:right; font-size:0.9em;">(Show all awards)</a>
+        <a href="https://www.imdb.com/title/${imdbId}/awards/" target="_blank" rel="noreferrer" style="float:right; font-size:0.9em; margin-right: 10px;">(View on IMDb)</a>
+      </div>`;
     const awardDiv = document.createElement('div');
     awardDiv.setAttribute('style', 'text-align:center; display:table; width:100%; border-collapse: separate; border-spacing:4px;');
     aDiv.appendChild(awardDiv);
@@ -279,31 +289,44 @@
     // Placeholder for the awards content
     const awardsContent = document.createElement('div');
     awardsContent.setAttribute('id', 'awards-content');
+    awardsContent.innerHTML = `
+      <style>
+        .awards-text {
+          font-size: 2em; /* Adjust this value to change the text size */
+        }
+      </style>
+      <div style="padding: 10px; color: darkgoldenrod;" class="awards-text">
+        <span style="color: gold;">OSCARS:</span>
+        <span style="color: white;">Wins: </span><span style="color: yellow;">${wins}</span>,
+        <span style="color: white;">Nominations: </span><span style="color: yellow;">${nominations}</span>
+      </div>`;
     aDiv.appendChild(awardsContent);
 
     const awardsBefore = document.querySelector('#imdb-cast');
     if (awardsBefore) {
       awardsBefore.parentNode.insertBefore(aDiv, awardsBefore);
     }
-  };
+};
 
-  const createCastPanel = (cast, castPhotosCount, bg) => {
+const createCastPanel = (cast, castPhotosCount, bg, imdbId) => {
     const actors = document.getElementsByClassName('movie-page__actor-column');
 
     const cDiv = document.createElement('div');
     cDiv.setAttribute('class', 'panel');
     cDiv.setAttribute('id', 'imdb-cast');
-    cDiv.innerHTML = '<div class="panel__heading"><span class="panel__heading__title"><span style="color: rgb(242, 219, 131);">iMDB</span> Cast</a></span></div>';
+    cDiv.innerHTML = `
+      <div class="panel__heading">
+        <span class="panel__heading__title">
+          <span style="color: rgb(242, 219, 131);">iMDB</span> Cast
+        </span>
+        <a id="show-all-cast" href="javascript:void(0);" style="float:right; font-size:0.9em;">(Show all cast photos)</a>
+        <a href="https://www.imdb.com/title/${imdbId}/fullcredits" target="_blank" rel="noreferrer" style="float:right; font-size:0.9em; margin-right: 10px;">(View on iMDB)</a>
+      </div>`;
     const castDiv = document.createElement('div');
     castDiv.setAttribute('style', 'text-align:center; display:table; width:100%; border-collapse: separate; border-spacing:4px;');
     cDiv.appendChild(castDiv);
-    const a = document.createElement('a');
-    a.innerHTML = '(Show all cast photos)';
-    a.href = 'javascript:void(0);';
-    a.setAttribute('style', 'float:right;');
-    a.setAttribute('stle', 'fontSize:0.9em');
 
-    cDiv.firstElementChild.appendChild(a);
+    const a = cDiv.querySelector('#show-all-cast');
     a.addEventListener('click', function (a) {
       const divs = castDiv.getElementsByClassName('castRow');
       let disp = 'none';
@@ -316,6 +339,7 @@
         divs[i].style.display = disp;
       }
     }.bind(undefined, a));
+
     const before = actors[0].parentNode.parentNode.parentNode;
     before.parentNode.insertBefore(cDiv, before);
     before.style.display = 'none';
@@ -354,9 +378,9 @@
       d.firstElementChild.nextElementSibling.nextElementSibling.nextElementSibling.innerHTML = person.role;
       count++;
     });
-  };
+};
 
-  const logCredits = (credits, titleNominations, prestigiousAwardSummary) => {
+const logCredits = (credits, titleNominations, prestigiousAwardSummary) => {
     const nameIds = credits.map(credit => credit.name.id);
 
     fetchPrimaryImagesAndAwardNominations(nameIds)
@@ -392,10 +416,28 @@
 
         const castPhotosCount = window.localStorage.castPhotosCount ? parseInt(window.localStorage.castPhotosCount) : 4;
         const bg = getComputedStyle(document.getElementsByClassName('movie-page__torrent__panel')[0]).backgroundColor;
-        createCastPanel(cast, castPhotosCount, bg);
+
+        // Add roles before creating the cast panel
+        const actorRows = document.querySelectorAll('.table--panel-like tbody tr');
+        actorRows.forEach(row => {
+          const actorNameElement = row.querySelector('.movie-page__actor-column a');
+          const roleNameElement = row.querySelector('td:nth-child(2)');
+          if (actorNameElement && roleNameElement) {
+            const actorName = actorNameElement.textContent;
+            const roleName = roleNameElement.textContent;
+            const actorLink = actorNameElement.href;
+            const castMember = cast.find(member => member.name === actorName);
+            if (castMember) {
+              castMember.role = roleName;
+              castMember.link = actorLink;
+            }
+          }
+        });
+
+        createCastPanel(cast, castPhotosCount, bg, credits[0].title.id); // Pass imdbId to createCastPanel
 
         // Call gotCredits to update the display
-        gotCredits(cast);
+        gotCredits(cast, prestigiousAwardSummary);
       })
       .catch(error => {
         console.error("Error fetching primary images and award nominations:", error);
@@ -403,9 +445,9 @@
 
     // Log the prestigious award summary for the title
     console.log("Prestigious Award Summary for the Title:", prestigiousAwardSummary);
-  };
+};
 
-  const gotCredits = (names) => {
+const gotCredits = (names, prestigiousAwardSummary) => {
     console.log("Names data received in gotCredits:", names); // Log the names data
 
     let cast = names.map(name => {
@@ -424,26 +466,10 @@
 
     console.log("Processed cast data:", cast); // Log the processed cast data
 
-    const actorRows = document.querySelectorAll('.table--panel-like tbody tr');
-    actorRows.forEach(row => {
-      const actorNameElement = row.querySelector('.movie-page__actor-column a');
-      const roleNameElement = row.querySelector('td:nth-child(2)');
-      if (actorNameElement && roleNameElement) {
-        const actorName = actorNameElement.textContent;
-        const roleName = roleNameElement.textContent;
-        const actorLink = actorNameElement.href;
-        const castMember = cast.find(member => member.name === actorName);
-        if (castMember) {
-          castMember.role = roleName;
-          castMember.link = actorLink;
-        }
-      }
-    });
+    createAwardPanel(names[0].imdbId, prestigiousAwardSummary); // Pass prestigiousAwardSummary to createAwardPanel
+};
 
-    createAwardPanel(); // Move the call to create the award panel here
-  };
-
-  const fetchCreditsData = async () => {
+const fetchCreditsData = async () => {
     const imdb_id = document.getElementById('imdb-title-link');
     if (imdb_id) {
       const imdbId = imdb_id.href.match(/title\/(tt\d+)/)[1];
@@ -460,7 +486,7 @@
         console.error(error);
       }
     }
-  };
+};
 
   fetchCreditsData();
 })();
