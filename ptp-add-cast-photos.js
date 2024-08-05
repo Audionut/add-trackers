@@ -333,6 +333,35 @@
 
     console.log("Processed cast data:", cast); // Log the processed cast data
 
+  // Create the awards panel
+  const aDiv = document.createElement('div');
+  aDiv.setAttribute('id', 'imdb-award');
+  aDiv.setAttribute('class', 'panel');
+  aDiv.innerHTML = '<div class="panel__heading"><span class="panel__heading__title"><span style="color: rgb(242, 219, 131);">iMDB</span> Awards</span><a id="show-all-awards" href="javascript:void(0);" style="float:right; font-size:0.9em;">(Show all awards)</a></div>';
+  const awardDiv = document.createElement('div');
+  awardDiv.setAttribute('style', 'text-align:center; display:table; width:100%; border-collapse: separate; border-spacing:4px;');
+  aDiv.appendChild(awardDiv);
+
+    // Placeholder for the awards content
+    const awardsContent = document.createElement('div');
+    awardsContent.setAttribute('id', 'awards-content');
+    aDiv.appendChild(awardsContent);
+
+    // Mutation observer to detect when the imdb-cast div is added to the DOM
+    const observer = new MutationObserver((mutationsList, observer) => {
+      for (const mutation of mutationsList) {
+        if (mutation.type === 'childList') {
+          const awardsBefore = document.querySelector('#imdb-cast');
+          if (awardsBefore) {
+            awardsBefore.parentNode.insertBefore(aDiv, awardsBefore);
+            observer.disconnect(); // Stop observing once the element is found and the panel is inserted
+          }
+        }
+      }
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+
     const actorRows = document.querySelectorAll('.table--panel-like tbody tr');
     actorRows.forEach(row => {
       const actorNameElement = row.querySelector('.movie-page__actor-column a');
@@ -356,6 +385,7 @@
 
     const cDiv = document.createElement('div');
     cDiv.setAttribute('class', 'panel');
+    cDiv.setAttribute('id', 'imdb-cast');
     cDiv.innerHTML = '<div class="panel__heading"><span class="panel__heading__title"><span style="color: rgb(242, 219, 131);">iMDB</span> Cast</a></span></div>';
     const castDiv = document.createElement('div');
     castDiv.setAttribute('style', 'text-align:center; display:table; width:100%; border-collapse: separate; border-spacing:4px;');
