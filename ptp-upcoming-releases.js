@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP upcoming releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.3
+// @version      1.0.4
 // @description  Get a list of upcoming releases from IMDB and integrate with site search form.
 // @author       Audionut
 // @match        https://passthepopcorn.me/upcoming.php*
@@ -563,7 +563,7 @@ const displayResultsCondensed = (page, data) => {
                 let castCount = 0;
                 node.credits.edges.forEach(credit => {
                     const castMember = nameImagesData.find(name => name.id === credit.node.name.id);
-                    if (castMember && castMember.primaryImage && castCount < 5) {
+                    if (castMember && castCount < 5) {
                         castCount++;
                         const castDiv = document.createElement("div");
                         castDiv.style.textAlign = "center";
