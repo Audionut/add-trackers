@@ -494,7 +494,7 @@ const displayResultsCondensed = (page, data) => {
         dateHeader.textContent = date;
         dateHeader.style.fontSize = "1.5em";
         dateHeader.style.color = "white";
-        dateHeader.style.backgroundColor = "#464646";
+        //dateHeader.style.backgroundColor = "#464646";
         dateHeader.style.padding = "10px";
         dateHeaderRow.appendChild(dateHeader);
         table.appendChild(dateHeaderRow);
