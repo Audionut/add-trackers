@@ -23,7 +23,7 @@
     const CURRENT_PAGE_KEY = 'currentPage';
     const RESULTS_PER_PAGE_KEY = 'resultsPerPage';
     const RESULTS_PER_PAGE_DEFAULT = 20;
-    const MAX_RESULTS = 45;  // per API call - Maximum 45 per call
+    const MAX_RESULTS = 45;
     const ALLOWED_GENRES = new Set([]); // Define your allowed genres here. ["Crime", "Drama", "Thriller"] for example.
     const LAYOUT_KEY = 'displayLayout';
     const LAYOUT_ORIGINAL = 'Original';
@@ -183,7 +183,6 @@
         const url = `https://api.graphql.imdb.com/`;
         const queries = [];
 
-        // Split the nameIds into chunks of 250
         for (let i = 0; i < nameIds.length; i += 250) {
             const chunk = nameIds.slice(i, i + 250);
             queries.push({
@@ -209,13 +208,13 @@
                     method: "POST",
                     url: url,
                     headers: {
-                    "Content-Type": "application/json"
+                        "Content-Type": "application/json"
                     },
                     data: JSON.stringify(query),
                     onload: function (response) {
                         if (response.status >= 200 && response.status < 300) {
                             const data = JSON.parse(response.responseText);
-                            console.log("Primary Image URLs data:", data); // Log the response for debugging
+                            console.log("Primary Image URLs data:", data);
                             if (data && data.data && data.data.names) {
                                 resolve(data.data.names);
                             } else {
@@ -232,296 +231,130 @@
             })
         ));
 
-        // Flatten the results array
         return results.flat();
     };
 
-const addLightboxStyles = () => {
-    const style = document.createElement('style');
-    style.innerHTML = `
-        .lightbox {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.8);
-            display: none; /* Hide by default */
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-            cursor: pointer;
-        }
-        .lightbox img {
-            max-width: 90%;
-            max-height: 90%;
-        }
-    `;
-    document.head.appendChild(style);
-};
+    const addLightboxStyles = () => {
+        const style = document.createElement('style');
+        style.innerHTML = `
+            .lightbox {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.8);
+                display: none;
+                align-items: center;
+                justify-content: center;
+                z-index: 1000;
+                cursor: pointer;
+            }
+            .lightbox img {
+                max-width: 90%;
+                max-height: 90%;
+            }
+        `;
+        document.head.appendChild(style);
+    };
 
-const createLightbox = () => {
-    const lightbox = document.createElement('div');
-    lightbox.classList.add('lightbox');
-    lightbox.innerHTML = '<img src="" alt="lightbox image">';
-    document.body.appendChild(lightbox);
+    const createLightbox = () => {
+        const lightbox = document.createElement('div');
+        lightbox.classList.add('lightbox');
+        lightbox.innerHTML = '<img src="" alt="lightbox image">';
+        document.body.appendChild(lightbox);
 
-    lightbox.addEventListener('click', () => {
-        lightbox.style.display = 'none';
-    });
-
-    return lightbox;
-};
-
-const initLightbox = () => {
-    const lightbox = createLightbox();
-
-    document.addEventListener('click', (event) => {
-        if (event.target.tagName === 'IMG' && event.target.classList.contains('lightbox-trigger')) {
-            lightbox.querySelector('img').src = event.target.src;
-            lightbox.style.display = 'flex';
-        }
-    });
-};
-
-const createImageElement = (node, size) => {
-    const image = document.createElement("img");
-    image.src = node.primaryImage && node.primaryImage.url ? node.primaryImage.url : 'https://ptpimg.me/w6l4kj.png';
-    image.alt = node.primaryImage && node.primaryImage.caption ? node.primaryImage.caption.plainText : 'No image available';
-    image.style.maxWidth = size;
-    image.style.marginRight = "10px";
-    image.classList.add('lightbox-trigger'); // Add this class to trigger the lightbox
-    return image;
-};
-
-const displayResultsOriginal = (page, data) => {
-    const nameImagesData = GM_getValue(NAME_IMAGES_CACHE_KEY);
-    const resultsPerPage = GM_getValue(RESULTS_PER_PAGE_KEY, RESULTS_PER_PAGE_DEFAULT);
-    if (!data || !data.edges || !nameImagesData) {
-        fetchAllComingSoonData(); // Fetch fresh data if no cached data is available
-        return;
-    }
-
-    const totalResults = data.edges.length;
-    const totalPages = Math.ceil(totalResults / resultsPerPage);
-
-    // Ensure the page is within the valid range
-    page = Math.max(1, Math.min(page, totalPages));
-
-    const startIndex = (page - 1) * resultsPerPage;
-    const endIndex = startIndex + resultsPerPage;
-    let pageData = data.edges.slice(startIndex, endIndex);
-
-    if (ALLOWED_GENRES.size > 0) {
-        pageData = pageData.filter(movie => {
-            return movie.node.genres.genres.some(genre => ALLOWED_GENRES.has(genre.text));
+        lightbox.addEventListener('click', () => {
+            lightbox.style.display = 'none';
         });
-    }
 
-    const container = document.querySelector("#torrents-movie-view > div");
-    container.innerHTML = ""; // Clear previous results
+        return lightbox;
+    };
 
-    const groupedByDate = pageData.reduce((acc, movie) => {
-        const releaseDate = movie.node.releaseDate;
-        if (!releaseDate) return acc;
-        const dateStr = new Date(`${releaseDate.year}-${String(releaseDate.month).padStart(2, '0')}-${String(releaseDate.day).padStart(2, '0')}`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-        if (!acc[dateStr]) acc[dateStr] = [];
-        acc[dateStr].push(movie);
-        return acc;
-    }, {});
+    const initLightbox = () => {
+        const lightbox = createLightbox();
 
-    for (const [date, movies] of Object.entries(groupedByDate)) {
-        const dateHeader = document.createElement("h2");
-        dateHeader.textContent = date;
-        dateHeader.style.fontSize = "1.5em";
-        dateHeader.style.color = "white";
-        container.appendChild(dateHeader);
+        document.addEventListener('click', (event) => {
+            if (event.target.tagName === 'IMG' && event.target.classList.contains('lightbox-trigger')) {
+                lightbox.querySelector('img').src = event.target.src;
+                lightbox.style.display = 'flex';
+            }
+        });
+    };
 
-        movies.forEach(movie => {
-            const node = movie.node;
-            const movieDiv = document.createElement("div");
-            movieDiv.style.border = "1px solid #ccc";
-            movieDiv.style.padding = "10px";
-            movieDiv.style.marginBottom = "10px";
-            movieDiv.style.display = "flex";
-            movieDiv.style.position = "relative";
+    const createImageElement = (node, size) => {
+        const image = document.createElement("img");
+        image.src = node.primaryImage && node.primaryImage.url ? node.primaryImage.url : 'https://ptpimg.me/w6l4kj.png';
+        image.alt = node.primaryImage && node.primaryImage.caption ? node.primaryImage.caption.plainText : 'No image available';
+        image.style.maxWidth = size;
+        image.style.marginRight = "10px";
+        image.classList.add('lightbox-trigger');
+        return image;
+    };
 
-            const image = createImageElement(node, "200px"); // Use the original size for images in this display
-            movieDiv.appendChild(image);
+    const displayResultsOriginal = (page, data) => {
+        const nameImagesData = GM_getValue(NAME_IMAGES_CACHE_KEY);
+        const resultsPerPage = GM_getValue(RESULTS_PER_PAGE_KEY, RESULTS_PER_PAGE_DEFAULT);
+        if (!data || !data.edges || !nameImagesData) {
+            fetchAllComingSoonData();
+            return;
+        }
 
-            const infoDiv = document.createElement("div");
-            infoDiv.style.flex = "1";
-            infoDiv.style.display = "flex";
-            infoDiv.style.flexDirection = "column";
+        const totalResults = data.edges.length;
+        const totalPages = Math.ceil(totalResults / resultsPerPage);
 
-            const titleLinkDiv = document.createElement("div");
-            titleLinkDiv.style.display = "flex";
-            titleLinkDiv.style.justifyContent = "space-between";
-            titleLinkDiv.style.alignItems = "center";
+        page = Math.max(1, Math.min(page, totalPages));
 
-            const titleLink = document.createElement("a");
-            titleLink.href = `https://www.imdb.com/title/${node.id}/`;
-            titleLink.target = "_blank";
-            titleLink.rel = "noreferrer";
-            titleLink.textContent = node.titleText.text;
-            titleLink.style.fontWeight = "bold";
-            titleLink.style.fontSize = "1.2em";
-            titleLink.style.textDecoration = "none";
-            titleLink.style.color = "white";
-            titleLink.style.display = "block";
-            titleLink.style.marginBottom = "10px";
+        const startIndex = (page - 1) * resultsPerPage;
+        const endIndex = startIndex + resultsPerPage;
+        let pageData = data.edges.slice(startIndex, endIndex);
 
-            const ptpLink = document.createElement("a");
-            ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id}`;
-            ptpLink.target = "_blank";
-            ptpLink.textContent = "(Search PTP requests)";
-            ptpLink.style.float = "right";
-            ptpLink.style.fontSize = "0.9em";
-
-            titleLinkDiv.appendChild(titleLink);
-            titleLinkDiv.appendChild(ptpLink);
-            infoDiv.appendChild(titleLinkDiv);
-
-            const plot = document.createElement("p");
-            plot.textContent = node.plot ? node.plot.plotText.plainText : "No plot available.";
-            infoDiv.appendChild(plot);
-
-            const genres = document.createElement("p");
-            node.genres.genres.forEach(genre => {
-                const genreLink = document.createElement("a");
-                genreLink.href = `https://passthepopcorn.me/torrents.php?action=advanced&taglist=${genre.text}`;
-                genreLink.textContent = genre.text;
-                genreLink.style.color = "white";
-                genreLink.style.marginRight = "5px";
-                genres.appendChild(genreLink);
+        if (ALLOWED_GENRES.size > 0) {
+            pageData = pageData.filter(movie => {
+                return movie.node.genres.genres.some(genre => ALLOWED_GENRES.has(genre.text));
             });
-            infoDiv.appendChild(genres);
+        }
 
-            const castContainer = document.createElement("div");
-            castContainer.style.display = "flex";
-            castContainer.style.flexWrap = "wrap";
-            castContainer.style.gap = "10px";
+        const container = document.querySelector("#torrents-movie-view > div");
+        container.innerHTML = "";
 
-            let castCount = 0;
-            node.credits.edges.forEach(credit => {
-                const castMember = nameImagesData.find(name => name.id === credit.node.name.id);
-                if (castMember && castMember.primaryImage && castCount < 5) {
-                    castCount++;
-                    const castDiv = document.createElement("div");
-                    castDiv.style.textAlign = "center";
-                    castDiv.style.width = "auto";
+        const groupedByDate = pageData.reduce((acc, movie) => {
+            const releaseDate = movie.node.releaseDate;
+            if (!releaseDate) return acc;
+            const dateStr = new Date(`${releaseDate.year}-${String(releaseDate.month).padStart(2, '0')}-${String(releaseDate.day).padStart(2, '0')}`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+            if (!acc[dateStr]) acc[dateStr] = [];
+            acc[dateStr].push(movie);
+            return acc;
+        }, {});
 
-                    const castImageLink = document.createElement("a");
-                    castImageLink.href = `https://passthepopcorn.me/artist.php?artistname=${credit.node.name.nameText.text}`;
-                    const castImage = document.createElement("img");
-                    castImage.src = castMember.primaryImage.url;
-                    castImage.alt = credit.node.name.nameText.text;
-                    castImage.style.maxHeight = "150px";
-                    castImage.style.width = "auto";
-                    castImage.style.display = "block";
-                    castImageLink.appendChild(castImage);
-                    castDiv.appendChild(castImageLink);
+        for (const [date, movies] of Object.entries(groupedByDate)) {
+            const dateHeader = document.createElement("h2");
+            dateHeader.textContent = date;
+            dateHeader.style.fontSize = "1.5em";
+            dateHeader.style.color = "white";
+            container.appendChild(dateHeader);
 
-                    const castNameLink = document.createElement("a");
-                    castNameLink.href = `https://www.imdb.com/name/${credit.node.name.id}/`;
-                    castNameLink.target = "_blank";
-                    castNameLink.rel = "noreferrer";
-                    castNameLink.textContent = credit.node.name.nameText.text;
-                    castNameLink.style.display = "block";
-                    castNameLink.style.textDecoration = "none";
-                    castNameLink.style.color = "white";
-                    castNameLink.style.marginTop = "10px";
-                    castDiv.appendChild(castNameLink);
-
-                    castContainer.appendChild(castDiv);
-                }
-            });
-            infoDiv.appendChild(castContainer);
-
-            movieDiv.appendChild(infoDiv);
-            container.appendChild(movieDiv);
-        });
-    }
-
-    createPagination(page, totalResults);
-};
-
-// Use createImageElement in your displayResultsCondensed function
-const displayResultsCondensed = (page, data) => {
-    const nameImagesData = GM_getValue(NAME_IMAGES_CACHE_KEY);
-    const resultsPerPage = GM_getValue(RESULTS_PER_PAGE_KEY, RESULTS_PER_PAGE_DEFAULT);
-    if (!data || !data.edges || !nameImagesData) {
-        fetchAllComingSoonData(); // Fetch fresh data if no cached data is available
-        return;
-    }
-
-    const totalResults = data.edges.length;
-    const totalPages = Math.ceil(totalResults / resultsPerPage);
-
-    // Ensure the page is within the valid range
-    page = Math.max(1, Math.min(page, totalPages));
-
-    const startIndex = (page - 1) * resultsPerPage;
-    const endIndex = startIndex + resultsPerPage;
-    let pageData = data.edges.slice(startIndex, endIndex);
-
-    if (ALLOWED_GENRES.size > 0) {
-        pageData = pageData.filter(movie => {
-            return movie.node.genres.genres.some(genre => ALLOWED_GENRES.has(genre.text));
-        });
-    }
-
-    const container = document.querySelector("#torrents-movie-view > div");
-    container.innerHTML = ""; // Clear previous results
-
-    const groupedByDate = pageData.reduce((acc, movie) => {
-        const releaseDate = movie.node.releaseDate;
-        if (!releaseDate) return acc;
-        const dateStr = new Date(`${releaseDate.year}-${String(releaseDate.month).padStart(2, '0')}-${String(releaseDate.day).padStart(2, '0')}`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-        if (!acc[dateStr]) acc[dateStr] = [];
-        acc[dateStr].push(movie);
-        return acc;
-    }, {});
-
-    const table = document.createElement("table");
-    table.style.width = "100%";
-    table.style.borderCollapse = "collapse";
-
-    for (const [date, movies] of Object.entries(groupedByDate)) {
-        const dateHeaderRow = document.createElement("tr");
-        const dateHeader = document.createElement("th");
-        dateHeader.colSpan = 2;
-        dateHeader.textContent = date;
-        dateHeader.style.fontSize = "1.5em";
-        dateHeader.style.color = "white";
-        //dateHeader.style.backgroundColor = "#464646";
-        dateHeader.style.padding = "10px";
-        dateHeaderRow.appendChild(dateHeader);
-        table.appendChild(dateHeaderRow);
-
-        for (let i = 0; i < movies.length; i += 2) {
-            const row = document.createElement("tr");
-
-            for (let j = 0; j < 2; j++) {
-                const movie = movies[i + j];
-                if (!movie) break;
-
+            movies.forEach(movie => {
                 const node = movie.node;
-                const cell = document.createElement("td");
-                cell.style.border = "1px solid #525252";
-                cell.style.padding = "10px";
-                cell.style.verticalAlign = "top";
-                cell.style.width = "50%";
-
                 const movieDiv = document.createElement("div");
+                movieDiv.style.border = "1px solid #ccc";
+                movieDiv.style.padding = "10px";
+                movieDiv.style.marginBottom = "10px";
                 movieDiv.style.display = "flex";
                 movieDiv.style.position = "relative";
 
-                const image = createImageElement(node, "60px"); // Use the smaller size for images in this display
+                const image = createImageElement(node, "200px");
                 movieDiv.appendChild(image);
 
                 const infoDiv = document.createElement("div");
                 infoDiv.style.flex = "1";
+                infoDiv.style.display = "flex";
+                infoDiv.style.flexDirection = "column";
+
+                const titleLinkDiv = document.createElement("div");
+                titleLinkDiv.style.display = "flex";
+                titleLinkDiv.style.justifyContent = "space-between";
+                titleLinkDiv.style.alignItems = "center";
 
                 const titleLink = document.createElement("a");
                 titleLink.href = `https://www.imdb.com/title/${node.id}/`;
@@ -532,8 +365,8 @@ const displayResultsCondensed = (page, data) => {
                 titleLink.style.fontSize = "1.2em";
                 titleLink.style.textDecoration = "none";
                 titleLink.style.color = "white";
-                titleLink.style.marginBottom = "2px";
-                infoDiv.appendChild(titleLink);
+                titleLink.style.display = "block";
+                titleLink.style.marginBottom = "10px";
 
                 const ptpLink = document.createElement("a");
                 ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id}`;
@@ -541,16 +374,22 @@ const displayResultsCondensed = (page, data) => {
                 ptpLink.textContent = "(Search PTP requests)";
                 ptpLink.style.float = "right";
                 ptpLink.style.fontSize = "0.9em";
-                infoDiv.appendChild(ptpLink);
+
+                titleLinkDiv.appendChild(titleLink);
+                titleLinkDiv.appendChild(ptpLink);
+                infoDiv.appendChild(titleLinkDiv);
+
+                const plot = document.createElement("p");
+                plot.textContent = node.plot ? node.plot.plotText.plainText : "No plot available.";
+                infoDiv.appendChild(plot);
 
                 const genres = document.createElement("p");
                 node.genres.genres.forEach(genre => {
                     const genreLink = document.createElement("a");
                     genreLink.href = `https://passthepopcorn.me/torrents.php?action=advanced&taglist=${genre.text}`;
                     genreLink.textContent = genre.text;
-                    //genreLink.style.float = "right";
                     genreLink.style.color = "white";
-                    genreLink.style.marginRight = "10px";
+                    genreLink.style.marginRight = "5px";
                     genres.appendChild(genreLink);
                 });
                 infoDiv.appendChild(genres);
@@ -563,15 +402,27 @@ const displayResultsCondensed = (page, data) => {
                 let castCount = 0;
                 node.credits.edges.forEach(credit => {
                     const castMember = nameImagesData.find(name => name.id === credit.node.name.id);
-                    if (castMember && castCount < 5) {
+                    if (castMember && castMember.primaryImage && castCount < 5) {
                         castCount++;
                         const castDiv = document.createElement("div");
                         castDiv.style.textAlign = "center";
                         castDiv.style.width = "auto";
 
+                        const castImageLink = document.createElement("a");
+                        castImageLink.href = `https://passthepopcorn.me/artist.php?artistname=${credit.node.name.nameText.text}`;
+                        const castImage = document.createElement("img");
+                        castImage.src = castMember.primaryImage.url;
+                        castImage.alt = credit.node.name.nameText.text;
+                        castImage.style.maxHeight = "150px";
+                        castImage.style.width = "auto";
+                        castImage.style.display = "block";
+                        castImageLink.appendChild(castImage);
+                        castDiv.appendChild(castImageLink);
+
                         const castNameLink = document.createElement("a");
-                        castNameLink.href = `https://passthepopcorn.me/artist.php?artistname=${credit.node.name.nameText.text}`;
+                        castNameLink.href = `https://www.imdb.com/name/${credit.node.name.id}/`;
                         castNameLink.target = "_blank";
+                        castNameLink.rel = "noreferrer";
                         castNameLink.textContent = credit.node.name.nameText.text;
                         castNameLink.style.display = "block";
                         castNameLink.style.textDecoration = "none";
@@ -585,18 +436,160 @@ const displayResultsCondensed = (page, data) => {
                 infoDiv.appendChild(castContainer);
 
                 movieDiv.appendChild(infoDiv);
-                cell.appendChild(movieDiv);
-                row.appendChild(cell);
-            }
-
-            table.appendChild(row);
+                container.appendChild(movieDiv);
+            });
         }
-    }
 
-    container.appendChild(table);
+        createPagination(page, totalResults);
+    };
 
-    createPagination(page, totalResults);
-};
+    const displayResultsCondensed = (page, data) => {
+        const nameImagesData = GM_getValue(NAME_IMAGES_CACHE_KEY);
+        const resultsPerPage = GM_getValue(RESULTS_PER_PAGE_KEY, RESULTS_PER_PAGE_DEFAULT);
+        if (!data || !data.edges || !nameImagesData) {
+            fetchAllComingSoonData();
+            return;
+        }
+
+        const totalResults = data.edges.length;
+        const totalPages = Math.ceil(totalResults / resultsPerPage);
+
+        page = Math.max(1, Math.min(page, totalPages));
+
+        const startIndex = (page - 1) * resultsPerPage;
+        const endIndex = startIndex + resultsPerPage;
+        let pageData = data.edges.slice(startIndex, endIndex);
+
+        if (ALLOWED_GENRES.size > 0) {
+            pageData = pageData.filter(movie => {
+                return movie.node.genres.genres.some(genre => ALLOWED_GENRES.has(genre.text));
+            });
+        }
+
+        const container = document.querySelector("#torrents-movie-view > div");
+        container.innerHTML = "";
+
+        const groupedByDate = pageData.reduce((acc, movie) => {
+            const releaseDate = movie.node.releaseDate;
+            if (!releaseDate) return acc;
+            const dateStr = new Date(`${releaseDate.year}-${String(releaseDate.month).padStart(2, '0')}-${String(releaseDate.day).padStart(2, '0')}`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+            if (!acc[dateStr]) acc[dateStr] = [];
+            acc[dateStr].push(movie);
+            return acc;
+        }, {});
+
+        const table = document.createElement("table");
+        table.style.width = "100%";
+        table.style.borderCollapse = "collapse";
+
+        for (const [date, movies] of Object.entries(groupedByDate)) {
+            const dateHeaderRow = document.createElement("tr");
+            const dateHeader = document.createElement("th");
+            dateHeader.colSpan = 2;
+            dateHeader.textContent = date;
+            dateHeader.style.fontSize = "1.5em";
+            dateHeader.style.color = "white";
+            dateHeader.style.padding = "10px";
+            dateHeaderRow.appendChild(dateHeader);
+            table.appendChild(dateHeaderRow);
+
+            for (let i = 0; i < movies.length; i += 2) {
+                const row = document.createElement("tr");
+
+                for (let j = 0; j < 2; j++) {
+                    const movie = movies[i + j];
+                    if (!movie) break;
+
+                    const node = movie.node;
+                    const cell = document.createElement("td");
+                    cell.style.border = "1px solid #525252";
+                    cell.style.padding = "10px";
+                    cell.style.verticalAlign = "top";
+                    cell.style.width = "50%";
+
+                    const movieDiv = document.createElement("div");
+                    movieDiv.style.display = "flex";
+                    movieDiv.style.position = "relative";
+
+                    const image = createImageElement(node, "60px");
+                    movieDiv.appendChild(image);
+
+                    const infoDiv = document.createElement("div");
+                    infoDiv.style.flex = "1";
+
+                    const titleLink = document.createElement("a");
+                    titleLink.href = `https://www.imdb.com/title/${node.id}/`;
+                    titleLink.target = "_blank";
+                    titleLink.rel = "noreferrer";
+                    titleLink.textContent = node.titleText.text;
+                    titleLink.style.fontWeight = "bold";
+                    titleLink.style.fontSize = "1.2em";
+                    titleLink.style.textDecoration = "none";
+                    titleLink.style.color = "white";
+                    titleLink.style.marginBottom = "2px";
+                    infoDiv.appendChild(titleLink);
+
+                    const ptpLink = document.createElement("a");
+                    ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id}`;
+                    ptpLink.target = "_blank";
+                    ptpLink.textContent = "(Search PTP requests)";
+                    ptpLink.style.float = "right";
+                    ptpLink.style.fontSize = "0.9em";
+                    infoDiv.appendChild(ptpLink);
+
+                    const genres = document.createElement("p");
+                    node.genres.genres.forEach(genre => {
+                        const genreLink = document.createElement("a");
+                        genreLink.href = `https://passthepopcorn.me/torrents.php?action=advanced&taglist=${genre.text}`;
+                        genreLink.textContent = genre.text;
+                        genreLink.style.color = "white";
+                        genreLink.style.marginRight = "10px";
+                        genres.appendChild(genreLink);
+                    });
+                    infoDiv.appendChild(genres);
+
+                    const castContainer = document.createElement("div");
+                    castContainer.style.display = "flex";
+                    castContainer.style.flexWrap = "wrap";
+                    castContainer.style.gap = "10px";
+
+                    let castCount = 0;
+                    node.credits.edges.forEach(credit => {
+                        const castMember = nameImagesData.find(name => name.id === credit.node.name.id);
+                        if (castMember && castCount < 5) {
+                            castCount++;
+                            const castDiv = document.createElement("div");
+                            castDiv.style.textAlign = "center";
+                            castDiv.style.width = "auto";
+
+                            const castNameLink = document.createElement("a");
+                            castNameLink.href = `https://passthepopcorn.me/artist.php?artistname=${credit.node.name.nameText.text}`;
+                            castNameLink.target = "_blank";
+                            castNameLink.textContent = credit.node.name.nameText.text;
+                            castNameLink.style.display = "block";
+                            castNameLink.style.textDecoration = "none";
+                            castNameLink.style.color = "white";
+                            castNameLink.style.marginTop = "10px";
+                            castDiv.appendChild(castNameLink);
+
+                            castContainer.appendChild(castDiv);
+                        }
+                    });
+                    infoDiv.appendChild(castContainer);
+
+                    movieDiv.appendChild(infoDiv);
+                    cell.appendChild(movieDiv);
+                    row.appendChild(cell);
+                }
+
+                table.appendChild(row);
+            }
+        }
+
+        container.appendChild(table);
+
+        createPagination(page, totalResults);
+    };
 
     const createPagination = (currentPage, totalResults) => {
         const resultsPerPage = GM_getValue(RESULTS_PER_PAGE_KEY, RESULTS_PER_PAGE_DEFAULT);
@@ -662,8 +655,6 @@ const displayResultsCondensed = (page, data) => {
                 const taglist = formData.get("taglist") || "";
                 const castlist = formData.get("castlist") || "";
 
-                // Implement your search logic here
-                // Filter cachedData based on search criteria and display the results
                 const cachedData = GM_getValue(CACHE_KEY);
                 if (cachedData && cachedData.edges) {
                     let filteredData = cachedData.edges;
@@ -687,7 +678,7 @@ const displayResultsCondensed = (page, data) => {
                     }
 
                     if (!searchstr && !taglist && !castlist) {
-                        filteredData = null; // Reset filtered data
+                        filteredData = null;
                         GM_setValue(FILTERED_CACHE_KEY, null);
                         displayResults(1);
                         return;
@@ -710,7 +701,6 @@ const displayResultsCondensed = (page, data) => {
             console.log("Fetching fresh data for upcoming movies");
             fetchAllComingSoonData();
         } else {
-            //clearCache();
             console.log("Using cached data for upcoming movies");
             const cachedData = GM_getValue(CACHE_KEY);
             const nameImagesData = GM_getValue(NAME_IMAGES_CACHE_KEY);
@@ -725,14 +715,12 @@ const displayResultsCondensed = (page, data) => {
         updateSearchForm();
     };
 
-    // Function to remove IMDb and List search fields and update search link text
     const updateSearchForm = () => {
         const filterTorrentsToggle = document.getElementById("filter_torrents_toggle");
         if (filterTorrentsToggle) {
             filterTorrentsToggle.querySelector("a").textContent = "[+] Search and settings";
         }
 
-        // Remove IMDb and List fields
         document.querySelectorAll(".filter_torrents .grid").forEach(grid => {
             const label = grid.querySelector(".form__label");
             if (label && (label.textContent.includes("IMDb:") || label.textContent.includes("List:"))) {
@@ -740,14 +728,12 @@ const displayResultsCondensed = (page, data) => {
             }
         });
 
-        // Rename "Tags:" to "Genres:"
         document.querySelectorAll(".form__label").forEach(label => {
             if (label.textContent.includes("Tags:")) {
                 label.textContent = label.textContent.replace("Tags:", "Genres:");
             }
         });
 
-        // Remove "0 results" field
         const resultsField = document.querySelector(".search-form__footer__results");
         if (resultsField) {
             resultsField.remove();
@@ -760,7 +746,6 @@ const displayResultsCondensed = (page, data) => {
             emptyLabel.appendChild(table);
         }
 
-        // Add layout toggle, results per page setting, and cast search to the search form
         const searchFormFooter = document.querySelector(".search-form__footer__buttons");
         if (searchFormFooter) {
             const layoutToggle = document.createElement("button");
@@ -810,7 +795,6 @@ const displayResultsCondensed = (page, data) => {
         genresGrid.insertAdjacentElement('afterend', castGrid);
     };
 
-    // Function to handle key bindings with plain JavaScript
     function bindKeyBindings() {
         document.addEventListener('keydown', function(event) {
             if (event.ctrlKey && event.key === 's') {
