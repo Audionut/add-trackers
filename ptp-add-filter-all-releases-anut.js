@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.1.9-A
+// @version      4.2.0-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -3045,16 +3045,17 @@ function toUnixTime(dateString) {
                         const size = parseInt(d.size / (1024 * 1024)); // Convert size to MiB
                         const api_size = parseInt(d.size); // Original size
 
-                        let infoText;
-                        let filesCount = d.fileCount;
-                        if (filesCount === 1 && d.files.length > 0) {
+                        let infoText = '';
+                        const filesCount = d.fileCount;
+
+                        if (filesCount === 1 && d.files && d.files.length > 0) {
                           infoText = d.files[0].name;
                           const lastDotIndex = infoText.lastIndexOf('.');
                           if (lastDotIndex !== -1) {
-                              infoText = infoText.substring(0, lastDotIndex);
+                            infoText = infoText.substring(0, lastDotIndex);
                           }
-                        } else {
-                          infoText = d.fileName;
+                        } else if (d.fileName) {
+                          infoText = d.fileName.replace(/\.\d+\.torrent$/i, '.torrent').replace(/\.torrent$/i, '');
                         }
 
                         const inputTime = d.pubDate;
