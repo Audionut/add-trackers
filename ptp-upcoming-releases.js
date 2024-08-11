@@ -787,50 +787,54 @@ const displayResultsCondensed = (page, data, source) => {
     createPagination(page, totalResults);
 };
 
-    const createPagination = (currentPage, totalResults) => {
-        const resultsPerPage = GM_getValue(RESULTS_PER_PAGE_KEY, RESULTS_PER_PAGE_DEFAULT);
-        const totalPages = Math.ceil(totalResults / resultsPerPage);
+const createPagination = (currentPage, totalResults) => {
+    const resultsPerPage = GM_getValue(RESULTS_PER_PAGE_KEY, RESULTS_PER_PAGE_DEFAULT);
+    const totalPages = Math.ceil(totalResults / resultsPerPage);
 
-        const paginationTop = document.querySelector(".pagination--top");
-        const paginationBottom = document.querySelector(".pagination--bottom");
+    const paginationTop = document.querySelector(".pagination--top");
+    const paginationBottom = document.querySelector(".pagination--bottom");
 
-        const paginationContent = (page) => {
-            let html = "";
-            if (page > 1) {
-                html += `<a href="#" class="prev-link" style="margin-right: 10px;">&lt; back</a>`;
-            }
-            if (page < totalPages) {
-                html += `<a href="#" class="next-link" style="margin-left: 10px;">next &gt;</a>`;
-            }
-            return html;
-        };
-
-        paginationTop.innerHTML = paginationContent(currentPage);
-        paginationBottom.innerHTML = paginationContent(currentPage);
-
-        const prevLinks = document.querySelectorAll(".prev-link");
-        const nextLinks = document.querySelectorAll(".next-link");
-
-        prevLinks.forEach(link => {
-            link.addEventListener("click", (event) => {
-                event.preventDefault();
-                const prevPage = Math.max(1, currentPage - 1);
-                GM_setValue(CURRENT_PAGE_KEY, prevPage);
-                displayResults(prevPage);
-            });
-        });
-
-        nextLinks.forEach(link => {
-            link.addEventListener("click", (event) => {
-                event.preventDefault();
-                const nextPage = Math.min(totalPages, currentPage + 1);
-                GM_setValue(CURRENT_PAGE_KEY, nextPage);
-                displayResults(nextPage);
-            });
-        });
+    const paginationContent = (page) => {
+        let html = "";
+        if (page > 1) {
+            html += `<a href="#" class="prev-link" style="margin-right: 10px;">&lt; back</a>`;
+        }
+        html += ` Page ${currentPage} of ${totalPages} `;  // Show current page out of total pages
+        if (page < totalPages) {
+            html += `<a href="#" class="next-link" style="margin-left: 10px;">next &gt;</a>`;
+        }
+        return html;
     };
 
+    paginationTop.innerHTML = paginationContent(currentPage);
+    paginationBottom.innerHTML = paginationContent(currentPage);
+
+    const prevLinks = document.querySelectorAll(".prev-link");
+    const nextLinks = document.querySelectorAll(".next-link");
+
+    prevLinks.forEach(link => {
+        link.addEventListener("click", (event) => {
+            event.preventDefault();
+            const prevPage = Math.max(1, currentPage - 1);
+            GM_setValue(CURRENT_PAGE_KEY, prevPage);
+            displayResults(prevPage);
+        });
+    });
+
+    nextLinks.forEach(link => {
+        link.addEventListener("click", (event) => {
+            event.preventDefault();
+            const nextPage = Math.min(totalPages, currentPage + 1);
+            GM_setValue(CURRENT_PAGE_KEY, nextPage);
+            displayResults(nextPage);
+        });
+    });
+};
+
 const displayResults = async (page) => {
+    const container = document.querySelector("#torrents-movie-view > div");
+    container.innerHTML = "<p>Loading...</p>";  // Add loading indicator
+
     const layout = GM_getValue(LAYOUT_KEY, LAYOUT_ORIGINAL);
     const resultType = GM_getValue(RESULT_TYPE_KEY, 'All');
     let data = { edges: [] };
@@ -885,6 +889,8 @@ const displayResults = async (page) => {
         data.edges = sortCombinedDataByDate(data.edges);
     }
 
+    container.innerHTML = ""; // Remove loading indicator once data is ready
+
     if (layout === LAYOUT_ORIGINAL) {
         displayResultsOriginal(page, data, source);
     } else if (layout === LAYOUT_CONDENSED) {
@@ -892,51 +898,78 @@ const displayResults = async (page) => {
     }
 };
 
-    const handleSearchForm = () => {
-        const searchForm = document.querySelector("#filter_torrents_form");
-        if (searchForm) {
-            searchForm.addEventListener("submit", (event) => {
-                event.preventDefault();
-                const formData = new FormData(searchForm);
-                const searchstr = formData.get("searchstr") || "";
-                const taglist = formData.get("taglist") || "";
-                const castlist = formData.get("castlist") || "";
+const handleSearchForm = () => {
+    const searchForm = document.querySelector("#filter_torrents_form");
+    if (searchForm) {
+        console.log("Search form found and event listener attached.");  // Log when form is found
+        searchForm.addEventListener("submit", (event) => {
+            event.preventDefault();
+            console.log("Search form submitted.");  // Log when form is submitted
 
-                const cachedData = GM_getValue(CACHE_KEY_IMDB);
-                if (cachedData && cachedData.edges) {
-                    let filteredData = cachedData.edges;
+            const formData = new FormData(searchForm);
+            const searchstr = formData.get("searchstr") || "";
+            const taglist = formData.get("taglist") || "";
+            const castlist = formData.get("castlist") || "";
 
-                    if (searchstr) {
-                        filteredData = filteredData.filter(movie => movie.node.titleText.text.toLowerCase().includes(searchstr.toLowerCase()));
-                    }
-                    if (taglist) {
-                        const tags = taglist.split(',').map(tag => tag.trim().toLowerCase());
-                        filteredData = filteredData.filter(movie => {
-                            const movieTags = movie.node.genres.genres.map(genre => genre.text.toLowerCase());
-                            return tags.every(tag => movieTags.includes(tag));
-                        });
-                    }
-                    if (castlist) {
-                        const casts = castlist.split(',').map(cast => cast.trim().toLowerCase());
-                        filteredData = filteredData.filter(movie => {
-                            const movieCasts = movie.node.credits.edges.map(credit => credit.node.name.nameText.text.toLowerCase());
-                            return casts.every(cast => movieCasts.includes(cast));
-                        });
-                    }
+            console.log("Search string:", searchstr);
+            console.log("Tag list:", taglist);
+            console.log("Cast list:", castlist);  // Log the cast list to check if it's correctly retrieved
 
-                    if (!searchstr && !taglist && !castlist) {
-                        filteredData = null;
-                        GM_setValue(FILTERED_CACHE_KEY, null);
-                        displayResults(1);
-                        return;
-                    }
+            const tagsType = formData.get("tags_type") || "all";  // Get the selected tags_type
 
-                    GM_setValue(FILTERED_CACHE_KEY, { edges: filteredData });
-                    displayResults(1);
+            const cachedData = GM_getValue(CACHE_KEY_IMDB);
+            if (cachedData && cachedData.edges) {
+                let filteredData = cachedData.edges;
+
+                if (searchstr) {
+                    filteredData = filteredData.filter(movie => movie.node.titleText.text.toLowerCase().includes(searchstr.toLowerCase()));
                 }
-            });
-        }
-    };
+                if (taglist) {
+                    const tags = taglist.split(',').map(tag => tag.trim().toLowerCase());
+                    filteredData = filteredData.filter(movie => {
+                        const movieTags = movie.node.genres.genres.map(genre => genre.text.toLowerCase());
+
+                        if (tagsType === "any") {
+                            // "Any" logic: Movie matches if it has any of the selected tags
+                            return tags.some(tag => movieTags.includes(tag));
+                        } else {
+                            // "All" logic: Movie matches only if it has all the selected tags
+                            return tags.every(tag => movieTags.includes(tag));
+                        }
+                    });
+                }
+                if (castlist) {
+                    const casts = castlist.split(',').map(cast => cast.trim().toLowerCase());
+
+                    console.log("Processing cast filtering with these names:", casts);  // Log the cast list being processed
+
+                    filteredData = filteredData.filter(movie => {
+                        const movieCasts = movie.node.credits.edges.map(credit => credit.node.name.nameText.text.toLowerCase());
+
+                        return casts.some(cast => {
+                            return movieCasts.some(movieCast => {
+                                const [firstName, lastName] = movieCast.split(' ');
+                                return firstName === cast || lastName === cast || movieCast.includes(cast);
+                            });
+                        });
+                    });
+                }
+
+                if (!searchstr && !taglist && !castlist) {
+                    filteredData = null;
+                    GM_setValue(FILTERED_CACHE_KEY, null);
+                    displayResults(1);
+                    return;
+                }
+
+                GM_setValue(FILTERED_CACHE_KEY, { edges: filteredData });
+                displayResults(1);
+            }
+        });
+    } else {
+        console.log("Search form not found.");  // Log if the form is not found
+    }
+};
 
     const init = () => {
         const currentPage = GM_getValue(CURRENT_PAGE_KEY, 1);
@@ -966,7 +999,7 @@ const displayResults = async (page) => {
                 displayResults(currentPage);
             });
         } else {
-            clearCache();
+            //clearCache();
             displayResults(currentPage);
         }
 
@@ -974,135 +1007,135 @@ const displayResults = async (page) => {
         updateSearchForm();
     };
 
-    const updateSearchForm = () => {
-        const filterTorrentsToggle = document.getElementById("filter_torrents_toggle");
-        if (filterTorrentsToggle) {
-            filterTorrentsToggle.querySelector("a").textContent = "[+] Search and settings";
-        }
+const updateSearchForm = () => {
+    const filterTorrentsToggle = document.getElementById("filter_torrents_toggle");
+    if (filterTorrentsToggle) {
+        filterTorrentsToggle.querySelector("a").textContent = "[+] Search and settings";
+    }
 
-        document.querySelectorAll(".filter_torrents .grid").forEach(grid => {
-            const label = grid.querySelector(".form__label");
-            if (label && (label.textContent.includes("IMDb:") || label.textContent.includes("List:"))) {
-                grid.remove();
-            }
+    document.querySelectorAll(".filter_torrents .grid").forEach(grid => {
+        const label = grid.querySelector(".form__label");
+        if (label && (label.textContent.includes("IMDb:") || label.textContent.includes("List:"))) {
+            grid.remove();
+        }
+    });
+
+    document.querySelectorAll(".form__label").forEach(label => {
+        if (label.textContent.includes("Tags:")) {
+            label.textContent = label.textContent.replace("Tags:", "Genres:");
+        }
+    });
+
+    const resultsField = document.querySelector(".search-form__footer__results");
+    if (resultsField) {
+        resultsField.remove();
+    }
+    const emptyLabel = document.querySelector(".search-form__footer > .grid > .grid__item.grid-u-2-10");
+    if (emptyLabel) {
+        const table = document.createElement("label");
+        table.classList.add("form__label");
+        table.textContent = "Filtering:";
+        emptyLabel.appendChild(table);
+    }
+
+    const searchFormFooter = document.querySelector(".search-form__footer__buttons");
+    if (searchFormFooter) {
+        const layoutToggle = document.createElement("button");
+        layoutToggle.textContent = "Toggle Layout";
+        layoutToggle.type = "button";
+        layoutToggle.style.marginLeft = "10px";
+        searchFormFooter.appendChild(layoutToggle);
+
+        layoutToggle.addEventListener("click", () => {
+            const currentLayout = GM_getValue(LAYOUT_KEY, LAYOUT_ORIGINAL);
+            const newLayout = currentLayout === LAYOUT_ORIGINAL ? LAYOUT_CONDENSED : LAYOUT_ORIGINAL;
+            GM_setValue(LAYOUT_KEY, newLayout);
+            displayResults(GM_getValue(CURRENT_PAGE_KEY, 1));
         });
 
-        document.querySelectorAll(".form__label").forEach(label => {
-            if (label.textContent.includes("Tags:")) {
-                label.textContent = label.textContent.replace("Tags:", "Genres:");
-            }
-        });
+        const resultsPerPageLabel = document.createElement("label");
+        resultsPerPageLabel.textContent = "Results per page: ";
+        resultsPerPageLabel.style.marginLeft = "10px";
+        searchFormFooter.appendChild(resultsPerPageLabel);
 
-        const resultsField = document.querySelector(".search-form__footer__results");
-        if (resultsField) {
-            resultsField.remove();
-        }
-        const emptyLabel = document.querySelector(".search-form__footer > .grid > .grid__item.grid-u-2-10");
-        if (emptyLabel) {
-            const table = document.createElement("label");
-            table.classList.add("form__label");
-            table.textContent = "Filtering:";
-            emptyLabel.appendChild(table);
-        }
+        const resultsPerPageInput = document.createElement("input");
+        resultsPerPageInput.type = "number";
+        resultsPerPageInput.value = GM_getValue(RESULTS_PER_PAGE_KEY, RESULTS_PER_PAGE_DEFAULT);
+        resultsPerPageInput.style.width = "50px";
+        resultsPerPageLabel.appendChild(resultsPerPageInput);
 
-        const searchFormFooter = document.querySelector(".search-form__footer__buttons");
-        if (searchFormFooter) {
-            const layoutToggle = document.createElement("button");
-            layoutToggle.textContent = "Toggle Layout";
-            layoutToggle.type = "button";
-            layoutToggle.style.marginLeft = "10px";
-            searchFormFooter.appendChild(layoutToggle);
-
-            layoutToggle.addEventListener("click", () => {
-                const currentLayout = GM_getValue(LAYOUT_KEY, LAYOUT_ORIGINAL);
-                const newLayout = currentLayout === LAYOUT_ORIGINAL ? LAYOUT_CONDENSED : LAYOUT_ORIGINAL;
-                GM_setValue(LAYOUT_KEY, newLayout);
+        resultsPerPageInput.addEventListener("change", () => {
+            const value = parseInt(resultsPerPageInput.value, 10);
+            if (value > 0) {
+                GM_setValue(RESULTS_PER_PAGE_KEY, value);
                 displayResults(GM_getValue(CURRENT_PAGE_KEY, 1));
-            });
+            }
+        });
 
-            const resultsPerPageLabel = document.createElement("label");
-            resultsPerPageLabel.textContent = "Results per page: ";
-            resultsPerPageLabel.style.marginLeft = "10px";
-            searchFormFooter.appendChild(resultsPerPageLabel);
+        const tmdbApiKeyGrid = document.createElement("div");
+        tmdbApiKeyGrid.className = "grid";
+        tmdbApiKeyGrid.innerHTML = `
+            <div class="grid__item grid-u-2-10">
+                <label class="form__label">TMDb API Key:</label>
+            </div>
+            <div class="grid__item grid-u-7-10">
+                <input type="text" size="40" id="tmdb_api_key" class="form__input" value="${GM_getValue(API_KEY_TMDB, '')}">
+            </div>
+            <div class="grid__item grid-u-1-10">
+                <button id="save_tmdb_api_key" class="form__input" type="button">Save</button>
+            </div>`;
+        searchFormFooter.appendChild(tmdbApiKeyGrid);
 
-            const resultsPerPageInput = document.createElement("input");
-            resultsPerPageInput.type = "number";
-            resultsPerPageInput.value = GM_getValue(RESULTS_PER_PAGE_KEY, RESULTS_PER_PAGE_DEFAULT);
-            resultsPerPageInput.style.width = "50px";
-            resultsPerPageLabel.appendChild(resultsPerPageInput);
+        const saveTmdbApiKeyButton = document.getElementById("save_tmdb_api_key");
+        saveTmdbApiKeyButton.addEventListener("click", () => {
+            const tmdbApiKeyInput = document.getElementById("tmdb_api_key");
+            GM_setValue(API_KEY_TMDB, tmdbApiKeyInput.value);
+            console.log('TMDb API Key saved:', tmdbApiKeyInput.value); // Debugging log
+        });
 
-            resultsPerPageInput.addEventListener("change", () => {
-                const value = parseInt(resultsPerPageInput.value, 10);
-                if (value > 0) {
-                    GM_setValue(RESULTS_PER_PAGE_KEY, value);
-                    displayResults(GM_getValue(CURRENT_PAGE_KEY, 1));
-                }
-            });
+        const resultTypeGrid = document.createElement("div");
+        resultTypeGrid.className = "grid";
+        resultTypeGrid.innerHTML = `
+            <div class="grid__item grid-u-2-10">
+                <label class="form__label">Result Type:</label>
+            </div>
+            <div class="grid__item grid-u-7-10">
+                <select id="result_type" class="form__input">
+                    <option value="All">All</option>
+                    <option value="Theatrical">Theatrical</option>
+                    <option value="Digital">Digital</option>
+                </select>
+            </div>
+            <div class="grid__item grid-u-1-10">
+                <button id="refresh_results" class="form__input" type="button">Refresh</button>
+            </div>`;
+        searchFormFooter.appendChild(resultTypeGrid);
 
-            const tmdbApiKeyGrid = document.createElement("div");
-            tmdbApiKeyGrid.className = "grid";
-            tmdbApiKeyGrid.innerHTML = `
-                <div class="grid__item grid-u-2-10">
-                    <label class="form__label">TMDb API Key:</label>
-                </div>
-                <div class="grid__item grid-u-7-10">
-                    <input type="text" size="40" id="tmdb_api_key" class="form__input" value="${GM_getValue(API_KEY_TMDB, '')}">
-                </div>
-                <div class="grid__item grid-u-1-10">
-                    <button id="save_tmdb_api_key" class="form__input" type="button">Save</button>
-                </div>`;
-            searchFormFooter.appendChild(tmdbApiKeyGrid);
+        const resultTypeSelect = document.getElementById("result_type");
+        resultTypeSelect.value = GM_getValue(RESULT_TYPE_KEY, 'All');
+        resultTypeSelect.addEventListener("change", () => {
+            GM_setValue(RESULT_TYPE_KEY, resultTypeSelect.value);
+        });
 
-const saveTmdbApiKeyButton = document.getElementById("save_tmdb_api_key");
-saveTmdbApiKeyButton.addEventListener("click", () => {
-    const tmdbApiKeyInput = document.getElementById("tmdb_api_key");
-    GM_setValue(API_KEY_TMDB, tmdbApiKeyInput.value);
-    console.log('TMDb API Key saved:', tmdbApiKeyInput.value); // Debugging log
-});
+        const refreshResultsButton = document.getElementById("refresh_results");
+        refreshResultsButton.addEventListener("click", () => {
+            displayResults(1);
+            console.log('Results refreshed for type:', resultTypeSelect.value);
+        });
 
-            const resultTypeGrid = document.createElement("div");
-            resultTypeGrid.className = "grid";
-            resultTypeGrid.innerHTML = `
-                <div class="grid__item grid-u-2-10">
-                    <label class="form__label">Result Type:</label>
-                </div>
-                <div class="grid__item grid-u-7-10">
-                    <select id="result_type" class="form__input">
-                        <option value="All">All</option>
-                        <option value="Theatrical">Theatrical</option>
-                        <option value="Digital">Digital</option>
-                    </select>
-                </div>
-                <div class="grid__item grid-u-1-10">
-                    <button id="refresh_results" class="form__input" type="button">Refresh</button>
-                </div>`;
-            searchFormFooter.appendChild(resultTypeGrid);
-
-            const resultTypeSelect = document.getElementById("result_type");
-            resultTypeSelect.value = GM_getValue(RESULT_TYPE_KEY, 'All');
-            resultTypeSelect.addEventListener("change", () => {
-                GM_setValue(RESULT_TYPE_KEY, resultTypeSelect.value);
-            });
-
-            const refreshResultsButton = document.getElementById("refresh_results");
-            refreshResultsButton.addEventListener("click", () => {
-                displayResults(1);
-                console.log('Results refreshed for type:', resultTypeSelect.value);
-            });
-
-            const castGrid = document.createElement("div");
-            castGrid.className = "grid";
-            castGrid.innerHTML = `
-                <div class="grid__item grid-u-2-10">
-                    <label class="form__label">Cast:</label>
-                </div>
-                <div class="grid__item grid-u-8-10">
-                    <input type="text" size="40" id="cast" class="form__input" title="Comma-separated cast names" value="">
-                </div>`;
-            const genresGrid = document.querySelector(".filter_torrents .grid:nth-child(2)");
-            genresGrid.insertAdjacentElement('afterend', castGrid);
-        }
-    };
+        const castGrid = document.createElement("div");
+        castGrid.className = "grid";
+        castGrid.innerHTML = `
+            <div class="grid__item grid-u-2-10">
+                <label class="form__label">Cast:</label>
+            </div>
+            <div class="grid__item grid-u-8-10">
+                <input type="text" size="40" id="cast" name="castlist" class="form__input" title="Comma-separated cast names" value="">
+            </div>`; // Added name="castlist"
+        const genresGrid = document.querySelector(".filter_torrents .grid:nth-child(2)");
+        genresGrid.insertAdjacentElement('afterend', castGrid);
+    }
+};
 
     function bindKeyBindings() {
         document.addEventListener('keydown', function(event) {
