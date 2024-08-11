@@ -2178,11 +2178,12 @@ function toUnixTime(dateString) {
                 }
                 else if (tracker === "MTeam") {
                     post_query_url = "https://api.m-team.cc/api/torrent/search";
-                        postData = {
-                            "imdb": imdb_id
-                            //"mode": "adult"
-                        };
-                }
+                    postData = {
+                        "imdb": imdb_id,
+                        "pageSize": "100"
+                        //"mode": "adult"
+                    };
+            }
                 else if (tracker === "PTP") {
                     query_url = "https://passthepopcorn.me/torrents.php?imdb=" + imdb_id;
                 }
@@ -3520,6 +3521,23 @@ function toUnixTime(dateString) {
                         const snatch = parseInt(status.timesCompleted) || 0;
                         const seed = parseInt(status.seeders) || 0;
                         const leech = parseInt(status.leechers) || 0;
+                        let discount = status.discount || "None";
+
+                        if (discount !== "None") {
+                            if (simplediscounts) {
+                                if (discount === "FREE") {
+                                    discount = "FL";
+                                } else if (discount === "PERCENT_50") {
+                                    discount = "50%";
+                                }
+                            } else {
+                                if (discount === "FREE") {
+                                    discount = "Freeleech";
+                                } else if (discount === "PERCENT_50") {
+                                    discount = "50% Freeleech";
+                                }
+                            }
+                        }
                         let infoText = d.name;
 
                             let groupText = "";
@@ -3574,7 +3592,7 @@ function toUnixTime(dateString) {
                             leech: leech,
                             download_link: `${url}${id}`,
                             torrent_page: `${url}${id}`,
-                            discount: "None",
+                            discount: discount,
                             //status: d.status === "NORMAL" ? "default" : d.status,
                             groupId: groupText,
                             time: time,
