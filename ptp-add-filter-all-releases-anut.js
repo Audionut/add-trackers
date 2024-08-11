@@ -3520,12 +3520,54 @@ function toUnixTime(dateString) {
                         const snatch = parseInt(status.timesCompleted) || 0;
                         const seed = parseInt(status.seeders) || 0;
                         const leech = parseInt(status.leechers) || 0;
+                        let infoText = d.name;
+                        console.warn("inotext", infoText);
+
+                            let groupText = "";
+                            const groups = goodGroups();
+                            const badGroupsList = badGroups();
+                            let matchedGroup = null;
+                            let badGroupFound = false;
+
+                            for (const badGroup of badGroupsList) {
+                                if (infoText.includes(badGroup)) {
+                                    badGroupFound = true;
+                                    infoText = infoText.replace(badGroup, '').trim();
+                                    groupText = "";
+                                    break;
+                                }
+                            }
+
+                            if (!badGroupFound) {
+                                for (const group of groups) {
+                                    if (infoText.includes(group)) {
+                                        matchedGroup = group;
+                                        break;
+                                    }
+                                }
+
+                                if (matchedGroup) {
+                                    groupText = matchedGroup;
+                                    if (improved_tags) {
+                                        infoText = infoText.replace(groupText, '').trim();
+                                    }
+                                } else {
+                                    const match = infoText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
+                                    if (match) {
+                                        groupText = match[1];
+                                        groupText = groupText.replace(/[^a-z0-9]/gi, '');
+                                        if (improved_tags) {
+                                            infoText = infoText.replace(`-${match[1]}`, '').trim();
+                                        }
+                                    }
+                                }
+                            }
 
                         const torrentObj = {
                             api_size: api_size,
                             datasetRelease: d.name,
                             size: size,
-                            info_text: d.name, // Use description or name
+                            info_text: infoText, // Use description or name
                             tracker: tracker,
                             site: tracker,
                             snatch: snatch,
@@ -3535,6 +3577,7 @@ function toUnixTime(dateString) {
                             torrent_page: `${url}${id}`,
                             discount: "None",
                             //status: d.status === "NORMAL" ? "default" : d.status,
+                            groupId: groupText,
                             time: time,
                         };
 
@@ -4524,7 +4567,7 @@ function toUnixTime(dateString) {
 
                 cln.querySelector(".size-span").textContent = ptp_format_size;
 
-                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV", "LST", "ANT", "RTF", "AvistaZ", "CinemaZ", "PHD", "TL", "FL", "mtm"];
+                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV", "LST", "ANT", "RTF", "AvistaZ", "CinemaZ", "PHD", "TL", "FL", "MTeam"];
                 if (byteSizedTrackers.includes(torrent.site)) {
                     cln.querySelector(".size-span").setAttribute("title", api_sized);
                 } else {
