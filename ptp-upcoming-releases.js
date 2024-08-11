@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         PTP upcoming releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.4
-// @description  Get a list of upcoming releases from IMDB and integrate with site search form.
+// @version      1.0.5
+// @description  Get a list of upcoming releases from IMDB and TMDb and integrate with site search form.
 // @author       Audionut
 // @match        https://passthepopcorn.me/upcoming.php*
 // @icon         https://passthepopcorn.me/favicon.ico
@@ -10,33 +10,52 @@
 // @updateURL    https://github.com/Audionut/add-trackers/raw/main/ptp-upcoming-releases.js
 // @grant        GM_xmlhttpRequest
 // @connect      api.graphql.imdb.com
+// @connect      api.themoviedb.org
 // @grant        GM_setValue
 // @grant        GM_getValue
+// @require      https://code.jquery.com/jquery-3.6.0.min.js
 // ==/UserScript==
 
 (function () {
     'use strict';
 
-    const CACHE_KEY = 'comingSoonData';
-    const CACHE_EXPIRATION_KEY = 'comingSoonDataExpiration';
+    const CACHE_KEY_IMDB = 'comingSoonData';
+    const CACHE_KEY_TMDB = 'digitalReleasesData';
+    const CACHE_EXPIRATION_KEY_IMDB = 'comingSoonDataExpiration';
+    const CACHE_EXPIRATION_KEY_TMDB = 'digitalReleasesDataExpiration';
     const NAME_IMAGES_CACHE_KEY = 'nameImagesData';
     const CURRENT_PAGE_KEY = 'currentPage';
     const RESULTS_PER_PAGE_KEY = 'resultsPerPage';
     const RESULTS_PER_PAGE_DEFAULT = 20;
-    const MAX_RESULTS = 45;
+    const MAX_RESULTS = 45;  // per API call - Maximum 45 per call
     const ALLOWED_GENRES = new Set([]); // Define your allowed genres here. ["Crime", "Drama", "Thriller"] for example.
     const LAYOUT_KEY = 'displayLayout';
     const LAYOUT_ORIGINAL = 'Original';
     const LAYOUT_CONDENSED = 'Condensed';
     const FILTERED_CACHE_KEY = 'filteredData';
+    const API_KEY_TMDB = 'tmdbApiKey';
+    const RESULT_TYPE_KEY = 'resultType';
+
+    let digitalReleases = [];
 
     const clearCache = () => {
-        GM_setValue(CACHE_KEY, null);
-        GM_setValue(CACHE_EXPIRATION_KEY, 0);
+        GM_setValue(CACHE_KEY_IMDB, null);
+        GM_setValue(CACHE_KEY_TMDB, null);
+        GM_setValue(CACHE_EXPIRATION_KEY_IMDB, 0);
+        GM_setValue(CACHE_EXPIRATION_KEY_TMDB, 0);
         GM_setValue(NAME_IMAGES_CACHE_KEY, null);
         GM_setValue(CURRENT_PAGE_KEY, 1);
         GM_setValue(FILTERED_CACHE_KEY, null);
     };
+
+// Function to format date to YYYY-MM-DD
+function formatDate(date) {
+    const d = new Date(date);
+    const month = ('0' + (d.getMonth() + 1)).slice(-2);
+    const day = ('0' + d.getDate()).slice(-2);
+    const year = d.getFullYear();
+    return `${year}-${month}-${day}`;
+}
 
     const fetchComingSoonData = async (afterDate = null) => {
         const url = `https://api.graphql.imdb.com/`;
@@ -124,14 +143,10 @@
                 onload: function (response) {
                     if (response.status >= 200 && response.status < 300) {
                         const comingSoonData = JSON.parse(response.responseText);
-                        console.log("Coming Soon data:", comingSoonData);
-
                         if (!comingSoonData.data || !comingSoonData.data.comingSoon || comingSoonData.data.comingSoon.edges.length === 0) {
-                            console.log("No more data available or received empty data.");
                             resolve([]);
                             return;
                         }
-
                         const edges = comingSoonData.data.comingSoon.edges;
                         resolve(edges);
                     } else {
@@ -163,8 +178,8 @@
         }
 
         const cachedData = { edges: allEdges };
-        GM_setValue(CACHE_KEY, cachedData);
-        GM_setValue(CACHE_EXPIRATION_KEY, Date.now() + 2 * 24 * 60 * 60 * 1000);
+        GM_setValue(CACHE_KEY_IMDB, cachedData);
+        GM_setValue(CACHE_EXPIRATION_KEY_IMDB, Date.now() + 2 * 24 * 60 * 60 * 1000);
 
         const nameIds = [];
         cachedData.edges.forEach(edge => {
@@ -214,7 +229,6 @@
                     onload: function (response) {
                         if (response.status >= 200 && response.status < 300) {
                             const data = JSON.parse(response.responseText);
-                            console.log("Primary Image URLs data:", data);
                             if (data && data.data && data.data.names) {
                                 resolve(data.data.names);
                             } else {
@@ -233,6 +247,143 @@
 
         return results.flat();
     };
+
+const fetchUpcomingDigitalMovies = async (page = 1) => {
+    const apiKey = GM_getValue(API_KEY_TMDB, '');
+    console.log('Fetching TMDb data with API key:', apiKey); // Debugging log
+    if (!apiKey) {
+        console.error('TMDb API key is not set.');
+        return;
+    }
+
+    const today = new Date();
+    const threeMonthsFromNow = new Date();
+    threeMonthsFromNow.setMonth(today.getMonth() + 3);
+
+    const url = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&language=en-US&region=US&sort_by=release_date.desc&release_date.gte=${formatDate(today)}&release_date.lte=${formatDate(threeMonthsFromNow)}&with_release_type=4&page=${page}`;
+    console.log("TMDb URL: ", url); // Debugging log for URL
+
+    return new Promise((resolve, reject) => {
+        GM_xmlhttpRequest({
+            method: 'GET',
+            url: url,
+            onload: function (response) {
+                console.log('TMDb response status:', response.status); // Debugging log
+                if (response.status === 200) {
+                    const data = JSON.parse(response.responseText);
+                    digitalReleases = digitalReleases.concat(data.results);
+                    console.log("Digital releases fetched:", data.results); // Debugging log for data
+
+                    if (data.page < data.total_pages) {
+                        fetchUpcomingDigitalMovies(data.page + 1).then(resolve).catch(reject);
+                    } else {
+                        fetchMovieDetails().then(() => {
+                            GM_setValue(CACHE_KEY_TMDB, digitalReleases);
+                            console.log("TMDb data cached:", digitalReleases); // Debugging log for caching
+                            resolve(digitalReleases);
+                        }).catch(reject);
+                    }
+                } else {
+                    console.error('Failed to fetch data from TMDb API', response); // Debugging log for errors
+                    reject(new Error('Failed to fetch data from TMDb API'));
+                }
+            },
+            onerror: function (response) {
+                console.error('Error occurred while fetching data from TMDb API', response); // Debugging log for errors
+                reject(new Error('Error occurred while fetching data from TMDb API'));
+            }
+        });
+    });
+};
+
+const sortAndFilterTmdbData = (data) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Set the time to midnight for accurate comparison
+
+    // Filter out movies with a release date before today
+    const filteredData = data.filter(movie => {
+        const releaseDate = new Date(movie.release_date);
+        return releaseDate >= today;
+    });
+
+    // Sort the movies by release date in ascending order
+    filteredData.sort((a, b) => new Date(a.release_date) - new Date(b.release_date));
+
+    return filteredData;
+};
+
+const fetchMovieDetails = async () => {
+    const apiKey = GM_getValue(API_KEY_TMDB, '');
+    console.log('Fetching TMDb movie details with API key:', apiKey); // Debugging log
+    if (!apiKey) {
+        console.error('TMDb API key is not set.');
+        return;
+    }
+
+    let remainingRequests = digitalReleases.length;
+    return new Promise((resolve) => {
+        digitalReleases.forEach(movie => {
+            fetchDetailsWithRetry(movie, 3, () => {
+                if (--remainingRequests === 0) {
+                    // Sort and filter the TMDb data before caching and displaying
+                    digitalReleases = sortAndFilterTmdbData(digitalReleases);
+                    GM_setValue(CACHE_KEY_TMDB, digitalReleases);
+                    resolve();
+                }
+            });
+        });
+    });
+};
+
+const fetchDetailsWithRetry = (movie, retries, callback) => {
+    const apiKey = GM_getValue(API_KEY_TMDB, '');
+    const url = `https://api.themoviedb.org/3/movie/${movie.id}?api_key=${apiKey}&append_to_response=credits,external_ids,images`;
+
+    GM_xmlhttpRequest({
+        method: 'GET',
+        url: url,
+        onload: function (response) {
+            console.log('TMDb movie details response status:', response.status); // Debugging log
+            if (response.status === 200) {
+                const data = JSON.parse(response.responseText);
+                movie.details = data;
+                console.log('Fetched TMDb movie details:', data); // Debugging log for details
+            } else if (retries > 0) {
+                console.warn(`Retrying fetch for movie ID ${movie.id}. Remaining retries: ${retries - 1}`);
+                fetchDetailsWithRetry(movie, retries - 1, callback);
+            } else {
+                console.error(`Failed to fetch details for movie ID ${movie.id} after multiple attempts`);
+            }
+            callback();
+        },
+        onerror: function () {
+            if (retries > 0) {
+                console.warn(`Retrying fetch for movie ID ${movie.id}. Remaining retries: ${retries - 1}`);
+                fetchDetailsWithRetry(movie, retries - 1, callback);
+            } else {
+                console.error(`Error occurred while fetching details for movie ID ${movie.id} after multiple attempts`);
+                callback();
+            }
+        }
+    });
+};
+
+const sortCombinedDataByDate = (data) => {
+    return data.sort((a, b) => {
+        const dateA = a.node.releaseDate ?
+            new Date(`${a.node.releaseDate.year}-${String(a.node.releaseDate.month).padStart(2, '0')}-${String(a.node.releaseDate.day).padStart(2, '0')}`) :
+            (a.node.details && a.node.details.release_date ? new Date(a.node.details.release_date) : null);
+        const dateB = b.node.releaseDate ?
+            new Date(`${b.node.releaseDate.year}-${String(b.node.releaseDate.month).padStart(2, '0')}-${String(b.node.releaseDate.day).padStart(2, '0')}`) :
+            (b.node.details && b.node.details.release_date ? new Date(b.node.details.release_date) : null);
+
+        if (!dateA || !dateB) {
+            return 0; // If either date is missing, consider them equal.
+        }
+
+        return dateA - dateB;
+    });
+};
 
     const addLightboxStyles = () => {
         const style = document.createElement('style');
@@ -282,114 +433,312 @@
         });
     };
 
-    const createImageElement = (node, size) => {
-        const image = document.createElement("img");
+const createImageElement = (node, size, source) => {
+    const image = document.createElement("img");
+    if (source === 'IMDb') {
         image.src = node.primaryImage && node.primaryImage.url ? node.primaryImage.url : 'https://ptpimg.me/w6l4kj.png';
         image.alt = node.primaryImage && node.primaryImage.caption ? node.primaryImage.caption.plainText : 'No image available';
-        image.style.maxWidth = size;
-        image.style.marginRight = "10px";
-        image.classList.add('lightbox-trigger');
-        return image;
-    };
+    } else if (source === 'TMDb') {
+        image.src = node.details && node.details.poster_path ? `https://image.tmdb.org/t/p/original${node.details.poster_path}` : 'https://ptpimg.me/w6l4kj.png';
+        image.alt = node.details && node.details.title ? node.details.title : 'No image available';
+    }
+    image.style.maxWidth = size;
+    image.style.marginRight = "10px";
+    image.classList.add('lightbox-trigger');
+    return image;
+};
 
-    const displayResultsOriginal = (page, data) => {
-        const nameImagesData = GM_getValue(NAME_IMAGES_CACHE_KEY);
-        const resultsPerPage = GM_getValue(RESULTS_PER_PAGE_KEY, RESULTS_PER_PAGE_DEFAULT);
-        if (!data || !data.edges || !nameImagesData) {
+const displayResultsOriginal = (page, data, source) => {
+    const nameImagesData = GM_getValue(NAME_IMAGES_CACHE_KEY);
+    const resultsPerPage = GM_getValue(RESULTS_PER_PAGE_KEY, RESULTS_PER_PAGE_DEFAULT);
+    if (!data || !data.edges || !nameImagesData) {
+        if (source === 'IMDb') {
             fetchAllComingSoonData();
-            return;
+        } else if (source === 'TMDb') {
+            fetchUpcomingDigitalMovies();
         }
+        return;
+    }
 
-        const totalResults = data.edges.length;
-        const totalPages = Math.ceil(totalResults / resultsPerPage);
+    const totalResults = data.edges.length;
+    const totalPages = Math.ceil(totalResults / resultsPerPage);
 
-        page = Math.max(1, Math.min(page, totalPages));
+    page = Math.max(1, Math.min(page, totalPages));
 
-        const startIndex = (page - 1) * resultsPerPage;
-        const endIndex = startIndex + resultsPerPage;
-        let pageData = data.edges.slice(startIndex, endIndex);
+    const startIndex = (page - 1) * resultsPerPage;
+    const endIndex = startIndex + resultsPerPage;
+    let pageData = data.edges.slice(startIndex, endIndex);
 
-        if (ALLOWED_GENRES.size > 0) {
-            pageData = pageData.filter(movie => {
-                return movie.node.genres.genres.some(genre => ALLOWED_GENRES.has(genre.text));
+    if (ALLOWED_GENRES.size > 0) {
+        pageData = pageData.filter(movie => {
+            return movie.node && movie.node.genres && movie.node.genres.genres.some(genre => ALLOWED_GENRES.has(genre.text || genre.name));
+        });
+    }
+
+    const container = document.querySelector("#torrents-movie-view > div");
+    container.innerHTML = "";
+
+    const groupedByDate = pageData.reduce((acc, movie) => {
+        const node = movie.node;
+        if (!node) return acc;
+        const releaseDate = node.releaseDate ? `${node.releaseDate.year}-${String(node.releaseDate.month).padStart(2, '0')}-${String(node.releaseDate.day).padStart(2, '0')}` : node.details.release_date;
+        if (!releaseDate) return acc;
+        const dateStr = new Date(releaseDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+        if (!acc[dateStr]) acc[dateStr] = [];
+        acc[dateStr].push(movie);
+        return acc;
+    }, {});
+
+    for (const [date, movies] of Object.entries(groupedByDate)) {
+        const dateHeader = document.createElement("h2");
+        dateHeader.textContent = date;
+        dateHeader.style.fontSize = "1.5em";
+        dateHeader.style.color = "white";
+        container.appendChild(dateHeader);
+
+        movies.forEach(movie => {
+            const node = movie.node;
+            const movieDiv = document.createElement("div");
+            movieDiv.style.border = "1px solid #ccc";
+            movieDiv.style.padding = "10px";
+            movieDiv.style.marginBottom = "10px";
+            movieDiv.style.display = "flex";
+            movieDiv.style.position = "relative";
+
+            const image = createImageElement(node, "200px", source);
+            movieDiv.appendChild(image);
+
+            const infoDiv = document.createElement("div");
+            infoDiv.style.flex = "1";
+            infoDiv.style.display = "flex";
+            infoDiv.style.flexDirection = "column";
+
+            const titleLinkDiv = document.createElement("div");
+            titleLinkDiv.style.display = "flex";
+            titleLinkDiv.style.justifyContent = "space-between";
+            titleLinkDiv.style.alignItems = "center";
+
+            const titleLink = document.createElement("a");
+            titleLink.href = source === 'IMDb' ? `https://www.imdb.com/title/${node.id}/` : `https://www.themoviedb.org/movie/${node.id}`;
+            titleLink.target = "_blank";
+            titleLink.rel = "noreferrer";
+            titleLink.textContent = node.titleText ? node.titleText.text : node.details.title;
+            titleLink.style.fontWeight = "bold";
+            titleLink.style.fontSize = "1.2em";
+            titleLink.style.textDecoration = "none";
+            titleLink.style.color = "white";
+            titleLink.style.display = "block";
+            titleLink.style.marginBottom = "10px";
+
+            if (source === 'TMDb') {
+                const digitalLabel = document.createElement('span');
+                digitalLabel.textContent = 'Digital';
+                digitalLabel.style.color = 'teal';
+                digitalLabel.style.marginLeft = '10px';
+                titleLink.appendChild(digitalLabel);
+            }
+
+            const ptpLink = document.createElement("a");
+            if (node.id) {
+                ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id}`;
+            } else {
+                ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.details.title}`;
+            }
+            ptpLink.target = "_blank";
+            ptpLink.textContent = "(Search PTP requests)";
+            ptpLink.style.float = "right";
+            ptpLink.style.fontSize = "0.9em";
+
+            titleLinkDiv.appendChild(titleLink);
+            titleLinkDiv.appendChild(ptpLink);
+            infoDiv.appendChild(titleLinkDiv);
+
+            const plot = document.createElement("p");
+            plot.textContent = node.plot ? node.plot.plotText.plainText : node.details.overview || "No plot available.";
+            infoDiv.appendChild(plot);
+
+            const genres = document.createElement("p");
+            const genresList = node.genres ? node.genres.genres : node.details.genres;
+            genresList.forEach(genre => {
+                const genreLink = document.createElement("a");
+                genreLink.href = `https://passthepopcorn.me/torrents.php?action=advanced&taglist=${genre.text || genre.name}`;
+                genreLink.textContent = genre.text || genre.name;
+                genreLink.style.color = "white";
+                genreLink.style.marginRight = "5px";
+                genres.appendChild(genreLink);
             });
+            infoDiv.appendChild(genres);
+
+            const castContainer = document.createElement("div");
+            castContainer.style.display = "flex";
+            castContainer.style.flexWrap = "wrap";
+            castContainer.style.gap = "10px";
+
+            let castCount = 0;
+            const creditsList = node.credits ? node.credits.edges : node.details.credits.cast;
+            creditsList.forEach(credit => {
+                const castMember = source === 'IMDb' ? nameImagesData.find(name => name.id === credit.node.name.id) : credit;
+                if (castMember && castCount < 5) {
+                    castCount++;
+                    const castDiv = document.createElement("div");
+                    castDiv.style.textAlign = "center";
+                    castDiv.style.width = "auto";
+
+                    const castImageLink = document.createElement("a");
+                    castImageLink.href = source === 'IMDb' ? `https://www.imdb.com/name/${credit.node.name.id}/` : `https://www.themoviedb.org/person/${credit.id}`;
+                    const castImage = document.createElement("img");
+                    castImage.src = source === 'IMDb' ? castMember.primaryImage.url : `https://image.tmdb.org/t/p/original${credit.profile_path}`;
+                    castImage.alt = source === 'IMDb' ? credit.node.name.nameText.text : credit.name;
+                    castImage.style.maxHeight = "150px";
+                    castImage.style.width = "auto";
+                    castImage.style.display = "block";
+                    castImageLink.appendChild(castImage);
+                    castDiv.appendChild(castImageLink);
+
+                    const castNameLink = document.createElement("a");
+                    castNameLink.href = source === 'IMDb' ? `https://www.imdb.com/name/${credit.node.name.id}/` : `https://www.themoviedb.org/person/${credit.id}`;
+                    castNameLink.target = "_blank";
+                    castNameLink.rel = "noreferrer";
+                    castNameLink.textContent = source === 'IMDb' ? credit.node.name.nameText.text : credit.name;
+                    castNameLink.style.display = "block";
+                    castNameLink.style.textDecoration = "none";
+                    castNameLink.style.color = "white";
+                    castNameLink.style.marginTop = "10px";
+                    castDiv.appendChild(castNameLink);
+
+                    castContainer.appendChild(castDiv);
+                }
+            });
+            infoDiv.appendChild(castContainer);
+
+            movieDiv.appendChild(infoDiv);
+            container.appendChild(movieDiv);
+        });
+    }
+
+    createPagination(page, totalResults);
+};
+
+const displayResultsCondensed = (page, data, source) => {
+    const nameImagesData = GM_getValue(NAME_IMAGES_CACHE_KEY);
+    const resultsPerPage = GM_getValue(RESULTS_PER_PAGE_KEY, RESULTS_PER_PAGE_DEFAULT);
+    if (!data || !data.edges || !nameImagesData) {
+        if (source === 'IMDb') {
+            fetchAllComingSoonData();
+        } else if (source === 'TMDb') {
+            fetchUpcomingDigitalMovies();
         }
+        return;
+    }
 
-        const container = document.querySelector("#torrents-movie-view > div");
-        container.innerHTML = "";
+    const totalResults = data.edges.length;
+    const totalPages = Math.ceil(totalResults / resultsPerPage);
 
-        const groupedByDate = pageData.reduce((acc, movie) => {
-            const releaseDate = movie.node.releaseDate;
-            if (!releaseDate) return acc;
-            const dateStr = new Date(`${releaseDate.year}-${String(releaseDate.month).padStart(2, '0')}-${String(releaseDate.day).padStart(2, '0')}`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-            if (!acc[dateStr]) acc[dateStr] = [];
-            acc[dateStr].push(movie);
-            return acc;
-        }, {});
+    page = Math.max(1, Math.min(page, totalPages));
 
-        for (const [date, movies] of Object.entries(groupedByDate)) {
-            const dateHeader = document.createElement("h2");
-            dateHeader.textContent = date;
-            dateHeader.style.fontSize = "1.5em";
-            dateHeader.style.color = "white";
-            container.appendChild(dateHeader);
+    const startIndex = (page - 1) * resultsPerPage;
+    const endIndex = startIndex + resultsPerPage;
+    let pageData = data.edges.slice(startIndex, endIndex);
 
-            movies.forEach(movie => {
+    if (ALLOWED_GENRES.size > 0) {
+        pageData = pageData.filter(movie => {
+            return movie.node && movie.node.genres && movie.node.genres.genres.some(genre => ALLOWED_GENRES.has(genre.text || genre.name));
+        });
+    }
+
+    const container = document.querySelector("#torrents-movie-view > div");
+    container.innerHTML = "";
+
+    const groupedByDate = pageData.reduce((acc, movie) => {
+        const node = movie.node;
+        if (!node) return acc;
+        const releaseDate = node.releaseDate ? `${node.releaseDate.year}-${String(node.releaseDate.month).padStart(2, '0')}-${String(node.releaseDate.day).padStart(2, '0')}` : node.details.release_date;
+        if (!releaseDate) return acc;
+        const dateStr = new Date(releaseDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+        if (!acc[dateStr]) acc[dateStr] = [];
+        acc[dateStr].push(movie);
+        return acc;
+    }, {});
+
+    const table = document.createElement("table");
+    table.style.width = "100%";
+    table.style.borderCollapse = "collapse";
+
+    for (const [date, movies] of Object.entries(groupedByDate)) {
+        const dateHeaderRow = document.createElement("tr");
+        const dateHeader = document.createElement("th");
+        dateHeader.colSpan = 2;
+        dateHeader.textContent = date;
+        dateHeader.style.fontSize = "1.5em";
+        dateHeader.style.color = "white";
+        dateHeader.style.padding = "10px";
+        dateHeaderRow.appendChild(dateHeader);
+        table.appendChild(dateHeaderRow);
+
+        for (let i = 0; i < movies.length; i += 2) {
+            const row = document.createElement("tr");
+
+            for (let j = 0; j < 2; j++) {
+                const movie = movies[i + j];
+                if (!movie || !movie.node) continue;
+
                 const node = movie.node;
+                const cell = document.createElement("td");
+                cell.style.border = "1px solid #525252";
+                cell.style.padding = "10px";
+                cell.style.verticalAlign = "top";
+                cell.style.width = "50%";
+
                 const movieDiv = document.createElement("div");
-                movieDiv.style.border = "1px solid #ccc";
-                movieDiv.style.padding = "10px";
-                movieDiv.style.marginBottom = "10px";
                 movieDiv.style.display = "flex";
                 movieDiv.style.position = "relative";
 
-                const image = createImageElement(node, "200px");
+                const image = createImageElement(node, "60px", source);
                 movieDiv.appendChild(image);
 
                 const infoDiv = document.createElement("div");
                 infoDiv.style.flex = "1";
-                infoDiv.style.display = "flex";
-                infoDiv.style.flexDirection = "column";
-
-                const titleLinkDiv = document.createElement("div");
-                titleLinkDiv.style.display = "flex";
-                titleLinkDiv.style.justifyContent = "space-between";
-                titleLinkDiv.style.alignItems = "center";
 
                 const titleLink = document.createElement("a");
-                titleLink.href = `https://www.imdb.com/title/${node.id}/`;
+                titleLink.href = source === 'IMDb' ? `https://www.imdb.com/title/${node.id}/` : `https://www.themoviedb.org/movie/${node.id}`;
                 titleLink.target = "_blank";
                 titleLink.rel = "noreferrer";
-                titleLink.textContent = node.titleText.text;
+                titleLink.textContent = node.titleText ? node.titleText.text : node.details.title;
                 titleLink.style.fontWeight = "bold";
                 titleLink.style.fontSize = "1.2em";
                 titleLink.style.textDecoration = "none";
                 titleLink.style.color = "white";
-                titleLink.style.display = "block";
-                titleLink.style.marginBottom = "10px";
+                titleLink.style.marginBottom = "2px";
+                infoDiv.appendChild(titleLink);
+
+                if (source === 'TMDb') {
+                    const digitalLabel = document.createElement('span');
+                    digitalLabel.textContent = 'Digital';
+                    digitalLabel.style.color = 'teal';
+                    digitalLabel.style.marginLeft = '10px';
+                    titleLink.appendChild(digitalLabel);
+                }
 
                 const ptpLink = document.createElement("a");
-                ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id}`;
+                if (node.id) {
+                    ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id}`;
+                } else {
+                    ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.details.title}`;
+                }
                 ptpLink.target = "_blank";
                 ptpLink.textContent = "(Search PTP requests)";
                 ptpLink.style.float = "right";
                 ptpLink.style.fontSize = "0.9em";
-
-                titleLinkDiv.appendChild(titleLink);
-                titleLinkDiv.appendChild(ptpLink);
-                infoDiv.appendChild(titleLinkDiv);
-
-                const plot = document.createElement("p");
-                plot.textContent = node.plot ? node.plot.plotText.plainText : "No plot available.";
-                infoDiv.appendChild(plot);
+                infoDiv.appendChild(ptpLink);
 
                 const genres = document.createElement("p");
-                node.genres.genres.forEach(genre => {
+                const genresList = node.genres ? node.genres.genres : node.details.genres;
+                genresList.forEach(genre => {
                     const genreLink = document.createElement("a");
-                    genreLink.href = `https://passthepopcorn.me/torrents.php?action=advanced&taglist=${genre.text}`;
-                    genreLink.textContent = genre.text;
+                    genreLink.href = `https://passthepopcorn.me/torrents.php?action=advanced&taglist=${genre.text || genre.name}`;
+                    genreLink.textContent = genre.text || genre.name;
                     genreLink.style.color = "white";
-                    genreLink.style.marginRight = "5px";
+                    genreLink.style.marginRight = "10px";
                     genres.appendChild(genreLink);
                 });
                 infoDiv.appendChild(genres);
@@ -400,30 +749,19 @@
                 castContainer.style.gap = "10px";
 
                 let castCount = 0;
-                node.credits.edges.forEach(credit => {
-                    const castMember = nameImagesData.find(name => name.id === credit.node.name.id);
-                    if (castMember && castMember.primaryImage && castCount < 5) {
+                const creditsList = node.credits ? node.credits.edges : node.details.credits.cast;
+                creditsList.forEach(credit => {
+                    const castMember = source === 'IMDb' ? nameImagesData.find(name => name.id === credit.node.name.id) : credit;
+                    if (castMember && castCount < 5) {
                         castCount++;
                         const castDiv = document.createElement("div");
                         castDiv.style.textAlign = "center";
                         castDiv.style.width = "auto";
 
-                        const castImageLink = document.createElement("a");
-                        castImageLink.href = `https://passthepopcorn.me/artist.php?artistname=${credit.node.name.nameText.text}`;
-                        const castImage = document.createElement("img");
-                        castImage.src = castMember.primaryImage.url;
-                        castImage.alt = credit.node.name.nameText.text;
-                        castImage.style.maxHeight = "150px";
-                        castImage.style.width = "auto";
-                        castImage.style.display = "block";
-                        castImageLink.appendChild(castImage);
-                        castDiv.appendChild(castImageLink);
-
                         const castNameLink = document.createElement("a");
-                        castNameLink.href = `https://www.imdb.com/name/${credit.node.name.id}/`;
+                        castNameLink.href = source === 'IMDb' ? `https://www.imdb.com/name/${credit.node.name.id}/` : `https://www.themoviedb.org/person/${credit.id}`;
                         castNameLink.target = "_blank";
-                        castNameLink.rel = "noreferrer";
-                        castNameLink.textContent = credit.node.name.nameText.text;
+                        castNameLink.textContent = source === 'IMDb' ? credit.node.name.nameText.text : credit.name;
                         castNameLink.style.display = "block";
                         castNameLink.style.textDecoration = "none";
                         castNameLink.style.color = "white";
@@ -436,160 +774,18 @@
                 infoDiv.appendChild(castContainer);
 
                 movieDiv.appendChild(infoDiv);
-                container.appendChild(movieDiv);
-            });
-        }
-
-        createPagination(page, totalResults);
-    };
-
-    const displayResultsCondensed = (page, data) => {
-        const nameImagesData = GM_getValue(NAME_IMAGES_CACHE_KEY);
-        const resultsPerPage = GM_getValue(RESULTS_PER_PAGE_KEY, RESULTS_PER_PAGE_DEFAULT);
-        if (!data || !data.edges || !nameImagesData) {
-            fetchAllComingSoonData();
-            return;
-        }
-
-        const totalResults = data.edges.length;
-        const totalPages = Math.ceil(totalResults / resultsPerPage);
-
-        page = Math.max(1, Math.min(page, totalPages));
-
-        const startIndex = (page - 1) * resultsPerPage;
-        const endIndex = startIndex + resultsPerPage;
-        let pageData = data.edges.slice(startIndex, endIndex);
-
-        if (ALLOWED_GENRES.size > 0) {
-            pageData = pageData.filter(movie => {
-                return movie.node.genres.genres.some(genre => ALLOWED_GENRES.has(genre.text));
-            });
-        }
-
-        const container = document.querySelector("#torrents-movie-view > div");
-        container.innerHTML = "";
-
-        const groupedByDate = pageData.reduce((acc, movie) => {
-            const releaseDate = movie.node.releaseDate;
-            if (!releaseDate) return acc;
-            const dateStr = new Date(`${releaseDate.year}-${String(releaseDate.month).padStart(2, '0')}-${String(releaseDate.day).padStart(2, '0')}`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-            if (!acc[dateStr]) acc[dateStr] = [];
-            acc[dateStr].push(movie);
-            return acc;
-        }, {});
-
-        const table = document.createElement("table");
-        table.style.width = "100%";
-        table.style.borderCollapse = "collapse";
-
-        for (const [date, movies] of Object.entries(groupedByDate)) {
-            const dateHeaderRow = document.createElement("tr");
-            const dateHeader = document.createElement("th");
-            dateHeader.colSpan = 2;
-            dateHeader.textContent = date;
-            dateHeader.style.fontSize = "1.5em";
-            dateHeader.style.color = "white";
-            dateHeader.style.padding = "10px";
-            dateHeaderRow.appendChild(dateHeader);
-            table.appendChild(dateHeaderRow);
-
-            for (let i = 0; i < movies.length; i += 2) {
-                const row = document.createElement("tr");
-
-                for (let j = 0; j < 2; j++) {
-                    const movie = movies[i + j];
-                    if (!movie) break;
-
-                    const node = movie.node;
-                    const cell = document.createElement("td");
-                    cell.style.border = "1px solid #525252";
-                    cell.style.padding = "10px";
-                    cell.style.verticalAlign = "top";
-                    cell.style.width = "50%";
-
-                    const movieDiv = document.createElement("div");
-                    movieDiv.style.display = "flex";
-                    movieDiv.style.position = "relative";
-
-                    const image = createImageElement(node, "60px");
-                    movieDiv.appendChild(image);
-
-                    const infoDiv = document.createElement("div");
-                    infoDiv.style.flex = "1";
-
-                    const titleLink = document.createElement("a");
-                    titleLink.href = `https://www.imdb.com/title/${node.id}/`;
-                    titleLink.target = "_blank";
-                    titleLink.rel = "noreferrer";
-                    titleLink.textContent = node.titleText.text;
-                    titleLink.style.fontWeight = "bold";
-                    titleLink.style.fontSize = "1.2em";
-                    titleLink.style.textDecoration = "none";
-                    titleLink.style.color = "white";
-                    titleLink.style.marginBottom = "2px";
-                    infoDiv.appendChild(titleLink);
-
-                    const ptpLink = document.createElement("a");
-                    ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id}`;
-                    ptpLink.target = "_blank";
-                    ptpLink.textContent = "(Search PTP requests)";
-                    ptpLink.style.float = "right";
-                    ptpLink.style.fontSize = "0.9em";
-                    infoDiv.appendChild(ptpLink);
-
-                    const genres = document.createElement("p");
-                    node.genres.genres.forEach(genre => {
-                        const genreLink = document.createElement("a");
-                        genreLink.href = `https://passthepopcorn.me/torrents.php?action=advanced&taglist=${genre.text}`;
-                        genreLink.textContent = genre.text;
-                        genreLink.style.color = "white";
-                        genreLink.style.marginRight = "10px";
-                        genres.appendChild(genreLink);
-                    });
-                    infoDiv.appendChild(genres);
-
-                    const castContainer = document.createElement("div");
-                    castContainer.style.display = "flex";
-                    castContainer.style.flexWrap = "wrap";
-                    castContainer.style.gap = "10px";
-
-                    let castCount = 0;
-                    node.credits.edges.forEach(credit => {
-                        const castMember = nameImagesData.find(name => name.id === credit.node.name.id);
-                        if (castMember && castCount < 5) {
-                            castCount++;
-                            const castDiv = document.createElement("div");
-                            castDiv.style.textAlign = "center";
-                            castDiv.style.width = "auto";
-
-                            const castNameLink = document.createElement("a");
-                            castNameLink.href = `https://passthepopcorn.me/artist.php?artistname=${credit.node.name.nameText.text}`;
-                            castNameLink.target = "_blank";
-                            castNameLink.textContent = credit.node.name.nameText.text;
-                            castNameLink.style.display = "block";
-                            castNameLink.style.textDecoration = "none";
-                            castNameLink.style.color = "white";
-                            castNameLink.style.marginTop = "10px";
-                            castDiv.appendChild(castNameLink);
-
-                            castContainer.appendChild(castDiv);
-                        }
-                    });
-                    infoDiv.appendChild(castContainer);
-
-                    movieDiv.appendChild(infoDiv);
-                    cell.appendChild(movieDiv);
-                    row.appendChild(cell);
-                }
-
-                table.appendChild(row);
+                cell.appendChild(movieDiv);
+                row.appendChild(cell);
             }
+
+            table.appendChild(row);
         }
+    }
 
-        container.appendChild(table);
+    container.appendChild(table);
 
-        createPagination(page, totalResults);
-    };
+    createPagination(page, totalResults);
+};
 
     const createPagination = (currentPage, totalResults) => {
         const resultsPerPage = GM_getValue(RESULTS_PER_PAGE_KEY, RESULTS_PER_PAGE_DEFAULT);
@@ -634,16 +830,67 @@
         });
     };
 
-    const displayResults = (page) => {
-        const layout = GM_getValue(LAYOUT_KEY, LAYOUT_ORIGINAL);
+const displayResults = async (page) => {
+    const layout = GM_getValue(LAYOUT_KEY, LAYOUT_ORIGINAL);
+    const resultType = GM_getValue(RESULT_TYPE_KEY, 'All');
+    let data = { edges: [] };
+    let source = '';
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Set to midnight to compare only dates
+
+    if (resultType === 'Theatrical' || resultType === 'All') {
         const filteredData = GM_getValue(FILTERED_CACHE_KEY);
-        const data = filteredData || GM_getValue(CACHE_KEY);
-        if (layout === LAYOUT_ORIGINAL) {
-            displayResultsOriginal(page, data);
-        } else if (layout === LAYOUT_CONDENSED) {
-            displayResultsCondensed(page, data);
+        const imdbData = filteredData || GM_getValue(CACHE_KEY_IMDB);
+        if (imdbData) {
+            data.edges = data.edges.concat(imdbData.edges);
         }
-    };
+        source = 'IMDb';
+    }
+
+    if (resultType === 'Digital' || resultType === 'All') {
+        const tmdbData = GM_getValue(CACHE_KEY_TMDB);
+        if (tmdbData) {
+            const sortedFilteredTmdbData = sortAndFilterTmdbData(tmdbData); // Ensure data is sorted and filtered
+            data.edges = data.edges.concat(sortedFilteredTmdbData.map(movie => ({ node: movie })));
+        }
+        source = 'TMDb';
+    }
+
+    // Filter out items with dates before today
+    data.edges = data.edges.filter(edge => {
+        const releaseDate = edge.node.releaseDate ?
+            new Date(`${edge.node.releaseDate.year}-${String(edge.node.releaseDate.month).padStart(2, '0')}-${String(edge.node.releaseDate.day).padStart(2, '0')}`) :
+            (edge.node.details && edge.node.details.release_date ? new Date(edge.node.details.release_date) : null);
+
+        return releaseDate && releaseDate >= today;
+    });
+
+    // Remove potential duplicates by using a Set or filtering based on a unique identifier like `node.id`
+    const uniqueData = [];
+    const seenIds = new Set();
+
+    data.edges.forEach(edge => {
+        const id = edge.node.id || edge.node.details.id;
+        if (!seenIds.has(id)) {
+            seenIds.add(id);
+            uniqueData.push(edge);
+        }
+    });
+
+    data.edges = uniqueData;
+
+    // Sort the combined data by release date
+    if (data.edges.length > 0) {
+        data.edges = sortCombinedDataByDate(data.edges);
+    }
+
+    if (layout === LAYOUT_ORIGINAL) {
+        displayResultsOriginal(page, data, source);
+    } else if (layout === LAYOUT_CONDENSED) {
+        displayResultsCondensed(page, data, source);
+    }
+};
 
     const handleSearchForm = () => {
         const searchForm = document.querySelector("#filter_torrents_form");
@@ -655,7 +902,7 @@
                 const taglist = formData.get("taglist") || "";
                 const castlist = formData.get("castlist") || "";
 
-                const cachedData = GM_getValue(CACHE_KEY);
+                const cachedData = GM_getValue(CACHE_KEY_IMDB);
                 if (cachedData && cachedData.edges) {
                     let filteredData = cachedData.edges;
 
@@ -693,22 +940,34 @@
 
     const init = () => {
         const currentPage = GM_getValue(CURRENT_PAGE_KEY, 1);
-        const cacheExpiration = GM_getValue(CACHE_EXPIRATION_KEY, 0);
-        const isCacheExpired = Date.now() > cacheExpiration;
+        const cacheExpirationIMDb = GM_getValue(CACHE_EXPIRATION_KEY_IMDB, 0);
+        const cacheExpirationTMDb = GM_getValue(CACHE_EXPIRATION_KEY_TMDB, 0);
+        const isCacheExpiredIMDb = Date.now() > cacheExpirationIMDb;
+        const isCacheExpiredTMDb = Date.now() > cacheExpirationTMDb;
 
-        if (isCacheExpired) {
+        if (isCacheExpiredIMDb) {
             clearCache();
-            console.log("Fetching fresh data for upcoming movies");
             fetchAllComingSoonData();
         } else {
-            console.log("Using cached data for upcoming movies");
-            const cachedData = GM_getValue(CACHE_KEY);
+            const cachedDataIMDb = GM_getValue(CACHE_KEY_IMDB);
             const nameImagesData = GM_getValue(NAME_IMAGES_CACHE_KEY);
-            if (cachedData && cachedData.edges.length > 0 && nameImagesData) {
+            if (cachedDataIMDb && cachedDataIMDb.edges.length > 0 && nameImagesData) {
                 displayResults(currentPage);
             } else {
                 fetchAllComingSoonData();
             }
+        }
+
+        if (isCacheExpiredTMDb) {
+            clearCache();
+            fetchUpcomingDigitalMovies().then(() => {
+                GM_setValue(CACHE_KEY_TMDB, digitalReleases);
+                GM_setValue(CACHE_EXPIRATION_KEY_TMDB, Date.now() + 2 * 24 * 60 * 60 * 1000);
+                displayResults(currentPage);
+            });
+        } else {
+            clearCache();
+            displayResults(currentPage);
         }
 
         handleSearchForm();
@@ -779,20 +1038,70 @@
                     displayResults(GM_getValue(CURRENT_PAGE_KEY, 1));
                 }
             });
+
+            const tmdbApiKeyGrid = document.createElement("div");
+            tmdbApiKeyGrid.className = "grid";
+            tmdbApiKeyGrid.innerHTML = `
+                <div class="grid__item grid-u-2-10">
+                    <label class="form__label">TMDb API Key:</label>
+                </div>
+                <div class="grid__item grid-u-7-10">
+                    <input type="text" size="40" id="tmdb_api_key" class="form__input" value="${GM_getValue(API_KEY_TMDB, '')}">
+                </div>
+                <div class="grid__item grid-u-1-10">
+                    <button id="save_tmdb_api_key" class="form__input" type="button">Save</button>
+                </div>`;
+            searchFormFooter.appendChild(tmdbApiKeyGrid);
+
+const saveTmdbApiKeyButton = document.getElementById("save_tmdb_api_key");
+saveTmdbApiKeyButton.addEventListener("click", () => {
+    const tmdbApiKeyInput = document.getElementById("tmdb_api_key");
+    GM_setValue(API_KEY_TMDB, tmdbApiKeyInput.value);
+    console.log('TMDb API Key saved:', tmdbApiKeyInput.value); // Debugging log
+});
+
+            const resultTypeGrid = document.createElement("div");
+            resultTypeGrid.className = "grid";
+            resultTypeGrid.innerHTML = `
+                <div class="grid__item grid-u-2-10">
+                    <label class="form__label">Result Type:</label>
+                </div>
+                <div class="grid__item grid-u-7-10">
+                    <select id="result_type" class="form__input">
+                        <option value="All">All</option>
+                        <option value="Theatrical">Theatrical</option>
+                        <option value="Digital">Digital</option>
+                    </select>
+                </div>
+                <div class="grid__item grid-u-1-10">
+                    <button id="refresh_results" class="form__input" type="button">Refresh</button>
+                </div>`;
+            searchFormFooter.appendChild(resultTypeGrid);
+
+            const resultTypeSelect = document.getElementById("result_type");
+            resultTypeSelect.value = GM_getValue(RESULT_TYPE_KEY, 'All');
+            resultTypeSelect.addEventListener("change", () => {
+                GM_setValue(RESULT_TYPE_KEY, resultTypeSelect.value);
+            });
+
+            const refreshResultsButton = document.getElementById("refresh_results");
+            refreshResultsButton.addEventListener("click", () => {
+                displayResults(1);
+                console.log('Results refreshed for type:', resultTypeSelect.value);
+            });
+
+            const castGrid = document.createElement("div");
+            castGrid.className = "grid";
+            castGrid.innerHTML = `
+                <div class="grid__item grid-u-2-10">
+                    <label class="form__label">Cast:</label>
+                </div>
+                <div class="grid__item grid-u-8-10">
+                    <input type="text" size="40" id="cast" class="form__input" title="Comma-separated cast names" value="">
+                </div>`;
+            const genresGrid = document.querySelector(".filter_torrents .grid:nth-child(2)");
+            genresGrid.insertAdjacentElement('afterend', castGrid);
         }
-
-        const castGrid = document.createElement("div");
-        castGrid.className = "grid";
-        castGrid.innerHTML = `
-            <div class="grid__item grid-u-2-10">
-                <label class="form__label">Cast:</label>
-            </div>
-            <div class="grid__item grid-u-8-10">
-                <input type="text" size="40" id="cast" class="form__input" title="Comma-separated cast names" value="">
-            </div>`;
-
-        const genresGrid = document.querySelector(".filter_torrents .grid:nth-child(2)");
-        genresGrid.insertAdjacentElement('afterend', castGrid);
     };
 
     function bindKeyBindings() {
