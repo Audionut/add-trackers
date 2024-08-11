@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.2.1-A
+// @version      4.2.2-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -2295,35 +2295,7 @@ function toUnixTime(dateString) {
                                                 resolve([]);
                                             } else {
                                                 console.log("Data fetched successfully from M-Team");
-                                                (async () => {
-                                                    const torrentsWithDownloadUrl = await Promise.all(result.data.data.map(async (torrent) => {
-                                                        try {
-                                                            const tokenResponse = await fetch(`https://api.m-team.cc/api/torrent/genDlToken?id=${torrent.id}`, {
-                                                                method: 'POST',
-                                                                headers: {
-                                                                    'x-api-key': GM_config.get("mtm_api"),
-                                                                    'Content-Type': 'application/json',
-                                                                    'Accept': 'application/json',
-                                                                }
-                                                            });
-                                                            const tokenData = await tokenResponse.json();
-                                                            if (debug) {
-                                                                console.log("M-Team download URL data", tokenData);
-                                                            }
-                                                            if (tokenData.code === "0" && tokenData.data) {
-                                                                torrent.downloadUrl = tokenData.data;
-                                                            } else {
-                                                                console.warn(`Failed to fetch download URL for torrent ID ${torrent.id}`);
-                                                                torrent.downloadUrl = null;
-                                                            }
-                                                        } catch (error) {
-                                                            console.warn(`Error fetching download URL for torrent ID ${torrent.id}:`, error);
-                                                            torrent.downloadUrl = null;
-                                                        }
-                                                        return torrent;
-                                                    }));
-                                                    resolve(get_post_torrent_objects(tracker, result.data.data, null, torrentsWithDownloadUrl));
-                                                })();
+                                                resolve(get_post_torrent_objects(tracker, result.data.data, null));
                                             }
                                         } else {
                                             console.warn(`Unhandled tracker or response format for ${tracker}`);
@@ -3532,12 +3504,7 @@ function toUnixTime(dateString) {
                 }
             } else if (tracker === "MTeam") {
                 try {
-                    if (!postData || !Array.isArray(postData) || postData.length !== torrentsWithDownloadUrl.length) {
-                        console.error("Mismatch or invalid structure between postData and torrentsWithDownloadUrl.");
-                        return [];
-                    }
-
-                    torrent_objs = postData.map((d, index) => {
+                    torrent_objs = postData.map((d) => {
                         const size = parseInt(d.size / (1024 * 1024));
                         const api_size = parseInt(d.size);
 
@@ -3617,8 +3584,6 @@ function toUnixTime(dateString) {
                             }
                         }
 
-                        const downloadUrl = torrentsWithDownloadUrl[index]?.downloadUrl || `${url}${id}`;
-
                         const torrentObj = {
                             api_size: api_size,
                             datasetRelease: d.name,
@@ -3629,8 +3594,9 @@ function toUnixTime(dateString) {
                             snatch: snatch,
                             seed: seed,
                             leech: leech,
-                            download_link: downloadUrl,
+                            download_link: `https://kp.m-team.cc/download/${id}`,
                             torrent_page: `${url}${id}`,
+                            teamId : `${id}`,
                             discount: discount,
                             groupId: groupText,
                             time: time,
@@ -4567,23 +4533,67 @@ function toUnixTime(dateString) {
                 if (torrent.status === "grabbed") cln.querySelector(".torrent-info-link").className += " torrent-info-link--user-downloaded";
                 if (torrent.status === "snatched") cln.querySelector(".torrent-info-link").className += " torrent-info-link--user-snatched";
 
+                async function fetchDownloadUrl(torrentId) {
+                    try {
+                        const tokenResponse = await fetch(`https://api.m-team.cc/api/torrent/genDlToken?id=${torrentId}`, {
+                            method: 'POST',
+                            headers: {
+                                'x-api-key': GM_config.get("mtm_api"),
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                            }
+                        });
+
+                        const tokenData = await tokenResponse.json();
+                        if (tokenData.code === "0" && tokenData.data) {
+                            const downloadUrl = tokenData.data;
+                            const linkElement = document.querySelector(`a[data-torrent-id="${torrentId}"]`);
+
+                            if (linkElement) {
+                                linkElement.href = downloadUrl;
+                                linkElement.removeAttribute("onclick");
+                                linkElement.setAttribute('data-download-completed', 'true');
+                                linkElement.click();
+                            }
+                        } else {
+                            console.warn(`Failed to fetch download URL for torrent ID ${torrentId}`);
+                        }
+                    } catch (error) {
+                        console.warn(`Error fetching download URL for torrent ID ${torrentId}:`, error);
+                    }
+                }
+
                 let elements = cln.querySelector(".basic-movie-list__torrent__action").querySelectorAll("a");
 
                 if (elements.length > 0) {
+                    let element;
+
                     if (hideBlankLinks === "DL") {
-                        let element = [...elements].find(a => a.textContent === " DL ");
-                        if (element) {
-                            element.href = torrent.download_link;
-                        }
+                        element = [...elements].find(a => a.textContent.trim() === "DL");
                     } else if (hideBlankLinks === "Download") {
-                        let element = [...elements].find(a => a.textContent === " DOWNLOAD ");
-                        if (element) {
-                            element.href = torrent.download_link;
-                        }
+                        element = [...elements].find(a => a.textContent.trim().toUpperCase() === "DOWNLOAD");
                     } else if (hideBlankLinks === "Spaced") {
-                        let element = [...elements].find(a => a.textContent.trim() === "DL");
+                        element = [...elements].find(a => a.textContent.trim() === "DL");
                         if (element) {
                             element.style.paddingRight = "51px";
+                        }
+                    }
+
+                    if (element) {
+                        if (tracker === "MTeam") {
+                            element.href = torrent.download_link;
+                            element.setAttribute('data-torrent-id', torrent.teamId);
+
+                            element.addEventListener('click', function(event) {
+                                const downloadCompleted = element.getAttribute('data-download-completed');
+
+                                if (!downloadCompleted) {
+                                    event.preventDefault();
+                                    const torrentId = element.getAttribute('data-torrent-id');
+                                    fetchDownloadUrl(torrentId);
+                                }
+                            });
+                        } else {
                             element.href = torrent.download_link;
                         }
                     }
