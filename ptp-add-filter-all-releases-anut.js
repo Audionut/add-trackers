@@ -3521,7 +3521,6 @@ function toUnixTime(dateString) {
                         const seed = parseInt(status.seeders) || 0;
                         const leech = parseInt(status.leechers) || 0;
                         let infoText = d.name;
-                        console.warn("inotext", infoText);
 
                             let groupText = "";
                             const groups = goodGroups();
