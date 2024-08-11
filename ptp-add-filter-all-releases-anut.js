@@ -1767,8 +1767,8 @@ function toUnixTime(dateString) {
                 },
                 'MTeam': {
                     'x-api-key': GM_config.get("mtm_api"),
-                    'Content-Type': '',
-                    //'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
                     //'Authorization': '',
                 },
                 // Add more trackers and their headers as needed
@@ -2290,12 +2290,40 @@ function toUnixTime(dateString) {
                                             if (result.code !== "0") {
                                                 console.warn("M-Team returned a failed status code");
                                                 resolve([]);
-                                            } else if (!result.data || result.data.length === 0) {
+                                            } else if (!result.data || !result.data.data || result.data.data.length === 0) {
                                                 console.log("M-Team reached successfully but no results were returned");
                                                 resolve([]);
                                             } else {
                                                 console.log("Data fetched successfully from M-Team");
-                                                resolve(get_post_torrent_objects(tracker, result));
+                                                (async () => {
+                                                    const torrentsWithDownloadUrl = await Promise.all(result.data.data.map(async (torrent) => {
+                                                        try {
+                                                            const tokenResponse = await fetch(`https://api.m-team.cc/api/torrent/genDlToken?id=${torrent.id}`, {
+                                                                method: 'POST',
+                                                                headers: {
+                                                                    'x-api-key': GM_config.get("mtm_api"),
+                                                                    'Content-Type': 'application/json',
+                                                                    'Accept': 'application/json',
+                                                                }
+                                                            });
+                                                            const tokenData = await tokenResponse.json();
+                                                            if (debug) {
+                                                                console.log("M-Team download URL data", tokenData);
+                                                            }
+                                                            if (tokenData.code === "0" && tokenData.data) {
+                                                                torrent.downloadUrl = tokenData.data;
+                                                            } else {
+                                                                console.warn(`Failed to fetch download URL for torrent ID ${torrent.id}`);
+                                                                torrent.downloadUrl = null;
+                                                            }
+                                                        } catch (error) {
+                                                            console.warn(`Error fetching download URL for torrent ID ${torrent.id}:`, error);
+                                                            torrent.downloadUrl = null;
+                                                        }
+                                                        return torrent;
+                                                    }));
+                                                    resolve(get_post_torrent_objects(tracker, result.data.data, null, torrentsWithDownloadUrl));
+                                                })();
                                             }
                                         } else {
                                             console.warn(`Unhandled tracker or response format for ${tracker}`);
@@ -3502,10 +3530,14 @@ function toUnixTime(dateString) {
                 } catch (error) {
                     console.error("An error occurred while processing FL tracker:", error);
                 }
-            }
-            else if (tracker === "MTeam") {
+            } else if (tracker === "MTeam") {
                 try {
-                    torrent_objs = postData.data.data.map((d) => {
+                    if (!postData || !Array.isArray(postData) || postData.length !== torrentsWithDownloadUrl.length) {
+                        console.error("Mismatch or invalid structure between postData and torrentsWithDownloadUrl.");
+                        return [];
+                    }
+
+                    torrent_objs = postData.map((d, index) => {
                         const size = parseInt(d.size / (1024 * 1024));
                         const api_size = parseInt(d.size);
 
@@ -3529,71 +3561,77 @@ function toUnixTime(dateString) {
                                     discount = "FL";
                                 } else if (discount === "PERCENT_50") {
                                     discount = "50%";
+                                } else if (discount === "NORMAL") {
+                                    discount = "None";
                                 }
                             } else {
                                 if (discount === "FREE") {
                                     discount = "Freeleech";
                                 } else if (discount === "PERCENT_50") {
                                     discount = "50% Freeleech";
+                                } else if (discount === "NORMAL") {
+                                    discount = "None";
                                 }
                             }
                         }
+
                         let infoText = d.name;
 
-                            let groupText = "";
-                            const groups = goodGroups();
-                            const badGroupsList = badGroups();
-                            let matchedGroup = null;
-                            let badGroupFound = false;
+                        let groupText = "";
+                        const groups = goodGroups();
+                        const badGroupsList = badGroups();
+                        let matchedGroup = null;
+                        let badGroupFound = false;
 
-                            for (const badGroup of badGroupsList) {
-                                if (infoText.includes(badGroup)) {
-                                    badGroupFound = true;
-                                    infoText = infoText.replace(badGroup, '').trim();
-                                    groupText = "";
+                        for (const badGroup of badGroupsList) {
+                            if (infoText.includes(badGroup)) {
+                                badGroupFound = true;
+                                infoText = infoText.replace(badGroup, '').trim();
+                                groupText = "";
+                                break;
+                            }
+                        }
+
+                        if (!badGroupFound) {
+                            for (const group of groups) {
+                                if (infoText.includes(group)) {
+                                    matchedGroup = group;
                                     break;
                                 }
                             }
 
-                            if (!badGroupFound) {
-                                for (const group of groups) {
-                                    if (infoText.includes(group)) {
-                                        matchedGroup = group;
-                                        break;
-                                    }
+                            if (matchedGroup) {
+                                groupText = matchedGroup;
+                                if (improved_tags) {
+                                    infoText = infoText.replace(groupText, '').trim();
                                 }
-
-                                if (matchedGroup) {
-                                    groupText = matchedGroup;
+                            } else {
+                                const match = infoText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
+                                if (match) {
+                                    groupText = match[1];
+                                    groupText = groupText.replace(/[^a-z0-9]/gi, '');
                                     if (improved_tags) {
-                                        infoText = infoText.replace(groupText, '').trim();
-                                    }
-                                } else {
-                                    const match = infoText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
-                                    if (match) {
-                                        groupText = match[1];
-                                        groupText = groupText.replace(/[^a-z0-9]/gi, '');
-                                        if (improved_tags) {
-                                            infoText = infoText.replace(`-${match[1]}`, '').trim();
-                                        }
+                                        infoText = infoText.replace(`-${match[1]}`, '').trim();
                                     }
                                 }
                             }
+                        }
+
+                        const downloadUrl = torrentsWithDownloadUrl[index]?.downloadUrl || `${url}${id}`;
 
                         const torrentObj = {
                             api_size: api_size,
                             datasetRelease: d.name,
                             size: size,
-                            info_text: infoText, // Use description or name
+                            info_text: infoText,
                             tracker: tracker,
                             site: tracker,
                             snatch: snatch,
                             seed: seed,
                             leech: leech,
-                            download_link: `${url}${id}`,
+                            download_link: downloadUrl,
                             torrent_page: `${url}${id}`,
                             discount: discount,
-                            //status: d.status === "NORMAL" ? "default" : d.status,
                             groupId: groupText,
                             time: time,
                         };
