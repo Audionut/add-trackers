@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         PTP upcoming releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.4
-// @description  Get a list of upcoming releases from IMDB and integrate with site search form.
+// @version      1.0.5
+// @description  Get a list of upcoming releases from IMDB and TMDb and integrate with site search form.
 // @author       Audionut
 // @match        https://passthepopcorn.me/upcoming.php*
 // @icon         https://passthepopcorn.me/favicon.ico
@@ -10,15 +10,19 @@
 // @updateURL    https://github.com/Audionut/add-trackers/raw/main/ptp-upcoming-releases.js
 // @grant        GM_xmlhttpRequest
 // @connect      api.graphql.imdb.com
+// @connect      api.themoviedb.org
 // @grant        GM_setValue
 // @grant        GM_getValue
+// @require      https://code.jquery.com/jquery-3.6.0.min.js
 // ==/UserScript==
 
 (function () {
     'use strict';
 
-    const CACHE_KEY = 'comingSoonData';
-    const CACHE_EXPIRATION_KEY = 'comingSoonDataExpiration';
+    const CACHE_KEY_IMDB = 'comingSoonData';
+    const CACHE_KEY_TMDB = 'digitalReleasesData';
+    const CACHE_EXPIRATION_KEY_IMDB = 'comingSoonDataExpiration';
+    const CACHE_EXPIRATION_KEY_TMDB = 'digitalReleasesDataExpiration';
     const NAME_IMAGES_CACHE_KEY = 'nameImagesData';
     const CURRENT_PAGE_KEY = 'currentPage';
     const RESULTS_PER_PAGE_KEY = 'resultsPerPage';
@@ -29,14 +33,29 @@
     const LAYOUT_ORIGINAL = 'Original';
     const LAYOUT_CONDENSED = 'Condensed';
     const FILTERED_CACHE_KEY = 'filteredData';
+    const API_KEY_TMDB = 'tmdbApiKey';
+    const RESULT_TYPE_KEY = 'resultType';
+
+    let digitalReleases = [];
 
     const clearCache = () => {
-        GM_setValue(CACHE_KEY, null);
-        GM_setValue(CACHE_EXPIRATION_KEY, 0);
+        GM_setValue(CACHE_KEY_IMDB, null);
+        GM_setValue(CACHE_KEY_TMDB, null);
+        GM_setValue(CACHE_EXPIRATION_KEY_IMDB, 0);
+        GM_setValue(CACHE_EXPIRATION_KEY_TMDB, 0);
         GM_setValue(NAME_IMAGES_CACHE_KEY, null);
         GM_setValue(CURRENT_PAGE_KEY, 1);
         GM_setValue(FILTERED_CACHE_KEY, null);
     };
+
+// Function to format date to YYYY-MM-DD
+function formatDate(date) {
+    const d = new Date(date);
+    const month = ('0' + (d.getMonth() + 1)).slice(-2);
+    const day = ('0' + d.getDate()).slice(-2);
+    const year = d.getFullYear();
+    return `${year}-${month}-${day}`;
+}
 
     const fetchComingSoonData = async (afterDate = null) => {
         const url = `https://api.graphql.imdb.com/`;
@@ -124,14 +143,10 @@
                 onload: function (response) {
                     if (response.status >= 200 && response.status < 300) {
                         const comingSoonData = JSON.parse(response.responseText);
-                        console.log("Coming Soon data:", comingSoonData);
-
                         if (!comingSoonData.data || !comingSoonData.data.comingSoon || comingSoonData.data.comingSoon.edges.length === 0) {
-                            console.log("No more data available or received empty data.");
                             resolve([]);
                             return;
                         }
-
                         const edges = comingSoonData.data.comingSoon.edges;
                         resolve(edges);
                     } else {
@@ -163,8 +178,8 @@
         }
 
         const cachedData = { edges: allEdges };
-        GM_setValue(CACHE_KEY, cachedData);
-        GM_setValue(CACHE_EXPIRATION_KEY, Date.now() + 2 * 24 * 60 * 60 * 1000);
+        GM_setValue(CACHE_KEY_IMDB, cachedData);
+        GM_setValue(CACHE_EXPIRATION_KEY_IMDB, Date.now() + 2 * 24 * 60 * 60 * 1000);
 
         const nameIds = [];
         cachedData.edges.forEach(edge => {
@@ -183,7 +198,6 @@
         const url = `https://api.graphql.imdb.com/`;
         const queries = [];
 
-        // Split the nameIds into chunks of 250
         for (let i = 0; i < nameIds.length; i += 250) {
             const chunk = nameIds.slice(i, i + 250);
             queries.push({
@@ -209,13 +223,12 @@
                     method: "POST",
                     url: url,
                     headers: {
-                    "Content-Type": "application/json"
+                        "Content-Type": "application/json"
                     },
                     data: JSON.stringify(query),
                     onload: function (response) {
                         if (response.status >= 200 && response.status < 300) {
                             const data = JSON.parse(response.responseText);
-                            console.log("Primary Image URLs data:", data); // Log the response for debugging
                             if (data && data.data && data.data.names) {
                                 resolve(data.data.names);
                             } else {
@@ -232,80 +245,225 @@
             })
         ));
 
-        // Flatten the results array
         return results.flat();
     };
 
-const addLightboxStyles = () => {
-    const style = document.createElement('style');
-    style.innerHTML = `
-        .lightbox {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.8);
-            display: none; /* Hide by default */
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-            cursor: pointer;
-        }
-        .lightbox img {
-            max-width: 90%;
-            max-height: 90%;
-        }
-    `;
-    document.head.appendChild(style);
+const fetchUpcomingDigitalMovies = async (page = 1) => {
+    const apiKey = GM_getValue(API_KEY_TMDB, '');
+    console.log('Fetching TMDb data with API key:', apiKey); // Debugging log
+    if (!apiKey) {
+        console.error('TMDb API key is not set.');
+        return;
+    }
+
+    const today = new Date();
+    const threeMonthsFromNow = new Date();
+    threeMonthsFromNow.setMonth(today.getMonth() + 3);
+
+    const url = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&language=en-US&region=US&sort_by=release_date.desc&release_date.gte=${formatDate(today)}&release_date.lte=${formatDate(threeMonthsFromNow)}&with_release_type=4&page=${page}`;
+    console.log("TMDb URL: ", url); // Debugging log for URL
+
+    return new Promise((resolve, reject) => {
+        GM_xmlhttpRequest({
+            method: 'GET',
+            url: url,
+            onload: function (response) {
+                console.log('TMDb response status:', response.status); // Debugging log
+                if (response.status === 200) {
+                    const data = JSON.parse(response.responseText);
+                    digitalReleases = digitalReleases.concat(data.results);
+                    console.log("Digital releases fetched:", data.results); // Debugging log for data
+
+                    if (data.page < data.total_pages) {
+                        fetchUpcomingDigitalMovies(data.page + 1).then(resolve).catch(reject);
+                    } else {
+                        fetchMovieDetails().then(() => {
+                            GM_setValue(CACHE_KEY_TMDB, digitalReleases);
+                            console.log("TMDb data cached:", digitalReleases); // Debugging log for caching
+                            resolve(digitalReleases);
+                        }).catch(reject);
+                    }
+                } else {
+                    console.error('Failed to fetch data from TMDb API', response); // Debugging log for errors
+                    reject(new Error('Failed to fetch data from TMDb API'));
+                }
+            },
+            onerror: function (response) {
+                console.error('Error occurred while fetching data from TMDb API', response); // Debugging log for errors
+                reject(new Error('Error occurred while fetching data from TMDb API'));
+            }
+        });
+    });
 };
 
-const createLightbox = () => {
-    const lightbox = document.createElement('div');
-    lightbox.classList.add('lightbox');
-    lightbox.innerHTML = '<img src="" alt="lightbox image">';
-    document.body.appendChild(lightbox);
+const sortAndFilterTmdbData = (data) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Set the time to midnight for accurate comparison
 
-    lightbox.addEventListener('click', () => {
-        lightbox.style.display = 'none';
+    // Filter out movies with a release date before today
+    const filteredData = data.filter(movie => {
+        const releaseDate = new Date(movie.release_date);
+        return releaseDate >= today;
     });
 
-    return lightbox;
+    // Sort the movies by release date in ascending order
+    filteredData.sort((a, b) => new Date(a.release_date) - new Date(b.release_date));
+
+    return filteredData;
 };
 
-const initLightbox = () => {
-    const lightbox = createLightbox();
+const fetchMovieDetails = async () => {
+    const apiKey = GM_getValue(API_KEY_TMDB, '');
+    console.log('Fetching TMDb movie details with API key:', apiKey); // Debugging log
+    if (!apiKey) {
+        console.error('TMDb API key is not set.');
+        return;
+    }
 
-    document.addEventListener('click', (event) => {
-        if (event.target.tagName === 'IMG' && event.target.classList.contains('lightbox-trigger')) {
-            lightbox.querySelector('img').src = event.target.src;
-            lightbox.style.display = 'flex';
+    let remainingRequests = digitalReleases.length;
+    return new Promise((resolve) => {
+        digitalReleases.forEach(movie => {
+            fetchDetailsWithRetry(movie, 3, () => {
+                if (--remainingRequests === 0) {
+                    // Sort and filter the TMDb data before caching and displaying
+                    digitalReleases = sortAndFilterTmdbData(digitalReleases);
+                    GM_setValue(CACHE_KEY_TMDB, digitalReleases);
+                    resolve();
+                }
+            });
+        });
+    });
+};
+
+const fetchDetailsWithRetry = (movie, retries, callback) => {
+    const apiKey = GM_getValue(API_KEY_TMDB, '');
+    const url = `https://api.themoviedb.org/3/movie/${movie.id}?api_key=${apiKey}&append_to_response=credits,external_ids,images`;
+
+    GM_xmlhttpRequest({
+        method: 'GET',
+        url: url,
+        onload: function (response) {
+            console.log('TMDb movie details response status:', response.status); // Debugging log
+            if (response.status === 200) {
+                const data = JSON.parse(response.responseText);
+                movie.details = data;
+                console.log('Fetched TMDb movie details:', data); // Debugging log for details
+            } else if (retries > 0) {
+                console.warn(`Retrying fetch for movie ID ${movie.id}. Remaining retries: ${retries - 1}`);
+                fetchDetailsWithRetry(movie, retries - 1, callback);
+            } else {
+                console.error(`Failed to fetch details for movie ID ${movie.id} after multiple attempts`);
+            }
+            callback();
+        },
+        onerror: function () {
+            if (retries > 0) {
+                console.warn(`Retrying fetch for movie ID ${movie.id}. Remaining retries: ${retries - 1}`);
+                fetchDetailsWithRetry(movie, retries - 1, callback);
+            } else {
+                console.error(`Error occurred while fetching details for movie ID ${movie.id} after multiple attempts`);
+                callback();
+            }
         }
     });
 };
 
-const createImageElement = (node, size) => {
+const sortCombinedDataByDate = (data) => {
+    return data.sort((a, b) => {
+        const dateA = a.node.releaseDate ?
+            new Date(`${a.node.releaseDate.year}-${String(a.node.releaseDate.month).padStart(2, '0')}-${String(a.node.releaseDate.day).padStart(2, '0')}`) :
+            (a.node.details && a.node.details.release_date ? new Date(a.node.details.release_date) : null);
+        const dateB = b.node.releaseDate ?
+            new Date(`${b.node.releaseDate.year}-${String(b.node.releaseDate.month).padStart(2, '0')}-${String(b.node.releaseDate.day).padStart(2, '0')}`) :
+            (b.node.details && b.node.details.release_date ? new Date(b.node.details.release_date) : null);
+
+        if (!dateA || !dateB) {
+            return 0; // If either date is missing, consider them equal.
+        }
+
+        return dateA - dateB;
+    });
+};
+
+    const addLightboxStyles = () => {
+        const style = document.createElement('style');
+        style.innerHTML = `
+            .lightbox {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.8);
+                display: none;
+                align-items: center;
+                justify-content: center;
+                z-index: 1000;
+                cursor: pointer;
+            }
+            .lightbox img {
+                max-width: 90%;
+                max-height: 90%;
+            }
+        `;
+        document.head.appendChild(style);
+    };
+
+    const createLightbox = () => {
+        const lightbox = document.createElement('div');
+        lightbox.classList.add('lightbox');
+        lightbox.innerHTML = '<img src="" alt="lightbox image">';
+        document.body.appendChild(lightbox);
+
+        lightbox.addEventListener('click', () => {
+            lightbox.style.display = 'none';
+        });
+
+        return lightbox;
+    };
+
+    const initLightbox = () => {
+        const lightbox = createLightbox();
+
+        document.addEventListener('click', (event) => {
+            if (event.target.tagName === 'IMG' && event.target.classList.contains('lightbox-trigger')) {
+                lightbox.querySelector('img').src = event.target.src;
+                lightbox.style.display = 'flex';
+            }
+        });
+    };
+
+const createImageElement = (node, size, source) => {
     const image = document.createElement("img");
-    image.src = node.primaryImage && node.primaryImage.url ? node.primaryImage.url : 'https://ptpimg.me/w6l4kj.png';
-    image.alt = node.primaryImage && node.primaryImage.caption ? node.primaryImage.caption.plainText : 'No image available';
+    if (source === 'IMDb') {
+        image.src = node.primaryImage && node.primaryImage.url ? node.primaryImage.url : 'https://ptpimg.me/w6l4kj.png';
+        image.alt = node.primaryImage && node.primaryImage.caption ? node.primaryImage.caption.plainText : 'No image available';
+    } else if (source === 'TMDb') {
+        image.src = node.details && node.details.poster_path ? `https://image.tmdb.org/t/p/original${node.details.poster_path}` : 'https://ptpimg.me/w6l4kj.png';
+        image.alt = node.details && node.details.title ? node.details.title : 'No image available';
+    }
     image.style.maxWidth = size;
     image.style.marginRight = "10px";
-    image.classList.add('lightbox-trigger'); // Add this class to trigger the lightbox
+    image.classList.add('lightbox-trigger');
     return image;
 };
 
-const displayResultsOriginal = (page, data) => {
+const displayResultsOriginal = (page, data, source) => {
     const nameImagesData = GM_getValue(NAME_IMAGES_CACHE_KEY);
     const resultsPerPage = GM_getValue(RESULTS_PER_PAGE_KEY, RESULTS_PER_PAGE_DEFAULT);
+
     if (!data || !data.edges || !nameImagesData) {
-        fetchAllComingSoonData(); // Fetch fresh data if no cached data is available
+        if (source === 'IMDb') {
+            fetchAllComingSoonData();
+        } else if (source === 'TMDb') {
+            fetchUpcomingDigitalMovies();
+        }
         return;
     }
 
     const totalResults = data.edges.length;
     const totalPages = Math.ceil(totalResults / resultsPerPage);
 
-    // Ensure the page is within the valid range
     page = Math.max(1, Math.min(page, totalPages));
 
     const startIndex = (page - 1) * resultsPerPage;
@@ -314,17 +472,19 @@ const displayResultsOriginal = (page, data) => {
 
     if (ALLOWED_GENRES.size > 0) {
         pageData = pageData.filter(movie => {
-            return movie.node.genres.genres.some(genre => ALLOWED_GENRES.has(genre.text));
+            return movie.node && movie.node.genres && movie.node.genres.genres.some(genre => ALLOWED_GENRES.has(genre.text || genre.name));
         });
     }
 
     const container = document.querySelector("#torrents-movie-view > div");
-    container.innerHTML = ""; // Clear previous results
+    container.innerHTML = "";
 
     const groupedByDate = pageData.reduce((acc, movie) => {
-        const releaseDate = movie.node.releaseDate;
+        const node = movie.node;
+        if (!node) return acc;
+        const releaseDate = node.releaseDate ? `${node.releaseDate.year}-${String(node.releaseDate.month).padStart(2, '0')}-${String(node.releaseDate.day).padStart(2, '0')}` : node.details.release_date;
         if (!releaseDate) return acc;
-        const dateStr = new Date(`${releaseDate.year}-${String(releaseDate.month).padStart(2, '0')}-${String(releaseDate.day).padStart(2, '0')}`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+        const dateStr = new Date(releaseDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
         if (!acc[dateStr]) acc[dateStr] = [];
         acc[dateStr].push(movie);
         return acc;
@@ -346,7 +506,7 @@ const displayResultsOriginal = (page, data) => {
             movieDiv.style.display = "flex";
             movieDiv.style.position = "relative";
 
-            const image = createImageElement(node, "200px"); // Use the original size for images in this display
+            const image = createImageElement(node, "200px", movie.source);
             movieDiv.appendChild(image);
 
             const infoDiv = document.createElement("div");
@@ -360,10 +520,10 @@ const displayResultsOriginal = (page, data) => {
             titleLinkDiv.style.alignItems = "center";
 
             const titleLink = document.createElement("a");
-            titleLink.href = `https://www.imdb.com/title/${node.id}/`;
+            titleLink.href = movie.source === 'IMDb' ? `https://www.imdb.com/title/${node.id}/` : `https://www.themoviedb.org/movie/${node.id}`;
             titleLink.target = "_blank";
             titleLink.rel = "noreferrer";
-            titleLink.textContent = node.titleText.text;
+            titleLink.textContent = node.titleText ? node.titleText.text : node.details.title;
             titleLink.style.fontWeight = "bold";
             titleLink.style.fontSize = "1.2em";
             titleLink.style.textDecoration = "none";
@@ -371,8 +531,16 @@ const displayResultsOriginal = (page, data) => {
             titleLink.style.display = "block";
             titleLink.style.marginBottom = "10px";
 
+            if (movie.source === 'TMDb') {
+                const digitalLabel = document.createElement('span');
+                digitalLabel.textContent = 'Digital';
+                digitalLabel.style.color = 'teal';
+                digitalLabel.style.marginLeft = '10px';
+                titleLink.appendChild(digitalLabel);
+            }
+
             const ptpLink = document.createElement("a");
-            ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id}`;
+            ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id || node.details.title}`;
             ptpLink.target = "_blank";
             ptpLink.textContent = "(Search PTP requests)";
             ptpLink.style.float = "right";
@@ -383,14 +551,15 @@ const displayResultsOriginal = (page, data) => {
             infoDiv.appendChild(titleLinkDiv);
 
             const plot = document.createElement("p");
-            plot.textContent = node.plot ? node.plot.plotText.plainText : "No plot available.";
+            plot.textContent = node.plot ? node.plot.plotText.plainText : node.details.overview || "No plot available.";
             infoDiv.appendChild(plot);
 
             const genres = document.createElement("p");
-            node.genres.genres.forEach(genre => {
+            const genresList = node.genres ? node.genres.genres : node.details.genres;
+            genresList.forEach(genre => {
                 const genreLink = document.createElement("a");
-                genreLink.href = `https://passthepopcorn.me/torrents.php?action=advanced&taglist=${genre.text}`;
-                genreLink.textContent = genre.text;
+                genreLink.href = `https://passthepopcorn.me/torrents.php?action=advanced&taglist=${genre.text || genre.name}`;
+                genreLink.textContent = genre.text || genre.name;
                 genreLink.style.color = "white";
                 genreLink.style.marginRight = "5px";
                 genres.appendChild(genreLink);
@@ -403,19 +572,29 @@ const displayResultsOriginal = (page, data) => {
             castContainer.style.gap = "10px";
 
             let castCount = 0;
-            node.credits.edges.forEach(credit => {
-                const castMember = nameImagesData.find(name => name.id === credit.node.name.id);
-                if (castMember && castMember.primaryImage && castCount < 5) {
+            const creditsList = node.credits ? node.credits.edges : node.details.credits.cast;
+            creditsList.forEach(credit => {
+                const castMember = movie.source === 'IMDb' ? nameImagesData.find(name => name.id === credit.node.name.id) : credit;
+
+                // Skip cast members without images
+                const hasValidImage = (movie.source === 'IMDb' && castMember?.primaryImage?.url) ||
+                                      (movie.source === 'TMDb' && castMember?.profile_path);
+
+                if (castMember && hasValidImage && castCount < 5) {
                     castCount++;
                     const castDiv = document.createElement("div");
                     castDiv.style.textAlign = "center";
                     castDiv.style.width = "auto";
 
                     const castImageLink = document.createElement("a");
-                    castImageLink.href = `https://passthepopcorn.me/artist.php?artistname=${credit.node.name.nameText.text}`;
+                    castImageLink.href = movie.source === 'IMDb' ? `https://www.imdb.com/name/${credit.node.name.id}/` : `https://www.themoviedb.org/person/${credit.id}`;
+                    castImageLink.target = "_blank";
+                    castImageLink.rel = "noreferrer";
+
                     const castImage = document.createElement("img");
-                    castImage.src = castMember.primaryImage.url;
-                    castImage.alt = credit.node.name.nameText.text;
+                    castImage.src = movie.source === 'IMDb' ? castMember.primaryImage.url
+                                : `https://image.tmdb.org/t/p/w185${castMember.profile_path}`;
+                    castImage.alt = movie.source === 'IMDb' ? credit.node.name.nameText.text : credit.name;
                     castImage.style.maxHeight = "150px";
                     castImage.style.width = "auto";
                     castImage.style.display = "block";
@@ -423,10 +602,11 @@ const displayResultsOriginal = (page, data) => {
                     castDiv.appendChild(castImageLink);
 
                     const castNameLink = document.createElement("a");
-                    castNameLink.href = `https://www.imdb.com/name/${credit.node.name.id}/`;
+                    const castName = movie.source === 'IMDb' ? credit.node.name.nameText.text : credit.name;
+                    castNameLink.href = `https://passthepopcorn.me/artist.php?artistname=${encodeURIComponent(castName)}`;
                     castNameLink.target = "_blank";
                     castNameLink.rel = "noreferrer";
-                    castNameLink.textContent = credit.node.name.nameText.text;
+                    castNameLink.textContent = castName;
                     castNameLink.style.display = "block";
                     castNameLink.style.textDecoration = "none";
                     castNameLink.style.color = "white";
@@ -446,19 +626,22 @@ const displayResultsOriginal = (page, data) => {
     createPagination(page, totalResults);
 };
 
-// Use createImageElement in your displayResultsCondensed function
-const displayResultsCondensed = (page, data) => {
+const displayResultsCondensed = (page, data, source) => {
     const nameImagesData = GM_getValue(NAME_IMAGES_CACHE_KEY);
     const resultsPerPage = GM_getValue(RESULTS_PER_PAGE_KEY, RESULTS_PER_PAGE_DEFAULT);
+
     if (!data || !data.edges || !nameImagesData) {
-        fetchAllComingSoonData(); // Fetch fresh data if no cached data is available
+        if (source === 'IMDb') {
+            fetchAllComingSoonData();
+        } else if (source === 'TMDb') {
+            fetchUpcomingDigitalMovies();
+        }
         return;
     }
 
     const totalResults = data.edges.length;
     const totalPages = Math.ceil(totalResults / resultsPerPage);
 
-    // Ensure the page is within the valid range
     page = Math.max(1, Math.min(page, totalPages));
 
     const startIndex = (page - 1) * resultsPerPage;
@@ -467,17 +650,19 @@ const displayResultsCondensed = (page, data) => {
 
     if (ALLOWED_GENRES.size > 0) {
         pageData = pageData.filter(movie => {
-            return movie.node.genres.genres.some(genre => ALLOWED_GENRES.has(genre.text));
+            return movie.node && movie.node.genres && movie.node.genres.genres.some(genre => ALLOWED_GENRES.has(genre.text || genre.name));
         });
     }
 
     const container = document.querySelector("#torrents-movie-view > div");
-    container.innerHTML = ""; // Clear previous results
+    container.innerHTML = "";
 
     const groupedByDate = pageData.reduce((acc, movie) => {
-        const releaseDate = movie.node.releaseDate;
+        const node = movie.node;
+        if (!node) return acc;
+        const releaseDate = node.releaseDate ? `${node.releaseDate.year}-${String(node.releaseDate.month).padStart(2, '0')}-${String(node.releaseDate.day).padStart(2, '0')}` : node.details.release_date;
         if (!releaseDate) return acc;
-        const dateStr = new Date(`${releaseDate.year}-${String(releaseDate.month).padStart(2, '0')}-${String(releaseDate.day).padStart(2, '0')}`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+        const dateStr = new Date(releaseDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
         if (!acc[dateStr]) acc[dateStr] = [];
         acc[dateStr].push(movie);
         return acc;
@@ -494,7 +679,6 @@ const displayResultsCondensed = (page, data) => {
         dateHeader.textContent = date;
         dateHeader.style.fontSize = "1.5em";
         dateHeader.style.color = "white";
-        //dateHeader.style.backgroundColor = "#464646";
         dateHeader.style.padding = "10px";
         dateHeaderRow.appendChild(dateHeader);
         table.appendChild(dateHeaderRow);
@@ -504,7 +688,7 @@ const displayResultsCondensed = (page, data) => {
 
             for (let j = 0; j < 2; j++) {
                 const movie = movies[i + j];
-                if (!movie) break;
+                if (!movie || !movie.node) continue;
 
                 const node = movie.node;
                 const cell = document.createElement("td");
@@ -517,17 +701,17 @@ const displayResultsCondensed = (page, data) => {
                 movieDiv.style.display = "flex";
                 movieDiv.style.position = "relative";
 
-                const image = createImageElement(node, "60px"); // Use the smaller size for images in this display
+                const image = createImageElement(node, "60px", movie.source); // Pass source to distinguish between IMDb and TMDb
                 movieDiv.appendChild(image);
 
                 const infoDiv = document.createElement("div");
                 infoDiv.style.flex = "1";
 
                 const titleLink = document.createElement("a");
-                titleLink.href = `https://www.imdb.com/title/${node.id}/`;
+                titleLink.href = movie.source === 'IMDb' ? `https://www.imdb.com/title/${node.id}/` : `https://www.themoviedb.org/movie/${node.id}`;
                 titleLink.target = "_blank";
                 titleLink.rel = "noreferrer";
-                titleLink.textContent = node.titleText.text;
+                titleLink.textContent = node.titleText ? node.titleText.text : node.details.title;
                 titleLink.style.fontWeight = "bold";
                 titleLink.style.fontSize = "1.2em";
                 titleLink.style.textDecoration = "none";
@@ -535,8 +719,16 @@ const displayResultsCondensed = (page, data) => {
                 titleLink.style.marginBottom = "2px";
                 infoDiv.appendChild(titleLink);
 
+                if (movie.source === 'TMDb') {
+                    const digitalLabel = document.createElement('span');
+                    digitalLabel.textContent = 'Digital';
+                    digitalLabel.style.color = 'teal';
+                    digitalLabel.style.marginLeft = '10px';
+                    titleLink.appendChild(digitalLabel);
+                }
+
                 const ptpLink = document.createElement("a");
-                ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id}`;
+                ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id || node.details.title}`;
                 ptpLink.target = "_blank";
                 ptpLink.textContent = "(Search PTP requests)";
                 ptpLink.style.float = "right";
@@ -544,11 +736,11 @@ const displayResultsCondensed = (page, data) => {
                 infoDiv.appendChild(ptpLink);
 
                 const genres = document.createElement("p");
-                node.genres.genres.forEach(genre => {
+                const genresList = node.genres ? node.genres.genres : node.details.genres;
+                genresList.forEach(genre => {
                     const genreLink = document.createElement("a");
-                    genreLink.href = `https://passthepopcorn.me/torrents.php?action=advanced&taglist=${genre.text}`;
-                    genreLink.textContent = genre.text;
-                    //genreLink.style.float = "right";
+                    genreLink.href = `https://passthepopcorn.me/torrents.php?action=advanced&taglist=${genre.text || genre.name}`;
+                    genreLink.textContent = genre.text || genre.name;
                     genreLink.style.color = "white";
                     genreLink.style.marginRight = "10px";
                     genres.appendChild(genreLink);
@@ -561,18 +753,25 @@ const displayResultsCondensed = (page, data) => {
                 castContainer.style.gap = "10px";
 
                 let castCount = 0;
-                node.credits.edges.forEach(credit => {
-                    const castMember = nameImagesData.find(name => name.id === credit.node.name.id);
-                    if (castMember && castCount < 5) {
+                const creditsList = node.credits ? node.credits.edges : node.details.credits.cast;
+                creditsList.forEach(credit => {
+                    const castMember = movie.source === 'IMDb' ? nameImagesData.find(name => name.id === credit.node.name.id) : credit;
+
+                    // Skip cast members without images
+                    const hasValidImage = (movie.source === 'IMDb' && castMember?.primaryImage?.url) ||
+                                        (movie.source === 'TMDb' && castMember?.profile_path);
+
+                    if (castMember && hasValidImage && castCount < 5) {
                         castCount++;
                         const castDiv = document.createElement("div");
                         castDiv.style.textAlign = "center";
                         castDiv.style.width = "auto";
 
                         const castNameLink = document.createElement("a");
-                        castNameLink.href = `https://passthepopcorn.me/artist.php?artistname=${credit.node.name.nameText.text}`;
+                        const castName = movie.source === 'IMDb' ? credit.node.name.nameText.text : credit.name;
+                        castNameLink.href = `https://passthepopcorn.me/artist.php?artistname=${encodeURIComponent(castName)}`;
                         castNameLink.target = "_blank";
-                        castNameLink.textContent = credit.node.name.nameText.text;
+                        castNameLink.textContent = castName;
                         castNameLink.style.display = "block";
                         castNameLink.style.textDecoration = "none";
                         castNameLink.style.color = "white";
@@ -598,203 +797,296 @@ const displayResultsCondensed = (page, data) => {
     createPagination(page, totalResults);
 };
 
-    const createPagination = (currentPage, totalResults) => {
-        const resultsPerPage = GM_getValue(RESULTS_PER_PAGE_KEY, RESULTS_PER_PAGE_DEFAULT);
-        const totalPages = Math.ceil(totalResults / resultsPerPage);
+const createPagination = (currentPage, totalResults) => {
+    const resultsPerPage = GM_getValue(RESULTS_PER_PAGE_KEY, RESULTS_PER_PAGE_DEFAULT);
+    const totalPages = Math.ceil(totalResults / resultsPerPage);
 
-        const paginationTop = document.querySelector(".pagination--top");
-        const paginationBottom = document.querySelector(".pagination--bottom");
+    const paginationTop = document.querySelector(".pagination--top");
+    const paginationBottom = document.querySelector(".pagination--bottom");
 
-        const paginationContent = (page) => {
-            let html = "";
-            if (page > 1) {
-                html += `<a href="#" class="prev-link" style="margin-right: 10px;">&lt; back</a>`;
-            }
-            if (page < totalPages) {
-                html += `<a href="#" class="next-link" style="margin-left: 10px;">next &gt;</a>`;
-            }
-            return html;
-        };
-
-        paginationTop.innerHTML = paginationContent(currentPage);
-        paginationBottom.innerHTML = paginationContent(currentPage);
-
-        const prevLinks = document.querySelectorAll(".prev-link");
-        const nextLinks = document.querySelectorAll(".next-link");
-
-        prevLinks.forEach(link => {
-            link.addEventListener("click", (event) => {
-                event.preventDefault();
-                const prevPage = Math.max(1, currentPage - 1);
-                GM_setValue(CURRENT_PAGE_KEY, prevPage);
-                displayResults(prevPage);
-            });
-        });
-
-        nextLinks.forEach(link => {
-            link.addEventListener("click", (event) => {
-                event.preventDefault();
-                const nextPage = Math.min(totalPages, currentPage + 1);
-                GM_setValue(CURRENT_PAGE_KEY, nextPage);
-                displayResults(nextPage);
-            });
-        });
+    const paginationContent = (page) => {
+        let html = "";
+        if (page > 1) {
+            html += `<a href="#" class="prev-link" style="margin-right: 10px;">&lt; back</a>`;
+        }
+        html += ` Page ${currentPage} of ${totalPages} `;  // Show current page out of total pages
+        if (page < totalPages) {
+            html += `<a href="#" class="next-link" style="margin-left: 10px;">next &gt;</a>`;
+        }
+        return html;
     };
 
-    const displayResults = (page) => {
-        const layout = GM_getValue(LAYOUT_KEY, LAYOUT_ORIGINAL);
+    paginationTop.innerHTML = paginationContent(currentPage);
+    paginationBottom.innerHTML = paginationContent(currentPage);
+
+    const prevLinks = document.querySelectorAll(".prev-link");
+    const nextLinks = document.querySelectorAll(".next-link");
+
+    prevLinks.forEach(link => {
+        link.addEventListener("click", (event) => {
+            event.preventDefault();
+            const prevPage = Math.max(1, currentPage - 1);
+            GM_setValue(CURRENT_PAGE_KEY, prevPage);
+            displayResults(prevPage);
+        });
+    });
+
+    nextLinks.forEach(link => {
+        link.addEventListener("click", (event) => {
+            event.preventDefault();
+            const nextPage = Math.min(totalPages, currentPage + 1);
+            GM_setValue(CURRENT_PAGE_KEY, nextPage);
+            displayResults(nextPage);
+        });
+    });
+};
+
+const displayResults = async (page) => {
+    const container = document.querySelector("#torrents-movie-view > div");
+    container.innerHTML = "<p>Loading...</p>";  // Add loading indicator
+
+    const layout = GM_getValue(LAYOUT_KEY, LAYOUT_ORIGINAL);
+    const resultType = GM_getValue(RESULT_TYPE_KEY, 'All');
+    let data = { edges: [] };
+    let imdbData = [];
+    let tmdbData = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Set to midnight to compare only dates
+
+    if (resultType === 'Theatrical' || resultType === 'All') {
         const filteredData = GM_getValue(FILTERED_CACHE_KEY);
-        const data = filteredData || GM_getValue(CACHE_KEY);
-        if (layout === LAYOUT_ORIGINAL) {
-            displayResultsOriginal(page, data);
-        } else if (layout === LAYOUT_CONDENSED) {
-            displayResultsCondensed(page, data);
+        const imdbCache = filteredData || GM_getValue(CACHE_KEY_IMDB);
+        if (imdbCache) {
+            imdbData = imdbCache.edges.map(edge => ({
+                ...edge,
+                source: 'IMDb'
+            }));
         }
-    };
+    }
 
-    const handleSearchForm = () => {
-        const searchForm = document.querySelector("#filter_torrents_form");
-        if (searchForm) {
-            searchForm.addEventListener("submit", (event) => {
-                event.preventDefault();
-                const formData = new FormData(searchForm);
-                const searchstr = formData.get("searchstr") || "";
-                const taglist = formData.get("taglist") || "";
-                const castlist = formData.get("castlist") || "";
+    if (resultType === 'Digital' || resultType === 'All') {
+        const tmdbCache = GM_getValue(CACHE_KEY_TMDB);
+        if (tmdbCache) {
+            tmdbData = tmdbCache.map(movie => ({
+                node: movie,
+                source: 'TMDb'
+            }));
+        }
+    }
 
-                // Implement your search logic here
-                // Filter cachedData based on search criteria and display the results
-                const cachedData = GM_getValue(CACHE_KEY);
-                if (cachedData && cachedData.edges) {
-                    let filteredData = cachedData.edges;
+    // Combine IMDb and TMDb data
+    data.edges = [...imdbData, ...tmdbData];
 
-                    if (searchstr) {
-                        filteredData = filteredData.filter(movie => movie.node.titleText.text.toLowerCase().includes(searchstr.toLowerCase()));
-                    }
-                    if (taglist) {
-                        const tags = taglist.split(',').map(tag => tag.trim().toLowerCase());
-                        filteredData = filteredData.filter(movie => {
-                            const movieTags = movie.node.genres.genres.map(genre => genre.text.toLowerCase());
-                            return tags.every(tag => movieTags.includes(tag));
-                        });
-                    }
-                    if (castlist) {
-                        const casts = castlist.split(',').map(cast => cast.trim().toLowerCase());
-                        filteredData = filteredData.filter(movie => {
-                            const movieCasts = movie.node.credits.edges.map(credit => credit.node.name.nameText.text.toLowerCase());
-                            return casts.every(cast => movieCasts.includes(cast));
-                        });
-                    }
+    // Filter out items with dates before today
+    data.edges = data.edges.filter(edge => {
+        const releaseDate = edge.node.releaseDate ?
+            new Date(`${edge.node.releaseDate.year}-${String(edge.node.releaseDate.month).padStart(2, '0')}-${String(edge.node.releaseDate.day).padStart(2, '0')}`) :
+            (edge.node.details && edge.node.details.release_date ? new Date(edge.node.details.release_date) : null);
 
-                    if (!searchstr && !taglist && !castlist) {
-                        filteredData = null; // Reset filtered data
-                        GM_setValue(FILTERED_CACHE_KEY, null);
-                        displayResults(1);
-                        return;
-                    }
+        return releaseDate && releaseDate >= today;
+    });
 
-                    GM_setValue(FILTERED_CACHE_KEY, { edges: filteredData });
-                    displayResults(1);
+    // Remove potential duplicates by using a Set or filtering based on a unique identifier like `node.id`
+    const uniqueData = [];
+    const seenIds = new Set();
+
+    data.edges.forEach(edge => {
+        const id = edge.node.id || edge.node.details.id;
+        if (!seenIds.has(id)) {
+            seenIds.add(id);
+            uniqueData.push(edge);
+        }
+    });
+
+    data.edges = uniqueData;
+
+    // Sort the combined data by release date
+    if (data.edges.length > 0) {
+        data.edges = sortCombinedDataByDate(data.edges);
+    }
+
+    container.innerHTML = ""; // Remove loading indicator once data is ready
+
+    if (layout === LAYOUT_ORIGINAL) {
+        displayResultsOriginal(page, data, 'All');
+    } else if (layout === LAYOUT_CONDENSED) {
+        displayResultsCondensed(page, data, 'All');
+    }
+};
+
+const handleSearchForm = () => {
+    const searchForm = document.querySelector("#filter_torrents_form");
+    if (searchForm) {
+        console.log("Search form found and event listener attached.");  // Log when form is found
+        searchForm.addEventListener("submit", (event) => {
+            event.preventDefault();
+            console.log("Search form submitted.");  // Log when form is submitted
+
+            const formData = new FormData(searchForm);
+            const searchstr = formData.get("searchstr") || "";
+            const taglist = formData.get("taglist") || "";
+            const castlist = formData.get("castlist") || "";
+
+            console.log("Search string:", searchstr);
+            console.log("Tag list:", taglist);
+            console.log("Cast list:", castlist);  // Log the cast list to check if it's correctly retrieved
+
+            const tagsType = formData.get("tags_type") || "all";  // Get the selected tags_type
+
+            const cachedData = GM_getValue(CACHE_KEY_IMDB);
+            if (cachedData && cachedData.edges) {
+                let filteredData = cachedData.edges;
+
+                if (searchstr) {
+                    filteredData = filteredData.filter(movie => movie.node.titleText.text.toLowerCase().includes(searchstr.toLowerCase()));
                 }
-            });
-        }
-    };
+                if (taglist) {
+                    const tags = taglist.split(',').map(tag => tag.trim().toLowerCase());
+                    filteredData = filteredData.filter(movie => {
+                        const movieTags = movie.node.genres.genres.map(genre => genre.text.toLowerCase());
+
+                        if (tagsType === "any") {
+                            // "Any" logic: Movie matches if it has any of the selected tags
+                            return tags.some(tag => movieTags.includes(tag));
+                        } else {
+                            // "All" logic: Movie matches only if it has all the selected tags
+                            return tags.every(tag => movieTags.includes(tag));
+                        }
+                    });
+                }
+                if (castlist) {
+                    const casts = castlist.split(',').map(cast => cast.trim().toLowerCase());
+
+                    console.log("Processing cast filtering with these names:", casts);  // Log the cast list being processed
+
+                    filteredData = filteredData.filter(movie => {
+                        const movieCasts = movie.node.credits.edges.map(credit => credit.node.name.nameText.text.toLowerCase());
+
+                        return casts.some(cast => {
+                            return movieCasts.some(movieCast => {
+                                const [firstName, lastName] = movieCast.split(' ');
+                                return firstName === cast || lastName === cast || movieCast.includes(cast);
+                            });
+                        });
+                    });
+                }
+
+                if (!searchstr && !taglist && !castlist) {
+                    filteredData = null;
+                    GM_setValue(FILTERED_CACHE_KEY, null);
+                    displayResults(1);
+                    return;
+                }
+
+                GM_setValue(FILTERED_CACHE_KEY, { edges: filteredData });
+                displayResults(1);
+            }
+        });
+    } else {
+        console.log("Search form not found.");  // Log if the form is not found
+    }
+};
 
     const init = () => {
         const currentPage = GM_getValue(CURRENT_PAGE_KEY, 1);
-        const cacheExpiration = GM_getValue(CACHE_EXPIRATION_KEY, 0);
-        const isCacheExpired = Date.now() > cacheExpiration;
+        const cacheExpirationIMDb = GM_getValue(CACHE_EXPIRATION_KEY_IMDB, 0);
+        const cacheExpirationTMDb = GM_getValue(CACHE_EXPIRATION_KEY_TMDB, 0);
+        const isCacheExpiredIMDb = Date.now() > cacheExpirationIMDb;
+        const isCacheExpiredTMDb = Date.now() > cacheExpirationTMDb;
 
-        if (isCacheExpired) {
+        if (isCacheExpiredIMDb) {
             clearCache();
-            console.log("Fetching fresh data for upcoming movies");
             fetchAllComingSoonData();
         } else {
-            //clearCache();
-            console.log("Using cached data for upcoming movies");
-            const cachedData = GM_getValue(CACHE_KEY);
+            const cachedDataIMDb = GM_getValue(CACHE_KEY_IMDB);
             const nameImagesData = GM_getValue(NAME_IMAGES_CACHE_KEY);
-            if (cachedData && cachedData.edges.length > 0 && nameImagesData) {
+            if (cachedDataIMDb && cachedDataIMDb.edges.length > 0 && nameImagesData) {
                 displayResults(currentPage);
             } else {
                 fetchAllComingSoonData();
             }
         }
 
+        if (isCacheExpiredTMDb) {
+            clearCache();
+            fetchUpcomingDigitalMovies().then(() => {
+                GM_setValue(CACHE_KEY_TMDB, digitalReleases);
+                GM_setValue(CACHE_EXPIRATION_KEY_TMDB, Date.now() + 2 * 24 * 60 * 60 * 1000);
+                displayResults(currentPage);
+            });
+        } else {
+            //clearCache();
+            displayResults(currentPage);
+        }
+
         handleSearchForm();
         updateSearchForm();
     };
 
-    // Function to remove IMDb and List search fields and update search link text
-    const updateSearchForm = () => {
-        const filterTorrentsToggle = document.getElementById("filter_torrents_toggle");
-        if (filterTorrentsToggle) {
-            filterTorrentsToggle.querySelector("a").textContent = "[+] Search and settings";
-        }
+const updateSearchForm = () => {
+    const filterTorrentsToggle = document.getElementById("filter_torrents_toggle");
+    if (filterTorrentsToggle) {
+        filterTorrentsToggle.querySelector("a").textContent = "[+] Search and settings";
+    }
 
-        // Remove IMDb and List fields
-        document.querySelectorAll(".filter_torrents .grid").forEach(grid => {
-            const label = grid.querySelector(".form__label");
-            if (label && (label.textContent.includes("IMDb:") || label.textContent.includes("List:"))) {
-                grid.remove();
-            }
+    document.querySelectorAll(".filter_torrents .grid").forEach(grid => {
+        const label = grid.querySelector(".form__label");
+        if (label && (label.textContent.includes("IMDb:") || label.textContent.includes("List:"))) {
+            grid.remove();
+        }
+    });
+
+    document.querySelectorAll(".form__label").forEach(label => {
+        if (label.textContent.includes("Tags:")) {
+            label.textContent = label.textContent.replace("Tags:", "Genres:");
+        }
+    });
+
+    const resultsField = document.querySelector(".search-form__footer__results");
+    if (resultsField) {
+        resultsField.remove();
+    }
+    const emptyLabel = document.querySelector(".search-form__footer > .grid > .grid__item.grid-u-2-10");
+    if (emptyLabel) {
+        const table = document.createElement("label");
+        table.classList.add("form__label");
+        table.textContent = "Filtering:";
+        emptyLabel.appendChild(table);
+    }
+
+    const searchFormFooter = document.querySelector(".search-form__footer__buttons");
+    if (searchFormFooter) {
+        const layoutToggle = document.createElement("button");
+        layoutToggle.textContent = "Toggle Layout";
+        layoutToggle.type = "button";
+        layoutToggle.style.marginLeft = "10px";
+        searchFormFooter.appendChild(layoutToggle);
+
+        layoutToggle.addEventListener("click", () => {
+            const currentLayout = GM_getValue(LAYOUT_KEY, LAYOUT_ORIGINAL);
+            const newLayout = currentLayout === LAYOUT_ORIGINAL ? LAYOUT_CONDENSED : LAYOUT_ORIGINAL;
+            GM_setValue(LAYOUT_KEY, newLayout);
+            displayResults(GM_getValue(CURRENT_PAGE_KEY, 1));
         });
 
-        // Rename "Tags:" to "Genres:"
-        document.querySelectorAll(".form__label").forEach(label => {
-            if (label.textContent.includes("Tags:")) {
-                label.textContent = label.textContent.replace("Tags:", "Genres:");
-            }
-        });
+        const resultsPerPageLabel = document.createElement("label");
+        resultsPerPageLabel.textContent = "Results per page: ";
+        resultsPerPageLabel.style.marginLeft = "10px";
+        searchFormFooter.appendChild(resultsPerPageLabel);
 
-        // Remove "0 results" field
-        const resultsField = document.querySelector(".search-form__footer__results");
-        if (resultsField) {
-            resultsField.remove();
-        }
-        const emptyLabel = document.querySelector(".search-form__footer > .grid > .grid__item.grid-u-2-10");
-        if (emptyLabel) {
-            const table = document.createElement("label");
-            table.classList.add("form__label");
-            table.textContent = "Filtering:";
-            emptyLabel.appendChild(table);
-        }
+        const resultsPerPageInput = document.createElement("input");
+        resultsPerPageInput.type = "number";
+        resultsPerPageInput.value = GM_getValue(RESULTS_PER_PAGE_KEY, RESULTS_PER_PAGE_DEFAULT);
+        resultsPerPageInput.style.width = "50px";
+        resultsPerPageLabel.appendChild(resultsPerPageInput);
 
-        // Add layout toggle, results per page setting, and cast search to the search form
-        const searchFormFooter = document.querySelector(".search-form__footer__buttons");
-        if (searchFormFooter) {
-            const layoutToggle = document.createElement("button");
-            layoutToggle.textContent = "Toggle Layout";
-            layoutToggle.type = "button";
-            layoutToggle.style.marginLeft = "10px";
-            searchFormFooter.appendChild(layoutToggle);
-
-            layoutToggle.addEventListener("click", () => {
-                const currentLayout = GM_getValue(LAYOUT_KEY, LAYOUT_ORIGINAL);
-                const newLayout = currentLayout === LAYOUT_ORIGINAL ? LAYOUT_CONDENSED : LAYOUT_ORIGINAL;
-                GM_setValue(LAYOUT_KEY, newLayout);
+        resultsPerPageInput.addEventListener("change", () => {
+            const value = parseInt(resultsPerPageInput.value, 10);
+            if (value > 0) {
+                GM_setValue(RESULTS_PER_PAGE_KEY, value);
                 displayResults(GM_getValue(CURRENT_PAGE_KEY, 1));
-            });
-
-            const resultsPerPageLabel = document.createElement("label");
-            resultsPerPageLabel.textContent = "Results per page: ";
-            resultsPerPageLabel.style.marginLeft = "10px";
-            searchFormFooter.appendChild(resultsPerPageLabel);
-
-            const resultsPerPageInput = document.createElement("input");
-            resultsPerPageInput.type = "number";
-            resultsPerPageInput.value = GM_getValue(RESULTS_PER_PAGE_KEY, RESULTS_PER_PAGE_DEFAULT);
-            resultsPerPageInput.style.width = "50px";
-            resultsPerPageLabel.appendChild(resultsPerPageInput);
-
-            resultsPerPageInput.addEventListener("change", () => {
-                const value = parseInt(resultsPerPageInput.value, 10);
-                if (value > 0) {
-                    GM_setValue(RESULTS_PER_PAGE_KEY, value);
-                    displayResults(GM_getValue(CURRENT_PAGE_KEY, 1));
-                }
-            });
-        }
+            }
+        });
 
         const castGrid = document.createElement("div");
         castGrid.className = "grid";
@@ -803,14 +1095,67 @@ const displayResultsCondensed = (page, data) => {
                 <label class="form__label">Cast:</label>
             </div>
             <div class="grid__item grid-u-8-10">
-                <input type="text" size="40" id="cast" class="form__input" title="Comma-separated cast names" value="">
-            </div>`;
-
+                <input type="text" size="40" id="cast" name="castlist" class="form__input" title="Comma-separated cast names" value="">
+            </div>`; // Added name="castlist"
         const genresGrid = document.querySelector(".filter_torrents .grid:nth-child(2)");
         genresGrid.insertAdjacentElement('afterend', castGrid);
-    };
+    }
 
-    // Function to handle key bindings with plain JavaScript
+     const footer = document.querySelector(".search-form__footer")
+     if (footer) {
+        const tmdbApiKeyGrid = document.createElement("div");
+        tmdbApiKeyGrid.className = "grid";
+        tmdbApiKeyGrid.innerHTML = `
+            <div class="grid__item grid-u-2-10">
+                <label class="form__label">TMDb API Key:</label>
+            </div>
+            <div class="grid__item grid-u-7-10">
+                <input type="text" size="40" id="tmdb_api_key" class="form__input" value="${GM_getValue(API_KEY_TMDB, '')}">
+            </div>
+            <div class="grid__item grid-u-1-10">
+                <button id="save_tmdb_api_key" class="form__input" type="button">Save</button>
+            </div>`;
+        footer.appendChild(tmdbApiKeyGrid);
+
+        const saveTmdbApiKeyButton = document.getElementById("save_tmdb_api_key");
+        saveTmdbApiKeyButton.addEventListener("click", () => {
+            const tmdbApiKeyInput = document.getElementById("tmdb_api_key");
+            GM_setValue(API_KEY_TMDB, tmdbApiKeyInput.value);
+            console.log('TMDb API Key saved:', tmdbApiKeyInput.value); // Debugging log
+        });
+
+        const resultTypeGrid = document.createElement("div");
+        resultTypeGrid.className = "grid";
+        resultTypeGrid.innerHTML = `
+            <div class="grid__item grid-u-2-10">
+                <label class="form__label">Result Type:</label>
+            </div>
+            <div class="grid__item grid-u-7-10">
+                <select id="result_type" class="form__input">
+                    <option value="All">All</option>
+                    <option value="Theatrical">Theatrical</option>
+                    <option value="Digital">Digital</option>
+                </select>
+            </div>
+            <div class="grid__item grid-u-1-10">
+                <button id="refresh_results" class="form__input" type="button">Refresh</button>
+            </div>`;
+        footer.appendChild(resultTypeGrid);
+
+        const resultTypeSelect = document.getElementById("result_type");
+        resultTypeSelect.value = GM_getValue(RESULT_TYPE_KEY, 'All');
+        resultTypeSelect.addEventListener("change", () => {
+            GM_setValue(RESULT_TYPE_KEY, resultTypeSelect.value);
+        });
+
+        const refreshResultsButton = document.getElementById("refresh_results");
+        refreshResultsButton.addEventListener("click", () => {
+            displayResults(1);
+            console.log('Results refreshed for type:', resultTypeSelect.value);
+        });
+     }
+};
+
     function bindKeyBindings() {
         document.addEventListener('keydown', function(event) {
             if (event.ctrlKey && event.key === 's') {
