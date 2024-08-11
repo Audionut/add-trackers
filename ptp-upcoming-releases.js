@@ -451,6 +451,7 @@ const createImageElement = (node, size, source) => {
 const displayResultsOriginal = (page, data, source) => {
     const nameImagesData = GM_getValue(NAME_IMAGES_CACHE_KEY);
     const resultsPerPage = GM_getValue(RESULTS_PER_PAGE_KEY, RESULTS_PER_PAGE_DEFAULT);
+
     if (!data || !data.edges || !nameImagesData) {
         if (source === 'IMDb') {
             fetchAllComingSoonData();
@@ -505,7 +506,7 @@ const displayResultsOriginal = (page, data, source) => {
             movieDiv.style.display = "flex";
             movieDiv.style.position = "relative";
 
-            const image = createImageElement(node, "200px", source);
+            const image = createImageElement(node, "200px", movie.source);
             movieDiv.appendChild(image);
 
             const infoDiv = document.createElement("div");
@@ -519,7 +520,7 @@ const displayResultsOriginal = (page, data, source) => {
             titleLinkDiv.style.alignItems = "center";
 
             const titleLink = document.createElement("a");
-            titleLink.href = source === 'IMDb' ? `https://www.imdb.com/title/${node.id}/` : `https://www.themoviedb.org/movie/${node.id}`;
+            titleLink.href = movie.source === 'IMDb' ? `https://www.imdb.com/title/${node.id}/` : `https://www.themoviedb.org/movie/${node.id}`;
             titleLink.target = "_blank";
             titleLink.rel = "noreferrer";
             titleLink.textContent = node.titleText ? node.titleText.text : node.details.title;
@@ -530,7 +531,7 @@ const displayResultsOriginal = (page, data, source) => {
             titleLink.style.display = "block";
             titleLink.style.marginBottom = "10px";
 
-            if (source === 'TMDb') {
+            if (movie.source === 'TMDb') {
                 const digitalLabel = document.createElement('span');
                 digitalLabel.textContent = 'Digital';
                 digitalLabel.style.color = 'teal';
@@ -539,11 +540,7 @@ const displayResultsOriginal = (page, data, source) => {
             }
 
             const ptpLink = document.createElement("a");
-            if (node.id) {
-                ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id}`;
-            } else {
-                ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.details.title}`;
-            }
+            ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id || node.details.title}`;
             ptpLink.target = "_blank";
             ptpLink.textContent = "(Search PTP requests)";
             ptpLink.style.float = "right";
@@ -577,18 +574,27 @@ const displayResultsOriginal = (page, data, source) => {
             let castCount = 0;
             const creditsList = node.credits ? node.credits.edges : node.details.credits.cast;
             creditsList.forEach(credit => {
-                const castMember = source === 'IMDb' ? nameImagesData.find(name => name.id === credit.node.name.id) : credit;
-                if (castMember && castCount < 5) {
+                const castMember = movie.source === 'IMDb' ? nameImagesData.find(name => name.id === credit.node.name.id) : credit;
+
+                // Skip cast members without images
+                const hasValidImage = (movie.source === 'IMDb' && castMember?.primaryImage?.url) ||
+                                      (movie.source === 'TMDb' && castMember?.profile_path);
+
+                if (castMember && hasValidImage && castCount < 5) {
                     castCount++;
                     const castDiv = document.createElement("div");
                     castDiv.style.textAlign = "center";
                     castDiv.style.width = "auto";
 
                     const castImageLink = document.createElement("a");
-                    castImageLink.href = source === 'IMDb' ? `https://www.imdb.com/name/${credit.node.name.id}/` : `https://www.themoviedb.org/person/${credit.id}`;
+                    castImageLink.href = movie.source === 'IMDb' ? `https://www.imdb.com/name/${credit.node.name.id}/` : `https://www.themoviedb.org/person/${credit.id}`;
+                    castImageLink.target = "_blank";
+                    castImageLink.rel = "noreferrer";
+
                     const castImage = document.createElement("img");
-                    castImage.src = source === 'IMDb' ? castMember.primaryImage.url : `https://image.tmdb.org/t/p/original${credit.profile_path}`;
-                    castImage.alt = source === 'IMDb' ? credit.node.name.nameText.text : credit.name;
+                    castImage.src = movie.source === 'IMDb' ? castMember.primaryImage.url
+                                : `https://image.tmdb.org/t/p/w185${castMember.profile_path}`;
+                    castImage.alt = movie.source === 'IMDb' ? credit.node.name.nameText.text : credit.name;
                     castImage.style.maxHeight = "150px";
                     castImage.style.width = "auto";
                     castImage.style.display = "block";
@@ -596,10 +602,11 @@ const displayResultsOriginal = (page, data, source) => {
                     castDiv.appendChild(castImageLink);
 
                     const castNameLink = document.createElement("a");
-                    castNameLink.href = source === 'IMDb' ? `https://www.imdb.com/name/${credit.node.name.id}/` : `https://www.themoviedb.org/person/${credit.id}`;
+                    const castName = movie.source === 'IMDb' ? credit.node.name.nameText.text : credit.name;
+                    castNameLink.href = `https://passthepopcorn.me/artist.php?artistname=${encodeURIComponent(castName)}`;
                     castNameLink.target = "_blank";
                     castNameLink.rel = "noreferrer";
-                    castNameLink.textContent = source === 'IMDb' ? credit.node.name.nameText.text : credit.name;
+                    castNameLink.textContent = castName;
                     castNameLink.style.display = "block";
                     castNameLink.style.textDecoration = "none";
                     castNameLink.style.color = "white";
@@ -622,6 +629,7 @@ const displayResultsOriginal = (page, data, source) => {
 const displayResultsCondensed = (page, data, source) => {
     const nameImagesData = GM_getValue(NAME_IMAGES_CACHE_KEY);
     const resultsPerPage = GM_getValue(RESULTS_PER_PAGE_KEY, RESULTS_PER_PAGE_DEFAULT);
+
     if (!data || !data.edges || !nameImagesData) {
         if (source === 'IMDb') {
             fetchAllComingSoonData();
@@ -693,14 +701,14 @@ const displayResultsCondensed = (page, data, source) => {
                 movieDiv.style.display = "flex";
                 movieDiv.style.position = "relative";
 
-                const image = createImageElement(node, "60px", source);
+                const image = createImageElement(node, "60px", movie.source); // Pass source to distinguish between IMDb and TMDb
                 movieDiv.appendChild(image);
 
                 const infoDiv = document.createElement("div");
                 infoDiv.style.flex = "1";
 
                 const titleLink = document.createElement("a");
-                titleLink.href = source === 'IMDb' ? `https://www.imdb.com/title/${node.id}/` : `https://www.themoviedb.org/movie/${node.id}`;
+                titleLink.href = movie.source === 'IMDb' ? `https://www.imdb.com/title/${node.id}/` : `https://www.themoviedb.org/movie/${node.id}`;
                 titleLink.target = "_blank";
                 titleLink.rel = "noreferrer";
                 titleLink.textContent = node.titleText ? node.titleText.text : node.details.title;
@@ -711,7 +719,7 @@ const displayResultsCondensed = (page, data, source) => {
                 titleLink.style.marginBottom = "2px";
                 infoDiv.appendChild(titleLink);
 
-                if (source === 'TMDb') {
+                if (movie.source === 'TMDb') {
                     const digitalLabel = document.createElement('span');
                     digitalLabel.textContent = 'Digital';
                     digitalLabel.style.color = 'teal';
@@ -720,11 +728,7 @@ const displayResultsCondensed = (page, data, source) => {
                 }
 
                 const ptpLink = document.createElement("a");
-                if (node.id) {
-                    ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id}`;
-                } else {
-                    ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.details.title}`;
-                }
+                ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id || node.details.title}`;
                 ptpLink.target = "_blank";
                 ptpLink.textContent = "(Search PTP requests)";
                 ptpLink.style.float = "right";
@@ -751,17 +755,23 @@ const displayResultsCondensed = (page, data, source) => {
                 let castCount = 0;
                 const creditsList = node.credits ? node.credits.edges : node.details.credits.cast;
                 creditsList.forEach(credit => {
-                    const castMember = source === 'IMDb' ? nameImagesData.find(name => name.id === credit.node.name.id) : credit;
-                    if (castMember && castCount < 5) {
+                    const castMember = movie.source === 'IMDb' ? nameImagesData.find(name => name.id === credit.node.name.id) : credit;
+
+                    // Skip cast members without images
+                    const hasValidImage = (movie.source === 'IMDb' && castMember?.primaryImage?.url) ||
+                                        (movie.source === 'TMDb' && castMember?.profile_path);
+
+                    if (castMember && hasValidImage && castCount < 5) {
                         castCount++;
                         const castDiv = document.createElement("div");
                         castDiv.style.textAlign = "center";
                         castDiv.style.width = "auto";
 
                         const castNameLink = document.createElement("a");
-                        castNameLink.href = source === 'IMDb' ? `https://www.imdb.com/name/${credit.node.name.id}/` : `https://www.themoviedb.org/person/${credit.id}`;
+                        const castName = movie.source === 'IMDb' ? credit.node.name.nameText.text : credit.name;
+                        castNameLink.href = `https://passthepopcorn.me/artist.php?artistname=${encodeURIComponent(castName)}`;
                         castNameLink.target = "_blank";
-                        castNameLink.textContent = source === 'IMDb' ? credit.node.name.nameText.text : credit.name;
+                        castNameLink.textContent = castName;
                         castNameLink.style.display = "block";
                         castNameLink.style.textDecoration = "none";
                         castNameLink.style.color = "white";
@@ -838,28 +848,34 @@ const displayResults = async (page) => {
     const layout = GM_getValue(LAYOUT_KEY, LAYOUT_ORIGINAL);
     const resultType = GM_getValue(RESULT_TYPE_KEY, 'All');
     let data = { edges: [] };
-    let source = '';
-
+    let imdbData = [];
+    let tmdbData = [];
     const today = new Date();
     today.setHours(0, 0, 0, 0); // Set to midnight to compare only dates
 
     if (resultType === 'Theatrical' || resultType === 'All') {
         const filteredData = GM_getValue(FILTERED_CACHE_KEY);
-        const imdbData = filteredData || GM_getValue(CACHE_KEY_IMDB);
-        if (imdbData) {
-            data.edges = data.edges.concat(imdbData.edges);
+        const imdbCache = filteredData || GM_getValue(CACHE_KEY_IMDB);
+        if (imdbCache) {
+            imdbData = imdbCache.edges.map(edge => ({
+                ...edge,
+                source: 'IMDb'
+            }));
         }
-        source = 'IMDb';
     }
 
     if (resultType === 'Digital' || resultType === 'All') {
-        const tmdbData = GM_getValue(CACHE_KEY_TMDB);
-        if (tmdbData) {
-            const sortedFilteredTmdbData = sortAndFilterTmdbData(tmdbData); // Ensure data is sorted and filtered
-            data.edges = data.edges.concat(sortedFilteredTmdbData.map(movie => ({ node: movie })));
+        const tmdbCache = GM_getValue(CACHE_KEY_TMDB);
+        if (tmdbCache) {
+            tmdbData = tmdbCache.map(movie => ({
+                node: movie,
+                source: 'TMDb'
+            }));
         }
-        source = 'TMDb';
     }
+
+    // Combine IMDb and TMDb data
+    data.edges = [...imdbData, ...tmdbData];
 
     // Filter out items with dates before today
     data.edges = data.edges.filter(edge => {
@@ -892,9 +908,9 @@ const displayResults = async (page) => {
     container.innerHTML = ""; // Remove loading indicator once data is ready
 
     if (layout === LAYOUT_ORIGINAL) {
-        displayResultsOriginal(page, data, source);
+        displayResultsOriginal(page, data, 'All');
     } else if (layout === LAYOUT_CONDENSED) {
-        displayResultsCondensed(page, data, source);
+        displayResultsCondensed(page, data, 'All');
     }
 };
 
@@ -1072,6 +1088,21 @@ const updateSearchForm = () => {
             }
         });
 
+        const castGrid = document.createElement("div");
+        castGrid.className = "grid";
+        castGrid.innerHTML = `
+            <div class="grid__item grid-u-2-10">
+                <label class="form__label">Cast:</label>
+            </div>
+            <div class="grid__item grid-u-8-10">
+                <input type="text" size="40" id="cast" name="castlist" class="form__input" title="Comma-separated cast names" value="">
+            </div>`; // Added name="castlist"
+        const genresGrid = document.querySelector(".filter_torrents .grid:nth-child(2)");
+        genresGrid.insertAdjacentElement('afterend', castGrid);
+    }
+
+     const footer = document.querySelector(".search-form__footer")
+     if (footer) {
         const tmdbApiKeyGrid = document.createElement("div");
         tmdbApiKeyGrid.className = "grid";
         tmdbApiKeyGrid.innerHTML = `
@@ -1084,7 +1115,7 @@ const updateSearchForm = () => {
             <div class="grid__item grid-u-1-10">
                 <button id="save_tmdb_api_key" class="form__input" type="button">Save</button>
             </div>`;
-        searchFormFooter.appendChild(tmdbApiKeyGrid);
+        footer.appendChild(tmdbApiKeyGrid);
 
         const saveTmdbApiKeyButton = document.getElementById("save_tmdb_api_key");
         saveTmdbApiKeyButton.addEventListener("click", () => {
@@ -1109,7 +1140,7 @@ const updateSearchForm = () => {
             <div class="grid__item grid-u-1-10">
                 <button id="refresh_results" class="form__input" type="button">Refresh</button>
             </div>`;
-        searchFormFooter.appendChild(resultTypeGrid);
+        footer.appendChild(resultTypeGrid);
 
         const resultTypeSelect = document.getElementById("result_type");
         resultTypeSelect.value = GM_getValue(RESULT_TYPE_KEY, 'All');
@@ -1122,19 +1153,7 @@ const updateSearchForm = () => {
             displayResults(1);
             console.log('Results refreshed for type:', resultTypeSelect.value);
         });
-
-        const castGrid = document.createElement("div");
-        castGrid.className = "grid";
-        castGrid.innerHTML = `
-            <div class="grid__item grid-u-2-10">
-                <label class="form__label">Cast:</label>
-            </div>
-            <div class="grid__item grid-u-8-10">
-                <input type="text" size="40" id="cast" name="castlist" class="form__input" title="Comma-separated cast names" value="">
-            </div>`; // Added name="castlist"
-        const genresGrid = document.querySelector(".filter_torrents .grid:nth-child(2)");
-        genresGrid.insertAdjacentElement('afterend', castGrid);
-    }
+     }
 };
 
     function bindKeyBindings() {
