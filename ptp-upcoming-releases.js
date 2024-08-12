@@ -221,6 +221,13 @@ function formatDate(date) {
     };
 
     const fetchAllComingSoonData = async () => {
+    const container = document.querySelector("#torrents-movie-view > div");
+    container.innerHTML = `
+        <div class="loading-container">
+            <div class="spinner"></div>
+            <p>Loading upcoming releases...</p>
+        </div>
+    `;
         let allEdges = [];
         let lastReleaseDate = null;
 
@@ -248,7 +255,7 @@ function formatDate(date) {
 
         const primaryImageUrls = await fetchPrimaryImageUrls(nameIds);
         setCache(NAME_IMAGES_CACHE_KEY, primaryImageUrls);
-
+        container.innerHTML = "";
         displayResults(1);
     };
 
@@ -307,6 +314,13 @@ function formatDate(date) {
     };
 
 const fetchUpcomingDigitalMovies = async (page = 1) => {
+    const container = document.querySelector("#torrents-movie-view > div");
+    container.innerHTML = `
+        <div class="loading-container">
+            <div class="spinner"></div>
+            <p>Loading upcoming releases...</p>
+        </div>
+    `;
     const apiKey = GM_getValue(API_KEY_TMDB, '');
     if (!apiKey) {
         console.error('TMDb API key is not set.');
@@ -333,6 +347,8 @@ const fetchUpcomingDigitalMovies = async (page = 1) => {
                     } else {
                         fetchMovieDetails().then(() => {
                             setCache(CACHE_KEY_TMDB, digitalReleases);
+                            container.innerHTML = "";
+                            displayResults(1);
                             resolve(digitalReleases);
                         }).catch(reject);
                     }
@@ -905,76 +921,108 @@ const createPagination = (currentPage, totalResults) => {
     });
 };
 
+const addSpinnerStyles = () => {
+    const style = document.createElement('style');
+    style.innerHTML = `
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .spinner {
+            border: 16px solid #f3f3f3;
+            border-top: 16px solid #3498db;
+            border-radius: 50%;
+            width: 120px;
+            height: 120px;
+            animation: spin 2s linear infinite;
+            margin: 20px auto;
+        }
+        .loading-container {
+            text-align: center;
+            color: white;
+            font-size: 1.5em;
+        }
+    `;
+    document.head.appendChild(style);
+};
+
 const displayResults = async (page) => {
-    const container = document.querySelector("#torrents-movie-view > div");
-    container.innerHTML = "<p>Loading...</p>";  // Add loading indicator
+    try {
+        // Placeholder function for fetching and processing data
+        const fetchAndProcessData = async () => {
+            const layout = GM_getValue(LAYOUT_KEY, LAYOUT_ORIGINAL);
+            const resultType = GM_getValue(RESULT_TYPE_KEY, 'All');
+            let data = { edges: [] };
+            let imdbData = [];
+            let tmdbData = [];
+            const today = new Date();
+            today.setHours(0, 0, 0, 0); // Set to midnight to compare only dates
 
-    const layout = GM_getValue(LAYOUT_KEY, LAYOUT_ORIGINAL);
-    const resultType = GM_getValue(RESULT_TYPE_KEY, 'All');
-    let data = { edges: [] };
-    let imdbData = [];
-    let tmdbData = [];
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // Set to midnight to compare only dates
+            if (resultType === 'Theatrical' || resultType === 'All') {
+                const filteredData = GM_getValue(FILTERED_CACHE_KEY);
+                const imdbCache = filteredData || getCache(CACHE_KEY_IMDB);
+                if (imdbCache) {
+                    imdbData = imdbCache.edges.map(edge => ({
+                        ...edge,
+                        source: 'IMDb'
+                    }));
+                }
+            }
 
-    if (resultType === 'Theatrical' || resultType === 'All') {
-        const filteredData = GM_getValue(FILTERED_CACHE_KEY);
-        const imdbCache = filteredData || getCache(CACHE_KEY_IMDB);
-        if (imdbCache) {
-            imdbData = imdbCache.edges.map(edge => ({
-                ...edge,
-                source: 'IMDb'
-            }));
-        }
-    }
+            if (resultType === 'Digital' || resultType === 'All') {
+                const tmdbCache = getCache(CACHE_KEY_TMDB);
+                if (tmdbCache) {
+                    tmdbData = tmdbCache.map(movie => ({
+                        node: movie,
+                        source: 'TMDb'
+                    }));
+                }
+            }
 
-    if (resultType === 'Digital' || resultType === 'All') {
-        const tmdbCache = getCache(CACHE_KEY_TMDB);
-        if (tmdbCache) {
-            tmdbData = tmdbCache.map(movie => ({
-                node: movie,
-                source: 'TMDb'
-            }));
-        }
-    }
+            // Combine IMDb and TMDb data
+            data.edges = [...imdbData, ...tmdbData];
 
-    // Combine IMDb and TMDb data
-    data.edges = [...imdbData, ...tmdbData];
+            // Filter out items with dates before today
+            data.edges = data.edges.filter(edge => {
+                const releaseDate = edge.node.releaseDate ?
+                    new Date(`${edge.node.releaseDate.year}-${String(edge.node.releaseDate.month).padStart(2, '0')}-${String(edge.node.releaseDate.day).padStart(2, '0')}`) :
+                    (edge.node.details && edge.node.details.release_date ? new Date(edge.node.details.release_date) : null);
 
-    // Filter out items with dates before today
-    data.edges = data.edges.filter(edge => {
-        const releaseDate = edge.node.releaseDate ?
-            new Date(`${edge.node.releaseDate.year}-${String(edge.node.releaseDate.month).padStart(2, '0')}-${String(edge.node.releaseDate.day).padStart(2, '0')}`) :
-            (edge.node.details && edge.node.details.release_date ? new Date(edge.node.details.release_date) : null);
+                return releaseDate && releaseDate >= today;
+            });
 
-        return releaseDate && releaseDate >= today;
-    });
+            // Remove potential duplicates by using a Set or filtering based on a unique identifier like `node.id`
+            const uniqueData = [];
+            const seenIds = new Set();
 
-    // Remove potential duplicates by using a Set or filtering based on a unique identifier like `node.id`
-    const uniqueData = [];
-    const seenIds = new Set();
+            data.edges.forEach(edge => {
+                const id = edge.node.id || edge.node.details.id;
+                if (!seenIds.has(id)) {
+                    seenIds.add(id);
+                    uniqueData.push(edge);
+                }
+            });
 
-    data.edges.forEach(edge => {
-        const id = edge.node.id || edge.node.details.id;
-        if (!seenIds.has(id)) {
-            seenIds.add(id);
-            uniqueData.push(edge);
-        }
-    });
+            data.edges = uniqueData;
 
-    data.edges = uniqueData;
+            // Sort the combined data by release date
+            if (data.edges.length > 0) {
+                data.edges = sortCombinedDataByDate(data.edges);
+            }
 
-    // Sort the combined data by release date
-    if (data.edges.length > 0) {
-        data.edges = sortCombinedDataByDate(data.edges);
-    }
+            if (layout === LAYOUT_ORIGINAL) {
+                displayResultsOriginal(page, data, 'All');
+            } else if (layout === LAYOUT_CONDENSED) {
+                displayResultsCondensed(page, data, 'All');
+            }
+        };
 
-    container.innerHTML = ""; // Remove loading indicator once data is ready
+        // Fetch and process data
+        await fetchAndProcessData();
 
-    if (layout === LAYOUT_ORIGINAL) {
-        displayResultsOriginal(page, data, 'All');
-    } else if (layout === LAYOUT_CONDENSED) {
-        displayResultsCondensed(page, data, 'All');
+    } catch (error) {
+        container.innerHTML = "<p style='color: red; font-size: 1.5em; text-align: center;'>Failed to load data. Please try again later.</p>";
+        console.error("Error loading data:", error); // Log the error for debugging
     }
 };
 
@@ -1247,11 +1295,12 @@ const updateSearchForm = () => {
         });
     }
 
-    window.addEventListener('load', function() {
-        addLightboxStyles();
-        initLightbox();
-        init();
-        bindKeyBindings();
-    });
+window.addEventListener('load', function() {
+    addLightboxStyles();
+    addSpinnerStyles();
+    initLightbox();
+    init();
+    bindKeyBindings();
+});
 
 })();
