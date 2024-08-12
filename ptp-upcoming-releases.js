@@ -476,6 +476,7 @@ const createImageElement = (node, size, source) => {
 const displayResultsOriginal = (page, data, source) => {
     const nameImagesData = GM_getValue(NAME_IMAGES_CACHE_KEY);
     const resultsPerPage = GM_getValue(RESULTS_PER_PAGE_KEY, RESULTS_PER_PAGE_DEFAULT);
+    const resultType = GM_getValue(RESULT_TYPE_KEY, 'All');
 
     if (!data || !data.edges || !nameImagesData) {
         if (source === 'IMDb') {
@@ -556,13 +557,21 @@ const displayResultsOriginal = (page, data, source) => {
             titleLink.style.display = "block";
             titleLink.style.marginBottom = "10px";
 
-            if (movie.source === 'TMDb') {
-                const digitalLabel = document.createElement('span');
-                digitalLabel.textContent = 'Digital';
-                digitalLabel.style.color = 'teal';
-                digitalLabel.style.marginLeft = '10px';
-                titleLink.appendChild(digitalLabel);
-            }
+                if (movie.source === 'TMDb' && resultType === "All") {
+                    const digitalLabel = document.createElement('span');
+                    digitalLabel.textContent = 'Digital';
+                    digitalLabel.style.color = 'teal';
+                    digitalLabel.style.marginLeft = '10px';
+                    titleLink.appendChild(digitalLabel);
+                }
+
+                if (movie.source === 'IMDb' && resultType === "All") {
+                    const digitalLabel = document.createElement('span');
+                    digitalLabel.textContent = 'Theatrical';
+                    digitalLabel.style.color = 'orange';
+                    digitalLabel.style.marginLeft = '10px';
+                    titleLink.appendChild(digitalLabel);
+                }
 
             const ptpLink = document.createElement("a");
             ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id || node.details.title}`;
@@ -654,6 +663,7 @@ const displayResultsOriginal = (page, data, source) => {
 const displayResultsCondensed = (page, data, source) => {
     const nameImagesData = GM_getValue(NAME_IMAGES_CACHE_KEY);
     const resultsPerPage = GM_getValue(RESULTS_PER_PAGE_KEY, RESULTS_PER_PAGE_DEFAULT);
+    const resultType = GM_getValue(RESULT_TYPE_KEY, 'All');
 
     if (!data || !data.edges || !nameImagesData) {
         if (source === 'IMDb') {
@@ -744,10 +754,18 @@ const displayResultsCondensed = (page, data, source) => {
                 titleLink.style.marginBottom = "2px";
                 infoDiv.appendChild(titleLink);
 
-                if (movie.source === 'TMDb') {
+                if (movie.source === 'TMDb' && resultType === "All") {
                     const digitalLabel = document.createElement('span');
                     digitalLabel.textContent = 'Digital';
                     digitalLabel.style.color = 'teal';
+                    digitalLabel.style.marginLeft = '10px';
+                    titleLink.appendChild(digitalLabel);
+                }
+
+                if (movie.source === 'IMDb' && resultType === "All") {
+                    const digitalLabel = document.createElement('span');
+                    digitalLabel.textContent = 'Theatrical';
+                    digitalLabel.style.color = 'orange';
                     digitalLabel.style.marginLeft = '10px';
                     titleLink.appendChild(digitalLabel);
                 }
@@ -938,7 +956,6 @@ const displayResults = async (page) => {
 const handleSearchForm = () => {
     const searchForm = document.querySelector("#filter_torrents_form");
     if (searchForm) {
-        console.log("Search form found and event listener attached.");  // Log when form is found
         searchForm.addEventListener("submit", (event) => {
             event.preventDefault();
             console.log("Search form submitted.");  // Log when form is submitted
