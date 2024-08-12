@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP upcoming releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.6
+// @version      1.0.7
 // @description  Get a list of upcoming releases from IMDB and TMDb and integrate with site search form.
 // @author       Audionut
 // @match        https://passthepopcorn.me/upcoming.php*
@@ -14,6 +14,7 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
+// @require      https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js
 // ==/UserScript==
 
 (function () {
@@ -37,6 +38,38 @@
     const RESULT_TYPE_KEY = 'resultType';
 
     let digitalReleases = [];
+
+const setCache = (key, data) => {
+    try {
+        const stringData = JSON.stringify(data);
+        const compressedData = LZString.compress(stringData);
+        GM_setValue(key, compressedData);
+        console.log(`Data compressed and cached under key: ${key}`);
+    } catch (e) {
+        console.error(`Failed to compress and cache data for key: ${key}`, e);
+    }
+};
+
+const getCache = (key) => {
+    const compressedData = GM_getValue(key, null);
+    if (compressedData && typeof compressedData === 'string') {
+        try {
+            const decompressedData = LZString.decompress(compressedData);
+            if (decompressedData) {
+                return JSON.parse(decompressedData);
+            } else {
+                console.warn(`Data for key ${key} was not properly compressed or decompressed.`);
+                return null;
+            }
+        } catch (e) {
+            console.error(`Failed to decompress data for key: ${key}`, e);
+            return null;
+        }
+    } else {
+        console.warn(`Data for key ${key} is not in string format or is null, returning as is.`);
+        return compressedData;
+    }
+};
 
 const clearCache = (cacheType) => {
     switch (cacheType) {
@@ -203,7 +236,7 @@ function formatDate(date) {
         }
 
         const cachedData = { edges: allEdges };
-        GM_setValue(CACHE_KEY_IMDB, cachedData);
+        setCache(CACHE_KEY_IMDB, cachedData);
         GM_setValue(CACHE_EXPIRATION_KEY_IMDB, Date.now() + 2 * 24 * 60 * 60 * 1000);
 
         const nameIds = [];
@@ -214,7 +247,7 @@ function formatDate(date) {
         });
 
         const primaryImageUrls = await fetchPrimaryImageUrls(nameIds);
-        GM_setValue(NAME_IMAGES_CACHE_KEY, primaryImageUrls);
+        setCache(NAME_IMAGES_CACHE_KEY, primaryImageUrls);
 
         displayResults(1);
     };
@@ -275,7 +308,6 @@ function formatDate(date) {
 
 const fetchUpcomingDigitalMovies = async (page = 1) => {
     const apiKey = GM_getValue(API_KEY_TMDB, '');
-    console.log('Fetching TMDb data with API key:', apiKey); // Debugging log
     if (!apiKey) {
         console.error('TMDb API key is not set.');
         return;
@@ -286,25 +318,21 @@ const fetchUpcomingDigitalMovies = async (page = 1) => {
     threeMonthsFromNow.setMonth(today.getMonth() + 3);
 
     const url = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&language=en-US&region=US&sort_by=release_date.desc&release_date.gte=${formatDate(today)}&release_date.lte=${formatDate(threeMonthsFromNow)}&with_release_type=4&page=${page}`;
-    console.log("TMDb URL: ", url); // Debugging log for URL
 
     return new Promise((resolve, reject) => {
         GM_xmlhttpRequest({
             method: 'GET',
             url: url,
             onload: function (response) {
-                console.log('TMDb response status:', response.status); // Debugging log
                 if (response.status === 200) {
                     const data = JSON.parse(response.responseText);
                     digitalReleases = digitalReleases.concat(data.results);
-                    console.log("Digital releases fetched:", data.results); // Debugging log for data
 
                     if (data.page < data.total_pages) {
                         fetchUpcomingDigitalMovies(data.page + 1).then(resolve).catch(reject);
                     } else {
                         fetchMovieDetails().then(() => {
-                            GM_setValue(CACHE_KEY_TMDB, digitalReleases);
-                            console.log("TMDb data cached:", digitalReleases); // Debugging log for caching
+                            setCache(CACHE_KEY_TMDB, digitalReleases);
                             resolve(digitalReleases);
                         }).catch(reject);
                     }
@@ -339,7 +367,6 @@ const sortAndFilterTmdbData = (data) => {
 
 const fetchMovieDetails = async () => {
     const apiKey = GM_getValue(API_KEY_TMDB, '');
-    console.log('Fetching TMDb movie details with API key:', apiKey); // Debugging log
     if (!apiKey) {
         console.error('TMDb API key is not set.');
         return;
@@ -352,7 +379,7 @@ const fetchMovieDetails = async () => {
                 if (--remainingRequests === 0) {
                     // Sort and filter the TMDb data before caching and displaying
                     digitalReleases = sortAndFilterTmdbData(digitalReleases);
-                    GM_setValue(CACHE_KEY_TMDB, digitalReleases);
+                    setCache(CACHE_KEY_TMDB, digitalReleases);
                     resolve();
                 }
             });
@@ -368,11 +395,9 @@ const fetchDetailsWithRetry = (movie, retries, callback) => {
         method: 'GET',
         url: url,
         onload: function (response) {
-            console.log('TMDb movie details response status:', response.status); // Debugging log
             if (response.status === 200) {
                 const data = JSON.parse(response.responseText);
                 movie.details = data;
-                console.log('Fetched TMDb movie details:', data); // Debugging log for details
             } else if (retries > 0) {
                 console.warn(`Retrying fetch for movie ID ${movie.id}. Remaining retries: ${retries - 1}`);
                 fetchDetailsWithRetry(movie, retries - 1, callback);
@@ -474,7 +499,7 @@ const createImageElement = (node, size, source) => {
 };
 
 const displayResultsOriginal = (page, data, source) => {
-    const nameImagesData = GM_getValue(NAME_IMAGES_CACHE_KEY);
+    const nameImagesData = getCache(NAME_IMAGES_CACHE_KEY);
     const resultsPerPage = GM_getValue(RESULTS_PER_PAGE_KEY, RESULTS_PER_PAGE_DEFAULT);
     const resultType = GM_getValue(RESULT_TYPE_KEY, 'All');
 
@@ -661,7 +686,7 @@ const displayResultsOriginal = (page, data, source) => {
 };
 
 const displayResultsCondensed = (page, data, source) => {
-    const nameImagesData = GM_getValue(NAME_IMAGES_CACHE_KEY);
+    const nameImagesData = getCache(NAME_IMAGES_CACHE_KEY);
     const resultsPerPage = GM_getValue(RESULTS_PER_PAGE_KEY, RESULTS_PER_PAGE_DEFAULT);
     const resultType = GM_getValue(RESULT_TYPE_KEY, 'All');
 
@@ -894,7 +919,7 @@ const displayResults = async (page) => {
 
     if (resultType === 'Theatrical' || resultType === 'All') {
         const filteredData = GM_getValue(FILTERED_CACHE_KEY);
-        const imdbCache = filteredData || GM_getValue(CACHE_KEY_IMDB);
+        const imdbCache = filteredData || getCache(CACHE_KEY_IMDB);
         if (imdbCache) {
             imdbData = imdbCache.edges.map(edge => ({
                 ...edge,
@@ -904,7 +929,7 @@ const displayResults = async (page) => {
     }
 
     if (resultType === 'Digital' || resultType === 'All') {
-        const tmdbCache = GM_getValue(CACHE_KEY_TMDB);
+        const tmdbCache = getCache(CACHE_KEY_TMDB);
         if (tmdbCache) {
             tmdbData = tmdbCache.map(movie => ({
                 node: movie,
@@ -971,7 +996,7 @@ const handleSearchForm = () => {
 
             const tagsType = formData.get("tags_type") || "all";  // Get the selected tags_type
 
-            const cachedData = GM_getValue(CACHE_KEY_IMDB);
+            const cachedData = getCache(CACHE_KEY_IMDB);
             if (cachedData && cachedData.edges) {
                 let filteredData = cachedData.edges;
 
@@ -1034,8 +1059,8 @@ const init = () => {
         clearCache('IMDb');
         fetchAllComingSoonData();
     } else {
-        const cachedDataIMDb = GM_getValue(CACHE_KEY_IMDB);
-        const nameImagesData = GM_getValue(NAME_IMAGES_CACHE_KEY);
+        const cachedDataIMDb = getCache(CACHE_KEY_IMDB);
+        const nameImagesData = getCache(NAME_IMAGES_CACHE_KEY);
         if (cachedDataIMDb && cachedDataIMDb.edges.length > 0 && nameImagesData) {
             displayResults(currentPage);
         } else {
@@ -1046,7 +1071,7 @@ const init = () => {
     if (Date.now() > cacheExpirationTMDb) {
         clearCache('TMDb');
         fetchUpcomingDigitalMovies().then(() => {
-            GM_setValue(CACHE_KEY_TMDB, digitalReleases);
+            setCache(CACHE_KEY_TMDB, digitalReleases);
             GM_setValue(CACHE_EXPIRATION_KEY_TMDB, Date.now() + 2 * 24 * 60 * 60 * 1000);
             displayResults(currentPage);
         });
