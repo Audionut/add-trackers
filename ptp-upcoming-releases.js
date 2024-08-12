@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP upcoming releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.5
+// @version      1.0.6
 // @description  Get a list of upcoming releases from IMDB and TMDb and integrate with site search form.
 // @author       Audionut
 // @match        https://passthepopcorn.me/upcoming.php*
@@ -38,15 +38,40 @@
 
     let digitalReleases = [];
 
-    const clearCache = () => {
-        GM_setValue(CACHE_KEY_IMDB, null);
-        GM_setValue(CACHE_KEY_TMDB, null);
-        GM_setValue(CACHE_EXPIRATION_KEY_IMDB, 0);
-        GM_setValue(CACHE_EXPIRATION_KEY_TMDB, 0);
-        GM_setValue(NAME_IMAGES_CACHE_KEY, null);
-        GM_setValue(CURRENT_PAGE_KEY, 1);
+const clearCache = (cacheType) => {
+    switch (cacheType) {
+        case 'IMDb':
+            GM_setValue(CACHE_KEY_IMDB, null);
+            GM_setValue(CACHE_EXPIRATION_KEY_IMDB, 0);
+            GM_setValue(NAME_IMAGES_CACHE_KEY, null);
+            console.log("IMDb cache cleared");
+            break;
+        case 'TMDb':
+            GM_setValue(CACHE_KEY_TMDB, null);
+            GM_setValue(CACHE_EXPIRATION_KEY_TMDB, 0);
+            console.log("TMDb cache cleared");
+            break;
+        case 'All':
+            clearCache('IMDb');
+            clearCache('TMDb');
+            GM_setValue(CURRENT_PAGE_KEY, 1);
+            GM_setValue(FILTERED_CACHE_KEY, null);
+            console.log("All caches cleared");
+            break;
+    }
+};
+
+const setFilteredCacheTimer = () => {
+    setTimeout(() => {
         GM_setValue(FILTERED_CACHE_KEY, null);
-    };
+        console.log("Filtered cache cleared after 5 minutes");
+    }, 5 * 60 * 1000);  // 5 minutes in milliseconds
+};
+
+const handleFilteredCache = (filteredData) => {
+    GM_setValue(FILTERED_CACHE_KEY, { edges: filteredData });
+    setFilteredCacheTimer();  // Start the timer every time the filtered cache is set
+};
 
 // Function to format date to YYYY-MM-DD
 function formatDate(date) {
@@ -757,11 +782,7 @@ const displayResultsCondensed = (page, data, source) => {
                 creditsList.forEach(credit => {
                     const castMember = movie.source === 'IMDb' ? nameImagesData.find(name => name.id === credit.node.name.id) : credit;
 
-                    // Skip cast members without images
-                    const hasValidImage = (movie.source === 'IMDb' && castMember?.primaryImage?.url) ||
-                                        (movie.source === 'TMDb' && castMember?.profile_path);
-
-                    if (castMember && hasValidImage && castCount < 5) {
+                    if (castMember && castCount < 5) {
                         castCount++;
                         const castDiv = document.createElement("div");
                         castDiv.style.textAlign = "center";
@@ -987,41 +1008,38 @@ const handleSearchForm = () => {
     }
 };
 
-    const init = () => {
-        const currentPage = GM_getValue(CURRENT_PAGE_KEY, 1);
-        const cacheExpirationIMDb = GM_getValue(CACHE_EXPIRATION_KEY_IMDB, 0);
-        const cacheExpirationTMDb = GM_getValue(CACHE_EXPIRATION_KEY_TMDB, 0);
-        const isCacheExpiredIMDb = Date.now() > cacheExpirationIMDb;
-        const isCacheExpiredTMDb = Date.now() > cacheExpirationTMDb;
+const init = () => {
+    const currentPage = GM_getValue(CURRENT_PAGE_KEY, 1);
+    const cacheExpirationIMDb = GM_getValue(CACHE_EXPIRATION_KEY_IMDB, 0);
+    const cacheExpirationTMDb = GM_getValue(CACHE_EXPIRATION_KEY_TMDB, 0);
 
-        if (isCacheExpiredIMDb) {
-            clearCache();
-            fetchAllComingSoonData();
-        } else {
-            const cachedDataIMDb = GM_getValue(CACHE_KEY_IMDB);
-            const nameImagesData = GM_getValue(NAME_IMAGES_CACHE_KEY);
-            if (cachedDataIMDb && cachedDataIMDb.edges.length > 0 && nameImagesData) {
-                displayResults(currentPage);
-            } else {
-                fetchAllComingSoonData();
-            }
-        }
-
-        if (isCacheExpiredTMDb) {
-            clearCache();
-            fetchUpcomingDigitalMovies().then(() => {
-                GM_setValue(CACHE_KEY_TMDB, digitalReleases);
-                GM_setValue(CACHE_EXPIRATION_KEY_TMDB, Date.now() + 2 * 24 * 60 * 60 * 1000);
-                displayResults(currentPage);
-            });
-        } else {
-            //clearCache();
+    if (Date.now() > cacheExpirationIMDb) {
+        clearCache('IMDb');
+        fetchAllComingSoonData();
+    } else {
+        const cachedDataIMDb = GM_getValue(CACHE_KEY_IMDB);
+        const nameImagesData = GM_getValue(NAME_IMAGES_CACHE_KEY);
+        if (cachedDataIMDb && cachedDataIMDb.edges.length > 0 && nameImagesData) {
             displayResults(currentPage);
+        } else {
+            fetchAllComingSoonData();
         }
+    }
 
-        handleSearchForm();
-        updateSearchForm();
-    };
+    if (Date.now() > cacheExpirationTMDb) {
+        clearCache('TMDb');
+        fetchUpcomingDigitalMovies().then(() => {
+            GM_setValue(CACHE_KEY_TMDB, digitalReleases);
+            GM_setValue(CACHE_EXPIRATION_KEY_TMDB, Date.now() + 2 * 24 * 60 * 60 * 1000);
+            displayResults(currentPage);
+        });
+    } else {
+        displayResults(currentPage);
+    }
+
+    handleSearchForm();
+    updateSearchForm();
+};
 
 const updateSearchForm = () => {
     const filterTorrentsToggle = document.getElementById("filter_torrents_toggle");
@@ -1085,6 +1103,28 @@ const updateSearchForm = () => {
             if (value > 0) {
                 GM_setValue(RESULTS_PER_PAGE_KEY, value);
                 displayResults(GM_getValue(CURRENT_PAGE_KEY, 1));
+            }
+        });
+
+        const clearCacheButton = document.createElement("button");
+        clearCacheButton.textContent = "Clear All Caches";
+        clearCacheButton.type = "button";
+        clearCacheButton.style.marginLeft = "10px";
+        searchFormFooter.appendChild(clearCacheButton);
+
+        clearCacheButton.addEventListener("click", () => {
+            const userConfirmed = window.confirm(
+                "This script clears the cache on a regular basis and attempts to keep the data fresh. " +
+                "There are quite a few API calls required at both IMDB and TMDB in order to gather a list of movies, " +
+                "and also gather a list of cast for every movie. You're on your own if being trigger happy with this button causes issues."
+            );
+
+            if (userConfirmed) {
+                clearCache('All');
+                console.log("All caches force cleared");
+                window.location.reload();  // Reload the page after clearing all caches
+            } else {
+                console.log("Clear cache action canceled by the user");
             }
         });
 
