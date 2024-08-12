@@ -1164,10 +1164,10 @@ const updateSearchForm = () => {
 
     const searchFormFooter = document.querySelector(".search-form__footer__buttons");
     if (searchFormFooter) {
-        const layoutToggle = document.createElement("button");
-        layoutToggle.textContent = "Toggle Layout";
-        layoutToggle.type = "button";
-        layoutToggle.style.marginLeft = "10px";
+        const layoutToggle = document.createElement("input");
+        //layoutToggle.textContent = "Toggle Layout";
+        layoutToggle.type = "submit";
+        layoutToggle.setAttribute('value', 'Toggle Layout');
         searchFormFooter.appendChild(layoutToggle);
 
         layoutToggle.addEventListener("click", () => {
@@ -1196,10 +1196,10 @@ const updateSearchForm = () => {
             }
         });
 
-        const clearCacheButton = document.createElement("button");
-        clearCacheButton.textContent = "Clear All Caches";
-        clearCacheButton.type = "button";
-        clearCacheButton.style.marginLeft = "10px";
+        const clearCacheButton = document.createElement("input");
+        //clearCacheButton.textContent = "Clear All Caches";
+        clearCacheButton.type = "submit";
+        clearCacheButton.setAttribute('value', 'Clear All Caches');
         searchFormFooter.appendChild(clearCacheButton);
 
         clearCacheButton.addEventListener("click", () => {
@@ -1243,7 +1243,7 @@ const updateSearchForm = () => {
                 <input type="text" size="40" id="tmdb_api_key" class="form__input" value="${GM_getValue(API_KEY_TMDB, '')}">
             </div>
             <div class="grid__item grid-u-1-10">
-                <button id="save_tmdb_api_key" class="form__input" type="button">Save</button>
+                <input id="save_tmdb_api_key" class="form__input" type="submit" value="Save"></input>
             </div>`;
         footer.appendChild(tmdbApiKeyGrid);
 
@@ -1268,7 +1268,7 @@ const updateSearchForm = () => {
                 </select>
             </div>
             <div class="grid__item grid-u-1-10">
-                <button id="refresh_results" class="form__input" type="button">Refresh</button>
+                <input id="refresh_results" class="form__input" type="submit" value="Refresh"></input>
             </div>`;
         footer.appendChild(resultTypeGrid);
 
