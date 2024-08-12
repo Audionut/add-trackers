@@ -1,13 +1,16 @@
 // ==UserScript==
 // @name         PTP Screenshots
-// @version      2.3
-// @description  Load and display screenshots from all torrents on a movie page with dimension checks for different groups and status indicators.
+// @author       Audionut
+// @version      2.4
+// @description  Load and display screenshots from all torrents on a movie page with dimension checks for different groups and status indicators, with cache compression and error checking.
 // @grant        GM.setValue
 // @grant        GM.getValue
 // @namespace    https://github.com/Audionut/add-trackers
 // @match        https://passthepopcorn.me/torrents.php?id=*
+// @icon         https://passthepopcorn.me/favicon.ico
 // @downloadURL  https://github.com/Audionut/add-trackers/raw/main/ptp-screenshots.js
 // @updateURL    https://github.com/Audionut/add-trackers/raw/main/ptp-screenshots.js
+// @require      https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js
 // ==/UserScript==
 
 (function() {
@@ -451,7 +454,7 @@
                             const doc = parser.parseFromString(description, 'text/html');
                             const imgElements = doc.querySelectorAll('img.bbcode__image');
                             const cacheKey = `images_${movieId}_${torrentId}`;
-                            const cachedData = await GM.getValue(cacheKey, null);
+                            const cachedData = await decompressCacheData(await GM.getValue(cacheKey, null));
                             if (!skipcache) {
                                 if (cachedData) {
                                     let isCached = true;
@@ -520,7 +523,7 @@
                                     }
                                     imageSrcGroups[groupText][releaseName].push(imgSrc);
                                 });
-                                GM.setValue(cacheKey, Array.from(imgSrcList));
+                                await GM.setValue(cacheKey, compressCacheData(Array.from(imgSrcList)));
                                 GM.setValue('skipcache', false);
                                 await displayImagesForRelease(groupText, releaseName, groupDiv, showReleaseNames, failedReleases, showFailedImageIndicator, showComparisonImages);
                                 if (debug) {
@@ -766,6 +769,31 @@
             };
             img.src = url;
         });
+    }
+
+    function compressCacheData(data) {
+        try {
+            if (Array.isArray(data)) {
+                return LZString.compressToUTF16(JSON.stringify(data));
+            }
+            throw new Error('Data to compress must be an array');
+        } catch (error) {
+            console.error('Error compressing cache data:', error);
+            return null;
+        }
+    }
+
+    async function decompressCacheData(compressedData) {
+        try {
+            if (typeof compressedData === 'string') {
+                const decompressed = LZString.decompressFromUTF16(compressedData);
+                return JSON.parse(decompressed);
+            }
+            throw new Error('Compressed data must be a string');
+        } catch (error) {
+            console.error('Error decompressing cache data:', error);
+            return null;
+        }
     }
 
     function updateReleaseNameVisibility() {
