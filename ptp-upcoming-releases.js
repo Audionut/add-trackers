@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP upcoming releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.7
+// @version      1.0.8
 // @description  Get a list of upcoming releases from IMDB and TMDb and integrate with site search form.
 // @author       Audionut
 // @match        https://passthepopcorn.me/upcoming.php*
@@ -567,6 +567,7 @@ const displayResultsOriginal = (page, data, source) => {
         movies.forEach(movie => {
             const node = movie.node;
             const movieDiv = document.createElement("div");
+            movieDiv.setAttribute('class', 'huge-movie-list__movie');
             movieDiv.style.border = "1px solid #ccc";
             movieDiv.style.padding = "10px";
             movieDiv.style.marginBottom = "10px";
@@ -577,6 +578,7 @@ const displayResultsOriginal = (page, data, source) => {
             movieDiv.appendChild(image);
 
             const infoDiv = document.createElement("div");
+            infoDiv.setAttribute('class', 'site-link');
             infoDiv.style.flex = "1";
             infoDiv.style.display = "flex";
             infoDiv.style.flexDirection = "column";
@@ -590,6 +592,7 @@ const displayResultsOriginal = (page, data, source) => {
             titleLink.href = movie.source === 'IMDb' ? `https://www.imdb.com/title/${node.id}/` : `https://www.themoviedb.org/movie/${node.id}`;
             titleLink.target = "_blank";
             titleLink.rel = "noreferrer";
+            titleLink.setAttribute('class', 'title-link');
             titleLink.textContent = node.titleText ? node.titleText.text : node.details.title;
             titleLink.style.fontWeight = "bold";
             titleLink.style.fontSize = "1.2em";
@@ -617,6 +620,7 @@ const displayResultsOriginal = (page, data, source) => {
             const ptpLink = document.createElement("a");
             ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id || node.details.title}`;
             ptpLink.target = "_blank";
+            ptpLink.setAttribute('class', 'request-link');
             ptpLink.textContent = "(Search PTP requests)";
             ptpLink.style.float = "right";
             ptpLink.style.fontSize = "0.9em";
@@ -745,6 +749,7 @@ const displayResultsCondensed = (page, data, source) => {
     }, {});
 
     const table = document.createElement("table");
+    table.setAttribute('id', 'torrent-table');
     table.style.width = "100%";
     table.style.borderCollapse = "collapse";
 
@@ -768,6 +773,7 @@ const displayResultsCondensed = (page, data, source) => {
 
                 const node = movie.node;
                 const cell = document.createElement("td");
+                cell.setAttribute('class', 'basic-movie-list');
                 cell.style.border = "1px solid #525252";
                 cell.style.padding = "10px";
                 cell.style.verticalAlign = "top";
@@ -782,6 +788,7 @@ const displayResultsCondensed = (page, data, source) => {
 
                 const infoDiv = document.createElement("div");
                 infoDiv.style.flex = "1";
+                infoDiv.setAttribute('class', 'site-link');
 
                 const titleLink = document.createElement("a");
                 titleLink.href = movie.source === 'IMDb' ? `https://www.imdb.com/title/${node.id}/` : `https://www.themoviedb.org/movie/${node.id}`;
@@ -832,6 +839,7 @@ const displayResultsCondensed = (page, data, source) => {
                 infoDiv.appendChild(genres);
 
                 const castContainer = document.createElement("div");
+                castContainer.setAttribute('class', 'cast-list');
                 castContainer.style.display = "flex";
                 castContainer.style.flexWrap = "wrap";
                 castContainer.style.gap = "10px";
@@ -1126,7 +1134,8 @@ const init = () => {
     } else {
         displayResults(currentPage);
     }
-
+    const event = new CustomEvent('UpcomingReleasesDisplayChanged');
+    document.dispatchEvent(event);
     handleSearchForm();
     updateSearchForm();
 };
@@ -1167,6 +1176,7 @@ const updateSearchForm = () => {
         const layoutToggle = document.createElement("input");
         //layoutToggle.textContent = "Toggle Layout";
         layoutToggle.type = "submit";
+        layoutToggle.style.marginLeft = "10px";
         layoutToggle.setAttribute('value', 'Toggle Layout');
         searchFormFooter.appendChild(layoutToggle);
 
@@ -1175,6 +1185,8 @@ const updateSearchForm = () => {
             const newLayout = currentLayout === LAYOUT_ORIGINAL ? LAYOUT_CONDENSED : LAYOUT_ORIGINAL;
             GM_setValue(LAYOUT_KEY, newLayout);
             displayResults(GM_getValue(CURRENT_PAGE_KEY, 1));
+            const event = new CustomEvent('UpcomingReleasesDisplayChanged');
+            document.dispatchEvent(event);
         });
 
         const resultsPerPageLabel = document.createElement("label");
@@ -1199,6 +1211,7 @@ const updateSearchForm = () => {
         const clearCacheButton = document.createElement("input");
         //clearCacheButton.textContent = "Clear All Caches";
         clearCacheButton.type = "submit";
+        clearCacheButton.style.marginLeft = "10px";
         clearCacheButton.setAttribute('value', 'Clear All Caches');
         searchFormFooter.appendChild(clearCacheButton);
 
@@ -1282,6 +1295,8 @@ const updateSearchForm = () => {
         refreshResultsButton.addEventListener("click", () => {
             displayResults(1);
             console.log('Results refreshed for type:', resultTypeSelect.value);
+            const event = new CustomEvent('UpcomingReleasesDisplayChanged');
+            document.dispatchEvent(event);
         });
      }
 };
