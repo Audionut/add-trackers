@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP upcoming releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.8
+// @version      1.0.9
 // @description  Get a list of upcoming releases from IMDB and TMDb and integrate with site search form.
 // @author       Audionut
 // @match        https://passthepopcorn.me/upcoming.php*
@@ -36,6 +36,7 @@
     const FILTERED_CACHE_KEY = 'filteredData';
     const API_KEY_TMDB = 'tmdbApiKey';
     const RESULT_TYPE_KEY = 'resultType';
+    const radarrSignal = new CustomEvent('UpcomingReleasesDisplayChanged');
 
     let digitalReleases = [];
 
@@ -916,6 +917,7 @@ const createPagination = (currentPage, totalResults) => {
             const prevPage = Math.max(1, currentPage - 1);
             GM_setValue(CURRENT_PAGE_KEY, prevPage);
             displayResults(prevPage);
+            document.dispatchEvent(radarrSignal);
         });
     });
 
@@ -925,6 +927,7 @@ const createPagination = (currentPage, totalResults) => {
             const nextPage = Math.min(totalPages, currentPage + 1);
             GM_setValue(CURRENT_PAGE_KEY, nextPage);
             displayResults(nextPage);
+            document.dispatchEvent(radarrSignal);
         });
     });
 };
@@ -1039,7 +1042,6 @@ const handleSearchForm = () => {
     if (searchForm) {
         searchForm.addEventListener("submit", (event) => {
             event.preventDefault();
-            console.log("Search form submitted.");  // Log when form is submitted
 
             const formData = new FormData(searchForm);
             const searchstr = formData.get("searchstr") || "";
@@ -1094,10 +1096,12 @@ const handleSearchForm = () => {
                     filteredData = null;
                     GM_setValue(FILTERED_CACHE_KEY, null);
                     displayResults(1);
+                    document.dispatchEvent(radarrSignal);
                     return;
                 }
 
                 GM_setValue(FILTERED_CACHE_KEY, { edges: filteredData });
+                document.dispatchEvent(radarrSignal);
                 displayResults(1);
             }
         });
@@ -1134,8 +1138,7 @@ const init = () => {
     } else {
         displayResults(currentPage);
     }
-    const event = new CustomEvent('UpcomingReleasesDisplayChanged');
-    document.dispatchEvent(event);
+    document.dispatchEvent(radarrSignal);
     handleSearchForm();
     updateSearchForm();
 };
@@ -1174,7 +1177,6 @@ const updateSearchForm = () => {
     const searchFormFooter = document.querySelector(".search-form__footer__buttons");
     if (searchFormFooter) {
         const layoutToggle = document.createElement("input");
-        //layoutToggle.textContent = "Toggle Layout";
         layoutToggle.type = "submit";
         layoutToggle.style.marginLeft = "10px";
         layoutToggle.setAttribute('value', 'Toggle Layout');
@@ -1185,8 +1187,7 @@ const updateSearchForm = () => {
             const newLayout = currentLayout === LAYOUT_ORIGINAL ? LAYOUT_CONDENSED : LAYOUT_ORIGINAL;
             GM_setValue(LAYOUT_KEY, newLayout);
             displayResults(GM_getValue(CURRENT_PAGE_KEY, 1));
-            const event = new CustomEvent('UpcomingReleasesDisplayChanged');
-            document.dispatchEvent(event);
+            document.dispatchEvent(radarrSignal);
         });
 
         const resultsPerPageLabel = document.createElement("label");
@@ -1209,7 +1210,6 @@ const updateSearchForm = () => {
         });
 
         const clearCacheButton = document.createElement("input");
-        //clearCacheButton.textContent = "Clear All Caches";
         clearCacheButton.type = "submit";
         clearCacheButton.style.marginLeft = "10px";
         clearCacheButton.setAttribute('value', 'Clear All Caches');
@@ -1295,8 +1295,7 @@ const updateSearchForm = () => {
         refreshResultsButton.addEventListener("click", () => {
             displayResults(1);
             console.log('Results refreshed for type:', resultTypeSelect.value);
-            const event = new CustomEvent('UpcomingReleasesDisplayChanged');
-            document.dispatchEvent(event);
+            document.dispatchEvent(radarrSignal);
         });
      }
 };
