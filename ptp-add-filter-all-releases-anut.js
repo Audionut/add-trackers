@@ -1735,10 +1735,13 @@ function toUnixTime(dateString) {
             await updateTrackerLogin('phd', phd_login, {});
         })();
 
-        const post_json = async (post_query_url, tracker, postData, timeout = timer) => {
-                const timer = setTimeout(() => {
-                    return null
-                }, timeout);
+        function clearToken(tracker) {
+            const key = `${tracker.toLowerCase()}_token`;
+            GM_config.set(key, '');  // Set the token value to an empty string
+            GM_config.save();  // Save the changes
+        }
+
+        const post_json = async (post_query_url, tracker, postData, timeout = 5000) => {
             const headersMapping = {
                 'ANT': {
                     'Content-Type': 'application/json',
@@ -1769,7 +1772,6 @@ function toUnixTime(dateString) {
                     'x-api-key': GM_config.get("mtm_api"),
                     'Content-Type': 'application/json',
                     'Accept': 'application/json',
-                    //'Authorization': '',
                 },
                 // Add more trackers and their headers as needed
             };
@@ -1792,66 +1794,77 @@ function toUnixTime(dateString) {
             };
             const method = methodMapping[tracker] || 'POST';
 
-            const response = await new Promise((resolve, reject) => {
+            // Return a Promise that resolves with the response or rejects on timeout
+            return new Promise((resolve, reject) => {
+                const timer = setTimeout(() => {
+                    reject(new Error(`Request timed out after ${timeout}ms`));
+                }, timeout);
+
                 GM_xmlhttpRequest({
                     url: post_query_url,
                     method: method,
                     data: JSON.stringify(postData),
                     headers: headers,
                     onload: (res) => {
+                        clearTimeout(timer);
                         resolve(res);
                     },
                     onerror: (err) => {
+                        clearTimeout(timer);
                         reject(err);
                     },
                     onabort: (err) => {
+                        clearTimeout(timer);
                         reject(err);
                     },
                     ontimeout: (err) => {
+                        clearTimeout(timer);
                         reject(err);
                     },
                 });
-            });
-
-            if (response.status === 200) {
-                return JSON.parse(response.responseText);
-                clearTimeout(timer);
-            } else if (response.status === 401) {
-                const jsonResponse = JSON.parse(response.responseText);
-                clearTimeout(timer);
-                console.log(`raw response from ${tracker}`, response.responseText);
-                if (tracker === 'RTF' && jsonResponse.error && jsonResponse.message === "Invalid API token.") {
-                    displayAlert("Something went wrong with RTF API token");
-                }
-                return jsonResponse;
-            } else if (response.status === 404) {
-                clearTimeout(timer);
-                const jsonResponse = JSON.parse(response.responseText);
-                if (debug) {
+            }).then(response => {
+                if (response.status === 200) {
+                    return JSON.parse(response.responseText);
+                } else if (response.status === 401) {
+                    const jsonResponse = JSON.parse(response.responseText);
                     console.log(`raw response from ${tracker}`, response.responseText);
+                    if (tracker === 'RTF' && jsonResponse.error && jsonResponse.message === "Invalid API token.") {
+                        displayAlert("Something went wrong with RTF API token");
+                    }
+                    return jsonResponse;
+                } else if (response.status === 404) {
+                    const jsonResponse = JSON.parse(response.responseText);
+                    if (debug) {
+                        console.log(`raw response from ${tracker}`, response.responseText);
+                    }
+                    if (tracker === "AvistaZ" || tracker === "CinemaZ" || tracker === "PHD") {
+                        console.log(`${tracker} reached successfully but no results were returned`);
+                    }
+                    return jsonResponse;
+                } else if (response.status === 412 && (tracker === "AvistaZ" || tracker === "CinemaZ" || tracker === "PHD")) {
+                    console.log(`raw response from ${tracker}`, response.responseText);
+                    displayAlert(`Something wrong with ${tracker} token, will be fetched again on next run.`);
+                    clearToken(tracker);
+                    return null;
+                } else if (response.status === 422) {
+                    console.log(`Confirmed Auth details incorrect for ${tracker}`);
+                    return null;
+                } else if (response.status === 502) {
+                    console.warn(`502 bad gateway for ${tracker}`);
+                    displayAlert(`502 bad gateway for ${tracker}`);
+                    return null;
+                } else {
+                    if (debug) {
+                        console.log(`Raw response from ${tracker}`, response.responseText);
+                    }
+                    console.warn(`Error: ${tracker} HTTP ${response.status} Error.`);
+                    displayAlert(`${tracker} returned not ok`);
+                    return null;
                 }
-                if (tracker === "AvistaZ" || tracker === "CinemaZ" || tracker === "PHD") {
-                    console.log(`${tracker} reached successfully but no results were returned`);
-                }
-                return jsonResponse;
-            } else if (response.status === 422) {
-                clearTimeout(timer);
-                console.log(`Confirmed Auth details incorrect for ${tracker}`);
+            }).catch(error => {
+                console.error(`Error with request to ${tracker}:`, error);
                 return null;
-            } else if (response.status === 502) {
-                console.warn(`502 bad gateway for ${tracker}`);
-                displayAlert(`502 bad gateway for ${tracker}`);
-                clearTimeout(timer);
-                return null;
-            } else {
-                clearTimeout(timer);
-                if (debug) {
-                    console.log(`Raw response from ${tracker}`, response.responseText);
-                }
-                console.warn(`Error: ${tracker} HTTP ${response.status} Error.`);
-                displayAlert(`${tracker} returned not ok`);
-                return null;
-            }
+            });
         };
 
         const fetch_url = async (query_url, tracker) => {
