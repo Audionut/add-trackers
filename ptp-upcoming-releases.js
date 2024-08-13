@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP upcoming releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.9
+// @version      1.1.0
 // @description  Get a list of upcoming releases from IMDB and TMDb and integrate with site search form.
 // @author       Audionut
 // @match        https://passthepopcorn.me/upcoming.php*
@@ -71,7 +71,7 @@ const getCache = (key) => {
         return compressedData;
     }
 };
-
+let aCacheWasCleared = 0;
 const clearCache = (cacheType) => {
     switch (cacheType) {
         case 'IMDb':
@@ -93,6 +93,7 @@ const clearCache = (cacheType) => {
             console.log("All caches cleared");
             break;
     }
+    aCacheWasCleared = 1;
 };
 
 const setFilteredCacheTimer = () => {
@@ -116,7 +117,7 @@ function formatDate(date) {
     return `${year}-${month}-${day}`;
 }
 
-    const fetchComingSoonData = async (afterDate = null) => {
+    const fetchComingSoonDataWithRetry = async (afterDate = null, retries = 3) => {
         const url = `https://api.graphql.imdb.com/`;
         const today = new Date().toISOString().split('T')[0];
         const dateFilter = afterDate ? afterDate : today;
@@ -192,48 +193,60 @@ function formatDate(date) {
         };
 
         return new Promise((resolve, reject) => {
-            GM_xmlhttpRequest({
-                method: "POST",
-                url: url,
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                data: JSON.stringify(comingSoonQuery),
-                onload: function (response) {
-                    if (response.status >= 200 && response.status < 300) {
-                        const comingSoonData = JSON.parse(response.responseText);
-                        if (!comingSoonData.data || !comingSoonData.data.comingSoon || comingSoonData.data.comingSoon.edges.length === 0) {
-                            resolve([]);
-                            return;
+            const attemptFetch = (remainingRetries) => {
+                GM_xmlhttpRequest({
+                    method: "POST",
+                    url: url,
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    data: JSON.stringify(comingSoonQuery),
+                    onload: function (response) {
+                        if (response.status >= 200 && response.status < 300) {
+                            const comingSoonData = JSON.parse(response.responseText);
+                            if (!comingSoonData.data || !comingSoonData.data.comingSoon || comingSoonData.data.comingSoon.edges.length === 0) {
+                                resolve([]);
+                                return;
+                            }
+                            const edges = comingSoonData.data.comingSoon.edges;
+                            resolve(edges);
+                        } else if (remainingRetries > 0) {
+                            console.warn(`Retrying fetch from IMDb API. Remaining retries: ${remainingRetries - 1}`);
+                            attemptFetch(remainingRetries - 1);
+                        } else {
+                            console.error("Failed to fetch coming soon data after multiple attempts", response);
+                            reject(response);
                         }
-                        const edges = comingSoonData.data.comingSoon.edges;
-                        resolve(edges);
-                    } else {
-                        console.error("Failed to fetch coming soon data", response);
-                        reject(response);
+                    },
+                    onerror: function (response) {
+                        if (remainingRetries > 0) {
+                            console.warn(`Retrying fetch from IMDb API. Remaining retries: ${remainingRetries - 1}`);
+                            attemptFetch(remainingRetries - 1);
+                        } else {
+                            console.error("Request error after multiple attempts", response);
+                            reject(response);
+                        }
                     }
-                },
-                onerror: function (response) {
-                    console.error("Request error", response);
-                    reject(response);
-                }
-            });
+                });
+            };
+
+            attemptFetch(retries);
         });
     };
 
     const fetchAllComingSoonData = async () => {
-    const container = document.querySelector("#torrents-movie-view > div");
-    container.innerHTML = `
-        <div class="loading-container">
-            <div class="spinner"></div>
-            <p>Loading upcoming releases...</p>
-        </div>
-    `;
+        const container = document.querySelector("#torrents-movie-view > div");
+        container.innerHTML = `
+            <div class="loading-container">
+                <div class="spinner"></div>
+                <p>Loading upcoming releases...</p>
+            </div>
+        `;
         let allEdges = [];
         let lastReleaseDate = null;
 
         while (true) {
-            const newEdges = await fetchComingSoonData(lastReleaseDate ? lastReleaseDate : null);
+            const newEdges = await fetchComingSoonDataWithRetry(lastReleaseDate ? lastReleaseDate : null);
             if (newEdges.length === 0) break;
 
             allEdges = allEdges.concat(newEdges);
@@ -245,7 +258,7 @@ function formatDate(date) {
 
         const cachedData = { edges: allEdges };
         setCache(CACHE_KEY_IMDB, cachedData);
-        GM_setValue(CACHE_EXPIRATION_KEY_IMDB, Date.now() + 2 * 24 * 60 * 60 * 1000);
+        GM_setValue(CACHE_EXPIRATION_KEY_IMDB, Date.now() + 4 * 24 * 60 * 60 * 1000);
 
         const nameIds = [];
         cachedData.edges.forEach(edge => {
@@ -329,10 +342,10 @@ const fetchUpcomingDigitalMovies = async (page = 1) => {
     }
 
     const today = new Date();
-    const threeMonthsFromNow = new Date();
-    threeMonthsFromNow.setMonth(today.getMonth() + 3);
+    const fourMonthsFromNow = new Date();
+    fourMonthsFromNow.setMonth(today.getMonth() + 4);
 
-    const url = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&language=en-US&region=US&sort_by=release_date.desc&release_date.gte=${formatDate(today)}&release_date.lte=${formatDate(threeMonthsFromNow)}&with_release_type=4&page=${page}`;
+    const url = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&language=en-US&region=US&sort_by=release_date.desc&release_date.gte=${formatDate(today)}&release_date.lte=${formatDate(fourMonthsFromNow)}&with_release_type=4&page=${page}`;
 
     return new Promise((resolve, reject) => {
         GM_xmlhttpRequest({
@@ -405,6 +418,13 @@ const fetchMovieDetails = async () => {
 };
 
 const fetchDetailsWithRetry = (movie, retries, callback) => {
+    const container = document.querySelector("#torrents-movie-view > div");
+    container.innerHTML = `
+        <div class="loading-container">
+            <div class="spinner"></div>
+            <p>Loading upcoming releases...</p>
+        </div>
+    `;
     const apiKey = GM_getValue(API_KEY_TMDB, '');
     const url = `https://api.themoviedb.org/3/movie/${movie.id}?api_key=${apiKey}&append_to_response=credits,external_ids,images`;
 
@@ -500,20 +520,21 @@ const sortCombinedDataByDate = (data) => {
         });
     };
 
-const createImageElement = (node, size, source) => {
-    const image = document.createElement("img");
-    if (source === 'IMDb') {
-        image.src = node.primaryImage && node.primaryImage.url ? node.primaryImage.url : 'https://ptpimg.me/w6l4kj.png';
-        image.alt = node.primaryImage && node.primaryImage.caption ? node.primaryImage.caption.plainText : 'No image available';
-    } else if (source === 'TMDb') {
-        image.src = node.details && node.details.poster_path ? `https://image.tmdb.org/t/p/original${node.details.poster_path}` : 'https://ptpimg.me/w6l4kj.png';
-        image.alt = node.details && node.details.title ? node.details.title : 'No image available';
-    }
-    image.style.maxWidth = size;
-    image.style.marginRight = "10px";
-    image.classList.add('lightbox-trigger');
-    return image;
-};
+    const createImageElement = (node, size, source) => {
+        const image = document.createElement("img");
+        if (source === 'IMDb') {
+            image.src = node.primaryImage && node.primaryImage.url ? node.primaryImage.url : 'https://ptpimg.me/w6l4kj.png';
+            image.alt = node.primaryImage && node.primaryImage.caption ? node.primaryImage.caption.plainText : 'No image available';
+        } else if (source === 'TMDb') {
+            image.src = node.details && node.details.poster_path ? `https://image.tmdb.org/t/p/original${node.details.poster_path}` : 'https://ptpimg.me/w6l4kj.png';
+            image.alt = node.details && node.details.title ? node.details.title : 'No image available';
+        }
+        image.style.maxWidth = size;
+        image.style.marginRight = "10px";
+        image.classList.add('lightbox-trigger');
+        image.loading = "lazy";
+        return image;
+    };
 
 const displayResultsOriginal = (page, data, source) => {
     const nameImagesData = getCache(NAME_IMAGES_CACHE_KEY);
@@ -1026,6 +1047,11 @@ const displayResults = async (page) => {
             } else if (layout === LAYOUT_CONDENSED) {
                 displayResultsCondensed(page, data, 'All');
             }
+            if (aCacheWasCleared === 1) {
+                setTimeout(() => {
+                    document.dispatchEvent(radarrSignal);
+                }, 500);
+            }
         };
 
         // Fetch and process data
@@ -1132,7 +1158,7 @@ const init = () => {
         clearCache('TMDb');
         fetchUpcomingDigitalMovies().then(() => {
             setCache(CACHE_KEY_TMDB, digitalReleases);
-            GM_setValue(CACHE_EXPIRATION_KEY_TMDB, Date.now() + 2 * 24 * 60 * 60 * 1000);
+            GM_setValue(CACHE_EXPIRATION_KEY_TMDB, Date.now() + 4 * 24 * 60 * 60 * 1000);
             displayResults(currentPage);
         });
     } else {
