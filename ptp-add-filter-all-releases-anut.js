@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.2.3-A
+// @version      4.2.4-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -4180,13 +4180,13 @@ function toUnixTime(dateString) {
         };
 
         const get_container = (lower, torrent) => {
-            if (lower.includes("avi")) return "AVI / ";
-            else if (lower.includes("mpg")) return "MPG / ";
-            else if (lower.includes("mkv")) return "MKV / ";
-            else if (lower.includes("mp4")) return "MP4 / ";
-            else if (lower.includes("vob")) return "VOB IFO / ";
-            else if (lower.includes("iso")) return "ISO / ";
-            else if (lower.includes("m2ts")) return "m2ts / ";
+            if (lower.includes(" avi") || lower.includes(".avi")) return "AVI / ";
+            else if (lower.includes(" mpg") || lower.includes(".mpg")) return "MPG / ";
+            else if (lower.includes(" mkv") || lower.includes(".mkv")) return "MKV / ";
+            else if (lower.includes(" mp4") || lower.includes(".mp4")) return "MP4 / ";
+            else if (lower.includes(" vob") || lower.includes(".vob")) return "VOB IFO / ";
+            else if (lower.includes(" iso") || lower.includes(".iso")) return "ISO / ";
+            else if (lower.includes(" m2ts") || lower.includes(".m2ts")) return "m2ts / ";
 
             return null;
         };
