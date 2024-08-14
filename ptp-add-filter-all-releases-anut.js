@@ -1843,13 +1843,13 @@ function toUnixTime(dateString) {
                     return jsonResponse;
                 } else if (response.status === 412 && (tracker === "AvistaZ" || tracker === "CinemaZ" || tracker === "PHD")) {
                     console.log(`raw response from ${tracker}`, response.responseText);
-                    return null;
+                    return { status: 'REAUTH_NEEDED' };
                 } else if (response.status === 422) {
                     console.log(`Confirmed Auth details incorrect for ${tracker}`);
                     return null;
                 } else if (response.status === 500 && tracker === "RTF") {
                     console.log(`raw response from ${tracker}`, response.responseText);
-                    return null;
+                    return { status: 'REAUTH_NEEDED' };
                 } else if (response.status === 502) {
                     console.warn(`502 bad gateway for ${tracker}`);
                     displayAlert(`502 bad gateway for ${tracker}`);
@@ -2216,7 +2216,29 @@ function toUnixTime(dateString) {
 
                             if (result) {
                                 try {
-                                    if (result?.results && tracker === "BHD") {
+                                    if (result.status === 'REAUTH_NEEDED') {
+                                        if (retryCount < 2) {
+                                            console.warn(`Re-authentication needed for ${tracker}. Will attempt to re-authenticate and retry...`);
+                                            clearToken(tracker);
+                                            const loginFunction = eval(`${tracker.toLowerCase()}_login`);
+                                            const loginResult = await loginFunction();
+
+                                            if (loginResult && loginResult.token) {
+                                                GM_config.set(`${tracker.toLowerCase()}_token`, loginResult.token);
+                                                await GM_config.save();
+
+                                                console.log(`Re-authentication successful for ${tracker}. Fetching data...`);
+                                                resolve(await fetch_tracker(tracker, imdb_id, show_name, show_nbl_name, tvdbId, tvmazeId, timeout, retryCount + 1));
+                                            } else {
+                                                console.warn(`Re-authentication failed for ${tracker}.`);
+                                                resolve([]);
+                                            }
+                                        } else {
+                                            console.error(`Max retries reached for ${tracker}. Aborting re-authentication attempts.`);
+                                            displayAlert(`Re-authentication attempts have failed for ${tracker}.`);
+                                            resolve([]);
+                                        }
+                                    } else if (result?.results && tracker === "BHD") {
                                         if (result.status_code !== 1) {
                                             console.warn("BHD returned a failed status code");
                                             resolve([]);
@@ -2281,7 +2303,7 @@ function toUnixTime(dateString) {
                                             resolve([]);
                                         } else {
                                             console.log("Data fetched successfully from RTF");
-                                            resolve(get_post_torrent_objects(tracker, result)); // Resolve the result directly
+                                            resolve(get_post_torrent_objects(tracker, result));
                                         }
                                     } else if (result?.data && (tracker === "AvistaZ" || tracker === "CinemaZ" || tracker === "PHD")) {
                                         console.log(`Data fetched successfully from ${tracker}`);
@@ -2323,29 +2345,11 @@ function toUnixTime(dateString) {
                                     resolve([]);
                                 }
                             } else {
-                                if (tracker === "RTF" || tracker === "AvistaZ" || tracker === "CinemaZ" || tracker === "PHD" && retryCount < 2) {
-                                    console.error(`${tracker} returned a null result, likely due to an invalid token. Will re-authenticate and retry...`);
-
-                                    clearToken(tracker);
-                                    const loginFunction = eval(`${tracker.toLowerCase()}_login`);
-                                    const loginResult = await loginFunction();
-
-                                    if (loginResult && loginResult.token) {
-                                        GM_config.set(`${tracker.toLowerCase()}_token`, loginResult.token);
-                                        await GM_config.save();
-
-                                        console.log(`Re-authentication successful for ${tracker}. Retrying...`);
-                                        resolve(await fetch_tracker(tracker, imdb_id, show_name, show_nbl_name, tvdbId, tvmazeId, timeout, retryCount + 1));
-                                    } else {
-                                        console.warn(`Re-authentication failed for ${tracker}.`);
-                                        resolve([]);
-                                    }
-                                } else {
-                                    resolve([]);
-                                }
+                                  console.log("NULL result from post_json");
+                                  resolve([]);
                             }
                         } catch (error) {
-                            clearTimeout(timerId); // Clear the timer on error
+                            clearTimeout(timer);
                             console.warn(`Error fetching data from ${tracker}:`, error);
                             resolve([]);
                         }
