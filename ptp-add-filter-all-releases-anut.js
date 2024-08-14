@@ -1741,7 +1741,7 @@ function toUnixTime(dateString) {
             GM_config.save();  // Save the changes
         }
 
-        const post_json = async (post_query_url, tracker, postData, timeout = 5000) => {
+        const post_json = async (post_query_url, tracker, postData, timeout = timer) => {
             const headersMapping = {
                 'ANT': {
                     'Content-Type': 'application/json',
@@ -1843,11 +1843,12 @@ function toUnixTime(dateString) {
                     return jsonResponse;
                 } else if (response.status === 412 && (tracker === "AvistaZ" || tracker === "CinemaZ" || tracker === "PHD")) {
                     console.log(`raw response from ${tracker}`, response.responseText);
-                    displayAlert(`Something wrong with ${tracker} token, will be fetched again on next run.`);
-                    clearToken(tracker);
                     return null;
                 } else if (response.status === 422) {
                     console.log(`Confirmed Auth details incorrect for ${tracker}`);
+                    return null;
+                } else if (response.status === 500 && tracker === "RTF") {
+                    console.log(`raw response from ${tracker}`, response.responseText);
                     return null;
                 } else if (response.status === 502) {
                     console.warn(`502 bad gateway for ${tracker}`);
@@ -2007,7 +2008,7 @@ function toUnixTime(dateString) {
             });
         };
 
-        const fetch_tracker = async (tracker, imdb_id, show_name, show_nbl_name, tvdbId, tvmazeId, timeout = timer) => {
+        const fetch_tracker = async (tracker, imdb_id, show_name, show_nbl_name, tvdbId, tvmazeId, timeout = timer, retryCount = 0) => {
             return new Promise(async (resolve, reject) => {
                 const timer = setTimeout(() => {
                     console.warn(`${tracker} is timing out`);
@@ -2191,143 +2192,163 @@ function toUnixTime(dateString) {
                 }
                 else if (tracker === "MTeam") {
                     post_query_url = "https://api.m-team.cc/api/torrent/search";
-                    postData = {
-                        "imdb": imdb_id,
-                        "pageSize": "100"
-                        //"mode": "adult"
-                    };
-            }
+                        postData = {
+                            "imdb": imdb_id,
+                            "pageSize": "100"
+                            //"mode": "adult"
+                        };
+                }
                 else if (tracker === "PTP") {
                     query_url = "https://passthepopcorn.me/torrents.php?imdb=" + imdb_id;
                 }
-                const performRequest = () => {
+                const performRequest = async () => {
                     if (use_post_instead(tracker) === true) {
-                        post_json(post_query_url, tracker, postData, timeout)
-                            .then(result => {
-                                if (debug) {
-                                    console.log(`URL for ${tracker}`, post_query_url);
-                                    console.log(`Post data for ${tracker}`, postData);
-                                    console.log(`Result from ${tracker}`, result);
-                                }
-                                clearTimeout(timer); // Clear the timer on successful fetch
+                        try {
+                            const result = await post_json(post_query_url, tracker, postData, timeout);
 
-                                if (result) {
-                                    try {
-                                        if (result?.results && tracker === "BHD") {
-                                            if (result.status_code !== 1) {
-                                                console.warn("BHD returned a failed status code");
-                                                resolve([]);
-                                            }
-                                            if (result.total_results === 0) {
-                                                console.log("BHD reached successfully but no results were returned");
-                                                resolve([]);
-                                            } else {
-                                                console.log("Data fetched successfully from BHD");
-                                                resolve(get_post_torrent_objects(tracker, result));
-                                            }
-                                        } else if (result?.data && tracker === "HDB") {
-                                            switch (result.status) {
-                                                case 1:
-                                                    console.warn("HDB: Failure (something bad happened)");
-                                                    resolve([]);
-                                                    break;
-                                                case 4:
-                                                    console.warn("HDB: Auth data missing");
-                                                    resolve([]);
-                                                    break;
-                                                case 5:
-                                                    console.warn("HDB: Auth failed (incorrect username / password)");
-                                                    resolve([]);
-                                                    break;
-                                                default:
-                                                    if (result.data.length === 0) {
-                                                        console.log("HDB reached successfully but no results were returned");
-                                                        resolve([]);
-                                                    } else {
-                                                        console.log("Data fetched successfully from HDB");
-                                                        resolve(get_post_torrent_objects(tracker, result));
-                                                    }
-                                            }
-                                        } else if (result?.result && tracker === "NBL") {
-                                            if (result.result.count === 0) {  // Fixed from result.result.item to result.result.items
-                                                console.log("NBL reached successfully but no results were returned");
-                                                resolve([]);
-                                            } else {
-                                                console.log("Data fetched successfully from NBL");
-                                                resolve(get_post_torrent_objects(tracker, result));
-                                            }
-                                        } else if (tracker === "BTN" && result?.result) {
-                                            if (result.result.results === "0") {
-                                                console.log("BTN reached successfully but no results were returned");
-                                                resolve([]);
-                                            } else {
-                                                console.log("Data fetched successfully from BTN");
-                                                resolve(get_post_torrent_objects(tracker, result));
-                                            }
-                                        } else if (result?.item && tracker === "ANT") {
-                                            if (result.item.length === 0) {
-                                                console.log("ANT reached successfully but no results were returned");
-                                                resolve([]);
-                                            } else {
-                                                console.log("Data fetched successfully from ANT");
-                                                resolve(get_post_torrent_objects(tracker, result));
-                                            }
-                                        } else if (tracker === "RTF" && Array.isArray(result)) {
-                                            if (result.length === 0) {
-                                                console.log("RTF reached successfully but no results were returned");
-                                                resolve([]);
-                                            } else {
-                                                console.log("Data fetched successfully from RTF");
-                                                resolve(get_post_torrent_objects(tracker, result)); // Resolve the result directly
-                                            }
-                                        } else if (result?.data && tracker === "AvistaZ" || tracker === "CinemaZ" || tracker === "PHD") {
-                                                console.log(`Data fetched successfully from ${tracker}`);
-                                                resolve(get_post_torrent_objects(tracker, result));
-                                        } else if (result?.torrentList && tracker === "TL") {
-                                            if (result.numFound === "0") {
-                                                console.log("TL reached successfully but no results were returned");
-                                                resolve([]);
-                                            } else {
-                                                console.log("Data fetched successfully from TL");
-                                                resolve(get_post_torrent_objects(tracker, result));
-                                            }
-                                        } else if (result && tracker === "FL") {
-                                            if (result.length ===  0) {
-                                                console.log("FL reached successfully but no results were returned");
-                                                resolve([]);
-                                            } else {
-                                                console.log(`Data fetched successfully from ${tracker}`);
-                                                resolve(get_post_torrent_objects(tracker, result));
-                                            }
-                                        } else if (tracker === "MTeam") {
-                                            if (result.code !== "0") {
-                                                console.warn("M-Team returned a failed status code");
-                                                resolve([]);
-                                            } else if (!result.data || !result.data.data || result.data.data.length === 0) {
-                                                console.log("M-Team reached successfully but no results were returned");
-                                                resolve([]);
-                                            } else {
-                                                console.log("Data fetched successfully from M-Team");
-                                                resolve(get_post_torrent_objects(tracker, result.data.data, null));
-                                            }
-                                        } else {
-                                            console.warn(`Unhandled tracker or response format for ${tracker}`);
+                            if (debug) {
+                                console.log(`URL for ${tracker}`, post_query_url);
+                                console.log(`Post data for ${tracker}`, postData);
+                                console.log(`Result from ${tracker}`, result);
+                            }
+
+                            clearTimeout(timer); // Clear the timer on successful fetch
+
+                            if (result) {
+                                try {
+                                    if (result?.results && tracker === "BHD") {
+                                        if (result.status_code !== 1) {
+                                            console.warn("BHD returned a failed status code");
                                             resolve([]);
                                         }
-                                    } catch (processingError) {
-                                        console.error(`Error processing result from ${tracker}:`, processingError);
+                                        if (result.total_results === 0) {
+                                            console.log("BHD reached successfully but no results were returned");
+                                            resolve([]);
+                                        } else {
+                                            console.log("Data fetched successfully from BHD");
+                                            resolve(get_post_torrent_objects(tracker, result));
+                                        }
+                                    } else if (result?.data && tracker === "HDB") {
+                                        switch (result.status) {
+                                            case 1:
+                                                console.warn("HDB: Failure (something bad happened)");
+                                                resolve([]);
+                                                break;
+                                            case 4:
+                                                console.warn("HDB: Auth data missing");
+                                                resolve([]);
+                                                break;
+                                            case 5:
+                                                console.warn("HDB: Auth failed (incorrect username / password)");
+                                                resolve([]);
+                                                break;
+                                            default:
+                                                if (result.data.length === 0) {
+                                                    console.log("HDB reached successfully but no results were returned");
+                                                    resolve([]);
+                                                } else {
+                                                    console.log("Data fetched successfully from HDB");
+                                                    resolve(get_post_torrent_objects(tracker, result));
+                                                }
+                                        }
+                                    } else if (result?.result && tracker === "NBL") {
+                                        if (result.result.count === 0) {
+                                            console.log("NBL reached successfully but no results were returned");
+                                            resolve([]);
+                                        } else {
+                                            console.log("Data fetched successfully from NBL");
+                                            resolve(get_post_torrent_objects(tracker, result));
+                                        }
+                                    } else if (tracker === "BTN" && result?.result) {
+                                        if (result.result.results === "0") {
+                                            console.log("BTN reached successfully but no results were returned");
+                                            resolve([]);
+                                        } else {
+                                            console.log("Data fetched successfully from BTN");
+                                            resolve(get_post_torrent_objects(tracker, result));
+                                        }
+                                    } else if (result?.item && tracker === "ANT") {
+                                        if (result.item.length === 0) {
+                                            console.log("ANT reached successfully but no results were returned");
+                                            resolve([]);
+                                        } else {
+                                            console.log("Data fetched successfully from ANT");
+                                            resolve(get_post_torrent_objects(tracker, result));
+                                        }
+                                    } else if (tracker === "RTF" && Array.isArray(result)) {
+                                        if (result.length === 0) {
+                                            console.log("RTF reached successfully but no results were returned");
+                                            resolve([]);
+                                        } else {
+                                            console.log("Data fetched successfully from RTF");
+                                            resolve(get_post_torrent_objects(tracker, result)); // Resolve the result directly
+                                        }
+                                    } else if (result?.data && (tracker === "AvistaZ" || tracker === "CinemaZ" || tracker === "PHD")) {
+                                        console.log(`Data fetched successfully from ${tracker}`);
+                                        resolve(get_post_torrent_objects(tracker, result));
+                                    } else if (result?.torrentList && tracker === "TL") {
+                                        if (result.numFound === "0") {
+                                            console.log("TL reached successfully but no results were returned");
+                                            resolve([]);
+                                        } else {
+                                            console.log("Data fetched successfully from TL");
+                                            resolve(get_post_torrent_objects(tracker, result));
+                                        }
+                                    } else if (result && tracker === "FL") {
+                                        if (result.length === 0) {
+                                            console.log("FL reached successfully but no results were returned");
+                                            resolve([]);
+                                        } else {
+                                            console.log(`Data fetched successfully from ${tracker}`);
+                                            resolve(get_post_torrent_objects(tracker, result));
+                                        }
+                                    } else if (tracker === "MTeam") {
+                                        if (result.code !== "0") {
+                                            console.warn("M-Team returned a failed status code");
+                                            displayAlert(`Too many requests to ${tracker}`);
+                                            resolve([]);
+                                        } else if (!result.data || !result.data.data || result.data.data.length === 0) {
+                                            console.log("M-Team reached successfully but no results were returned");
+                                            resolve([]);
+                                        } else {
+                                            console.log("Data fetched successfully from M-Team");
+                                            resolve(get_post_torrent_objects(tracker, result.data.data, null));
+                                        }
+                                    } else {
+                                        console.warn(`Unhandled tracker or response format for ${tracker}`);
+                                        resolve([]);
+                                    }
+                                } catch (processingError) {
+                                    console.error(`Error processing result from ${tracker}:`, processingError);
+                                    resolve([]);
+                                }
+                            } else {
+                                if (tracker === "RTF" || tracker === "AvistaZ" || tracker === "CinemaZ" || tracker === "PHD" && retryCount < 2) {
+                                    console.error(`${tracker} returned a null result, likely due to an invalid token. Will re-authenticate and retry...`);
+
+                                    clearToken(tracker);
+                                    const loginFunction = eval(`${tracker.toLowerCase()}_login`);
+                                    const loginResult = await loginFunction();
+
+                                    if (loginResult && loginResult.token) {
+                                        GM_config.set(`${tracker.toLowerCase()}_token`, loginResult.token);
+                                        await GM_config.save();
+
+                                        console.log(`Re-authentication successful for ${tracker}. Retrying...`);
+                                        resolve(await fetch_tracker(tracker, imdb_id, show_name, show_nbl_name, tvdbId, tvmazeId, timeout, retryCount + 1));
+                                    } else {
+                                        console.warn(`Re-authentication failed for ${tracker}.`);
                                         resolve([]);
                                     }
                                 } else {
-                                    console.warn(`No result returned from ${tracker}`);
                                     resolve([]);
                                 }
-                            })
-                            .catch(error => {
-                                console.warn(`Error fetching data from ${tracker}:`, error);
-                                //displayAlert(`Error fetching data from ${tracker}`);
-                                resolve([]);
-                            });
+                            }
+                        } catch (error) {
+                            clearTimeout(timerId); // Clear the timer on error
+                            console.warn(`Error fetching data from ${tracker}:`, error);
+                            resolve([]);
+                        }
                     } else if (use_api_instead(tracker) === false) {
                         fetch_url(query_url, tracker)
                             .then(result => {
