@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.2.2-A
+// @version      4.2.3-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -53,7 +53,7 @@
         "lst": {"label": "LST *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "lst_api": {"label": "LST_API_TOKEN", "type": "text", "default": ""},
         "MTeam": {"label": "MTeam *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
-        "mtm_api": {"label": "mtm_API_TOKEN", "type": "text", "default": ""},
+        "MTeam_api": {"label": "MTeam_API_TOKEN", "type": "text", "default": ""},
         "mtv": {"label": "MTV *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "mtv_api": {"label": "MTV_API_TOKEN", "type": "text", "default": ""},
         "nbl": {"label": "NBL *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
@@ -101,15 +101,10 @@
         "timer": {"label": "Error timeout (seconds)", "type": "int", "default": 4, "tooltip": "Set the error timeout duration in seconds to skip slow/dead trackers"},
         "timerDuration": {"label": "Error display duration (seconds)", "type": "int", "default": 2, "tooltip": "Set the duration for displaying errors in seconds"},
         "debugging": {"label": "Enable debugging", "type": "checkbox", "default": false, "tooltip": "Enable this to help track down issues, then browse a torrent page and look in browser console"},
-        "authloginwait": {"label": "How often should Auth login be performed (hours)", "type": "int", "default": 22, "tooltip": "For sites that need to run auth login to get API tokens. If RTF only this can be set anywhere before 2 weeks, if Avistaz network sites, set before 24 hours."},
         "avistaz_token": {"label": "AVISTAZ_API_TOKEN *", "type": "text", "default": "", "tooltip": "This is set automatically. Clear token to force auth login"},
-        "avistaz_last_login_run_raw": {"label": "AvistaZ Last Login Run UTC", "type": "text", "default": ""},
         "cinemaz_token": {"label": "CINEMAZ_API_TOKEN *", "type": "text", "default": "", "tooltip": "This is set automatically. Clear token to force auth login"},
-        "cinemaz_last_login_run_raw": {"label": "CinemaZ Last Login Run UTC", "type": "text", "default": ""},
         "phd_token": {"label": "PHD_API_TOKEN", "type": "text", "default": "", "tooltip": "This is set automatically. Clear token to force auth login"},
-        "phd_last_login_run_raw": {"label": "PHD Last Login Run UTC", "type": "text", "default": ""},
-        "rtf_token": {"label": "RTF_API_TOKEN *", "type": "text", "default": "", "tooltip": "This is set automatically. Clear token to force auth login"},
-        "rtf_last_login_run_raw": {"label": "RTF Last Login Run UTC", "type": "text", "default": ""}
+        "rtf_token": {"label": "RTF_API_TOKEN *", "type": "text", "default": "", "tooltip": "This is set automatically. Clear token to force auth login"}
     };
 
     function resetToDefaults() {
@@ -137,10 +132,10 @@
             "fl": ["fl_user", "fl_pass"],
             "hdb": ["hdb_user", "hdb_pass"],
             "tvv": ["tvv_auth", "tvv_torr", "easysearch"],
-            "rtf": ["rtf_user", "rtf_pass", "rtf_token", "rtf_last_login_run_raw"],
-            "avistaz": ["avistaz_user", "avistaz_pass", "avistaz_pid", "avistaz_token", "avistaz_last_login_run_raw"],
-            "cinemaz": ["cinemaz_user", "cinemaz_pass", "cinemaz_pid", "cinemaz_token", "cinemaz_last_login_run_raw"],
-            "phd": ["phd_user", "phd_pass", "phd_pid", "phd_token", "phd_last_login_run_raw"],
+            "rtf": ["rtf_user", "rtf_pass", "rtf_token"],
+            "avistaz": ["avistaz_user", "avistaz_pass", "avistaz_pid", "avistaz_token"],
+            "cinemaz": ["cinemaz_user", "cinemaz_pass", "cinemaz_pid", "cinemaz_token"],
+            "phd": ["phd_user", "phd_pass", "phd_pid", "phd_token"],
             "hidesamesize": ["logsamesize", "fuzzyMatching", "valueinMIB"]
         };
 
@@ -383,7 +378,7 @@
     const phd_token = GM_config.get("phd_token");
     const FL_USER_NAME = GM_config.get("fl_user");
     const FL_PASS_KEY = GM_config.get("fl_pass");
-    const mtm_API_TOKEN = GM_config.get("mtm_api");
+    const MTeam_API_TOKEN = GM_config.get("MTeam_api");
 
     // We need to use XML response with TVV and have to define some parameters for it to work correctly.
     const TVV_AUTH_KEY = GM_config.get("tvv_auth"); // If you want to use TVV - find your authkey from a torrent download link
@@ -406,7 +401,6 @@
     let improved_tags = GM_config.get("funky_tags"); // true = Change display to work fully with PTP Improved Tags from jmxd.
     const btnTimer = GM_config.get("btntimer");
     const debug = GM_config.get("debugging");
-    const authloginwait = GM_config.get("authloginwait");
     const easysearching = GM_config.get("easysearch");
     const valueinMIB = GM_config.get("valueinMIB");
     const fuzzyMatching = GM_config.get("fuzzyMatching");
@@ -1631,6 +1625,7 @@ function toUnixTime(dateString) {
                 }
             } catch (error) {
                 console.error(`Error in fetch_login for ${tracker}`, error);
+                displayAlert(`Error in fetch_login for ${tracker}`);
                 return null;
             }
         };
@@ -1641,7 +1636,13 @@ function toUnixTime(dateString) {
                 username: RTF_USER,
                 password: RTF_PASS
             };
-            return await fetch_login(login_url, 'rtf', loginData);
+            const result = await fetch_login(login_url, 'rtf', loginData);
+            if (result) {
+                console.log("RTF login successful:", result);
+            } else {
+                console.warn("RTF login failed.");
+            }
+            return result;
         };
 
         const avistaz_login = async () => {
@@ -1674,38 +1675,13 @@ function toUnixTime(dateString) {
             return await fetch_login(login_url, 'phd', loginData);
         };
 
-        const shouldRunAfterInterval = (tracker, intervalHours) => {
-            const token = GM_config.get(`${tracker.toLowerCase()}_token`);
-            if (!token) {
-                console.log(`No token found for ${tracker}, overriding wait period.`);
-                return true;
-            }
-
-            const lastRunRaw = GM_config.get(`${tracker.toLowerCase()}_last_login_run_raw`);
-            if (lastRunRaw) {
-                const lastRunDate = new Date(lastRunRaw);
-                if (isNaN(lastRunDate.getTime())) {
-                    console.error(`Invalid lastRun date for ${tracker}: ${lastRunRaw}`);
-                    return false;
-                }
-                const now = new Date();
-                const timeDifference = (now - lastRunDate) / (1000 * 60 * 60); // Time difference in hours
-                const shouldRun = timeDifference >= intervalHours;
-                console.log(`${tracker} auth login last run ${timeDifference} hours ago. Should run = ${shouldRun}`);
-
-                if (debug) {
-                    console.log(`Last run date for ${tracker}: ${lastRunDate.toISOString()}, Current date: ${now.toISOString()}, Time difference: ${timeDifference} hours, Should run: ${shouldRun}`);
-                }
-
-                return shouldRun;
-            }
-            return true;
-        };
-
-        (async (intervalHours = authloginwait) => {
+        (async () => {
 
             const updateTrackerLogin = async (tracker, loginFunction, loginData) => {
-                if (isTrackerSelected(tracker) && shouldRunAfterInterval(tracker, intervalHours)) {
+                const token = GM_config.get(`${tracker.toLowerCase()}_token`);
+
+                // Check if token is not found or empty
+                if (isTrackerSelected(tracker) && (!token || token === "")) {
                     console.log(`Running ${tracker} login function...`);
                     const result = await loginFunction(loginData);
                     if (result) {
@@ -1715,16 +1691,14 @@ function toUnixTime(dateString) {
                             console.log("Extracted token:", token);
                         }
                         GM_config.set(`${tracker.toLowerCase()}_token`, token);
-                        console.log(`${tracker} token found and set`);
-                        const rawDate = new Date().toISOString();
-                        GM_config.set(`${tracker.toLowerCase()}_last_login_run_raw`, rawDate);
                         GM_config.save();
+                        console.log(`${tracker} token found and set`);
                     } else {
                         console.warn(`${tracker} Auth Login failed`);
                     }
                 } else {
                     if (debug) {
-                        console.log(`${tracker} Auth login already performed within the time period or the tracker is not selected.`);
+                        console.log(`${tracker} Auth login skipped: valid token exists or the tracker is not selected.`);
                     }
                 }
             };
@@ -1769,7 +1743,7 @@ function toUnixTime(dateString) {
                     'Authorization': `Bearer ${GM_config.get("phd_token")}`,
                 },
                 'MTeam': {
-                    'x-api-key': GM_config.get("mtm_api"),
+                    'x-api-key': GM_config.get("MTeam_api"),
                     'Content-Type': 'application/json',
                     'Accept': 'application/json',
                 },
@@ -2216,7 +2190,7 @@ function toUnixTime(dateString) {
 
                             if (result) {
                                 try {
-                                    if (result.status === 'REAUTH_NEEDED') {
+                                    if (tracker !== 'MTeam' && isTrackerSelected(tracker) && result.status === 'REAUTH_NEEDED') {
                                         if (retryCount < 2) {
                                             console.warn(`Re-authentication needed for ${tracker}. Will attempt to re-authenticate and retry...`);
                                             clearToken(tracker);
@@ -2238,6 +2212,7 @@ function toUnixTime(dateString) {
                                             displayAlert(`Re-authentication attempts have failed for ${tracker}.`);
                                             resolve([]);
                                         }
+                                        clearTimeout(timer);
                                     } else if (result?.results && tracker === "BHD") {
                                         if (result.status_code !== 1) {
                                             console.warn("BHD returned a failed status code");
@@ -2345,7 +2320,7 @@ function toUnixTime(dateString) {
                                     resolve([]);
                                 }
                             } else {
-                                  console.log("NULL result from post_json");
+                                  console.log(`{tracker} returned a NULL result from post_json`);
                                   resolve([]);
                             }
                         } catch (error) {
@@ -4576,7 +4551,7 @@ function toUnixTime(dateString) {
                         const tokenResponse = await fetch(`https://api.m-team.cc/api/torrent/genDlToken?id=${torrentId}`, {
                             method: 'POST',
                             headers: {
-                                'x-api-key': GM_config.get("mtm_api"),
+                                'x-api-key': GM_config.get("MTeam_api"),
                                 'Content-Type': 'application/json',
                                 'Accept': 'application/json',
                             }
