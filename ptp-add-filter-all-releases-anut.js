@@ -202,7 +202,7 @@
                     "fl": GM_config.fields.fl.node,
                     "hdb": GM_config.fields.hdb.node,
                     "lst": GM_config.fields.lst.node,
-                    "MTeam": GM_config.fields.lst.node,
+                    "MTeam": GM_config.fields.MTeam.node,
                     "mtv": GM_config.fields.mtv.node,
                     "nbl": GM_config.fields.nbl.node,
                     "huno": GM_config.fields.huno.node,
