@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.2.4-A
+// @version      4.2.5-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -49,6 +49,8 @@
         "hdb_pass": {"label": "HDB_PASS_KEY *", "type": "text", "default": "", "tooltip": "Passkey from your HDB profile page"},
         "huno": {"label": "HUNO *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "huno_api": {"label": "HUNO_API_TOKEN", "type": "text", "default": ""},
+        "ifl": {"label": "InfinityLibrary *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
+        "ifl_api": {"label": "IFL_API_TOKEN", "type": "text", "default": ""},
         "kg": {"label": "KG", "type": "checkbox", "default": false},
         "lst": {"label": "LST *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "lst_api": {"label": "LST_API_TOKEN", "type": "text", "default": ""},
@@ -201,6 +203,7 @@
                     "cinemaz": GM_config.fields.cinemaz.node,
                     "fl": GM_config.fields.fl.node,
                     "hdb": GM_config.fields.hdb.node,
+                    "ifl": GM_config.fields.ifl.node,
                     "lst": GM_config.fields.lst.node,
                     "MTeam": GM_config.fields.MTeam.node,
                     "mtv": GM_config.fields.mtv.node,
@@ -282,6 +285,7 @@
             "CG": GM_config.get("cg"),
             "TL": GM_config.get("tl"),
             "MTeam": GM_config.get("MTeam"),
+            "IFL": GM_config.get("ifl"),
         };
 
         const movie_only_dict = {};
@@ -379,6 +383,7 @@
     const FL_USER_NAME = GM_config.get("fl_user");
     const FL_PASS_KEY = GM_config.get("fl_pass");
     const MTeam_API_TOKEN = GM_config.get("MTeam_api");
+    const IFL_API_TOKEN = GM_config.get("ifl_api");
 
     // We need to use XML response with TVV and have to define some parameters for it to work correctly.
     const TVV_AUTH_KEY = GM_config.get("tvv_auth"); // If you want to use TVV - find your authkey from a torrent download link
@@ -717,7 +722,8 @@ function toUnixTime(dateString) {
             "RTF": " data:image/x-icon;base64,AAABAAEAEBAAAAEAIABoBAAAFgAAACgAAAAQAAAAIAAAAAEAIAAAAAAAQAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAAsAAAAAwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAQECBcXFy5ERERmAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAICAgBLGxsbm1tbW/w8PD3UAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANwAAAFwAAABOAAAABAAAAACsrKxp3t7e/7CwsPwAAABVAAAADwAAAFYAAABTAAAAYgAAAB4AAAAAvr6+T56enu6EhIT1FxcXrwAAAAkAAAAAt7e3rfPz8/+fn5/ZBgYGKbu7u8KCgoL3pKSk+VFRUb4AAAAdAAAAAMvLyyK7u7vLsrKy/z4+Pq0AAAAA1dXVSMnJyf/V1dX/IiIipgAAAB/s7Ox8p6en/7S0tP9aWlpKAAAAAAAAAAAAAAAAtra2c6+vr/84ODisAAAABcvLyyzDw8N46Ojoz5eXl98AAACIUlJSOK6urv9nZ2fcAAAALgAAAEwAAAAjAAAAALm5uXmxsbH/ODg4rQAAAAsAAAAAAAAAAAAAAAP7+/u+bm5u0BQUFIqurq79bGxs0Hl5eb1VVVXMAAAAMwAAAAC6urp6sLCw/zg4OK0AAAAKAAAAAAAAAAAAAAAA39/fIMbGxucoKCixl5eX/NTU1Pje3t7/Y2Nj2gAAACgAAAAAubm5ea2trf84ODisAAAACAAAAAAAAAAAAAAAAAAAAADW1tbRSkpKwJ2dnf59fX3YoaGh0aGhoX0AAAAAAAAAALi4uHO7u7v/Ly8vrAAAAAEAAAAAAAAAAAAAAACqqqoJyMjI5zg4OI61tbX8a2tr2wAAADYAAAAAAwMDY6SkpA6qqqrH7+/v/zQ0NLkAAABWAAAADAAAAAAAAAAHvb29rZ6entdra2uD2tra/4+Pj+UgICCWi4uLz5GRke68vLxbxcXF49nZ2dTY2NjtWFhY0BoaGqUwMDCemZmZ5djY2OdUVFQ62dnZwqysrOLb29vU29vb2dXV1eqrq6uUAAAAAwAAAAIAAAAA2dnZSufn58LU1NTm1NTU4uHh4ZiAgIAOAAAAAAAAAAUAAAAAAAAAAjMzMwUAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAs7OzCgAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
             "LST": " data:image/x-icon;base64,AAABAAEAEBAAAAEAIABoBAAAFgAAACgAAAAQAAAAIAAAAAEAIAAAAAAAQAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANQAAAJ4AAADeAAAA/wAAAP8AAADeAAAAngAAADUAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAlQAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAAlQAAAAIAAAAAAAAAAAAAAAAAAAADAAAAwQAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAADBAAAAAwAAAAAAAAAAAAAAkgAAAP8AAAD/AAAA/gAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP4AAAD/AAAA/wAAAJIAAAAAAAAAMwUFBf8LCwv/DAwM/gEBAf8AAAD/FhYW/zExMf8KCgr/AAAA/wAAAP8AAAD/BgYG/gsLC/8AAAD/AAAAM5GRkZ729vb///////////9/f3//bm9v/////////////f39/2JiYv8AAAD/AAAA/9vb2//Nzc3/AAAA/wAAAJ6jo6Pe/////5aWlv9xcXH/NDMz/2xsbP9ra2v/PT09////////////AAAA/wAAAP//////2dnZ/wAAAP8AAADeiIiI//////8wMDD/AAAA/wAAAP8AAAD/Ojo6/66urv//////y8vL/wAAAP8AAAD/9PT0/9HR0f8AAAD/AAAA/4eHh///////Pz8//wAAAP8AAAD/fn5+///////u7u7/e3t7/wYGBv8AAAD/AAAA//Pz8//Nzc3/AAAA/wAAAP+hoaHe/////0RERP8AAAD/AAAA/8XFxf//////a2tr/1FRUf9BQUH/MTEx/4GBgf//////8vLy/3h4eP8zMzTe1dXVn/////8uLy7/AAAA/wAAAP9BQUH/7u7u////////////a2tr/2loaP//////7u7u//Hx8f//////vb29nicnJzQQEBD/AAAA/wAAAP4AAAD/AAAA/wMDA/8wMDD/HBwc/wAAAP8AAAD/BgcH/wQEBP4EBAT/BwcH/woKCjMAAAAAAAAAkgAAAP8AAAD/AAAA/gAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP4AAAD/AAAA/wAAAJIAAAAAAAAAAAAAAAMAAADBAAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAMEAAAADAAAAAAAAAAAAAAAAAAAAAgAAAJUAAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAJUAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANQAAAJ4AAADeAAAA/wAAAP8AAADeAAAAngAAADUAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
             "TL": " data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAABj1BMVEUUJg4TJgwUJw4UHg8TMQ0UHA4JHQJgbVyxt69OXEoIHAMTJg0UJQ4UIw4RZQgPhwYSRgsVIA8HHAI2RzH////z9PMeMBgJHQMVGw8RWwkMygAMzgANsgETLA0VIg8VKA8ADABMW0gsPScABwATFg4RdgcNwQANwgATPQwUHw8UJw4KHgYnOCO2vLS3vbVibl4MEAYOcAQMywANvQATOwwLHwXKzsj+/v5SUE4AYgAMHwbQ1M5WVFMAYQAJHQUuPyq+w73Bxr9uemsNEQcNbwRJWEUsPSYACAASFg0RcgcDFwBWZFIFGQAUGA8QcgcTJw0DGABYZlQ5SjUHGgA1RjAVGA9baFcvQCoACQATFw4RcwcTLw0VGg8UKA5JWETP085mcmIKDgUOcgQMzAANvwANwAAPewYUIg8NIAYTJg7r7Oo6PTUDTAAMzQAM1AAPjQQVHw8EGABHVkPy8/IuPCkIGAMOjQQMxwANxgAMzwAPigUBFgAmOCCCjH+or6ZTYE4UIQ0UIg4RWgkPgQYQdwaTMbSlAAAABnRSTlN+/f39/X4wlRL+AAAA3ElEQVR4nGNgYGRj5+Dk4ubh5eMXEGRiYGASEhYRERUTl5CUkpaRlWNikFdQFBERUVJWUZVWU9fQ1GLQ1tEFCujpGxgaqRmbAAVMzUREzIFCFpZQAStrEXOQgI0tVMDO3gHIdXRydoEKyCu4AgXc3D08oQJaXt5AAWEfXz+ogH9AIFAgKBhNIMQnFCbA7RUGFAiPiIwyUjeOjoll0PKJAwrEJyQmJaekpsmmM8RmZGYBRUSyc3LVjPPyCxiYtAqLioGOLSktK6+orGIGeje2uqa2rp6robGpuYWFFQA5mzPC0wEkIAAAAABJRU5ErkJggg==",
-            "MTeam": " data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAKHSURBVEhLY5QU4cxnY2XKZmFmZGOgIvj5+983ZibGZkY9dcGPxxb68gHF/jMxMTKCJP/9+0+QDQLY5GD07z//GDT911xl4uZgYQcKgDVQE7CyMDEAQ4WdCcQB2QqjiWXjkkMXA1sA8yaIJpaNSw5DDERgs5kQG5ccuhh9fEBLgDeIPn7+9f/T198Y4sj8P3/+ocjBaBgbaxB9//mXIaXh8F8N/zU7gGl5W2Ldob9AMRQ1959+ZvTP2/1DyWvlCeu4Le8OnnlBfBB1zL3IsP/k8+iPX357AbHPrmPPQptnnge7CARAmSi0eN+rS/ff6b758Mvq0et3ylHl+48/fPYFqgIBsFqw68SzNy/f/1gD5TJ8/PJrw+4TT19CuQxX7rwHiS16/frnXRD/PZDLzMLYt+PoE7A8MsAaBxJC7LxK4twiIDEQkOLlFZYQ4uQHsUHy3Jws///+/S8IloSC/wyMgtxcrMTFQXmSAfuH77/Xyohx60qKcBl/Z/i5tjJFnxOmRlWOj9FcVzRGSpQr3hhYKkiIcNgL8bI3+jvIERcHFnqiDLtnedrwcLOeM9QUOr1rloe9jZEEVJaBgRGod2GbPXtqsPr8i8yMb4OcFQ7snuUhycvNClWBAFiDCMRWV+D/ryLLy+xlK8ugqSiAkhRBmI2F6X9mmAawQGPiqUox+C8mxIHVHKxBhCSGVRyZDwQgDyHrQVUPImgJcAYRlMYqjswHgv9AFrIeFPWjQQQC+IPo18+/v5G9iOxNIIVVHJkPBFiDCGg6sAHA8JtRgI+tXl6Kp5CTnZkdJIkMbj/8+ESAh01EVJiTAyqEAv7++f//4s1394AtEyUWFtSWw5cvf76+/fizEgAAzycMc0THjAAAAABJRU5ErkJggg=="
+            "MTeam": " data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAKHSURBVEhLY5QU4cxnY2XKZmFmZGOgIvj5+983ZibGZkY9dcGPxxb68gHF/jMxMTKCJP/9+0+QDQLY5GD07z//GDT911xl4uZgYQcKgDVQE7CyMDEAQ4WdCcQB2QqjiWXjkkMXA1sA8yaIJpaNSw5DDERgs5kQG5ccuhh9fEBLgDeIPn7+9f/T198Y4sj8P3/+ocjBaBgbaxB9//mXIaXh8F8N/zU7gGl5W2Ldob9AMRQ1959+ZvTP2/1DyWvlCeu4Le8OnnlBfBB1zL3IsP/k8+iPX357AbHPrmPPQptnnge7CARAmSi0eN+rS/ff6b758Mvq0et3ylHl+48/fPYFqgIBsFqw68SzNy/f/1gD5TJ8/PJrw+4TT19CuQxX7rwHiS16/frnXRD/PZDLzMLYt+PoE7A8MsAaBxJC7LxK4twiIDEQkOLlFZYQ4uQHsUHy3Jws///+/S8IloSC/wyMgtxcrMTFQXmSAfuH77/Xyohx60qKcBl/Z/i5tjJFnxOmRlWOj9FcVzRGSpQr3hhYKkiIcNgL8bI3+jvIERcHFnqiDLtnedrwcLOeM9QUOr1rloe9jZEEVJaBgRGod2GbPXtqsPr8i8yMb4OcFQ7snuUhycvNClWBAFiDCMRWV+D/ryLLy+xlK8ugqSiAkhRBmI2F6X9mmAawQGPiqUox+C8mxIHVHKxBhCSGVRyZDwQgDyHrQVUPImgJcAYRlMYqjswHgv9AFrIeFPWjQQQC+IPo18+/v5G9iOxNIIVVHJkPBFiDCGg6sAHA8JtRgI+tXl6Kp5CTnZkdJIkMbj/8+ESAh01EVJiTAyqEAv7++f//4s1394AtEyUWFtSWw5cvf76+/fizEgAAzycMc0THjAAAAABJRU5ErkJggg==",
+            "IFL": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB8AAAAQCAYAAADu+KTsAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAE1UlEQVQ4jYWVW2xUZRDHf3PO6dlz2m2XUqDlLndCC0EUBASjMYQAESWhfTAKkURIjCZogjceODwY1IgkRmM0IUBiNK4mXhA0NHLRoEAwhksBKbe2W0opvW23u93bGR92C62gfsl5OZnfzHzf/GcG/ucoGApy+8chtf7DWvKM5LnBrHrGQGtBVRDRijd0eEIZZxSTFBeVYvzJLs2nfudN38UMhPi1LMgv116Wrn6m38l9njolRZinNkm8bIfO7w0yW0OEZChxo5xIUQVn24ZLvYAOZC22UgCketIsSZi8qz7NQMI0SEens8Y/zsi0wZNpn9Vx5UzJHv24W+QnURW2YuJJpi3G6uY+nnO26amUsAiTuGETIUCvWlQlXRYG9WZdJcnv6kQ6+hOwAB8gGORYn0+Db9FNANtx+PTcg3Jj4lv6aleW95IuC5MBVvSYbAzt01IV+UIOKQpiG8xNm4xCsAscfhsSZPcIh0YjhLYPp7yzKDunl9jsSzSVzdQfdp4R6UQ9w2IGqiBOihezAVwC4DjU9jwtX0u9CpulFWgFzowP64HrwktRl5Wh09rFLNlf9ZEG/QjTsOnARiXAkMq5XDg8QfryVelUuBjSs+1RYssv075KVXcJWzGokewwT6elDJYX2JwuLGL/UJcPRVC2oKCCpwaeWg01cnV8OdvsQq7EClk2Ti9ObDpFpVpMNx1uuQ57XZcPIudRPDVQFVQNUdVuqap16K3ro2POKLaPQzzfAujNMg8bp7CIz7s2SK2Q11K/qDwU8AmreekRaRtbrzubS3i+hbInRizmsN/I62MqqD2/VjoEtLtfiV6+YdQzBPwR9By/Sd/cOP5UoMFQkIzFSArotm2uiqdCNYNa4vapkSyqRtMUuVwynB/TpMZGnzkysWezfHlhrbRLWA08vQe7RQFcojcNMskY6RCQD2KRwSZNIH/LSvRuB3e6FWAjHA3QfamXzKIKra0C0Brx8cT/N9AnJZCV3BgAQ0ALHK7hYCRtJoIoMwYMhkFhPQMRXarhoZ5IpozoPoj67VxeWqbvPF6qb69UEPSffI0BEMcf7YNTjNVx++alpZzA5mbCZsn6k1rQ/7x5wQjqGbnAnj9G351ylobZj+oup1nmRUpI7PeJVnSSWBEjveB+3RFCcnXOsWET+Sob1rAZI7vYgHgx1l+54GE1m9dJxC3i+3SAqZ9leHZZvQYQ8RHR3Of5Kp6O1u1TbxBf00ZiSYSuGaJKIR0t0Gf6EMvg2w0kqwAQL8/XZNfryYJ1XKlOkpnuEjjWKK+1oNWmxTlUVHngD3bXRQnFAyw+WExwmKaOutxoMbimSTpKi2mYFafzIRCziMDeS2z8ExFN6ftBC6PVxw9lUKeX1ML1+snxg6wc0sdVO8HV0Xs4sjBJ3wwX69wkRn+bq3hlbhH0j7sFTeqeTvFUopyZFN0KQCQL101ocaHVtMhcK6Vw7w3ZVCdKrrqAep4xZos7KkZmWoZs+QRW/XwRfSFDUwgiDtxKuXDiYcZ+c0DW9KIIkt9CAxNQkAkaK++mfVKSyLAMLVYBbbESoo0bmFfvyWOZQYsl72igvCZr/Zhm2udDY9aktXMI6fomeeV6brHcbX8nAb3Tp/nVOFi5Gjbv5hC02kQ9C60278n2C3DA+RutY1ISHJBJiwAAAABJRU5ErkJggg=="
         };
 
         const get_tracker_icon = (tracker) => {
@@ -732,7 +738,8 @@ function toUnixTime(dateString) {
                 (tracker === "OE") ||
                 (tracker === "HUNO") ||
                 (tracker === "TIK") ||
-                (tracker === "LST")
+                (tracker === "LST") ||
+                (tracker === "IFL")
             )
                 return true;
             else return false;
@@ -1523,7 +1530,7 @@ function toUnixTime(dateString) {
                 if (html.querySelector('item') === null) return false;
                 else return true;
             }
-            else if (tracker === "BLU" || tracker === "Aither" || tracker === "RFX" || tracker === "OE" || tracker === "HUNO" || tracker === "TIK" || tracker === "LST") {
+            else if (tracker === "BLU" || tracker === "Aither" || tracker === "RFX" || tracker === "OE" || tracker === "HUNO" || tracker === "TIK" || tracker === "LST" || tracker === "IFL") {
                 if (html.querySelector(".torrent-search--list__no-result") === null) return true;
                 else return false;
             }
@@ -2086,6 +2093,12 @@ function toUnixTime(dateString) {
                         imdb_id.split("tt")[1] +
                         "&categories[0]=2&categories[1]=1&perPage=100&api_token=" +
                         HUNO_API_TOKEN;
+                } else if (tracker === "IFL") {
+                    api_query_url =
+                        "https://infinitylibrary.net/api/torrents/filter?imdbId=" +
+                        imdb_id.split("tt")[1] +
+                        "&categories[0]=1&categories[1]=2&categories[2]=3&perPage=100&api_token=" +
+                        IFL_API_TOKEN;
                 } else if (tracker === "LST") {
                     api_query_url =
                         "https://lst.gg/api/torrents/filter?imdbId=" +
@@ -3736,7 +3749,8 @@ function toUnixTime(dateString) {
                 tracker === "OE" ||
                 tracker === "HUNO" ||
                 tracker === "TIK" ||
-                tracker === "LST"
+                tracker === "LST" ||
+                tracker === "IFL"
             ) {
                 torrent_objs = json.data.map((element) => {
                     let originalInfoText;
@@ -4446,7 +4460,7 @@ function toUnixTime(dateString) {
                         if (torrent.site === "MTV") {
                             torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__tags torrent-info__tags--internal'>Internal</span>" : false;
                         }
-                        if (torrent.site === "BLU" || torrent.site === "Aither" || torrent.site === "RFX" || torrent.site === "OE" || torrent.site === "HUNO" || torrent.site === "LST" || torrent.site === "FL") {
+                        if (torrent.site === "BLU" || torrent.site === "Aither" || torrent.site === "RFX" || torrent.site === "OE" || torrent.site === "HUNO" || torrent.site === "LST" || torrent.site === "FL" || tracker === "IFL") {
                             get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__tags torrent-info__tags--internal'>Internal</span>") : false;
                             get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__download-modifier'>DU</span>") : false;
                             get_api_featured(torrent.featured) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__download-modifier'>Featured</span>") : false;
@@ -4474,7 +4488,7 @@ function toUnixTime(dateString) {
                         if (torrent.site === "MTV") {
                             torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
                         }
-                        if (torrent.site === "BLU" || torrent.site === "Aither" || torrent.site === "RFX" || torrent.site === "OE" || torrent.site === "HUNO" || torrent.site === "LST" || torrent.site === "FL") {
+                        if (torrent.site === "BLU" || torrent.site === "Aither" || torrent.site === "RFX" || torrent.site === "OE" || torrent.site === "HUNO" || torrent.site === "LST" || torrent.site === "FL" || tracker === "IFL") {
                             get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #baaf92'>Internal</span>") : false;
                             get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__DU' style='font-weight: bold; color: #279d29'>DU</span>") : false;
                             get_api_featured(torrent.featured) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__Featured' style='font-weight: bold; color: #997799'>Featured</span>") : false;
@@ -4645,7 +4659,7 @@ function toUnixTime(dateString) {
 
                 cln.querySelector(".size-span").textContent = ptp_format_size;
 
-                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV", "LST", "ANT", "RTF", "AvistaZ", "CinemaZ", "PHD", "TL", "FL", "MTeam"];
+                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV", "LST", "ANT", "RTF", "AvistaZ", "CinemaZ", "PHD", "TL", "FL", "MTeam", "IFL"];
                 if (byteSizedTrackers.includes(torrent.site)) {
                     cln.querySelector(".size-span").setAttribute("title", api_sized);
                 } else {
