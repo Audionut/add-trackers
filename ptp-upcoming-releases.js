@@ -640,7 +640,12 @@ const displayResultsOriginal = (page, data, source) => {
                 }
 
             const ptpLink = document.createElement("a");
-            ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id || node.details.title}`;
+            if(movie.source === 'IMDb') {
+                ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id || node.details.title}`;
+            }
+            if(movie.source === 'TMDb') {
+                ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.details.title}`;
+            }
             ptpLink.target = "_blank";
             ptpLink.setAttribute('class', 'request-link');
             ptpLink.textContent = "(Search PTP requests)";
@@ -841,7 +846,12 @@ const displayResultsCondensed = (page, data, source) => {
                 }
 
                 const ptpLink = document.createElement("a");
-                ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id || node.details.title}`;
+                if(movie.source === 'IMDb') {
+                    ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id || node.details.title}`;
+                }
+                if(movie.source === 'TMDb') {
+                    ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.details.title}`;
+                }
                 ptpLink.target = "_blank";
                 ptpLink.textContent = "(Search PTP requests)";
                 ptpLink.style.float = "right";
