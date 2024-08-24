@@ -1903,6 +1903,8 @@ function toUnixTime(dateString) {
                 return result;
             } else {
                 console.warn(`Error: HTTP ${response.status} Error.`);
+                console.warn(`Error: HTTP ${response.responseHeaders} Error.`);
+                console.warn(`Error: HTTP ${response.responseText} Error.`);
                 displayAlert(`${tracker} returned not ok`);
                 return null;
             }
