@@ -643,7 +643,7 @@ const displayResultsOriginal = (page, data, source) => {
             ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id || node.details.title}`;
             ptpLink.target = "_blank";
             ptpLink.setAttribute('class', 'request-link');
-            ptpLink.textContent = "(Search PTP requests)";
+            ptpLink.textContent = "(Search ANT requests)";
             ptpLink.style.float = "right";
             ptpLink.style.fontSize = "0.9em";
 
@@ -879,7 +879,7 @@ const displayResultsCondensed = (page, data, source) => {
 
                         const castNameLink = document.createElement("a");
                         const castName = movie.source === 'IMDb' ? credit.node.name.nameText.text : credit.name;
-                        castNameLink.href = `https://anthelion.me/torrents.php?searchstr=${encodeURIComponent(castName)}`;
+                        castNameLink.href = `https://anthelion.me/artist.php?tmdb=${credit.id}`;
                         castNameLink.target = "_blank";
                         castNameLink.textContent = castName;
                         castNameLink.style.display = "block";
