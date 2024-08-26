@@ -640,7 +640,7 @@ const displayResultsOriginal = (page, data, source) => {
                 }
 
             const ptpLink = document.createElement("a");
-            ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id || node.details.title}`;
+            //ptpLink.href = ``;
             ptpLink.target = "_blank";
             ptpLink.setAttribute('class', 'request-link');
             ptpLink.textContent = "(Search ANT requests)";
@@ -659,7 +659,7 @@ const displayResultsOriginal = (page, data, source) => {
             const genresList = node.genres ? node.genres.genres : node.details.genres;
             genresList.forEach(genre => {
                 const genreLink = document.createElement("a");
-                genreLink.href = `https://passthepopcorn.me/torrents.php?action=advanced&taglist=${genre.text || genre.name}`;
+                //genreLink.href = ``;
                 genreLink.textContent = genre.text || genre.name;
                 genreLink.style.color = "white";
                 genreLink.style.marginRight = "5px";
@@ -704,7 +704,7 @@ const displayResultsOriginal = (page, data, source) => {
 
                     const castNameLink = document.createElement("a");
                     const castName = movie.source === 'IMDb' ? credit.node.name.nameText.text : credit.name;
-                    castNameLink.href = `https://passthepopcorn.me/artist.php?artistname=${encodeURIComponent(castName)}`;
+                    //castNameLink.href = ``;
                     castNameLink.target = "_blank";
                     castNameLink.rel = "noreferrer";
                     castNameLink.textContent = castName;
@@ -841,7 +841,7 @@ const displayResultsCondensed = (page, data, source) => {
                 }
 
                 const ptpLink = document.createElement("a");
-                ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id || node.details.title}`;
+                //ptpLink.href = ``;
                 ptpLink.target = "_blank";
                 ptpLink.textContent = "(Search ANT requests)";
                 ptpLink.style.float = "right";
