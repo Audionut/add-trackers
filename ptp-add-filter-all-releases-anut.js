@@ -1812,7 +1812,7 @@ function toUnixTime(dateString) {
                     if (tracker === 'RTF' && jsonResponse.error && jsonResponse.message === "Invalid API token.") {
                         displayAlert("Something went wrong with RTF API token");
                     }
-                    return jsonResponse;
+                    return { status: 'REAUTH_NEEDED' };
                 } else if (response.status === 404) {
                     const jsonResponse = JSON.parse(response.responseText);
                     if (debug) {
