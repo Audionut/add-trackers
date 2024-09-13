@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.2.5-A
+// @version      4.2.6-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -2052,7 +2052,7 @@ function toUnixTime(dateString) {
                     postData = {
                         action: "search",
                         rsskey: BHD_RSS_KEY,
-                        imdb_id: imdb_id.split("tt")[1]
+                        imdb_id: imdb_id.split("tt")[1],
                     };
                 } else if (tracker === "BLU") {
                     api_query_url =
@@ -2407,60 +2407,94 @@ function toUnixTime(dateString) {
             });
         };
 
-        const get_post_torrent_objects = (tracker, postData, isMiniSeries) => {
+        const fetch_seeding_status = async (tracker, info_hash) => {
+            const post_query_url = "https://beyond-hd.me/api/torrents/" + BHD_API_TOKEN;
+            const postData = {
+                action: "search",
+                rsskey: BHD_RSS_KEY,
+                info_hash: info_hash,
+                seeding: 1
+            };
+
+            try {
+                const result = await post_json(post_query_url, tracker, postData);
+
+                if (debug) {
+                    //console.log(`Seeding status URL for ${tracker}`, post_query_url);
+                    //console.log(`Post data for ${tracker}`, postData);
+                    console.log(`Seeding result from ${tracker}`, result);
+                }
+
+                if (result && result.status_code === 1 && result.total_results === 1) {
+                    return "seeding";  // Return 'seeding' status if valid
+                } else {
+                    return "default";  // Return 'default' if no valid seeding status is found
+                }
+            } catch (error) {
+                console.error(`Error fetching seeding status for ${tracker}:`, error);
+                return "default";  // Return 'default' if an error occurs
+            }
+        };
+
+        const get_post_torrent_objects = async (tracker, postData, isMiniSeries) => {
             let torrent_objs = [];
-            if (tracker === "BHD") {
+
+            if (tracker === "BHD") {  // Process for BHD tracker
                 try {
-                    torrent_objs = postData.results.map((d) => {
-                        const size = parseInt(d.size / (1024 * 1024)); // Convert size to MiB
-                        const api_size = parseInt(d.size); // Original size
+                    // Await the resolved promise from Promise.all, then filter
+                    const results = await Promise.all(
+                        postData.results.map(async (d) => {
+                            const size = parseInt(d.size / (1024 * 1024)); // Convert size to MiB
+                            const api_size = parseInt(d.size); // Original size
+                            const info_hash = d.info_hash;
 
-                        const originalInfoText = d.name;
-                        let infoText = originalInfoText;
-
-                        if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
+                            const originalInfoText = d.name;
+                            let infoText = originalInfoText;
                             let groupText = "";
-                            const groups = goodGroups(); // Array of good group names
-                            const badGroupsList = badGroups(); // Array of bad group names
-                            let matchedGroup = null;
-                            let badGroupFound = false;
 
-                            // Remove bad groups if found
-                            for (const badGroup of badGroupsList) {
-                                if (infoText.includes(badGroup)) {
-                                    badGroupFound = true;
-                                    infoText = infoText.replace(badGroup, '').trim();
-                                    break;
-                                }
-                            }
+                            // Custom processing logic for BHD
+                            if (!/S\d{1,2}E\d{1,2}/.test(infoText)) {
+                                const groups = goodGroups(); // Array of good group names
+                                const badGroupsList = badGroups(); // Array of bad group names
+                                let matchedGroup = null;
+                                let badGroupFound = false;
 
-                            if (!badGroupFound) {
-                                // Check for good groups if no bad group was found
-                                for (const group of groups) {
-                                    if (infoText.includes(group)) {
-                                        matchedGroup = group;
+                                // Remove bad groups if found
+                                for (const badGroup of badGroupsList) {
+                                    if (infoText.includes(badGroup)) {
+                                        badGroupFound = true;
+                                        infoText = infoText.replace(badGroup, '').trim();
                                         break;
                                     }
                                 }
-                            }
 
-                            if (matchedGroup) {
-                                groupText = matchedGroup;
-                                if (improved_tags) {
-                                    infoText = infoText.replace(groupText, '').trim();
+                                if (!badGroupFound) {
+                                    // Check for good groups if no bad group was found
+                                    for (const group of groups) {
+                                        if (infoText.includes(group)) {
+                                            matchedGroup = group;
+                                            break;
+                                        }
+                                    }
                                 }
-                            }
 
-                            const match = infoText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
-                            if (match) {
-                                groupText = match[1].replace(/[^a-z0-9]/gi, '');
-                                if (improved_tags) {
-                                    infoText = infoText.replace(`-${match[1]}`, '').trim();
+                                if (matchedGroup) {
+                                    groupText = matchedGroup;
+                                    if (improved_tags) {
+                                        infoText = infoText.replace(groupText, '').trim();
+                                    }
                                 }
-                            }
 
-                            if (improved_tags) {
-                                // Handle HDR and DV tags
+                                // Further processing of the infoText
+                                const match = infoText.match(/(?:-(?!\.))([a-zA-Z][a-zA-Z0-9]*)$/);
+                                if (match) {
+                                    groupText = match[1].replace(/[^a-z0-9]/gi, '');
+                                    if (improved_tags) {
+                                        infoText = infoText.replace(`-${match[1]}`, '').trim();
+                                    }
+                                }
+
+                                // Handle HDR, DV, and resolution tags
                                 const dv = (d.dv === 1);
                                 const hdr10 = (d.hdr10 === 1);
                                 const hdr10Plus = (d["hdr10+"] === 1);
@@ -2479,7 +2513,7 @@ function toUnixTime(dateString) {
                                     }
                                 }
 
-                                // Append DV tag
+                                // Append DV tag if necessary
                                 if (dv) {
                                     if (hdr10Plus && !infoText.includes("DV HDR10+")) {
                                         infoText = "DV HDR10+ " + infoText.replace("HDR10+", "").replace("HDR10", "").replace("DV", "").trim();
@@ -2510,49 +2544,24 @@ function toUnixTime(dateString) {
                                         infoText = `${originalResText} ${infoText}`;
                                     }
                                     if (!infoText.toLowerCase().includes("remux") && (originalResText.includes("UHD") || originalResText.includes("BD"))) {
-                                        infoText = "m2ts" + infoText;
+                                        infoText = "m2ts " + infoText;
                                     }
                                 }
                             }
 
-                            const is25 = d.promo25 === 1 ? true : false;
-                            const is50 = d.promo50 === 1 ? true : false;
-                            const is75 = d.promo75 === 1 ? true : false;
-                            const is100 = d.freeleech === 1 ? true : false;
-                            const refund = d.refund === 1 ? true : false;
-                            const rewind = d.rewind === 1 ? true : false;
-                            const rescue = d.rescue === 1 ? true : false;
+                            // Additional processing for discounts and time
+                            const discounted = d.freeleech === 1 ? "FL" : "None";
+                            const time = toUnixTime(d.created_at);
 
-                            let discounted = "None";
-                            if (is25) {
-                                discounted = simplediscounts ? "25%" : "25% Freeleech";
-                            } else if (is50) {
-                                discounted = simplediscounts ? "50%" : "50% Freeleech";
-                            } else if (is75) {
-                                discounted = simplediscounts ? "75%" : "75% Freeleech";
-                            } else if (is100) {
-                                discounted = simplediscounts ? "FL" : "Freeleech";
-                            } else if (refund) {
-                                discounted = simplediscounts ? "Refund" : "Refundable";
-                            } else if (rewind) {
-                                discounted = simplediscounts ? "Rewind" : "Rewind";
-                            } else if (rescue) {
-                                discounted = simplediscounts ? "Rescue" : "Rescuable";
-                            }
-
-                            const inputTime = d.created_at;
-                            let time = toUnixTime(inputTime);
                             if (isNaN(time)) {
                                 return null;
                             }
 
-                            let releasenaming = d.name.replace(/DDP \d\.\d/g, (match) => {
-                                return match.replace(' ', '');
-                            }).replace(/ /g, '.');
-
                             const torrentObj = {
                                 api_size: api_size,
-                                datasetRelease: releasenaming,
+                                datasetRelease: d.name.replace(/DDP \d\.\d/g, (match) => {
+                                    return match.replace(' ', '');
+                                }).replace(/ /g, '.'),
                                 size: size,
                                 info_text: infoText,
                                 tracker: tracker,
@@ -2574,16 +2583,25 @@ function toUnixTime(dateString) {
                                 time: time,
                             };
 
+                            // Call the second API to check the seeding status using info_hash
+                            if (info_hash) {
+                                const seeding_status = await fetch_seeding_status(tracker, info_hash);
+                                torrentObj.status = seeding_status;  // Update the status based on the second API call
+                            }
+
                             // Map additional properties if necessary
                             const mappedObj = {
                                 ...torrentObj,
                                 quality: get_torrent_quality(torrentObj),
                             };
+
                             return mappedObj;
-                        } else {
-                            return null;
-                        }
-                    }).filter(obj => obj !== null); // Filter out any null objects
+                        })
+                    );
+
+                    // After awaiting Promise.all, filter the results to remove any null objects
+                    torrent_objs = results.filter(obj => obj !== null);
+
                 } catch (error) {
                     console.error("An error occurred while processing BHD tracker:", error);
                 }
