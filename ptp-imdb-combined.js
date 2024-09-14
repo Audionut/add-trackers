@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.4
+// @version      1.0.5
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -19,9 +19,10 @@
 
     // Options to display each script type
     const SHOW_SIMILAR_MOVIES = true; // Change to false to hide "Movies Like This"
-    const PLACE_UNDER_CAST = false; // Put more like this under the cast list
+    const PLACE_UNDER_CAST = false; // Put more like this under the cast list, else in the side panel
     const SHOW_TECHNICAL_SPECIFICATIONS = true; // Change to false to hide "Technical Specifications"
-    const SHOW_BOX_OFFICE = true; // Change to false to hide "Box Office"
+    const SHOW_BOX_OFFICE = true; // Change to false to hide "Box Office" data
+    const SHOW_AWARDS = true; // Change to false to hide awards data
 
     // Function to format the IMDb text
     function formatIMDbText() {
@@ -30,7 +31,7 @@
 
         if (imdbElement) {
             // Create the new formatted HTML
-            var formattedHTML = '<span class="panel__heading__title"><span style="color: rgb(242, 219, 131);">iMDB</span> tags</span>';
+            var formattedHTML = '<span class="panel__heading__title"><span style="color: rgb(242, 219, 131);">IMDb</span> tags</span>';
             // Set the inner HTML of the element to the formatted HTML
             imdbElement.innerHTML = formattedHTML;
         }
@@ -40,24 +41,24 @@
 
     var link = document.querySelector("a#imdb-title-link.rating");
     if (!link) {
-        console.error("IMDB link not found");
+        console.error("IMDb link not found");
         return;
     }
 
     var imdbUrl = link.getAttribute("href");
     if (!imdbUrl) {
-        console.error("IMDB URL not found");
+        console.error("IMDb URL not found");
         return;
     }
 
     let imdbId = imdbUrl.split("/")[4];
     if (!imdbId) {
-        console.error("IMDB ID not found");
+        console.error("IMDb ID not found");
         return;
     }
 
-    // Function to fetch data from IMDB API
-    const fetchIMDBData = async (imdbId) => {
+    // Function to fetch data from IMDb API
+    const fetchIMDBData = async (imdbId, afterCursor = null, allAwards = []) => {
 
         const cacheiMDBKey = `iMDB_data_${imdbId}`;
         const cachedData = await GM.getValue(cacheiMDBKey);
@@ -65,8 +66,8 @@
 
         if (cachedData && cacheTimestamp) {
             const currentTime = new Date().getTime();
-            if (currentTime - cacheTimestamp < 24 * 60 * 60 * 1000) {
-                console.log("Using cached data for iMDB");
+            if (currentTime - cacheTimestamp < 7 * 24 * 60 * 60 * 1000) {
+                console.log("Using cached data for IMDb");
                 const data = JSON.parse(cachedData);
                 return data;
             }
@@ -75,8 +76,8 @@
         const url = `https://api.graphql.imdb.com/`;
         const query = {
             query: `
-                query {
-                    title(id: "${imdbId}") {
+                query getTitleDetails($id: ID!, $first: Int!, $after: ID) {
+                    title(id: $id) {
                         id
                         titleText {
                             text
@@ -228,9 +229,75 @@
                                 amount
                             }
                         }
+                        prestigiousAwardSummary {
+                            wins
+                            nominations
+                            award {
+                                year
+                                category {
+                                    text
+                                }
+                            }
+                        }
+                        awardNominations(first: $first, after: $after) {
+                            edges {
+                                node {
+                                    id
+                                    award {
+                                        id
+                                        text
+                                    }
+                                    awardedEntities {
+                                        ... on AwardedNames {
+                                            names {
+                                                id
+                                                nameText {
+                                                    text
+                                                }
+                                            }
+                                        }
+                                        ... on AwardedTitles {
+                                            titles {
+                                                id
+                                                titleText {
+                                                    text
+                                                }
+                                            }
+                                        }
+                                    }
+                                    category {
+                                        text
+                                    }
+                                    forEpisodes {
+                                        id
+                                        titleText {
+                                            text
+                                        }
+                                    }
+                                    forSongTitles
+                                    isWinner
+                                    notes {
+                                        plainText
+                                    }
+                                    winAnnouncementDate {
+                                        date
+                                    }
+                                    winningRank
+                                }
+                            }
+                            pageInfo {
+                                endCursor
+                                hasNextPage
+                            }
+                        }
                     }
                 }
-            `
+            `,
+            variables: {
+                id: imdbId,
+                first: 250,
+                after: afterCursor
+            }
         };
 
         return new Promise((resolve, reject) => {
@@ -245,9 +312,26 @@
                     if (response.status >= 200 && response.status < 300) {
                         const data = JSON.parse(response.responseText);
                         if (data && data.data && data.data.title) {
-                            GM.setValue(cacheiMDBKey, JSON.stringify(data));
-                            GM.setValue(`${cacheiMDBKey}_timestamp`, new Date().getTime());
-                            resolve(data);
+                            const titleData = data.data.title;
+                            const awardNominations = titleData.awardNominations.edges.map(edge => edge.node);
+                            allAwards.push(...awardNominations);
+
+                            if (titleData.awardNominations.pageInfo.hasNextPage) {
+                                fetchIMDBData(imdbId, titleData.awardNominations.pageInfo.endCursor, allAwards)
+                                    .then(resolve)
+                                    .catch(reject);
+                            } else {
+                                titleData.awardNominationsCombined = allAwards;
+
+                                // Remove awardNominations from data as we have combined it
+                                delete titleData.awardNominations;
+
+                                // Cache the data
+                                data.data.title = titleData;
+                                GM.setValue(cacheiMDBKey, JSON.stringify(data));
+                                GM.setValue(`${cacheiMDBKey}_timestamp`, new Date().getTime());
+                                resolve(data);
+                            }
                         } else {
                             console.error("Invalid data structure", data);
                             reject(new Error("Invalid data structure"));
@@ -676,6 +760,94 @@ const displayTechnicalSpecifications = (data) => {
         panelBodyElement.appendChild(boxOfficeContainer);
     };
 
+    const displayAwardsData = (titleData) => {
+
+        const imdbId = titleData.id;
+
+        const wins = titleData.prestigiousAwardSummary?.wins ?? 0;
+        const nominations = titleData.prestigiousAwardSummary?.nominations ?? 0;
+
+        // Calculate total wins and nominations
+        let totalWins = 0;
+        let totalNominations = 0;
+
+        if (titleData.awardNominationsCombined && titleData.awardNominationsCombined.length > 0) {
+            titleData.awardNominationsCombined.forEach(nomination => {
+                if (nomination.isWinner) {
+                    totalWins++;
+                } else {
+                    totalNominations++;
+                }
+            });
+        }
+
+        const aDiv = document.createElement('div');
+        aDiv.setAttribute('id', 'imdb-award');
+        aDiv.setAttribute('class', 'panel');
+        aDiv.innerHTML = `
+            <div class="panel__heading">
+                <span class="panel__heading__title">
+                    <span style="color: rgb(242, 219, 131);">IMDb</span> Awards
+                </span>
+                <a href="https://www.imdb.com/title/${imdbId}/awards/" target="_blank" rel="noreferrer" style="float:right; font-size:0.9em; margin-right: 10px;">(View on IMDb)</a>
+            </div>`;
+        const awardDiv = document.createElement('div');
+        awardDiv.setAttribute('style', 'text-align:center; display:table; width:100%; border-collapse: separate; border-spacing:4px;');
+        aDiv.appendChild(awardDiv);
+
+        // Placeholder for the awards content
+        const awardsContent = document.createElement('div');
+        awardsContent.setAttribute('id', 'awards-content');
+        awardsContent.innerHTML = `
+            <style>
+                .awards-text {
+                    font-size: 1.0em; /* Adjust this value to change the text size */
+                }
+                .awards-table {
+                    width: 100%;
+                    text-align: left;
+                    border-collapse: collapse;
+                }
+                .awards-table th, .awards-table td {
+                    padding: 15px;
+                    border-bottom: 1px solid #ddd;
+                }
+            </style>
+            <div class="awards-text">
+                <table class="awards-table">
+                    <tr>
+                        <th style="color: yellow;">OSCARS</th>
+                        <th>Wins</th>
+                        <th>Nominations</th>
+                    </tr>
+                    <tr>
+                        <td></td>
+                        <td style="color: yellow;">${wins}</td>
+                        <td style="color: yellow;">${nominations}</td>
+                    </tr>
+                    <tr>
+                        <th>Total Awards</th>
+                        <th>Wins</th>
+                        <th>Nominations</th>
+                    </tr>
+                    <tr>
+                        <td></td>
+                        <td style="color: yellow;">${totalWins}</td>
+                        <td style="color: yellow;">${totalNominations}</td>
+                    </tr>
+                </table>
+            </div>`;
+        aDiv.appendChild(awardsContent);
+
+        const awardsBefore = document.querySelector('div.box_albumart');
+
+        if (awardsBefore && awardsBefore.nextElementSibling) {
+            const nextSibling = awardsBefore.nextElementSibling;
+            // Append the awards panel after the next sibling div
+            nextSibling.parentNode.insertBefore(aDiv, nextSibling.nextElementSibling);
+        }
+    };
+
     // Initialize panels
     fetchIMDBData(imdbId).then(data => {
         if (data && data.data && data.data.title) {
@@ -696,6 +868,11 @@ const displayTechnicalSpecifications = (data) => {
             } else if (SHOW_BOX_OFFICE) {
                 console.warn("No box office data found");
             }
+
+            if (SHOW_AWARDS) {
+                displayAwardsData(data.data.title);
+            }
+
         } else {
             console.error("Failed to retrieve valid data");
         }
