@@ -1,14 +1,17 @@
 // ==UserScript==
 // @name         OPS - add RED releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.1
+// @version      1.2
 // @description  Add releases from RED to OPS
 // @author       Audionut
 // @match        https://orpheus.network/torrents.php?id=*
 // @grant        GM_xmlhttpRequest
-// @grant        GM_setValue
+// @grant        GM_addStyle
 // @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_registerMenuCommand
 // @grant        GM_deleteValue
+// @require      https://cdn.jsdelivr.net/gh/sizzlemctwizzle/GM_config@43fd0fe4de1166f343883511e53546e87840aeaf/gm_config.js
 // @require      https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js
 // @downloadURL  https://github.com/Audionut/add-trackers/raw/main/ops-add-red-releases.js
 // @updateURL    https://github.com/Audionut/add-trackers/raw/main/ops-add-red-releases.js
@@ -19,17 +22,111 @@
 (function() {
     'use strict';
 
-    // Replace with your actual API keys
-    const OPS_API_KEY = '';
-    const RED_API_KEY = '';
+    function createSettingsMenu() {
+        const fields = {
+            OPS_API_KEY: {
+                label: 'OPS API Key',
+                type: 'text',
+                default: GM_getValue('OPS_API_KEY', ''),
+                tooltip: 'Enter your OPS API Key'
+            },
+            RED_API_KEY: {
+                label: 'RED API Key',
+                type: 'text',
+                default: GM_getValue('RED_API_KEY', ''),
+                tooltip: 'Enter your RED API Key'
+            },
+            sizeMatching: {
+                label: 'Size Tolerance (in MiB)',
+                type: 'number',
+                default: GM_getValue('sizeMatching', 0),
+                tooltip: 'Allowed difference in size for matching (in MiB)'
+            },
+            CACHE_EXPIRY_TIME: {
+                label: 'Cache Expiry Time (in days)',
+                type: 'number',
+                default: GM_getValue('CACHE_EXPIRY_TIME', 7), // default 7 days
+                tooltip: 'Cache expiry time in days'
+            }
+        };
 
-    // Set the allowed difference in size in MiB that will be displayed
-    const sizeMatching = 0;
+        GM_config.init({
+            id: 'APIConfig',
+            title: 'API Configuration Settings',
+            fields: fields,
+            css: `
+                #APIConfig {
+                    background: #333;
+                    color: #fff;
+                    padding: 20px;
+                    width: 400px;
+                    max-width: 90%;
+                    border-radius: 10px;
+                    box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+                    position: fixed;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                }
+                #APIConfig .field_label {
+                    color: #fff;
+                    width: 90%;
+                }
+                #APIConfig .config_header {
+                    color: #fff;
+                    padding-bottom: 10px;
+                }
+                #APIConfig .config_var {
+                    display: flex;
+                    justify-content: space-between;
+                    padding: 8px 0;
+                }
+                #APIConfig .config_var input {
+                    width: 60%;
+                    padding: 4px;
+                }
+            `,
+            events: {
+                open: function(doc) {
+                    console.log('Settings panel opened');
+
+                    // Apply styles directly to the iframe (this.frame)
+                    let style = this.frame.style;
+                    style.width = "500px"; // Adjust the width of the iframe
+                    style.height = "400px"; // Adjust the height of the iframe
+                    style.top = "10%"; // Adjust the top position as needed
+                    style.left = "50%"; // Center horizontally
+                    style.transform = "translateX(-50%)"; // Horizontal centering with transform
+                    style.borderRadius = "10px"; // Adds border radius
+                    style.boxShadow = "0 0 10px rgba(0, 0, 0, 0.5)"; // Apply a shadow to the iframe
+                    style.backgroundColor = "#333"; // Ensure the background is dark
+                    style.position = "fixed"; // Fixed positioning to keep it in place
+                },
+                save: function() {
+                    console.log('Saving settings...');
+                    const fields = GM_config.fields;
+                    for (const field in fields) {
+                        if (fields.hasOwnProperty(field)) {
+                            const value = GM_config.get(field);
+                            GM_setValue(field, value);
+                        }
+                    }
+                }
+            }
+        });
+
+        // Register the menu command to open the settings panel
+        GM_registerMenuCommand('Configure API & Cache Settings', () => { GM_config.open(); });
+    }
 
     const opsApiUrl = 'https://orpheus.network/ajax.php?action=torrent&id=';
     const redApiUrl = 'https://redacted.ch/ajax.php?action=artist&artistreleases=1&artistname=';
 
-    const CACHE_EXPIRY_TIME = 7 * 24 * 60 * 60 * 1000; // 1 week in milliseconds
+    const OPS_API_KEY = GM_getValue('OPS_API_KEY');
+    const RED_API_KEY = GM_getValue('RED_API_KEY');
+    const sizeMatching = GM_getValue('sizeMatching', 0);
+    const CACHE_EXPIRY_DAYS = GM_getValue('CACHE_EXPIRY_TIME', 7); // Default to 7 days
+    const CACHE_EXPIRY_TIME = CACHE_EXPIRY_DAYS * 24 * 60 * 60 * 1000; // Convert days to milliseconds
     const OPS_RATE_LIMIT = 5; // Max 5 requests per 10 seconds
     const OPS_RATE_INTERVAL = 10000; // 10 seconds
 
@@ -121,7 +218,7 @@
                     onload: (res) => {
                         if (res.status === 200) {
                             const responseJson = JSON.parse(res.responseText);
-                            //console.log("OPS API Data:", responseJson);
+                            console.log("OPS API Data:", responseJson);
                             setCache(cacheKey, responseJson);
                             resolve(responseJson);
                         } else {
@@ -171,7 +268,7 @@
     };
 
     function createMatchHtml(torrent) {
-        const { leechers, seeders, snatched, size, media, format, encoding, scene, logScore, hasCue, groupId, id, remasterRecordLabelAppended, fileCountAppended, sizeToleranceAppended } = torrent;
+        const { leechers, seeders, snatched, size, media, format, encoding, scene, logScore, hasCue, groupId, id, remasterRecordLabelAppended, fileCountAppended, sizeToleranceAppended, isFreeload, freeTorrent, isNeutralleech } = torrent;
 
         let sizeDisplay;
         if (size >= 1024 ** 3) {
@@ -196,7 +293,7 @@
             torrentDetails += ` / (RED label) ${remasterRecordLabelAppended}`;
         }
         if (fileCountAppended) {
-            torrentDetails += ` / (RED file count) ${fileCountAppended}`;
+            torrentDetails += ` / ${fileCountAppended}`;
         }
         if (sizeToleranceAppended) {
             torrentDetails += ` / ${sizeToleranceAppended}`;
@@ -208,13 +305,23 @@
         // Construct the download link for RED API call
         const downloadUrl = `https://redacted.ch/ajax.php?action=download&id=${id}`;
 
+        // Determine which label to show based on freeload, freeTorrent, or neutral leech
+        let leechLabel = '';
+        if (isFreeload) {
+            leechLabel = '<strong class="torrent_label tooltip tl_free" title="Freeload!" style="white-space: nowrap;">Freeload!</strong>';
+        } else if (freeTorrent) {
+            leechLabel = '<strong class="torrent_label tooltip tl_free" title="Freeleech!" style="white-space: nowrap;">Freeleech!</strong>';
+        } else if (isNeutralleech) {
+            leechLabel = '<strong class="torrent_label tooltip tl_neutral" title="Neutral Leech!" style="white-space: nowrap;">Neutral Leech!</strong>';
+        }
+
         // Returning the content inside the <tr> that matches the current HTML structure
         return `
             <td class="td_info" colspan="1">
                 <span class="torrent_links_block">
                     [ <a href="#" class="dl-link" data-id="${id}" title="Download">DL</a> ]
                 </span>
-                <a href="${torrentLink}" target="_blank">▶ [${torrentDetails}]</a>
+                <a href="${torrentLink}" target="_blank">▶ [${torrentDetails}] ${leechLabel}</a>
             </td>
             <td class="number_column td_size nobr">${sizeDisplay}</td>
             <td class="number_column m_td_right td_snatched">${snatched}</td>
@@ -325,11 +432,11 @@
                 const fileCountMatch = torrent.fileCount === opsTorrent.fileCount;
 
                 const allPropsMatch = (
-                    (!torrent.media || normalize(torrent.media) === normalize(opsTorrent.media)) &&
-                    (!torrent.format || normalize(torrent.format) === normalize(opsTorrent.format)) &&
-                    (!torrent.encoding || normalize(torrent.encoding) === normalize(opsTorrent.encoding)) &&
-                    (!torrent.remasterTitle || normalize(torrent.remasterTitle) === normalize(opsTorrent.remasterTitle)) &&
-                    (!torrent.remasterYear || torrent.remasterYear === opsTorrent.remasterYear)
+                    (!torrent.media || !opsTorrent.media || normalize(torrent.media) === normalize(opsTorrent.media)) &&
+                    (!torrent.format || !opsTorrent.format || normalize(torrent.format) === normalize(opsTorrent.format)) &&
+                    (!torrent.encoding || !opsTorrent.encoding || normalize(torrent.encoding) === normalize(opsTorrent.encoding)) &&
+                    (!torrent.remasterTitle || !opsTorrent.remasterTitle || normalize(torrent.remasterTitle) === normalize(opsTorrent.remasterTitle)) &&
+                    (!torrent.remasterYear || !opsTorrent.remasterYear || torrent.remasterYear === opsTorrent.remasterYear)
                 );
 
                 // Allow mismatch in remasterRecordLabel, fileCount, or size tolerance but append the differences
@@ -342,7 +449,7 @@
                         torrent.remasterRecordLabelAppended = torrent.remasterRecordLabel; // Append remasterRecordLabel
                     }
                     if (fileCountMismatch) {
-                        torrent.fileCountAppended = `FileCount: ${torrent.fileCount}`; // Append fileCount from RED API
+                        torrent.fileCountAppended = `RED FileCount: ${torrent.fileCount}`; // Append fileCount from RED API
                     }
                     if (sizeToleranceMatch) {
                         const sizeDifferenceMiB = Math.abs(torrent.size - opsTorrent.size) / (1024 ** 2); // Calculate size difference in MiB
@@ -402,6 +509,7 @@
     // Helper function to extract torrent ID from anchor tag
     function extractTorrentId(groupInfo) {
         const match = groupInfo.querySelector('a[href*="torrentid"]');
+        createSettingsMenu();
         if (match) {
             //console.log("Match found:", match.href);
             const torrentId = match.href.match(/torrentid=(\d+)/);
