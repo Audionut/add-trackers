@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OPS - add RED releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0
+// @version      1.1
 // @description  Add releases from RED to OPS
 // @author       Audionut
 // @match        https://orpheus.network/torrents.php?id=*
@@ -22,6 +22,9 @@
     // Replace with your actual API keys
     const OPS_API_KEY = '';
     const RED_API_KEY = '';
+
+    // Set the allowed difference in size in MiB that will be displayed
+    const sizeMatching = 0;
 
     const opsApiUrl = 'https://orpheus.network/ajax.php?action=torrent&id=';
     const redApiUrl = 'https://redacted.ch/ajax.php?action=artist&artistreleases=1&artistname=';
@@ -167,9 +170,9 @@
         });
     };
 
-    // Function to create the exact match HTML with the DL link triggering a redApiRequest
     function createMatchHtml(torrent) {
-        const { leechers, seeders, snatched, size, media, format, encoding, scene, logScore, hasCue, groupId, id } = torrent;
+        const { leechers, seeders, snatched, size, media, format, encoding, scene, logScore, hasCue, groupId, id, remasterRecordLabelAppended, fileCountAppended, sizeToleranceAppended } = torrent;
+
         let sizeDisplay;
         if (size >= 1024 ** 3) {
             sizeDisplay = (size / (1024 ** 3)).toFixed(2) + ' GiB'; // Convert to GiB if size >= 1 GiB
@@ -188,6 +191,15 @@
         }
         if (hasCue) {
             torrentDetails += ` / Cue`;
+        }
+        if (remasterRecordLabelAppended) {
+            torrentDetails += ` / (RED label) ${remasterRecordLabelAppended}`;
+        }
+        if (fileCountAppended) {
+            torrentDetails += ` / (RED file count) ${fileCountAppended}`;
+        }
+        if (sizeToleranceAppended) {
+            torrentDetails += ` / ${sizeToleranceAppended}`;
         }
 
         // Construct the correct link for the torrent
@@ -309,29 +321,44 @@
             group.torrent.forEach(torrent => {
                 const exactSizeMatch = torrent.size === opsTorrent.size;
                 const sizeDifference = Math.abs(torrent.size - opsTorrent.size);
-                const sizeTolerance = 1024 * 1024 * 10; // 10 MiB tolerance for size differences
+                const sizeTolerance = 1024 * 1024 * sizeMatching;
+                const fileCountMatch = torrent.fileCount === opsTorrent.fileCount;
 
                 const allPropsMatch = (
                     (!torrent.media || normalize(torrent.media) === normalize(opsTorrent.media)) &&
                     (!torrent.format || normalize(torrent.format) === normalize(opsTorrent.format)) &&
                     (!torrent.encoding || normalize(torrent.encoding) === normalize(opsTorrent.encoding)) &&
-                    (!torrent.remasterRecordLabel || normalize(torrent.remasterRecordLabel).includes(normalize(opsTorrent.remasterRecordLabel))) &&
                     (!torrent.remasterTitle || normalize(torrent.remasterTitle) === normalize(opsTorrent.remasterTitle)) &&
                     (!torrent.remasterYear || torrent.remasterYear === opsTorrent.remasterYear)
                 );
 
-                if (allPropsMatch && exactSizeMatch) {
+                // Allow mismatch in remasterRecordLabel, fileCount, or size tolerance but append the differences
+                let labelMismatch = !normalize(torrent.remasterRecordLabel).includes(normalize(opsTorrent.remasterRecordLabel));
+                let fileCountMismatch = torrent.fileCount !== opsTorrent.fileCount;
+                let sizeToleranceMatch = sizeDifference < sizeTolerance && !exactSizeMatch;
+
+                if (allPropsMatch && (exactSizeMatch || sizeToleranceMatch)) {
+                    if (labelMismatch && torrent.remasterRecordLabel) {
+                        torrent.remasterRecordLabelAppended = torrent.remasterRecordLabel; // Append remasterRecordLabel
+                    }
+                    if (fileCountMismatch) {
+                        torrent.fileCountAppended = `FileCount: ${torrent.fileCount}`; // Append fileCount from RED API
+                    }
+                    if (sizeToleranceMatch) {
+                        const sizeDifferenceMiB = Math.abs(torrent.size - opsTorrent.size) / (1024 ** 2); // Calculate size difference in MiB
+                        torrent.sizeToleranceAppended = `SizeDifference: ${sizeDifferenceMiB.toFixed(2)} MiB`; // Append size difference
+                    }
+
                     appendMatchHtml(opsTorrent.id, torrent);
                     exactMatches.push(torrent);
-                    //console.log("Exact size torrent match found!", exactSizeMatch);
                 } else if (allPropsMatch && sizeDifference < sizeTolerance) {
                     toleranceMatches.push(torrent);
-                    //console.log("Torrent match found within size tolerance!");
                 } else {
-                    //console.log("No torrent match for this group.");
+                    unmatchedRedTorrents.push(group);
                 }
             });
         });
+
         if (exactMatches.length > 0 || toleranceMatches.length > 0) {
             return {
                 exactMatches,
@@ -339,7 +366,6 @@
             };
         }
 
-        //console.log("No matching torrent found.");
         return null;
     }
 
