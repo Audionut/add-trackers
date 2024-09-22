@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.6
+// @version      1.0.7
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -27,16 +27,39 @@
     const SHOW_SOUNDTRACKS = true; // Change to false to hide soundtracks data
     const CACHE_EXPIRY_DAYS = 7; // Default to 7 days of API cache
 
-    // Function to format the IMDb text
-    function formatIMDbText() {
-        // Find the element containing the IMDb text
-        var imdbElement = document.querySelector('div.box_tags .panel__heading__title');
+    // order of the panels in the sidebar
+    const techspecsLocation = 1;
+    const boxofficeLocation = 2;
+    const awardsLocation = 3;
+    // move the existing tags html element
+    const existingIMDBtags = 5;
+    // only if displaying in sidebar
+    const similarmoviesLocation = 4;
 
-        if (imdbElement) {
-            // Create the new formatted HTML
+    // Function to format and move the IMDb panel
+    function formatIMDbText() {
+        // Find the entire IMDb panel container
+        var imdbPanel = document.querySelector('div.box_tags.panel');
+        var sidebar = document.querySelector('div.sidebar');
+
+        if (!sidebar) {
+            console.error("Sidebar not found");
+            return;
+        }
+
+        if (imdbPanel) {
+            // Find the panel heading inside the IMDb panel
+            var imdbElement = imdbPanel.querySelector('.panel__heading__title');
+
+            // Create the new formatted HTML for the heading
             var formattedHTML = '<span class="panel__heading__title"><span style="color: rgb(242, 219, 131);">IMDb</span> tags</span>';
             // Set the inner HTML of the element to the formatted HTML
-            imdbElement.innerHTML = formattedHTML;
+            if (imdbElement) {
+                imdbElement.innerHTML = formattedHTML;
+            }
+
+            // Move the entire IMDb panel to the new location within the sidebar
+            sidebar.insertBefore(imdbPanel, sidebar.childNodes[3 + existingIMDBtags]);
         }
     }
     // Run the function when the DOM is fully loaded
@@ -634,7 +657,7 @@
                     console.error("Sidebar not found");
                     return;
                 }
-                sidebar.insertBefore(newPanel, sidebar.childNodes[4]);
+                sidebar.insertBefore(newPanel, sidebar.childNodes[3 + similarmoviesLocation]);
                 displayMethod = 'flex';
 
                 toggle.textContent = 'Toggle';
@@ -792,7 +815,7 @@
             console.error("Sidebar not found");
             return;
         }
-        sidebar.insertBefore(newPanel, sidebar.childNodes[4]);
+        sidebar.insertBefore(newPanel, sidebar.childNodes[3 + techspecsLocation]);
 
         const specs = data.data.title.technicalSpecifications || {};
         const runtimes = data.data.title.runtimes?.edges || [];
@@ -904,7 +927,7 @@
             console.error("Sidebar not found");
             return;
         }
-        sidebar.insertBefore(newPanel, sidebar.childNodes[4]);
+        sidebar.insertBefore(newPanel, sidebar.childNodes[3 + boxofficeLocation]);
 
         const titleData = data.data.title || {};
         const panelBodyElement = document.getElementById('box_office').querySelector('.panel__body');
@@ -1048,13 +1071,19 @@
             </div>`;
         aDiv.appendChild(awardsContent);
 
-        const awardsBefore = document.querySelector('div.box_albumart');
+        //const awardsBefore = document.querySelector('div.box_albumart');
 
-        if (awardsBefore && awardsBefore.nextElementSibling) {
-            const nextSibling = awardsBefore.nextElementSibling;
+        //if (awardsBefore && awardsBefore.nextElementSibling) {
+        //    const nextSibling = awardsBefore.nextElementSibling;
             // Append the awards panel after the next sibling div
-            nextSibling.parentNode.insertBefore(aDiv, nextSibling.nextElementSibling);
+        //    nextSibling.parentNode.insertBefore(aDiv, nextSibling.nextElementSibling);
+        //}
+        var sidebar = document.querySelector('div.sidebar');
+        if (!sidebar) {
+            console.error("Sidebar not found");
+            return;
         }
+        sidebar.insertBefore(aDiv, sidebar.childNodes[3 + awardsLocation]);
     };
 
     const appendSongs = (songs, idToNameMap) => {
