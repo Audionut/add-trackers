@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OPS - add RED releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.2
+// @version      1.3
 // @description  Add releases from RED to OPS
 // @author       Audionut
 // @match        https://orpheus.network/torrents.php?id=*
@@ -137,7 +137,11 @@
     // Function to compress and cache data
     const setCache = (key, data) => {
         try {
-            const stringData = JSON.stringify(data);
+            const cacheData = {
+                timestamp: Date.now(), // Store the current time
+                data: data
+            };
+            const stringData = JSON.stringify(cacheData);
             const compressedData = LZString.compress(stringData);
             GM_setValue(key, compressedData);
             //console.log(`Data compressed and cached under key: ${key}`);
@@ -153,7 +157,17 @@
             try {
                 const decompressedData = LZString.decompress(compressedData);
                 if (decompressedData) {
-                    return JSON.parse(decompressedData);
+                    const cacheData = JSON.parse(decompressedData);
+
+                    // Check if the cache is expired
+                    const currentTime = Date.now();
+                    if (currentTime - cacheData.timestamp > CACHE_EXPIRY_TIME) {
+                        console.log(`Cache expired for key: ${key}`);
+                        GM_deleteValue(key); // Delete expired cache
+                        return null; // Return null if expired
+                    }
+
+                    return cacheData.data; // Return the cached data if still valid
                 } else {
                     //console.warn(`Data for key ${key} was not properly compressed or decompressed.`);
                     return null;
@@ -218,7 +232,7 @@
                     onload: (res) => {
                         if (res.status === 200) {
                             const responseJson = JSON.parse(res.responseText);
-                            console.log("OPS API Data:", responseJson);
+                            //console.log("OPS API Data:", responseJson);
                             setCache(cacheKey, responseJson);
                             resolve(responseJson);
                         } else {
