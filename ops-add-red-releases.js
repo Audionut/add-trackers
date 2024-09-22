@@ -371,21 +371,33 @@
         }
     });
 
-    // Function to insert the exact match HTML under the matched torrent ID as a new row
+    // Function to insert the exact match HTML under the hidden row after the matched torrent ID
     function appendMatchHtml(torrentId, exactMatch) {
         const torrentRow = document.getElementById(`torrent${torrentId}`);
+
         if (torrentRow) {
             const matchHtml = createMatchHtml(exactMatch);
 
-            // Create a new <tr> element for the match
-            const matchRow = document.createElement('tr');
-            matchRow.id = `torrent${torrentId}`;
-            matchRow.classList.add('torrent_row', 'exact_match_row', 'group_torrent');
-            matchRow.style.fontWeight = 'normal';
-            matchRow.innerHTML = matchHtml;
+            // Locate the next hidden row after the current torrent row
+            let hiddenRow = torrentRow.nextElementSibling;
 
-            // Insert the new row after the current torrent row
-            torrentRow.parentNode.insertBefore(matchRow, torrentRow.nextSibling);
+            // Check if the hidden row has a specific class or attribute that identifies it
+            while (hiddenRow && !hiddenRow.id.includes(`torrent_${torrentId}`)) {
+                hiddenRow = hiddenRow.nextElementSibling;
+            }
+
+            if (hiddenRow) {
+                // Append the exact match HTML inside the hidden row
+                const matchRow = document.createElement('tr');
+                matchRow.id = `torrent${torrentId}_match`; // Give the new row a unique ID
+                matchRow.classList.add('torrent_row', 'exact_match_row', 'group_torrent');
+                matchRow.style.fontWeight = 'normal';
+                matchRow.innerHTML = matchHtml;
+
+                hiddenRow.parentNode.insertBefore(matchRow, hiddenRow.nextSibling);
+            } else {
+                console.warn(`No hidden row found for torrent ID: ${torrentId}`);
+            }
         } else {
             console.warn(`No element found for torrent ID: ${torrentId}`);
         }
