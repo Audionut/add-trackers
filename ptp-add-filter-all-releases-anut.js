@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.2.6-A
+// @version      4.2.7-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -3688,66 +3688,70 @@ function toUnixTime(dateString) {
             }
             else if (tracker === "RED") {
                 try {
-                    torrent_objs = postData.response.results.map((d) => {
-                        return d.torrents.map((torrent) => {
-                            const sizeInMiB = parseInt(torrent.size / (1024 * 1024)); // Convert size to MiB
-                            const api_size = parseInt(torrent.size); // Original size in bytes
+                    // Extract the year from the current HTML page
+                    let name_url = document.querySelector("h2.page__title").textContent.trim();
+                    let yearMatch = name_url.match(/\[\d{4}\]/);
+                    let pageYear = yearMatch ? parseInt(yearMatch[0].replace(/\[|\]/g, '')) : null;
 
-                            const inputTime = torrent.time;
+                    // Check if a valid year was extracted from the page
+                    if (!pageYear) {
+                        console.error("No valid year found in page title");
+                        return [];
+                    }
 
-                            let time = toUnixTime(inputTime);
-                            if (isNaN(time)) {
-                                return null;
-                            }
-                            let media;
-                            if (torrent.media === "WEB") {
-                                media = null;
-                            } else {
-                                media = torrent.media;
-                            }
-                            let infoText;
-                            if (improved_tags) {
-                                  infoText = "";
-                            } else {
-                                  infoText = `${torrent.media} / ${torrent.format} / ${torrent.encoding}`;
-                            }
+                    // Filter the results to match the extracted year
+                    torrent_objs = postData.response.results
+                        .filter(d => d.groupYear === pageYear)
+                        .map((d) => {
+                            return d.torrents.map((torrent) => {
+                                const sizeInMiB = parseInt(torrent.size / (1024 * 1024));
+                                const api_size = parseInt(torrent.size);
 
-                            const groupId = d.groupId;
-                            const Id = torrent.torrentId;
-                            const torrentLink = `https://redacted.ch/torrents.php?id=${groupId}&torrentid=${Id}#torrent${Id}`;
-                            const downloadUrl = `https://redacted.ch/ajax.php?action=download&id=${Id}`;
+                                const inputTime = torrent.time;
+                                let time = toUnixTime(inputTime);
+                                if (isNaN(time)) {
+                                    return null;
+                                }
 
-                            // Construct the torrent object
-                            const torrentObj = {
-                                api_size: api_size,
-                                datasetRelease: d.groupName,  // Using group name for the release name
-                                size: sizeInMiB,
-                                info_text: infoText, // Example of remaster title
-                                tracker: tracker,
-                                site: tracker,
-                                snatch: torrent.snatches || 0,
-                                seed: torrent.seeders || 0,
-                                leech: torrent.leechers || 0,
-                                download_link: `https://redacted.ch/download/${Id}`,
-                                torrent_page: torrentLink || "",
-                                discount: torrent.isFreeleech ? "Freeleech" : "None",
-                                status: "default",
-                                groupId: d.groupName,
-                                time: time,
-                                quality: "Soundtrack",
-                                media: torrent.media,
-                                format: torrent.format,
-                                encoding: torrent.encoding,
-                                title: torrent.remasterTitle,
-                                year: torrent.remasterYear,
-                                log: torrent.logScore,
-                                cue: torrent.hasCue,
-                                redId: `${Id}`,
-                            };
+                                let media = (torrent.media === "WEB") ? null : torrent.media;
+                                let infoText = improved_tags ? "" : `${torrent.media} / ${torrent.format} / ${torrent.encoding}`;
 
-                            return torrentObj;
-                        });
-                    }).flat().filter(obj => obj !== null); // Flatten the arrays and filter out any null objects
+                                const groupId = d.groupId;
+                                const Id = torrent.torrentId;
+                                const torrentLink = `https://redacted.ch/torrents.php?id=${groupId}&torrentid=${Id}#torrent${Id}`;
+                                const downloadUrl = `https://redacted.ch/ajax.php?action=download&id=${Id}`;
+
+                                // Construct the torrent object
+                                const torrentObj = {
+                                    api_size: api_size,
+                                    datasetRelease: d.groupName,
+                                    size: sizeInMiB,
+                                    info_text: infoText,
+                                    tracker: tracker,
+                                    site: tracker,
+                                    snatch: torrent.snatches || 0,
+                                    seed: torrent.seeders || 0,
+                                    leech: torrent.leechers || 0,
+                                    download_link: `https://redacted.ch/download/${Id}`,
+                                    torrent_page: torrentLink || "",
+                                    discount: torrent.isFreeleech ? "Freeleech" : "None",
+                                    status: "default",
+                                    groupId: d.groupName,
+                                    time: time,
+                                    quality: "Soundtrack",
+                                    media: torrent.media,
+                                    format: torrent.format,
+                                    encoding: torrent.encoding,
+                                    title: torrent.remasterTitle,
+                                    year: torrent.remasterYear,
+                                    log: torrent.logScore,
+                                    cue: torrent.hasCue,
+                                    redId: `${Id}`,
+                                };
+
+                                return torrentObj;
+                            });
+                        }).flat().filter(obj => obj !== null); // Flatten the arrays and filter out any null objects
                 } catch (error) {
                     console.error("An error occurred while processing RED tracker:", error);
                 }
