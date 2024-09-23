@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.2.7-A
+// @version      4.2.8-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -62,6 +62,8 @@
         "nbl_api": {"label": "NBL_API_TOKEN", "type": "text", "default": ""},
         "oe": {"label": "OE *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "oe_api": {"label": "OE_API_TOKEN", "type": "text", "default": ""},
+        "ops": {"label": "OPS *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
+        "ops_api": {"label": "OPS_API_TOKEN", "type": "text", "default": ""},
         "phd": {"label": "PHD *", "type": "checkbox", "default": false, "tooltip": "Enter needed details below. PID can be found on your profile page"},
         "phd_user": {"label": "PHD Username", "type": "text", "default": ""},
         "phd_pass": {"label": "PHD Password", "type": "text", "default": ""},
@@ -212,6 +214,7 @@
                     "nbl": GM_config.fields.nbl.node,
                     "huno": GM_config.fields.huno.node,
                     "oe": GM_config.fields.oe.node,
+                    "ops": GM_config.fields.ops.node,
                     "phd": GM_config.fields.phd.node,
                     "red": GM_config.fields.red.node,
                     "rfx": GM_config.fields.rfx.node,
@@ -290,6 +293,7 @@
             "MTeam": GM_config.get("MTeam"),
             "IFL": GM_config.get("ifl"),
             "RED": GM_config.get("red"),
+            "OPS": GM_config.get("ops"),
         };
 
         const movie_only_dict = {};
@@ -389,6 +393,7 @@
     const MTeam_API_TOKEN = GM_config.get("MTeam_api");
     const IFL_API_TOKEN = GM_config.get("ifl_api");
     const RED_API_TOKEN = GM_config.get("red_api");
+    const OPS_API_TOKEN = GM_config.get("ops_api");
 
     // We need to use XML response with TVV and have to define some parameters for it to work correctly.
     const TVV_AUTH_KEY = GM_config.get("tvv_auth"); // If you want to use TVV - find your authkey from a torrent download link
@@ -729,7 +734,8 @@ function toUnixTime(dateString) {
             "TL": " data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAABj1BMVEUUJg4TJgwUJw4UHg8TMQ0UHA4JHQJgbVyxt69OXEoIHAMTJg0UJQ4UIw4RZQgPhwYSRgsVIA8HHAI2RzH////z9PMeMBgJHQMVGw8RWwkMygAMzgANsgETLA0VIg8VKA8ADABMW0gsPScABwATFg4RdgcNwQANwgATPQwUHw8UJw4KHgYnOCO2vLS3vbVibl4MEAYOcAQMywANvQATOwwLHwXKzsj+/v5SUE4AYgAMHwbQ1M5WVFMAYQAJHQUuPyq+w73Bxr9uemsNEQcNbwRJWEUsPSYACAASFg0RcgcDFwBWZFIFGQAUGA8QcgcTJw0DGABYZlQ5SjUHGgA1RjAVGA9baFcvQCoACQATFw4RcwcTLw0VGg8UKA5JWETP085mcmIKDgUOcgQMzAANvwANwAAPewYUIg8NIAYTJg7r7Oo6PTUDTAAMzQAM1AAPjQQVHw8EGABHVkPy8/IuPCkIGAMOjQQMxwANxgAMzwAPigUBFgAmOCCCjH+or6ZTYE4UIQ0UIg4RWgkPgQYQdwaTMbSlAAAABnRSTlN+/f39/X4wlRL+AAAA3ElEQVR4nGNgYGRj5+Dk4ubh5eMXEGRiYGASEhYRERUTl5CUkpaRlWNikFdQFBERUVJWUZVWU9fQ1GLQ1tEFCujpGxgaqRmbAAVMzUREzIFCFpZQAStrEXOQgI0tVMDO3gHIdXRydoEKyCu4AgXc3D08oQJaXt5AAWEfXz+ogH9AIFAgKBhNIMQnFCbA7RUGFAiPiIwyUjeOjoll0PKJAwrEJyQmJaekpsmmM8RmZGYBRUSyc3LVjPPyCxiYtAqLioGOLSktK6+orGIGeje2uqa2rp6robGpuYWFFQA5mzPC0wEkIAAAAABJRU5ErkJggg==",
             "MTeam": " data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAKHSURBVEhLY5QU4cxnY2XKZmFmZGOgIvj5+983ZibGZkY9dcGPxxb68gHF/jMxMTKCJP/9+0+QDQLY5GD07z//GDT911xl4uZgYQcKgDVQE7CyMDEAQ4WdCcQB2QqjiWXjkkMXA1sA8yaIJpaNSw5DDERgs5kQG5ccuhh9fEBLgDeIPn7+9f/T198Y4sj8P3/+ocjBaBgbaxB9//mXIaXh8F8N/zU7gGl5W2Ldob9AMRQ1959+ZvTP2/1DyWvlCeu4Le8OnnlBfBB1zL3IsP/k8+iPX357AbHPrmPPQptnnge7CARAmSi0eN+rS/ff6b758Mvq0et3ylHl+48/fPYFqgIBsFqw68SzNy/f/1gD5TJ8/PJrw+4TT19CuQxX7rwHiS16/frnXRD/PZDLzMLYt+PoE7A8MsAaBxJC7LxK4twiIDEQkOLlFZYQ4uQHsUHy3Jws///+/S8IloSC/wyMgtxcrMTFQXmSAfuH77/Xyohx60qKcBl/Z/i5tjJFnxOmRlWOj9FcVzRGSpQr3hhYKkiIcNgL8bI3+jvIERcHFnqiDLtnedrwcLOeM9QUOr1rloe9jZEEVJaBgRGod2GbPXtqsPr8i8yMb4OcFQ7snuUhycvNClWBAFiDCMRWV+D/ryLLy+xlK8ugqSiAkhRBmI2F6X9mmAawQGPiqUox+C8mxIHVHKxBhCSGVRyZDwQgDyHrQVUPImgJcAYRlMYqjswHgv9AFrIeFPWjQQQC+IPo18+/v5G9iOxNIIVVHJkPBFiDCGg6sAHA8JtRgI+tXl6Kp5CTnZkdJIkMbj/8+ESAh01EVJiTAyqEAv7++f//4s1394AtEyUWFtSWw5cvf76+/fizEgAAzycMc0THjAAAAABJRU5ErkJggg==",
             "IFL": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB8AAAAQCAYAAADu+KTsAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAE1UlEQVQ4jYWVW2xUZRDHf3PO6dlz2m2XUqDlLndCC0EUBASjMYQAESWhfTAKkURIjCZogjceODwY1IgkRmM0IUBiNK4mXhA0NHLRoEAwhksBKbe2W0opvW23u93bGR92C62gfsl5OZnfzHzf/GcG/ucoGApy+8chtf7DWvKM5LnBrHrGQGtBVRDRijd0eEIZZxSTFBeVYvzJLs2nfudN38UMhPi1LMgv116Wrn6m38l9njolRZinNkm8bIfO7w0yW0OEZChxo5xIUQVn24ZLvYAOZC22UgCketIsSZi8qz7NQMI0SEens8Y/zsi0wZNpn9Vx5UzJHv24W+QnURW2YuJJpi3G6uY+nnO26amUsAiTuGETIUCvWlQlXRYG9WZdJcnv6kQ6+hOwAB8gGORYn0+Db9FNANtx+PTcg3Jj4lv6aleW95IuC5MBVvSYbAzt01IV+UIOKQpiG8xNm4xCsAscfhsSZPcIh0YjhLYPp7yzKDunl9jsSzSVzdQfdp4R6UQ9w2IGqiBOihezAVwC4DjU9jwtX0u9CpulFWgFzowP64HrwktRl5Wh09rFLNlf9ZEG/QjTsOnARiXAkMq5XDg8QfryVelUuBjSs+1RYssv075KVXcJWzGokewwT6elDJYX2JwuLGL/UJcPRVC2oKCCpwaeWg01cnV8OdvsQq7EClk2Ti9ObDpFpVpMNx1uuQ57XZcPIudRPDVQFVQNUdVuqap16K3ro2POKLaPQzzfAujNMg8bp7CIz7s2SK2Q11K/qDwU8AmreekRaRtbrzubS3i+hbInRizmsN/I62MqqD2/VjoEtLtfiV6+YdQzBPwR9By/Sd/cOP5UoMFQkIzFSArotm2uiqdCNYNa4vapkSyqRtMUuVwynB/TpMZGnzkysWezfHlhrbRLWA08vQe7RQFcojcNMskY6RCQD2KRwSZNIH/LSvRuB3e6FWAjHA3QfamXzKIKra0C0Brx8cT/N9AnJZCV3BgAQ0ALHK7hYCRtJoIoMwYMhkFhPQMRXarhoZ5IpozoPoj67VxeWqbvPF6qb69UEPSffI0BEMcf7YNTjNVx++alpZzA5mbCZsn6k1rQ/7x5wQjqGbnAnj9G351ylobZj+oup1nmRUpI7PeJVnSSWBEjveB+3RFCcnXOsWET+Sob1rAZI7vYgHgx1l+54GE1m9dJxC3i+3SAqZ9leHZZvQYQ8RHR3Of5Kp6O1u1TbxBf00ZiSYSuGaJKIR0t0Gf6EMvg2w0kqwAQL8/XZNfryYJ1XKlOkpnuEjjWKK+1oNWmxTlUVHngD3bXRQnFAyw+WExwmKaOutxoMbimSTpKi2mYFafzIRCziMDeS2z8ExFN6ftBC6PVxw9lUKeX1ML1+snxg6wc0sdVO8HV0Xs4sjBJ3wwX69wkRn+bq3hlbhH0j7sFTeqeTvFUopyZFN0KQCQL101ocaHVtMhcK6Vw7w3ZVCdKrrqAep4xZos7KkZmWoZs+QRW/XwRfSFDUwgiDtxKuXDiYcZ+c0DW9KIIkt9CAxNQkAkaK++mfVKSyLAMLVYBbbESoo0bmFfvyWOZQYsl72igvCZr/Zhm2udDY9aktXMI6fomeeV6brHcbX8nAb3Tp/nVOFi5Gjbv5hC02kQ9C60278n2C3DA+RutY1ISHJBJiwAAAABJRU5ErkJggg==",
-            "RED": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAABYlAAAWJQFJUiTwAAACF0lEQVQ4jZWSzUtUYRTGf+d+6TDKRDnUItq0aNEqWrRoo4sWbUKFEdxHQf9ArWoWbtq60vZFCSG0CwOToIwUEWQoUYQoaZww547OOOq9T4t7ZxoMiZ7N+573POfjec+BDkhy+AeOc7wOh5lZDLC9rVHgpudx3gwdHPDVjJnxcZ6bWZxyBWAAxaKcYtHicllnPY9pM7JHRzwLApYAHR5y2YxRM5AY7uuz75IcM4uRZJJsY0PdW1t6V6lo8qT2KxU9Lpc1v7ysbCvOAVwzk8TtRoNmPm93U6enQiFQoRBIciU5+bzdbzb5kTvNvVSC2+5gfV2vSyXdkGSzs/KOV5+akivJVj7r+uqa3rRsx8z09gMXd2pkymWWAKe/nwhAMCgYBBgZIQac/V1WajX8cxe4ZGZppSZe02ViYMB+tqeSBL4EJBg27JUZEVB9/1ETLZ4DMDfHmhm1zU2NKdQtAIKgNW8jyLgACo+GGg2N9fay//ABq219M3O6srikb2EoVXf0FKAoeYIhweCdBfkA9bpeSFLpi37Nz+tqe5G6AwIz9vb2CDMZqgCPkiWZBlgA/0mipVqtcugYu76P35YgIQlHwgfcjn9w1WGnPj/lqp0gJcdARHKm4okseWvhL44DEMU4QK6rix6JHk6AGT25HK7gVBQlsR5AI6SU7Way2eRaNsvCn6YS1GrJPY75VK9zRjGLYUjppEL/hd9J+SWd+NGkdgAAAABJRU5ErkJggg=="
+            "RED": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAABYlAAAWJQFJUiTwAAACF0lEQVQ4jZWSzUtUYRTGf+d+6TDKRDnUItq0aNEqWrRoo4sWbUKFEdxHQf9ArWoWbtq60vZFCSG0CwOToIwUEWQoUYQoaZww547OOOq9T4t7ZxoMiZ7N+573POfjec+BDkhy+AeOc7wOh5lZDLC9rVHgpudx3gwdHPDVjJnxcZ6bWZxyBWAAxaKcYtHicllnPY9pM7JHRzwLApYAHR5y2YxRM5AY7uuz75IcM4uRZJJsY0PdW1t6V6lo8qT2KxU9Lpc1v7ysbCvOAVwzk8TtRoNmPm93U6enQiFQoRBIciU5+bzdbzb5kTvNvVSC2+5gfV2vSyXdkGSzs/KOV5+akivJVj7r+uqa3rRsx8z09gMXd2pkymWWAKe/nwhAMCgYBBgZIQac/V1WajX8cxe4ZGZppSZe02ViYMB+tqeSBL4EJBg27JUZEVB9/1ETLZ4DMDfHmhm1zU2NKdQtAIKgNW8jyLgACo+GGg2N9fay//ABq219M3O6srikb2EoVXf0FKAoeYIhweCdBfkA9bpeSFLpi37Nz+tqe5G6AwIz9vb2CDMZqgCPkiWZBlgA/0mipVqtcugYu76P35YgIQlHwgfcjn9w1WGnPj/lqp0gJcdARHKm4okseWvhL44DEMU4QK6rix6JHk6AGT25HK7gVBQlsR5AI6SU7Way2eRaNsvCn6YS1GrJPY75VK9zRjGLYUjppEL/hd9J+SWd+NGkdgAAAABJRU5ErkJggg==",
+            "OPS": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAwAAAAMCAYAAABWdVznAAAACXBIWXMAABYlAAAWJQFJUiTwAAAA60lEQVQokY3Qu06bURCF0bXNb6xgJbiwokQJFZEoUuYteGBqHgCqVPQE5AKEAHGxSSbNGOhgyjlzvn3hnVNVgbxajLCFOb5hG39xhpMky6pK+niCr/iOn5hi2awxFjhIcpWq2sBOk3+gcIyrVpr3+xkOh15+auoDjpKctvJTA57wEXsDvrzKssD5OiBu29IK15gNHTS4a4XnIpr+AQNuYITLlpu09DRJJaku4nN/vMdiwEnb2sUGUlVjzPCrFa/b3vm61hn2m7ZqO5tt8zdOsUjymKpKkqqqTey1jVFT/+ACd0n+vSR7aeXN+Q8e8lc4WzpijAAAAABJRU5ErkJggg=="
         };
 
         const get_tracker_icon = (tracker) => {
@@ -765,7 +771,8 @@ function toUnixTime(dateString) {
               (tracker === "TL") ||
               (tracker === "FL") ||
               (tracker === "MTeam") ||
-              (tracker === "RED")
+              (tracker === "RED") ||
+              (tracker === "OPS")
               ) {
                 return true;
             } else {
@@ -1766,6 +1773,10 @@ function toUnixTime(dateString) {
                     'Content-Type': 'application/json',
                     'Authorization': GM_config.get("red_api"),
                 },
+                'OPS': {
+                    'Content-Type': 'application/json',
+                    'Authorization': GM_config.get("ops_api"),
+                },
                 // Add more trackers and their headers as needed
             };
 
@@ -1785,6 +1796,7 @@ function toUnixTime(dateString) {
                 'TL': 'GET',
                 'FL': 'GET',
                 'RED': 'GET',
+                'OPS': 'GET',
             };
             const method = methodMapping[tracker] || 'POST';
 
@@ -2004,6 +2016,16 @@ function toUnixTime(dateString) {
             });
         };
 
+        let name_url = document.querySelector("h2.page__title").textContent.trim();
+        let yearMatch = name_url.match(/\[\d{4}\]/);
+        let pageYear = yearMatch ? parseInt(yearMatch[0].replace(/\[|\]/g, '')) : null;
+
+        // Check if a valid year was extracted from the page
+        if (!pageYear) {
+            console.error("No valid year found in page title");
+            return [];
+        }
+
         const fetch_tracker = async (tracker, imdb_id, show_name, show_nbl_name, red_name, tvdbId, tvmazeId, timeout = timer, retryCount = 0) => {
             return new Promise(async (resolve, reject) => {
                 const timer = setTimeout(() => {
@@ -2204,7 +2226,12 @@ function toUnixTime(dateString) {
                 else if (tracker === "RED") {
                     const releasetype = "Soundtrack";
                     const page = 1;
-                    post_query_url = `https://redacted.ch/ajax.php?action=browse&searchstr=${encodeURIComponent(red_name)}&releasetype=${releasetype}&page=${page}`;
+                    post_query_url = `https://redacted.ch/ajax.php?action=browse&searchstr=${encodeURIComponent(red_name)}&releasetype=${releasetype}&year=${pageYear}&page=${page}`;
+                }
+                else if (tracker === "OPS") {
+                    const releasetype = "Soundtrack";
+                    const page = 1;
+                    post_query_url = `https://orpheus.network/ajax.php?action=browse&searchstr=${encodeURIComponent(red_name)}&releasetype=${releasetype}&year=${pageYear}`;
                 }
                 else if (tracker === "PTP") {
                     query_url = "https://passthepopcorn.me/torrents.php?imdb=" + imdb_id;
@@ -2348,6 +2375,14 @@ function toUnixTime(dateString) {
                                     } else if (result && tracker === "RED") {
                                         if (result.response.results.length === 0) {
                                             console.log("RED reached successfully but no results were returned");
+                                            resolve([]);
+                                        } else {
+                                            console.log(`Data fetched successfully from ${tracker}`);
+                                            resolve(get_post_torrent_objects(tracker, result));
+                                        }
+                                    } else if (result && tracker === "OPS") {
+                                        if (result.response.results.length === 0) {
+                                            console.log("OPS reached successfully but no results were returned");
                                             resolve([]);
                                         } else {
                                             console.log(`Data fetched successfully from ${tracker}`);
@@ -3756,6 +3791,64 @@ function toUnixTime(dateString) {
                     console.error("An error occurred while processing RED tracker:", error);
                 }
             }
+            else if (tracker === "OPS") {
+                try {
+                    torrent_objs = postData.response.results
+                        .filter(d => d.releaseType === "Soundtrack")
+                        .map((d) => {
+                            return d.torrents.map((torrent) => {
+                                const sizeInMiB = parseInt(torrent.size / (1024 * 1024));
+                                const api_size = parseInt(torrent.size);
+
+                                const inputTime = torrent.time;
+                                let time = toUnixTime(inputTime);
+                                if (isNaN(time)) {
+                                    return null;
+                                }
+
+                                let media = (torrent.media === "WEB") ? null : torrent.media;
+                                let infoText = improved_tags ? "" : `${torrent.media} / ${torrent.format} / ${torrent.encoding}`;
+
+                                const groupId = d.groupId;
+                                const Id = torrent.torrentId;
+                                const torrentLink = `https://orpheus.network/torrents.php?id=${groupId}&torrentid=${Id}#torrent${Id}`;
+                                const downloadUrl = `https://orpheus.network/ajax.php?action=download&id=${Id}`;
+
+                                // Construct the torrent object
+                                const torrentObj = {
+                                    api_size: api_size,
+                                    datasetRelease: d.groupName,
+                                    size: sizeInMiB,
+                                    info_text: infoText,
+                                    tracker: tracker,
+                                    site: tracker,
+                                    snatch: torrent.snatches || 0,
+                                    seed: torrent.seeders || 0,
+                                    leech: torrent.leechers || 0,
+                                    download_link: `https://orpheus.network/download/${Id}`,
+                                    torrent_page: torrentLink || "",
+                                    discount: torrent.isFreeleech ? "Freeleech" : "None",
+                                    status: "default",
+                                    groupId: d.groupName,
+                                    time: time,
+                                    quality: "Soundtrack",
+                                    media: torrent.media,
+                                    format: torrent.format,
+                                    encoding: torrent.encoding,
+                                    title: torrent.remasterTitle,
+                                    year: torrent.remasterYear,
+                                    log: torrent.logScore,
+                                    cue: torrent.hasCue,
+                                    opsId: `${Id}`,
+                                };
+
+                                return torrentObj;
+                            });
+                        }).flat().filter(obj => obj !== null); // Flatten the arrays and filter out any null objects
+                } catch (error) {
+                    console.error("An error occurred while processing RED tracker:", error);
+                }
+            }
             if (debug) {
                 console.log(`${tracker} processed torrent objects`, torrent_objs);
             }
@@ -4565,13 +4658,13 @@ function toUnixTime(dateString) {
                 let cln = line_example.cloneNode(true);
 
                 if (improved_tags && show_tracker_name) {
-                    if (tracker === "RED") {
+                    if (tracker === "RED" || tracker === "OPS") {
                         cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] `;
                     } else {
                         cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] / ` + get_simplified_title(torrent.info_text);
                     }
                 } else if (improved_tags) {
-                    if (tracker === "RED") {
+                    if (tracker === "RED" || tracker === "OPS") {
                         cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] `;
                     } else {
                         cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] / ` + get_simplified_title(torrent.info_text);
@@ -4673,7 +4766,7 @@ function toUnixTime(dateString) {
                     }
                 }
                 if (improved_tags) {
-                    if (torrent.site === "RED") {
+                    if (torrent.site === "RED" || torrent.site === "OPS") {
                         cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__tags-media'>${torrent.media}</span>`;
                         cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__tags-format'>${torrent.format}</span>`;
                         cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__tags-encoding'>${torrent.encoding}</span>`;
@@ -4781,6 +4874,36 @@ function toUnixTime(dateString) {
                                     console.error('Error during download request for RED:', err);
                                 }
                             });
+                        } else if (tracker === "OPS") {
+                            const downloadUrl = `https://orpheus.network/ajax.php?action=download&id=${torrentId}`;
+                            console.log("Download URL for OPS:", downloadUrl);
+
+                            GM_xmlhttpRequest({
+                                url: downloadUrl,
+                                method: 'GET',
+                                headers: {
+                                    'Authorization': GM_config.get("ops_api"),
+                                },
+                                responseType: 'blob', // Receive the response as a file
+                                onload: (res) => {
+                                    if (res.status === 200) {
+                                        console.log('Download successful for OPS');
+                                        const blob = new Blob([res.response], { type: 'application/x-bittorrent' });
+                                        const url = window.URL.createObjectURL(blob);
+                                        const a = document.createElement('a');
+                                        a.href = url;
+                                        a.download = `torrent_${torrentId}.torrent`;
+                                        document.body.appendChild(a);
+                                        a.click();
+                                        window.URL.revokeObjectURL(url); // Clean up after download
+                                    } else {
+                                        console.error('Failed to download torrent from OPS:', res.responseText);
+                                    }
+                                },
+                                onerror: (err) => {
+                                    console.error('Error during download request for OPS:', err);
+                                }
+                            });
                         }
                     } catch (error) {
                         console.warn(`Error fetching download URL for torrent ID ${torrentId}:`, error);
@@ -4834,6 +4957,20 @@ function toUnixTime(dateString) {
                                     fetchDownloadUrl(torrentId, 'RED'); // Pass 'RED' to handle the RED case
                                 }
                             });
+                        } else if (tracker === "OPS") {
+                            element.href = torrent.download_link;
+                            element.setAttribute('data-torrent-id', torrent.opsId);
+                            element.setAttribute('data-tracker', 'OPS');
+
+                            element.addEventListener('click', function(event) {
+                                const downloadCompleted = element.getAttribute('data-download-completed');
+
+                                if (!downloadCompleted) {
+                                    event.preventDefault();
+                                    const torrentId = element.getAttribute('data-torrent-id');
+                                    fetchDownloadUrl(torrentId, 'OPS');
+                                }
+                            });
                         } else {
                             element.href = torrent.download_link; // Fallback for other trackers
                         }
@@ -4873,7 +5010,7 @@ function toUnixTime(dateString) {
 
                 cln.querySelector(".size-span").textContent = ptp_format_size;
 
-                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV", "LST", "ANT", "RTF", "AvistaZ", "CinemaZ", "PHD", "TL", "FL", "MTeam", "IFL", "RED"];
+                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV", "LST", "ANT", "RTF", "AvistaZ", "CinemaZ", "PHD", "TL", "FL", "MTeam", "IFL", "RED", "OPS"];
                 if (byteSizedTrackers.includes(torrent.site)) {
                     cln.querySelector(".size-span").setAttribute("title", api_sized);
                 } else {
