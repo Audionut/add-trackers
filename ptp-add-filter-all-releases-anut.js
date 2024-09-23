@@ -68,6 +68,8 @@
         "phd_pid": {"label": "PHD PID", "type": "text", "default": ""},
         "ptp": {"label": "PTP", "type": "checkbox", "default": true},
         "pxhd": {"label": "PxHD", "type": "checkbox", "default": false},
+        "red": {"label": "RED *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
+        "red_api": {"label": "RED_API_TOKEN", "type": "text", "default": ""},
         "rfx": {"label": "RFX *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "rfx_api": {"label": "RFX_API_TOKEN", "type": "text", "default": ""},
         "rtf": {"label": "RTF *", "type": "checkbox", "default": false, "tooltip": "Enter RTF username and password below"},
@@ -211,6 +213,7 @@
                     "huno": GM_config.fields.huno.node,
                     "oe": GM_config.fields.oe.node,
                     "phd": GM_config.fields.phd.node,
+                    "red": GM_config.fields.red.node,
                     "rfx": GM_config.fields.rfx.node,
                     "rtf": GM_config.fields.rtf.node,
                     "tik": GM_config.fields.tik.node,
@@ -286,6 +289,7 @@
             "TL": GM_config.get("tl"),
             "MTeam": GM_config.get("MTeam"),
             "IFL": GM_config.get("ifl"),
+            "RED": GM_config.get("red"),
         };
 
         const movie_only_dict = {};
@@ -384,6 +388,7 @@
     const FL_PASS_KEY = GM_config.get("fl_pass");
     const MTeam_API_TOKEN = GM_config.get("MTeam_api");
     const IFL_API_TOKEN = GM_config.get("ifl_api");
+    const RED_API_TOKEN = GM_config.get("red_api");
 
     // We need to use XML response with TVV and have to define some parameters for it to work correctly.
     const TVV_AUTH_KEY = GM_config.get("tvv_auth"); // If you want to use TVV - find your authkey from a torrent download link
@@ -622,7 +627,7 @@ function toUnixTime(dateString) {
             discounts = ["Freeleech", "75% Freeleech", "50% Freeleech", "40% Bonus", "30% Bonus", "25% Freeleech", "Copper", "Bronze", "Silver", "Golden", "Refundable", "Rewind", "Rescuable", "Pollination", "None"];
         }
 
-        let qualities = ["SD", "720p", "1080p", "2160p"];
+        let qualities = ["SD", "720p", "1080p", "2160p", "Soundtrack"];
         let filters = {
             "trackers": trackers.map((e) => {
                 return ({ "name": e, "status": "default" });
@@ -723,7 +728,8 @@ function toUnixTime(dateString) {
             "LST": " data:image/x-icon;base64,AAABAAEAEBAAAAEAIABoBAAAFgAAACgAAAAQAAAAIAAAAAEAIAAAAAAAQAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANQAAAJ4AAADeAAAA/wAAAP8AAADeAAAAngAAADUAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAlQAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAAlQAAAAIAAAAAAAAAAAAAAAAAAAADAAAAwQAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAADBAAAAAwAAAAAAAAAAAAAAkgAAAP8AAAD/AAAA/gAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP4AAAD/AAAA/wAAAJIAAAAAAAAAMwUFBf8LCwv/DAwM/gEBAf8AAAD/FhYW/zExMf8KCgr/AAAA/wAAAP8AAAD/BgYG/gsLC/8AAAD/AAAAM5GRkZ729vb///////////9/f3//bm9v/////////////f39/2JiYv8AAAD/AAAA/9vb2//Nzc3/AAAA/wAAAJ6jo6Pe/////5aWlv9xcXH/NDMz/2xsbP9ra2v/PT09////////////AAAA/wAAAP//////2dnZ/wAAAP8AAADeiIiI//////8wMDD/AAAA/wAAAP8AAAD/Ojo6/66urv//////y8vL/wAAAP8AAAD/9PT0/9HR0f8AAAD/AAAA/4eHh///////Pz8//wAAAP8AAAD/fn5+///////u7u7/e3t7/wYGBv8AAAD/AAAA//Pz8//Nzc3/AAAA/wAAAP+hoaHe/////0RERP8AAAD/AAAA/8XFxf//////a2tr/1FRUf9BQUH/MTEx/4GBgf//////8vLy/3h4eP8zMzTe1dXVn/////8uLy7/AAAA/wAAAP9BQUH/7u7u////////////a2tr/2loaP//////7u7u//Hx8f//////vb29nicnJzQQEBD/AAAA/wAAAP4AAAD/AAAA/wMDA/8wMDD/HBwc/wAAAP8AAAD/BgcH/wQEBP4EBAT/BwcH/woKCjMAAAAAAAAAkgAAAP8AAAD/AAAA/gAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP4AAAD/AAAA/wAAAJIAAAAAAAAAAAAAAAMAAADBAAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAMEAAAADAAAAAAAAAAAAAAAAAAAAAgAAAJUAAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAJUAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANQAAAJ4AAADeAAAA/wAAAP8AAADeAAAAngAAADUAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
             "TL": " data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAABj1BMVEUUJg4TJgwUJw4UHg8TMQ0UHA4JHQJgbVyxt69OXEoIHAMTJg0UJQ4UIw4RZQgPhwYSRgsVIA8HHAI2RzH////z9PMeMBgJHQMVGw8RWwkMygAMzgANsgETLA0VIg8VKA8ADABMW0gsPScABwATFg4RdgcNwQANwgATPQwUHw8UJw4KHgYnOCO2vLS3vbVibl4MEAYOcAQMywANvQATOwwLHwXKzsj+/v5SUE4AYgAMHwbQ1M5WVFMAYQAJHQUuPyq+w73Bxr9uemsNEQcNbwRJWEUsPSYACAASFg0RcgcDFwBWZFIFGQAUGA8QcgcTJw0DGABYZlQ5SjUHGgA1RjAVGA9baFcvQCoACQATFw4RcwcTLw0VGg8UKA5JWETP085mcmIKDgUOcgQMzAANvwANwAAPewYUIg8NIAYTJg7r7Oo6PTUDTAAMzQAM1AAPjQQVHw8EGABHVkPy8/IuPCkIGAMOjQQMxwANxgAMzwAPigUBFgAmOCCCjH+or6ZTYE4UIQ0UIg4RWgkPgQYQdwaTMbSlAAAABnRSTlN+/f39/X4wlRL+AAAA3ElEQVR4nGNgYGRj5+Dk4ubh5eMXEGRiYGASEhYRERUTl5CUkpaRlWNikFdQFBERUVJWUZVWU9fQ1GLQ1tEFCujpGxgaqRmbAAVMzUREzIFCFpZQAStrEXOQgI0tVMDO3gHIdXRydoEKyCu4AgXc3D08oQJaXt5AAWEfXz+ogH9AIFAgKBhNIMQnFCbA7RUGFAiPiIwyUjeOjoll0PKJAwrEJyQmJaekpsmmM8RmZGYBRUSyc3LVjPPyCxiYtAqLioGOLSktK6+orGIGeje2uqa2rp6robGpuYWFFQA5mzPC0wEkIAAAAABJRU5ErkJggg==",
             "MTeam": " data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAKHSURBVEhLY5QU4cxnY2XKZmFmZGOgIvj5+983ZibGZkY9dcGPxxb68gHF/jMxMTKCJP/9+0+QDQLY5GD07z//GDT911xl4uZgYQcKgDVQE7CyMDEAQ4WdCcQB2QqjiWXjkkMXA1sA8yaIJpaNSw5DDERgs5kQG5ccuhh9fEBLgDeIPn7+9f/T198Y4sj8P3/+ocjBaBgbaxB9//mXIaXh8F8N/zU7gGl5W2Ldob9AMRQ1959+ZvTP2/1DyWvlCeu4Le8OnnlBfBB1zL3IsP/k8+iPX357AbHPrmPPQptnnge7CARAmSi0eN+rS/ff6b758Mvq0et3ylHl+48/fPYFqgIBsFqw68SzNy/f/1gD5TJ8/PJrw+4TT19CuQxX7rwHiS16/frnXRD/PZDLzMLYt+PoE7A8MsAaBxJC7LxK4twiIDEQkOLlFZYQ4uQHsUHy3Jws///+/S8IloSC/wyMgtxcrMTFQXmSAfuH77/Xyohx60qKcBl/Z/i5tjJFnxOmRlWOj9FcVzRGSpQr3hhYKkiIcNgL8bI3+jvIERcHFnqiDLtnedrwcLOeM9QUOr1rloe9jZEEVJaBgRGod2GbPXtqsPr8i8yMb4OcFQ7snuUhycvNClWBAFiDCMRWV+D/ryLLy+xlK8ugqSiAkhRBmI2F6X9mmAawQGPiqUox+C8mxIHVHKxBhCSGVRyZDwQgDyHrQVUPImgJcAYRlMYqjswHgv9AFrIeFPWjQQQC+IPo18+/v5G9iOxNIIVVHJkPBFiDCGg6sAHA8JtRgI+tXl6Kp5CTnZkdJIkMbj/8+ESAh01EVJiTAyqEAv7++f//4s1394AtEyUWFtSWw5cvf76+/fizEgAAzycMc0THjAAAAABJRU5ErkJggg==",
-            "IFL": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB8AAAAQCAYAAADu+KTsAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAE1UlEQVQ4jYWVW2xUZRDHf3PO6dlz2m2XUqDlLndCC0EUBASjMYQAESWhfTAKkURIjCZogjceODwY1IgkRmM0IUBiNK4mXhA0NHLRoEAwhksBKbe2W0opvW23u93bGR92C62gfsl5OZnfzHzf/GcG/ucoGApy+8chtf7DWvKM5LnBrHrGQGtBVRDRijd0eEIZZxSTFBeVYvzJLs2nfudN38UMhPi1LMgv116Wrn6m38l9njolRZinNkm8bIfO7w0yW0OEZChxo5xIUQVn24ZLvYAOZC22UgCketIsSZi8qz7NQMI0SEens8Y/zsi0wZNpn9Vx5UzJHv24W+QnURW2YuJJpi3G6uY+nnO26amUsAiTuGETIUCvWlQlXRYG9WZdJcnv6kQ6+hOwAB8gGORYn0+Db9FNANtx+PTcg3Jj4lv6aleW95IuC5MBVvSYbAzt01IV+UIOKQpiG8xNm4xCsAscfhsSZPcIh0YjhLYPp7yzKDunl9jsSzSVzdQfdp4R6UQ9w2IGqiBOihezAVwC4DjU9jwtX0u9CpulFWgFzowP64HrwktRl5Wh09rFLNlf9ZEG/QjTsOnARiXAkMq5XDg8QfryVelUuBjSs+1RYssv075KVXcJWzGokewwT6elDJYX2JwuLGL/UJcPRVC2oKCCpwaeWg01cnV8OdvsQq7EClk2Ti9ObDpFpVpMNx1uuQ57XZcPIudRPDVQFVQNUdVuqap16K3ro2POKLaPQzzfAujNMg8bp7CIz7s2SK2Q11K/qDwU8AmreekRaRtbrzubS3i+hbInRizmsN/I62MqqD2/VjoEtLtfiV6+YdQzBPwR9By/Sd/cOP5UoMFQkIzFSArotm2uiqdCNYNa4vapkSyqRtMUuVwynB/TpMZGnzkysWezfHlhrbRLWA08vQe7RQFcojcNMskY6RCQD2KRwSZNIH/LSvRuB3e6FWAjHA3QfamXzKIKra0C0Brx8cT/N9AnJZCV3BgAQ0ALHK7hYCRtJoIoMwYMhkFhPQMRXarhoZ5IpozoPoj67VxeWqbvPF6qb69UEPSffI0BEMcf7YNTjNVx++alpZzA5mbCZsn6k1rQ/7x5wQjqGbnAnj9G351ylobZj+oup1nmRUpI7PeJVnSSWBEjveB+3RFCcnXOsWET+Sob1rAZI7vYgHgx1l+54GE1m9dJxC3i+3SAqZ9leHZZvQYQ8RHR3Of5Kp6O1u1TbxBf00ZiSYSuGaJKIR0t0Gf6EMvg2w0kqwAQL8/XZNfryYJ1XKlOkpnuEjjWKK+1oNWmxTlUVHngD3bXRQnFAyw+WExwmKaOutxoMbimSTpKi2mYFafzIRCziMDeS2z8ExFN6ftBC6PVxw9lUKeX1ML1+snxg6wc0sdVO8HV0Xs4sjBJ3wwX69wkRn+bq3hlbhH0j7sFTeqeTvFUopyZFN0KQCQL101ocaHVtMhcK6Vw7w3ZVCdKrrqAep4xZos7KkZmWoZs+QRW/XwRfSFDUwgiDtxKuXDiYcZ+c0DW9KIIkt9CAxNQkAkaK++mfVKSyLAMLVYBbbESoo0bmFfvyWOZQYsl72igvCZr/Zhm2udDY9aktXMI6fomeeV6brHcbX8nAb3Tp/nVOFi5Gjbv5hC02kQ9C60278n2C3DA+RutY1ISHJBJiwAAAABJRU5ErkJggg=="
+            "IFL": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB8AAAAQCAYAAADu+KTsAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAE1UlEQVQ4jYWVW2xUZRDHf3PO6dlz2m2XUqDlLndCC0EUBASjMYQAESWhfTAKkURIjCZogjceODwY1IgkRmM0IUBiNK4mXhA0NHLRoEAwhksBKbe2W0opvW23u93bGR92C62gfsl5OZnfzHzf/GcG/ucoGApy+8chtf7DWvKM5LnBrHrGQGtBVRDRijd0eEIZZxSTFBeVYvzJLs2nfudN38UMhPi1LMgv116Wrn6m38l9njolRZinNkm8bIfO7w0yW0OEZChxo5xIUQVn24ZLvYAOZC22UgCketIsSZi8qz7NQMI0SEens8Y/zsi0wZNpn9Vx5UzJHv24W+QnURW2YuJJpi3G6uY+nnO26amUsAiTuGETIUCvWlQlXRYG9WZdJcnv6kQ6+hOwAB8gGORYn0+Db9FNANtx+PTcg3Jj4lv6aleW95IuC5MBVvSYbAzt01IV+UIOKQpiG8xNm4xCsAscfhsSZPcIh0YjhLYPp7yzKDunl9jsSzSVzdQfdp4R6UQ9w2IGqiBOihezAVwC4DjU9jwtX0u9CpulFWgFzowP64HrwktRl5Wh09rFLNlf9ZEG/QjTsOnARiXAkMq5XDg8QfryVelUuBjSs+1RYssv075KVXcJWzGokewwT6elDJYX2JwuLGL/UJcPRVC2oKCCpwaeWg01cnV8OdvsQq7EClk2Ti9ObDpFpVpMNx1uuQ57XZcPIudRPDVQFVQNUdVuqap16K3ro2POKLaPQzzfAujNMg8bp7CIz7s2SK2Q11K/qDwU8AmreekRaRtbrzubS3i+hbInRizmsN/I62MqqD2/VjoEtLtfiV6+YdQzBPwR9By/Sd/cOP5UoMFQkIzFSArotm2uiqdCNYNa4vapkSyqRtMUuVwynB/TpMZGnzkysWezfHlhrbRLWA08vQe7RQFcojcNMskY6RCQD2KRwSZNIH/LSvRuB3e6FWAjHA3QfamXzKIKra0C0Brx8cT/N9AnJZCV3BgAQ0ALHK7hYCRtJoIoMwYMhkFhPQMRXarhoZ5IpozoPoj67VxeWqbvPF6qb69UEPSffI0BEMcf7YNTjNVx++alpZzA5mbCZsn6k1rQ/7x5wQjqGbnAnj9G351ylobZj+oup1nmRUpI7PeJVnSSWBEjveB+3RFCcnXOsWET+Sob1rAZI7vYgHgx1l+54GE1m9dJxC3i+3SAqZ9leHZZvQYQ8RHR3Of5Kp6O1u1TbxBf00ZiSYSuGaJKIR0t0Gf6EMvg2w0kqwAQL8/XZNfryYJ1XKlOkpnuEjjWKK+1oNWmxTlUVHngD3bXRQnFAyw+WExwmKaOutxoMbimSTpKi2mYFafzIRCziMDeS2z8ExFN6ftBC6PVxw9lUKeX1ML1+snxg6wc0sdVO8HV0Xs4sjBJ3wwX69wkRn+bq3hlbhH0j7sFTeqeTvFUopyZFN0KQCQL101ocaHVtMhcK6Vw7w3ZVCdKrrqAep4xZos7KkZmWoZs+QRW/XwRfSFDUwgiDtxKuXDiYcZ+c0DW9KIIkt9CAxNQkAkaK++mfVKSyLAMLVYBbbESoo0bmFfvyWOZQYsl72igvCZr/Zhm2udDY9aktXMI6fomeeV6brHcbX8nAb3Tp/nVOFi5Gjbv5hC02kQ9C60278n2C3DA+RutY1ISHJBJiwAAAABJRU5ErkJggg==",
+            "RED": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAABYlAAAWJQFJUiTwAAACF0lEQVQ4jZWSzUtUYRTGf+d+6TDKRDnUItq0aNEqWrRoo4sWbUKFEdxHQf9ArWoWbtq60vZFCSG0CwOToIwUEWQoUYQoaZww547OOOq9T4t7ZxoMiZ7N+573POfjec+BDkhy+AeOc7wOh5lZDLC9rVHgpudx3gwdHPDVjJnxcZ6bWZxyBWAAxaKcYtHicllnPY9pM7JHRzwLApYAHR5y2YxRM5AY7uuz75IcM4uRZJJsY0PdW1t6V6lo8qT2KxU9Lpc1v7ysbCvOAVwzk8TtRoNmPm93U6enQiFQoRBIciU5+bzdbzb5kTvNvVSC2+5gfV2vSyXdkGSzs/KOV5+akivJVj7r+uqa3rRsx8z09gMXd2pkymWWAKe/nwhAMCgYBBgZIQac/V1WajX8cxe4ZGZppSZe02ViYMB+tqeSBL4EJBg27JUZEVB9/1ETLZ4DMDfHmhm1zU2NKdQtAIKgNW8jyLgACo+GGg2N9fay//ABq219M3O6srikb2EoVXf0FKAoeYIhweCdBfkA9bpeSFLpi37Nz+tqe5G6AwIz9vb2CDMZqgCPkiWZBlgA/0mipVqtcugYu76P35YgIQlHwgfcjn9w1WGnPj/lqp0gJcdARHKm4okseWvhL44DEMU4QK6rix6JHk6AGT25HK7gVBQlsR5AI6SU7Way2eRaNsvCn6YS1GrJPY75VK9zRjGLYUjppEL/hd9J+SWd+NGkdgAAAABJRU5ErkJggg=="
         };
 
         const get_tracker_icon = (tracker) => {
@@ -758,7 +764,8 @@ function toUnixTime(dateString) {
               (tracker === "PHD") ||
               (tracker === "TL") ||
               (tracker === "FL") ||
-              (tracker === "MTeam")
+              (tracker === "MTeam") ||
+              (tracker === "RED")
               ) {
                 return true;
             } else {
@@ -1564,7 +1571,8 @@ function toUnixTime(dateString) {
                 }
             }
             else if (tracker === "PTP") {
-                return true;
+                if (html.querySelector("#no_results_message > div") === null) return true;
+                else return false;
             }
         };
 
@@ -1754,6 +1762,10 @@ function toUnixTime(dateString) {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json',
                 },
+                'RED': {
+                    'Content-Type': 'application/json',
+                    'Authorization': GM_config.get("red_api"),
+                },
                 // Add more trackers and their headers as needed
             };
 
@@ -1772,6 +1784,7 @@ function toUnixTime(dateString) {
                 'PHD': 'GET',
                 'TL': 'GET',
                 'FL': 'GET',
+                'RED': 'GET',
             };
             const method = methodMapping[tracker] || 'POST';
 
@@ -1991,7 +2004,7 @@ function toUnixTime(dateString) {
             });
         };
 
-        const fetch_tracker = async (tracker, imdb_id, show_name, show_nbl_name, tvdbId, tvmazeId, timeout = timer, retryCount = 0) => {
+        const fetch_tracker = async (tracker, imdb_id, show_name, show_nbl_name, red_name, tvdbId, tvmazeId, timeout = timer, retryCount = 0) => {
             return new Promise(async (resolve, reject) => {
                 const timer = setTimeout(() => {
                     console.warn(`${tracker} is timing out`);
@@ -2053,6 +2066,7 @@ function toUnixTime(dateString) {
                         action: "search",
                         rsskey: BHD_RSS_KEY,
                         imdb_id: imdb_id.split("tt")[1],
+                        //folder_name: "Stuart.Little.1999.REPACK.BluRay.1080p.DTS-HD.MA.5.1.AVC.REMUX-FraMeSToR",
                     };
                 } else if (tracker === "BLU") {
                     api_query_url =
@@ -2186,6 +2200,11 @@ function toUnixTime(dateString) {
                             "pageSize": "100"
                             //"mode": "adult"
                         };
+                }
+                else if (tracker === "RED") {
+                    const releasetype = "Soundtrack";
+                    const page = 1;
+                    post_query_url = `https://redacted.ch/ajax.php?action=browse&searchstr=${encodeURIComponent(red_name)}&releasetype=${releasetype}&page=${page}`;
                 }
                 else if (tracker === "PTP") {
                     query_url = "https://passthepopcorn.me/torrents.php?imdb=" + imdb_id;
@@ -2325,6 +2344,14 @@ function toUnixTime(dateString) {
                                         } else {
                                             console.log("Data fetched successfully from M-Team");
                                             resolve(get_post_torrent_objects(tracker, result.data.data, null));
+                                        }
+                                    } else if (result && tracker === "RED") {
+                                        if (result.response.results.length === 0) {
+                                            console.log("RED reached successfully but no results were returned");
+                                            resolve([]);
+                                        } else {
+                                            console.log(`Data fetched successfully from ${tracker}`);
+                                            resolve(get_post_torrent_objects(tracker, result));
                                         }
                                     } else {
                                         console.warn(`Unhandled tracker or response format for ${tracker}`);
@@ -3659,6 +3686,72 @@ function toUnixTime(dateString) {
                     console.error("An error occurred while processing M-Team tracker:", error);
                 }
             }
+            else if (tracker === "RED") {
+                try {
+                    torrent_objs = postData.response.results.map((d) => {
+                        return d.torrents.map((torrent) => {
+                            const sizeInMiB = parseInt(torrent.size / (1024 * 1024)); // Convert size to MiB
+                            const api_size = parseInt(torrent.size); // Original size in bytes
+
+                            const inputTime = torrent.time;
+
+                            let time = toUnixTime(inputTime);
+                            if (isNaN(time)) {
+                                return null;
+                            }
+                            let media;
+                            if (torrent.media === "WEB") {
+                                media = null;
+                            } else {
+                                media = torrent.media;
+                            }
+                            let infoText;
+                            if (improved_tags) {
+                                  infoText = "";
+                            } else {
+                                  infoText = `${torrent.media} / ${torrent.format} / ${torrent.encoding}`;
+                            }
+
+                            const groupId = d.groupId;
+                            const Id = torrent.torrentId;
+                            const torrentLink = `https://redacted.ch/torrents.php?id=${groupId}&torrentid=${Id}#torrent${Id}`;
+                            const downloadUrl = `https://redacted.ch/ajax.php?action=download&id=${Id}`;
+
+                            // Construct the torrent object
+                            const torrentObj = {
+                                api_size: api_size,
+                                datasetRelease: d.groupName,  // Using group name for the release name
+                                size: sizeInMiB,
+                                info_text: infoText, // Example of remaster title
+                                tracker: tracker,
+                                site: tracker,
+                                snatch: torrent.snatches || 0,
+                                seed: torrent.seeders || 0,
+                                leech: torrent.leechers || 0,
+                                download_link: `https://redacted.ch/download/${Id}`,
+                                torrent_page: torrentLink || "",
+                                discount: torrent.isFreeleech ? "Freeleech" : "None",
+                                status: "default",
+                                groupId: d.groupName,
+                                time: time,
+                                quality: "Soundtrack",
+                                media: torrent.media,
+                                format: torrent.format,
+                                encoding: torrent.encoding,
+                                title: torrent.remasterTitle,
+                                year: torrent.remasterYear,
+                                log: torrent.logScore,
+                                cue: torrent.hasCue,
+                                redId: `${Id}`,
+                            };
+
+                            return torrentObj;
+                        });
+                    }).flat().filter(obj => obj !== null); // Flatten the arrays and filter out any null objects
+                } catch (error) {
+                    console.error("An error occurred while processing RED tracker:", error);
+                }
+            }
             if (debug) {
                 console.log(`${tracker} processed torrent objects`, torrent_objs);
             }
@@ -4027,9 +4120,10 @@ function toUnixTime(dateString) {
                 let first_idx = all_trs.findIndex((a) => a.textContent.includes("Standard Definition"));
                 let sliced = all_trs.slice(first_idx + 1, all_trs.length);
 
-                let last_idx = sliced.findIndex((a) => a.className === "group_torrent");
+                let last_idx = sliced.findIndex((a) => a.className === "group_torrent" && a.textContent.includes("Other"));
                 if (last_idx === -1) last_idx = all_trs.length;
                 filtered_torrents = sliced.slice(0, last_idx);
+
                 if (debug) {
                     console.log("SD filtered torrents", filtered_torrents);
                 }
@@ -4038,9 +4132,10 @@ function toUnixTime(dateString) {
                 let first_idx = all_trs.findIndex((a) => a.textContent.includes("High Definition") && !a.textContent.includes("Ultra High Definition"));
                 let sliced = all_trs.slice(first_idx + 1, all_trs.length);
 
-                let last_idx = sliced.findIndex((a) => a.className === "group_torrent");
+                let last_idx = sliced.findIndex((a) => a.className === "group_torrent" && a.textContent.includes("Other"));
                 if (last_idx === -1) last_idx = all_trs.length;
                 filtered_torrents = sliced.slice(0, last_idx);
+
                 if (debug) {
                     console.log("HD filtered torrents", filtered_torrents);
                 }
@@ -4049,11 +4144,23 @@ function toUnixTime(dateString) {
                 let first_idx = all_trs.findIndex((a) => a.textContent.includes("Ultra High Definition"));
                 let sliced = all_trs.slice(first_idx + 1, all_trs.length);
 
-                let last_idx = sliced.findIndex((a) => a.className === "group_torrent");
+                let last_idx = sliced.findIndex((a) => a.className === "group_torrent" && a.textContent.includes("Other"));
                 if (last_idx === -1) last_idx = all_trs.length;
                 filtered_torrents = sliced.slice(0, last_idx);
+
                 if (debug) {
                     console.log("UHD filtered torrents", filtered_torrents);
+                }
+            }
+            else if (quality === "Soundtrack") {
+                // Filter for the "Soundtrack" specifically
+                let soundtrack_idx = all_trs.findIndex((a) => a.textContent.includes("Soundtrack"));
+                if (soundtrack_idx !== -1) {
+                    filtered_torrents.push(all_trs[soundtrack_idx]);
+                }
+
+                if (debug) {
+                    console.log("Soundtrack filtered torrents", filtered_torrents);
                 }
             }
 
@@ -4154,6 +4261,9 @@ function toUnixTime(dateString) {
                 first_idx = all_trs.findIndex((a) => a.textContent.includes("High Definition") && !a.textContent.includes("Ultra High Definition"));
             } else if (quality === "UHD") {
                 first_idx = all_trs.findIndex((a) => a.textContent.includes("Ultra High Definition"));
+            } else if (quality === "Soundtrack") {
+                // Special case for "Soundtrack" quality
+                first_idx = all_trs.findIndex((a) => a.textContent.includes("Soundtrack"));
             }
 
             if (first_idx !== -1) {
@@ -4414,6 +4524,7 @@ function toUnixTime(dateString) {
             let sd_ptp_torrents = get_filtered_torrents("SD").sort((a, b) => a.size < b.size ? 1 : -1);
             let hd_ptp_torrents = get_filtered_torrents("HD").sort((a, b) => a.size < b.size ? 1 : -1);
             let uhd_ptp_torrents = get_filtered_torrents("UHD").sort((a, b) => a.size < b.size ? 1 : -1);
+            let soundtrack_ptp_torrents = get_filtered_torrents("Soundtrack").sort((a, b) => a.size < b.size ? 1 : -1);
 
             create_needed_groups(external_torrents);
 
@@ -4433,6 +4544,9 @@ function toUnixTime(dateString) {
                 } else if (torrent.quality === "HD") {
                     ref_div = get_ref_div(torrent, hd_ptp_torrents);
                     group_torrents = hd_ptp_torrents;
+                } else if (torrent.quality === "Soundtrack") { // New Soundtrack case
+                    ref_div = get_ref_div(torrent, soundtrack_ptp_torrents);
+                    group_torrents = soundtrack_ptp_torrents;
                 } else {
                     ref_div = get_ref_div(torrent, sd_ptp_torrents);
                     group_torrents = sd_ptp_torrents;
@@ -4447,9 +4561,17 @@ function toUnixTime(dateString) {
                 let cln = line_example.cloneNode(true);
 
                 if (improved_tags && show_tracker_name) {
-                    cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] / ` + get_simplified_title(torrent.info_text);
+                    if (tracker === "RED") {
+                        cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] `;
+                    } else {
+                        cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] / ` + get_simplified_title(torrent.info_text);
+                    }
                 } else if (improved_tags) {
-                    cln.querySelector(".torrent-info-link").textContent = get_simplified_title(torrent.info_text);
+                    if (tracker === "RED") {
+                        cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] `;
+                    } else {
+                        cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] / ` + get_simplified_title(torrent.info_text);
+                    }
                 } else if (show_tracker_name) {
                     cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] ` + torrent.info_text;
                 } else {
@@ -4546,6 +4668,25 @@ function toUnixTime(dateString) {
                         cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__trumpable'>Trumpable</span>`;
                     }
                 }
+                if (improved_tags) {
+                    if (torrent.site === "RED") {
+                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__tags-media'>${torrent.media}</span>`;
+                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__tags-format'>${torrent.format}</span>`;
+                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__tags-encoding'>${torrent.encoding}</span>`;
+                        if (torrent.title != null) {
+                            cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__tags-media'>${torrent.title}</span>`;
+                        }
+                        if (torrent.year != null) {
+                            cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__tags-media'>${torrent.year}</span>`;
+                        }
+                        if (torrent.log != 0) {
+                            cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__tags-media'>${torrent.log}%</span>`;
+                        }
+                        if (torrent.hasCue != false) {
+                            cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__tags-media'>Cue</span>`;
+                        }
+                    }
+                }
 
                 const groupTorrent = cln.querySelector('.torrent-info-link');
                 let newHtml = groupTorrent.outerHTML;
@@ -4580,30 +4721,62 @@ function toUnixTime(dateString) {
                 if (torrent.status === "grabbed") cln.querySelector(".torrent-info-link").className += " torrent-info-link--user-downloaded";
                 if (torrent.status === "snatched") cln.querySelector(".torrent-info-link").className += " torrent-info-link--user-snatched";
 
-                async function fetchDownloadUrl(torrentId) {
+                async function fetchDownloadUrl(torrentId, tracker) {
                     try {
-                        const tokenResponse = await fetch(`https://api.m-team.cc/api/torrent/genDlToken?id=${torrentId}`, {
-                            method: 'POST',
-                            headers: {
-                                'x-api-key': GM_config.get("MTeam_api"),
-                                'Content-Type': 'application/json',
-                                'Accept': 'application/json',
-                            }
-                        });
+                        if (tracker === "MTeam") {
+                            const tokenResponse = await fetch(`https://api.m-team.cc/api/torrent/genDlToken?id=${torrentId}`, {
+                                method: 'POST',
+                                headers: {
+                                    'x-api-key': GM_config.get("MTeam_api"),
+                                    'Content-Type': 'application/json',
+                                    'Accept': 'application/json',
+                                }
+                            });
 
-                        const tokenData = await tokenResponse.json();
-                        if (tokenData.code === "0" && tokenData.data) {
-                            const downloadUrl = tokenData.data;
-                            const linkElement = document.querySelector(`a[data-torrent-id="${torrentId}"]`);
+                            const tokenData = await tokenResponse.json();
+                            if (tokenData.code === "0" && tokenData.data) {
+                                const downloadUrl = tokenData.data;
+                                const linkElement = document.querySelector(`a[data-torrent-id="${torrentId}"]`);
 
-                            if (linkElement) {
-                                linkElement.href = downloadUrl;
-                                linkElement.removeAttribute("onclick");
-                                linkElement.setAttribute('data-download-completed', 'true');
-                                linkElement.click();
+                                if (linkElement) {
+                                    linkElement.href = downloadUrl;
+                                    linkElement.removeAttribute("onclick");
+                                    linkElement.setAttribute('data-download-completed', 'true');
+                                    linkElement.click();
+                                }
+                            } else {
+                                console.warn(`Failed to fetch download URL for torrent ID ${torrentId}`);
                             }
-                        } else {
-                            console.warn(`Failed to fetch download URL for torrent ID ${torrentId}`);
+                        } else if (tracker === "RED") {
+                            const downloadUrl = `https://redacted.ch/ajax.php?action=download&id=${torrentId}`;
+                            console.log("Download URL for RED:", downloadUrl);
+
+                            GM_xmlhttpRequest({
+                                url: downloadUrl,
+                                method: 'GET',
+                                headers: {
+                                    'Authorization': GM_config.get("red_api"),
+                                },
+                                responseType: 'blob', // Receive the response as a file
+                                onload: (res) => {
+                                    if (res.status === 200) {
+                                        console.log('Download successful for RED');
+                                        const blob = new Blob([res.response], { type: 'application/x-bittorrent' });
+                                        const url = window.URL.createObjectURL(blob);
+                                        const a = document.createElement('a');
+                                        a.href = url;
+                                        a.download = `torrent_${torrentId}.torrent`;
+                                        document.body.appendChild(a);
+                                        a.click();
+                                        window.URL.revokeObjectURL(url); // Clean up after download
+                                    } else {
+                                        console.error('Failed to download torrent from RED:', res.responseText);
+                                    }
+                                },
+                                onerror: (err) => {
+                                    console.error('Error during download request for RED:', err);
+                                }
+                            });
                         }
                     } catch (error) {
                         console.warn(`Error fetching download URL for torrent ID ${torrentId}:`, error);
@@ -4615,6 +4788,7 @@ function toUnixTime(dateString) {
                 if (elements.length > 0) {
                     let element;
 
+                    // Find the appropriate element based on hideBlankLinks
                     if (hideBlankLinks === "DL") {
                         element = [...elements].find(a => a.textContent.trim() === "DL");
                     } else if (hideBlankLinks === "Download") {
@@ -4626,10 +4800,12 @@ function toUnixTime(dateString) {
                         }
                     }
 
+                    // If the element exists, handle both MTeam and RED functionality
                     if (element) {
                         if (tracker === "MTeam") {
                             element.href = torrent.download_link;
                             element.setAttribute('data-torrent-id', torrent.teamId);
+                            element.setAttribute('data-tracker', 'MTeam');
 
                             element.addEventListener('click', function(event) {
                                 const downloadCompleted = element.getAttribute('data-download-completed');
@@ -4637,11 +4813,25 @@ function toUnixTime(dateString) {
                                 if (!downloadCompleted) {
                                     event.preventDefault();
                                     const torrentId = element.getAttribute('data-torrent-id');
-                                    fetchDownloadUrl(torrentId);
+                                    fetchDownloadUrl(torrentId, 'MTeam'); // Pass 'MTeam' to handle the MTeam case
+                                }
+                            });
+                        } else if (tracker === "RED") {
+                            element.href = torrent.download_link;
+                            element.setAttribute('data-torrent-id', torrent.redId);
+                            element.setAttribute('data-tracker', 'RED');
+
+                            element.addEventListener('click', function(event) {
+                                const downloadCompleted = element.getAttribute('data-download-completed');
+
+                                if (!downloadCompleted) {
+                                    event.preventDefault();
+                                    const torrentId = element.getAttribute('data-torrent-id');
+                                    fetchDownloadUrl(torrentId, 'RED'); // Pass 'RED' to handle the RED case
                                 }
                             });
                         } else {
-                            element.href = torrent.download_link;
+                            element.href = torrent.download_link; // Fallback for other trackers
                         }
                     }
                 } else {
@@ -4679,7 +4869,7 @@ function toUnixTime(dateString) {
 
                 cln.querySelector(".size-span").textContent = ptp_format_size;
 
-                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV", "LST", "ANT", "RTF", "AvistaZ", "CinemaZ", "PHD", "TL", "FL", "MTeam", "IFL"];
+                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV", "LST", "ANT", "RTF", "AvistaZ", "CinemaZ", "PHD", "TL", "FL", "MTeam", "IFL", "RED"];
                 if (byteSizedTrackers.includes(torrent.site)) {
                     cln.querySelector(".size-span").setAttribute("title", api_sized);
                 } else {
@@ -4764,7 +4954,7 @@ function toUnixTime(dateString) {
                 let idx = -2; // add_after_this_index
 
                 for (let i = 0; i < all_trs.length; i++) {
-                    if (all_trs[i].textContent.includes("Other") || all_trs[i].textContent.includes("Ultra High Definition")) {
+                    if (all_trs[i].textContent.includes("Other") || all_trs[i].textContent.includes("Ultra High Definition") || all_trs[i].textContent.includes("Soundtrack")) {
                         idx = i - 1;
                         break;
                     }
@@ -4779,7 +4969,7 @@ function toUnixTime(dateString) {
                 let idx = -2; // add_after_this_index
 
                 for (let i = 0; i < all_trs.length; i++) {
-                    if (all_trs[i].textContent.includes("Other")) {
+                    if (all_trs[i].textContent.includes("Other") || all_trs[i].textContent.includes("Soundtrack")) {
                         idx = i - 1;
                         break;
                     }
@@ -4790,6 +4980,10 @@ function toUnixTime(dateString) {
                 } else {
                     insertAfter(header_div, all_trs[idx]);
                 }
+            }
+            else if (quality === "Soundtrack") {
+                // Always insert Soundtrack at the very end
+                tbody.appendChild(header_div);
             }
         };
 
@@ -4851,6 +5045,16 @@ function toUnixTime(dateString) {
                     insert_group("UHD", group_header_example);
                 } else {
                     console.error("Group header example for UHD not found.");
+                }
+            }
+
+            // New logic for Soundtrack group
+            if (torrents.find(e => e.quality === "Soundtrack") != undefined && all_trs.find(d => d.textContent.includes("Soundtrack")) === undefined) {
+                let group_header_example = get_group_header_div("Soundtrack");
+                if (group_header_example) {
+                    insert_group("Soundtrack", group_header_example);
+                } else {
+                    console.error("Group header example for Soundtrack not found.");
                 }
             }
         };
@@ -5484,6 +5688,7 @@ function toUnixTime(dateString) {
                 else if (q === "720p") arr.push({ "value": 3, "name": q });
                 else if (q === "1080p") arr.push({ "value": 4, "name": q });
                 else if (q === "2160p") arr.push({ "value": 5, "name": q });
+                else if (q === "Soundtrack") arr.push({ "value": 6, "name": q });
 
             });
 
@@ -5843,6 +6048,8 @@ function toUnixTime(dateString) {
             let name_url = document.querySelector("h2.page__title").textContent.trim();
             let show_name;
             let show_nbl_name;
+            let red_name;
+
             const akaIndex = name_url.indexOf(" AKA ");
             if (akaIndex !== -1) {
                 show_name = name_url.substring(0, akaIndex);
@@ -5858,11 +6065,13 @@ function toUnixTime(dateString) {
                 show_nbl_name = show_nbl_name.substring(0, colonIndex);
             }
 
+            red_name = show_name.replace(/[:\-]+/g, '').trim();
+
             show_name = show_name.trim().replace(/[\s:]+$/, '');
             show_nbl_name = show_nbl_name.trim().replace(/[\s:]+$/, '');
 
             let promises = [];
-            trackers.forEach(t => promises.push(fetch_tracker(t, imdb_id, show_name, show_nbl_name, tvdbId, tvmazeId)));
+            trackers.forEach(t => promises.push(fetch_tracker(t, imdb_id, show_name, show_nbl_name, red_name, tvdbId, tvmazeId)));
             Promise.all(promises)
                 .then(torrents_lists => {
                     var all_torrents = [].concat.apply([], torrents_lists).sort((a, b) => a.size < b.size ? 1 : -1);
