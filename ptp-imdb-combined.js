@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.7
+// @version      1.0.8
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -1101,7 +1101,7 @@
         new_panel.style.padding = 0;
         new_panel.style.margin = "18px 0";
 
-        new_panel.innerHTML = '<div class="panel__heading"><span class="panel__heading__title"><a href="https://www.imdb.com/title/' + imdbId + '/soundtrack"><span style="color: rgb(242, 219, 131);">iMDB</span> Soundtrack</a></span></div>';
+        new_panel.innerHTML = '<div class="panel__heading"><span class="panel__heading__title"><a href="https://www.imdb.com/title/' + imdbId + '/soundtrack"><span style="color: rgb(242, 219, 131);">IMDb</span> Soundtrack</a></span></div>';
 
         new_panel.querySelector(".panel__heading").style.display = "flex";
         new_panel.querySelector(".panel__heading").style.justifyContent = "space-between";
