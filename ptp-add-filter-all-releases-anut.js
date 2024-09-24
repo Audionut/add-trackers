@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.2.8-A
+// @version      4.2.9-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -4665,9 +4665,9 @@ function toUnixTime(dateString) {
                     }
                 } else if (improved_tags) {
                     if (tracker === "RED" || tracker === "OPS") {
-                        cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] `;
+                        cln.querySelector(".torrent-info-link").textContent = ``;
                     } else {
-                        cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] / ` + get_simplified_title(torrent.info_text);
+                        cln.querySelector(".torrent-info-link").textContent = get_simplified_title(torrent.info_text);
                     }
                 } else if (show_tracker_name) {
                     cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] ` + torrent.info_text;
