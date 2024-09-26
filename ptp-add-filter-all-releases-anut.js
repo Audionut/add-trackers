@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.2.9-A
+// @version      4.3.0-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -32,6 +32,7 @@
         "bhd": {"label": "BHD *", "type": "checkbox", "default": false, "tooltip": "Enter API and RSS key below"},
         "bhd_api": {"label": "BHD_API_TOKEN", "type": "text", "default": ""},
         "bhd_rss": {"label": "BHD_RSS_KEY", "type": "text", "default": ""},
+        "bhd_seeding": {"label": "Show BHD seeding status", "type": "checkbox", "default": true, "tooltip": "This will show seeding status at BHD, but requires an additional API call for every BHD torrent"},
         "blu": {"label": "BLU *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "blu_api": {"label": "BLU_API_TOKEN", "type": "text", "default": ""},
         "btn": {"label": "BTN *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
@@ -134,7 +135,7 @@
     // Toggle the visibility of api fields if they've been enabled or disabled
     function toggleAuthFields(key, isAuthEnabled) {
         const multi_auth = {
-            "bhd": ["bhd_api", "bhd_rss"],
+            "bhd": ["bhd_api", "bhd_rss", "bhd_seeding"],
             "fl": ["fl_user", "fl_pass"],
             "hdb": ["hdb_user", "hdb_pass"],
             "tvv": ["tvv_auth", "tvv_torr", "easysearch"],
@@ -420,6 +421,7 @@
     const valueinMIB = GM_config.get("valueinMIB");
     const fuzzyMatching = GM_config.get("fuzzyMatching");
     const simplediscounts = GM_config.get("simplediscounts");
+    const bhdSeeding = GM_config.get("bhd_seeding");
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -2646,9 +2648,11 @@ function toUnixTime(dateString) {
                             };
 
                             // Call the second API to check the seeding status using info_hash
-                            if (info_hash) {
-                                const seeding_status = await fetch_seeding_status(tracker, info_hash);
-                                torrentObj.status = seeding_status;  // Update the status based on the second API call
+                            if (bhdSeeding) {
+                                if (info_hash) {
+                                    const seeding_status = await fetch_seeding_status(tracker, info_hash);
+                                    torrentObj.status = seeding_status;  // Update the status based on the second API call
+                                }
                             }
 
                             // Map additional properties if necessary
