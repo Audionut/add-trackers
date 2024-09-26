@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.3.0-A
+// @version      4.3.1-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -32,7 +32,7 @@
         "bhd": {"label": "BHD *", "type": "checkbox", "default": false, "tooltip": "Enter API and RSS key below"},
         "bhd_api": {"label": "BHD_API_TOKEN", "type": "text", "default": ""},
         "bhd_rss": {"label": "BHD_RSS_KEY", "type": "text", "default": ""},
-        "bhd_seeding": {"label": "Show BHD seeding status", "type": "checkbox", "default": true, "tooltip": "This will show seeding status at BHD, but requires an additional API call for every BHD torrent"},
+        "bhd_seeding": {"label": "Show BHD seeding status *", "type": "checkbox", "default": true, "tooltip": "This will show seeding status at BHD, but requires an additional API call for every BHD torrent"},
         "blu": {"label": "BLU *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "blu_api": {"label": "BLU_API_TOKEN", "type": "text", "default": ""},
         "btn": {"label": "BTN *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
@@ -63,7 +63,7 @@
         "nbl_api": {"label": "NBL_API_TOKEN", "type": "text", "default": ""},
         "oe": {"label": "OE *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "oe_api": {"label": "OE_API_TOKEN", "type": "text", "default": ""},
-        "ops": {"label": "OPS *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
+        "ops": {"label": "OPS *", "type": "checkbox", "default": false, "tooltip": "Enter API key below. Additional filtering options below"},
         "ops_api": {"label": "OPS_API_TOKEN", "type": "text", "default": ""},
         "phd": {"label": "PHD *", "type": "checkbox", "default": false, "tooltip": "Enter needed details below. PID can be found on your profile page"},
         "phd_user": {"label": "PHD Username", "type": "text", "default": ""},
@@ -71,7 +71,7 @@
         "phd_pid": {"label": "PHD PID", "type": "text", "default": ""},
         "ptp": {"label": "PTP", "type": "checkbox", "default": true},
         "pxhd": {"label": "PxHD", "type": "checkbox", "default": false},
-        "red": {"label": "RED *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
+        "red": {"label": "RED *", "type": "checkbox", "default": false, "tooltip": "Enter API key below. Additional filtering options below"},
         "red_api": {"label": "RED_API_TOKEN", "type": "text", "default": ""},
         "rfx": {"label": "RFX *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "rfx_api": {"label": "RFX_API_TOKEN", "type": "text", "default": ""},
@@ -85,6 +85,8 @@
         "tvv_auth": {"label": "TVV_AUTH_KEY", "type": "text", "default": "", "tooltip": "Find from a torrent download link at TVV"},
         "tvv_torr": {"label": "TVV_TORR_PASS", "type": "text", "default": "", "tooltip": "Needed to access TVV xml output"},
         "easysearch": {"label": "TVV easy searching", "type": "checkbox", "default": true, "tooltip": "TVV has strict searching limits, especially for lower user groups. Disable this to search with more expensive options, better feedback including seeding status, but you're more likely to hit searching to soon error."},
+        "media": {"label": "RED/OPS media filtering", "type": "text", "default": "", "tooltip": "Filter torrents from RED/OPS by media. CD, WEB, Vinyl"},
+        "format": {"label": "RED/OPS format filtering", "type": "text", "default": "", "tooltip": "Filter torrents from RED/OPS by format. FLAC, MP3"},
         "show_icon": {"label": "Show Tracker Icon", "type": "checkbox", "default": true, "tooltip": "Display the tracker icon next to releases"},
         "show_name": {"label": "Show Tracker Name", "type": "checkbox", "default": true, "tooltip": "Display the tracker name next to releases"},
         "hide_filters": {"label": "Hide filter releases box", "type": "checkbox", "default": false, "tooltip": "Hide the filter releases box in the UI"},
@@ -163,7 +165,14 @@
 
     GM_config.init({
         "id": "PTPAddReleases",
-        "title": "<div>Add releases from other trackers<br><small style='font-weight:normal;'>Select trackers you have access too</small></div>",
+        "title": `
+            <div>
+                Add releases from other trackers<br>
+                <small style='font-weight:normal; font-size:16px;'>Select only trackers you have access to</small>
+                <br><br>
+                <small style='font-weight:lighter; font-size:12px;'>Hover over names for tooltip help</small>
+            </div>
+        `,
         "fields": fields,
         "css": `
             #PTPAddReleases {background: #333333; margin: 0; padding: 20px 20px}
@@ -422,6 +431,8 @@
     const fuzzyMatching = GM_config.get("fuzzyMatching");
     const simplediscounts = GM_config.get("simplediscounts");
     const bhdSeeding = GM_config.get("bhd_seeding");
+    const media = GM_config.get("media");
+    const format = GM_config.get("format");
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -3790,7 +3801,24 @@ function toUnixTime(dateString) {
 
                                 return torrentObj;
                             });
-                        }).flat().filter(obj => obj !== null); // Flatten the arrays and filter out any null objects
+                        })
+                        .flat()
+                        .filter(obj => obj !== null) // Remove null objects
+                        .filter(obj => {
+
+                            if (media && obj.media) {
+                                if (obj.media.toLowerCase().trim() !== media.toLowerCase().trim()) {
+                                    return false; // Skip if media doesn't match
+                                }
+                            }
+                            if (format && obj.format) {
+                                if (obj.format.toLowerCase().trim() !== format.toLowerCase().trim()) {
+                                    return false; // Skip if format doesn't match
+                                }
+                            }
+
+                            return true; // Include if all conditions pass
+                        });
                 } catch (error) {
                     console.error("An error occurred while processing RED tracker:", error);
                 }
@@ -3848,7 +3876,24 @@ function toUnixTime(dateString) {
 
                                 return torrentObj;
                             });
-                        }).flat().filter(obj => obj !== null); // Flatten the arrays and filter out any null objects
+                        })
+                        .flat()
+                        .filter(obj => obj !== null) // Remove null objects
+                        .filter(obj => {
+
+                            if (media && obj.media) {
+                                if (obj.media.toLowerCase().trim() !== media.toLowerCase().trim()) {
+                                    return false; // Skip if media doesn't match
+                                }
+                            }
+                            if (format && obj.format) {
+                                if (obj.format.toLowerCase().trim() !== format.toLowerCase().trim()) {
+                                    return false; // Skip if format doesn't match
+                                }
+                            }
+
+                            return true; // Include if all conditions pass
+                        });
                 } catch (error) {
                     console.error("An error occurred while processing RED tracker:", error);
                 }
