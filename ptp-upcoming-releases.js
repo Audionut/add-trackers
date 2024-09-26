@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP upcoming releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.1.1
+// @version      1.1.2
 // @description  Get a list of upcoming releases from IMDB and TMDb and integrate with site search form.
 // @author       Audionut
 // @match        https://passthepopcorn.me/upcoming.php*
@@ -1093,108 +1093,100 @@ const displayResults = async (page) => {
 
 const handleSearchForm = () => {
     const searchForm = document.querySelector("#filter_torrents_form");
+
     if (searchForm) {
+        console.log("Form found");
+
+        // Target the input fields by their `id` since no `name` attributes are provided
+        const searchInput = searchForm.querySelector('input[title="Movie name or IMDb link"]');
+        const tagInput = searchForm.querySelector('#tags');
+        const castInput = searchForm.querySelector('input[title="Comma-separated cast names"]');
+
+        // Check if the elements are found and log them
+        if (searchInput) {
+            console.log("Search input field found:", searchInput);
+        } else {
+            console.log("Search input field NOT found");
+        }
+
+        if (tagInput) {
+            console.log("Tag input field found:", tagInput);
+        } else {
+            console.log("Tag input field NOT found");
+        }
+
+        if (castInput) {
+            console.log("Cast input field found:", castInput);
+        } else {
+            console.log("Cast input field NOT found");
+        }
+
+        // Handle the form submission
         searchForm.addEventListener("submit", (event) => {
             event.preventDefault();
 
-            const formData = new FormData(searchForm);
-            const searchstr = formData.get("searchstr") || "";
-            const taglist = formData.get("taglist") || "";
-            const castlist = formData.get("castlist") || "";
+            // Get the values directly from the inputs, since `FormData` relies on `name` attributes
+            const searchstr = searchInput ? searchInput.value : "";
+            const taglist = tagInput ? tagInput.value : "";
+            const castlist = castInput ? castInput.value : "";
 
-            console.log("Search string:", searchstr);
-            console.log("Tag list:", taglist);
-            console.log("Cast list:", castlist);  // Log the cast list to check if it's correctly retrieved
+            console.log("Search string:", searchstr);  // Log the search string
+            console.log("Tag list:", taglist);         // Log the tag list
+            console.log("Cast list:", castlist);       // Log the cast list
 
-            const tagsType = formData.get("tags_type") || "all";  // Get the selected tags_type
+            const tagsType = document.querySelector('input[name="tags_type"]:checked')?.value || "all";
 
             const cachedData = getCache(CACHE_KEY_IMDB);
             if (cachedData && cachedData.edges) {
                 let filteredData = cachedData.edges;
 
+                // Filter by search string
                 if (searchstr) {
-                    filteredData = filteredData.filter(movie => movie.node.titleText.text.toLowerCase().includes(searchstr.toLowerCase()));
+                    filteredData = filteredData.filter(movie =>
+                        movie.node.titleText.text.toLowerCase().includes(searchstr.toLowerCase())
+                    );
                 }
+
+                // Filter by tag list
                 if (taglist) {
                     const tags = taglist.split(',').map(tag => tag.trim().toLowerCase());
                     filteredData = filteredData.filter(movie => {
                         const movieTags = movie.node.genres.genres.map(genre => genre.text.toLowerCase());
-
-                        if (tagsType === "any") {
-                            // "Any" logic: Movie matches if it has any of the selected tags
-                            return tags.some(tag => movieTags.includes(tag));
-                        } else {
-                            // "All" logic: Movie matches only if it has all the selected tags
-                            return tags.every(tag => movieTags.includes(tag));
-                        }
+                        return tagsType === "any"
+                            ? tags.some(tag => movieTags.includes(tag))
+                            : tags.every(tag => movieTags.includes(tag));
                     });
                 }
+
+                // Filter by cast list
                 if (castlist) {
                     const casts = castlist.split(',').map(cast => cast.trim().toLowerCase());
-
-                    console.log("Processing cast filtering with these names:", casts);  // Log the cast list being processed
-
                     filteredData = filteredData.filter(movie => {
                         const movieCasts = movie.node.credits.edges.map(credit => credit.node.name.nameText.text.toLowerCase());
-
-                        return casts.some(cast => {
-                            return movieCasts.some(movieCast => {
-                                const [firstName, lastName] = movieCast.split(' ');
-                                return firstName === cast || lastName === cast || movieCast.includes(cast);
-                            });
-                        });
+                        return casts.some(cast => movieCasts.some(movieCast => movieCast.includes(cast)));
                     });
                 }
 
                 if (!searchstr && !taglist && !castlist) {
                     filteredData = null;
-                    GM_setValue(FILTERED_CACHE_KEY, null);
+                    GM_setValue(FILTERED_CACHE_KEY, null);  // Reset cache
                     displayResults(1);
                     document.dispatchEvent(radarrSignal);
                     return;
                 }
 
+                // Cache the filtered results
                 GM_setValue(FILTERED_CACHE_KEY, { edges: filteredData });
                 document.dispatchEvent(radarrSignal);
                 displayResults(1);
+            } else {
+                console.log("No cached data available.");
             }
         });
-    } else {
-        console.log("Search form not found.");  // Log if the form is not found
-    }
-};
 
-const init = () => {
-    const currentPage = GM_getValue(CURRENT_PAGE_KEY, 1);
-    const cacheExpirationIMDb = GM_getValue(CACHE_EXPIRATION_KEY_IMDB, 0);
-    const cacheExpirationTMDb = GM_getValue(CACHE_EXPIRATION_KEY_TMDB, 0);
-
-    if (Date.now() > cacheExpirationIMDb) {
-        clearCache('IMDb');
-        fetchAllComingSoonData();
     } else {
-        const cachedDataIMDb = getCache(CACHE_KEY_IMDB);
-        const nameImagesData = getCache(NAME_IMAGES_CACHE_KEY);
-        if (cachedDataIMDb && cachedDataIMDb.edges.length > 0 && nameImagesData) {
-            displayResults(currentPage);
-        } else {
-            fetchAllComingSoonData();
-        }
+        console.log("Search form not found.");
     }
-
-    if (Date.now() > cacheExpirationTMDb) {
-        clearCache('TMDb');
-        fetchUpcomingDigitalMovies().then(() => {
-            setCache(CACHE_KEY_TMDB, digitalReleases);
-            GM_setValue(CACHE_EXPIRATION_KEY_TMDB, Date.now() + 4 * 24 * 60 * 60 * 1000);
-            displayResults(currentPage);
-        });
-    } else {
-        displayResults(currentPage);
-    }
-    document.dispatchEvent(radarrSignal);
-    handleSearchForm();
-    updateSearchForm();
 };
 
 const updateSearchForm = () => {
@@ -1362,6 +1354,39 @@ const updateSearchForm = () => {
             }
         });
     }
+
+const init = () => {
+    const currentPage = GM_getValue(CURRENT_PAGE_KEY, 1);
+    const cacheExpirationIMDb = GM_getValue(CACHE_EXPIRATION_KEY_IMDB, 0);
+    const cacheExpirationTMDb = GM_getValue(CACHE_EXPIRATION_KEY_TMDB, 0);
+
+    if (Date.now() > cacheExpirationIMDb) {
+        clearCache('IMDb');
+        fetchAllComingSoonData();
+    } else {
+        const cachedDataIMDb = getCache(CACHE_KEY_IMDB);
+        const nameImagesData = getCache(NAME_IMAGES_CACHE_KEY);
+        if (cachedDataIMDb && cachedDataIMDb.edges.length > 0 && nameImagesData) {
+            displayResults(currentPage);
+        } else {
+            fetchAllComingSoonData();
+        }
+    }
+
+    if (Date.now() > cacheExpirationTMDb) {
+        clearCache('TMDb');
+        fetchUpcomingDigitalMovies().then(() => {
+            setCache(CACHE_KEY_TMDB, digitalReleases);
+            GM_setValue(CACHE_EXPIRATION_KEY_TMDB, Date.now() + 4 * 24 * 60 * 60 * 1000);
+            displayResults(currentPage);
+        });
+    } else {
+        displayResults(currentPage);
+    }
+    document.dispatchEvent(radarrSignal);
+    updateSearchForm();
+    handleSearchForm();
+};
 
 window.addEventListener('load', function() {
     addLightboxStyles();
