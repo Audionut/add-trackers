@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP upcoming releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.1.0
+// @version      1.1.1
 // @description  Get a list of upcoming releases from IMDB and TMDb and integrate with site search form.
 // @author       Audionut
 // @match        https://passthepopcorn.me/upcoming.php*
@@ -40,82 +40,82 @@
 
     let digitalReleases = [];
 
-const setCache = (key, data) => {
-    try {
-        const stringData = JSON.stringify(data);
-        const compressedData = LZString.compress(stringData);
-        GM_setValue(key, compressedData);
-        console.log(`Data compressed and cached under key: ${key}`);
-    } catch (e) {
-        console.error(`Failed to compress and cache data for key: ${key}`, e);
-    }
-};
-
-const getCache = (key) => {
-    const compressedData = GM_getValue(key, null);
-    if (compressedData && typeof compressedData === 'string') {
+    const setCache = (key, data) => {
         try {
-            const decompressedData = LZString.decompress(compressedData);
-            if (decompressedData) {
-                return JSON.parse(decompressedData);
-            } else {
-                console.warn(`Data for key ${key} was not properly compressed or decompressed.`);
+            const stringData = JSON.stringify(data);
+            const compressedData = LZString.compress(stringData);
+            GM_setValue(key, compressedData);
+            console.log(`Data compressed and cached under key: ${key}`);
+        } catch (e) {
+            console.error(`Failed to compress and cache data for key: ${key}`, e);
+        }
+    };
+
+    const getCache = (key) => {
+        const compressedData = GM_getValue(key, null);
+        if (compressedData && typeof compressedData === 'string') {
+            try {
+                const decompressedData = LZString.decompress(compressedData);
+                if (decompressedData) {
+                    return JSON.parse(decompressedData);
+                } else {
+                    console.warn(`Data for key ${key} was not properly compressed or decompressed.`);
+                    return null;
+                }
+            } catch (e) {
+                console.error(`Failed to decompress data for key: ${key}`, e);
                 return null;
             }
-        } catch (e) {
-            console.error(`Failed to decompress data for key: ${key}`, e);
-            return null;
+        } else {
+            console.warn(`Data for key ${key} is not in string format or is null, returning as is.`);
+            return compressedData;
         }
-    } else {
-        console.warn(`Data for key ${key} is not in string format or is null, returning as is.`);
-        return compressedData;
-    }
-};
-let aCacheWasCleared = 0;
-const clearCache = (cacheType) => {
-    switch (cacheType) {
-        case 'IMDb':
-            GM_setValue(CACHE_KEY_IMDB, null);
-            GM_setValue(CACHE_EXPIRATION_KEY_IMDB, 0);
-            GM_setValue(NAME_IMAGES_CACHE_KEY, null);
-            console.log("IMDb cache cleared");
-            break;
-        case 'TMDb':
-            GM_setValue(CACHE_KEY_TMDB, null);
-            GM_setValue(CACHE_EXPIRATION_KEY_TMDB, 0);
-            console.log("TMDb cache cleared");
-            break;
-        case 'All':
-            clearCache('IMDb');
-            clearCache('TMDb');
-            GM_setValue(CURRENT_PAGE_KEY, 1);
+    };
+    let aCacheWasCleared = 0;
+    const clearCache = (cacheType) => {
+        switch (cacheType) {
+            case 'IMDb':
+                GM_setValue(CACHE_KEY_IMDB, null);
+                GM_setValue(CACHE_EXPIRATION_KEY_IMDB, 0);
+                GM_setValue(NAME_IMAGES_CACHE_KEY, null);
+                console.log("IMDb cache cleared");
+                break;
+            case 'TMDb':
+                GM_setValue(CACHE_KEY_TMDB, null);
+                GM_setValue(CACHE_EXPIRATION_KEY_TMDB, 0);
+                console.log("TMDb cache cleared");
+                break;
+            case 'All':
+                clearCache('IMDb');
+                clearCache('TMDb');
+                GM_setValue(CURRENT_PAGE_KEY, 1);
+                GM_setValue(FILTERED_CACHE_KEY, null);
+                console.log("All caches cleared");
+                break;
+        }
+        aCacheWasCleared = 1;
+    };
+
+    const setFilteredCacheTimer = () => {
+        setTimeout(() => {
             GM_setValue(FILTERED_CACHE_KEY, null);
-            console.log("All caches cleared");
-            break;
+            console.log("Filtered cache cleared after 1 minute");
+        }, 60 * 1000);  // 5 minutes in milliseconds
+    };
+
+    const handleFilteredCache = (filteredData) => {
+        GM_setValue(FILTERED_CACHE_KEY, { edges: filteredData });
+        setFilteredCacheTimer();  // Start the timer every time the filtered cache is set
+    };
+
+    // Function to format date to YYYY-MM-DD
+    function formatDate(date) {
+        const d = new Date(date);
+        const month = ('0' + (d.getMonth() + 1)).slice(-2);
+        const day = ('0' + d.getDate()).slice(-2);
+        const year = d.getFullYear();
+        return `${year}-${month}-${day}`;
     }
-    aCacheWasCleared = 1;
-};
-
-const setFilteredCacheTimer = () => {
-    setTimeout(() => {
-        GM_setValue(FILTERED_CACHE_KEY, null);
-        console.log("Filtered cache cleared after 5 minutes");
-    }, 5 * 60 * 1000);  // 5 minutes in milliseconds
-};
-
-const handleFilteredCache = (filteredData) => {
-    GM_setValue(FILTERED_CACHE_KEY, { edges: filteredData });
-    setFilteredCacheTimer();  // Start the timer every time the filtered cache is set
-};
-
-// Function to format date to YYYY-MM-DD
-function formatDate(date) {
-    const d = new Date(date);
-    const month = ('0' + (d.getMonth() + 1)).slice(-2);
-    const day = ('0' + d.getDate()).slice(-2);
-    const year = d.getFullYear();
-    return `${year}-${month}-${day}`;
-}
 
     const fetchComingSoonDataWithRetry = async (afterDate = null, retries = 3) => {
         const url = `https://api.graphql.imdb.com/`;
@@ -327,150 +327,150 @@ function formatDate(date) {
         return results.flat();
     };
 
-const fetchUpcomingDigitalMovies = async (page = 1) => {
-    const container = document.querySelector("#torrents-movie-view > div");
-    container.innerHTML = `
-        <div class="loading-container">
-            <div class="spinner"></div>
-            <p>Loading upcoming releases...</p>
-        </div>
-    `;
-    const apiKey = GM_getValue(API_KEY_TMDB, '');
-    if (!apiKey) {
-        console.error('TMDb API key is not set.');
-        return;
-    }
+    const fetchUpcomingDigitalMovies = async (page = 1) => {
+        const container = document.querySelector("#torrents-movie-view > div");
+        container.innerHTML = `
+            <div class="loading-container">
+                <div class="spinner"></div>
+                <p>Loading upcoming releases...</p>
+            </div>
+        `;
+        const apiKey = GM_getValue(API_KEY_TMDB, '');
+        if (!apiKey) {
+            console.error('TMDb API key is not set.');
+            return;
+        }
 
-    const today = new Date();
-    const fourMonthsFromNow = new Date();
-    fourMonthsFromNow.setMonth(today.getMonth() + 4);
+        const today = new Date();
+        const fourMonthsFromNow = new Date();
+        fourMonthsFromNow.setMonth(today.getMonth() + 4);
 
-    const url = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&language=en-US&region=US&sort_by=release_date.desc&release_date.gte=${formatDate(today)}&release_date.lte=${formatDate(fourMonthsFromNow)}&with_release_type=4&page=${page}`;
+        const url = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&language=en-US&region=US&sort_by=release_date.desc&release_date.gte=${formatDate(today)}&release_date.lte=${formatDate(fourMonthsFromNow)}&with_release_type=4&page=${page}`;
 
-    return new Promise((resolve, reject) => {
+        return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: url,
+                onload: function (response) {
+                    if (response.status === 200) {
+                        const data = JSON.parse(response.responseText);
+                        digitalReleases = digitalReleases.concat(data.results);
+
+                        if (data.page < data.total_pages) {
+                            fetchUpcomingDigitalMovies(data.page + 1).then(resolve).catch(reject);
+                        } else {
+                            fetchMovieDetails().then(() => {
+                                setCache(CACHE_KEY_TMDB, digitalReleases);
+                                container.innerHTML = "";
+                                displayResults(1);
+                                resolve(digitalReleases);
+                            }).catch(reject);
+                        }
+                    } else {
+                        console.error('Failed to fetch data from TMDb API', response); // Debugging log for errors
+                        reject(new Error('Failed to fetch data from TMDb API'));
+                    }
+                },
+                onerror: function (response) {
+                    console.error('Error occurred while fetching data from TMDb API', response); // Debugging log for errors
+                    reject(new Error('Error occurred while fetching data from TMDb API'));
+                }
+            });
+        });
+    };
+
+    const sortAndFilterTmdbData = (data) => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); // Set the time to midnight for accurate comparison
+
+        // Filter out movies with a release date before today
+        const filteredData = data.filter(movie => {
+            const releaseDate = new Date(movie.release_date);
+            return releaseDate >= today;
+        });
+
+        // Sort the movies by release date in ascending order
+        filteredData.sort((a, b) => new Date(a.release_date) - new Date(b.release_date));
+
+        return filteredData;
+    };
+
+    const fetchMovieDetails = async () => {
+        const apiKey = GM_getValue(API_KEY_TMDB, '');
+        if (!apiKey) {
+            console.error('TMDb API key is not set.');
+            return;
+        }
+
+        let remainingRequests = digitalReleases.length;
+        return new Promise((resolve) => {
+            digitalReleases.forEach(movie => {
+                fetchDetailsWithRetry(movie, 3, () => {
+                    if (--remainingRequests === 0) {
+                        // Sort and filter the TMDb data before caching and displaying
+                        digitalReleases = sortAndFilterTmdbData(digitalReleases);
+                        setCache(CACHE_KEY_TMDB, digitalReleases);
+                        resolve();
+                    }
+                });
+            });
+        });
+    };
+
+    const fetchDetailsWithRetry = (movie, retries, callback) => {
+        const container = document.querySelector("#torrents-movie-view > div");
+        container.innerHTML = `
+            <div class="loading-container">
+                <div class="spinner"></div>
+                <p>Loading upcoming releases...</p>
+            </div>
+        `;
+        const apiKey = GM_getValue(API_KEY_TMDB, '');
+        const url = `https://api.themoviedb.org/3/movie/${movie.id}?api_key=${apiKey}&append_to_response=credits,external_ids,images`;
+
         GM_xmlhttpRequest({
             method: 'GET',
             url: url,
             onload: function (response) {
                 if (response.status === 200) {
                     const data = JSON.parse(response.responseText);
-                    digitalReleases = digitalReleases.concat(data.results);
-
-                    if (data.page < data.total_pages) {
-                        fetchUpcomingDigitalMovies(data.page + 1).then(resolve).catch(reject);
-                    } else {
-                        fetchMovieDetails().then(() => {
-                            setCache(CACHE_KEY_TMDB, digitalReleases);
-                            container.innerHTML = "";
-                            displayResults(1);
-                            resolve(digitalReleases);
-                        }).catch(reject);
-                    }
+                    movie.details = data;
+                } else if (retries > 0) {
+                    console.warn(`Retrying fetch for movie ID ${movie.id}. Remaining retries: ${retries - 1}`);
+                    fetchDetailsWithRetry(movie, retries - 1, callback);
                 } else {
-                    console.error('Failed to fetch data from TMDb API', response); // Debugging log for errors
-                    reject(new Error('Failed to fetch data from TMDb API'));
+                    console.error(`Failed to fetch details for movie ID ${movie.id} after multiple attempts`);
                 }
-            },
-            onerror: function (response) {
-                console.error('Error occurred while fetching data from TMDb API', response); // Debugging log for errors
-                reject(new Error('Error occurred while fetching data from TMDb API'));
-            }
-        });
-    });
-};
-
-const sortAndFilterTmdbData = (data) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // Set the time to midnight for accurate comparison
-
-    // Filter out movies with a release date before today
-    const filteredData = data.filter(movie => {
-        const releaseDate = new Date(movie.release_date);
-        return releaseDate >= today;
-    });
-
-    // Sort the movies by release date in ascending order
-    filteredData.sort((a, b) => new Date(a.release_date) - new Date(b.release_date));
-
-    return filteredData;
-};
-
-const fetchMovieDetails = async () => {
-    const apiKey = GM_getValue(API_KEY_TMDB, '');
-    if (!apiKey) {
-        console.error('TMDb API key is not set.');
-        return;
-    }
-
-    let remainingRequests = digitalReleases.length;
-    return new Promise((resolve) => {
-        digitalReleases.forEach(movie => {
-            fetchDetailsWithRetry(movie, 3, () => {
-                if (--remainingRequests === 0) {
-                    // Sort and filter the TMDb data before caching and displaying
-                    digitalReleases = sortAndFilterTmdbData(digitalReleases);
-                    setCache(CACHE_KEY_TMDB, digitalReleases);
-                    resolve();
-                }
-            });
-        });
-    });
-};
-
-const fetchDetailsWithRetry = (movie, retries, callback) => {
-    const container = document.querySelector("#torrents-movie-view > div");
-    container.innerHTML = `
-        <div class="loading-container">
-            <div class="spinner"></div>
-            <p>Loading upcoming releases...</p>
-        </div>
-    `;
-    const apiKey = GM_getValue(API_KEY_TMDB, '');
-    const url = `https://api.themoviedb.org/3/movie/${movie.id}?api_key=${apiKey}&append_to_response=credits,external_ids,images`;
-
-    GM_xmlhttpRequest({
-        method: 'GET',
-        url: url,
-        onload: function (response) {
-            if (response.status === 200) {
-                const data = JSON.parse(response.responseText);
-                movie.details = data;
-            } else if (retries > 0) {
-                console.warn(`Retrying fetch for movie ID ${movie.id}. Remaining retries: ${retries - 1}`);
-                fetchDetailsWithRetry(movie, retries - 1, callback);
-            } else {
-                console.error(`Failed to fetch details for movie ID ${movie.id} after multiple attempts`);
-            }
-            callback();
-        },
-        onerror: function () {
-            if (retries > 0) {
-                console.warn(`Retrying fetch for movie ID ${movie.id}. Remaining retries: ${retries - 1}`);
-                fetchDetailsWithRetry(movie, retries - 1, callback);
-            } else {
-                console.error(`Error occurred while fetching details for movie ID ${movie.id} after multiple attempts`);
                 callback();
+            },
+            onerror: function () {
+                if (retries > 0) {
+                    console.warn(`Retrying fetch for movie ID ${movie.id}. Remaining retries: ${retries - 1}`);
+                    fetchDetailsWithRetry(movie, retries - 1, callback);
+                } else {
+                    console.error(`Error occurred while fetching details for movie ID ${movie.id} after multiple attempts`);
+                    callback();
+                }
             }
-        }
-    });
-};
+        });
+    };
 
-const sortCombinedDataByDate = (data) => {
-    return data.sort((a, b) => {
-        const dateA = a.node.releaseDate ?
-            new Date(`${a.node.releaseDate.year}-${String(a.node.releaseDate.month).padStart(2, '0')}-${String(a.node.releaseDate.day).padStart(2, '0')}`) :
-            (a.node.details && a.node.details.release_date ? new Date(a.node.details.release_date) : null);
-        const dateB = b.node.releaseDate ?
-            new Date(`${b.node.releaseDate.year}-${String(b.node.releaseDate.month).padStart(2, '0')}-${String(b.node.releaseDate.day).padStart(2, '0')}`) :
-            (b.node.details && b.node.details.release_date ? new Date(b.node.details.release_date) : null);
+    const sortCombinedDataByDate = (data) => {
+        return data.sort((a, b) => {
+            const dateA = a.node.releaseDate ?
+                new Date(`${a.node.releaseDate.year}-${String(a.node.releaseDate.month).padStart(2, '0')}-${String(a.node.releaseDate.day).padStart(2, '0')}`) :
+                (a.node.details && a.node.details.release_date ? new Date(a.node.details.release_date) : null);
+            const dateB = b.node.releaseDate ?
+                new Date(`${b.node.releaseDate.year}-${String(b.node.releaseDate.month).padStart(2, '0')}-${String(b.node.releaseDate.day).padStart(2, '0')}`) :
+                (b.node.details && b.node.details.release_date ? new Date(b.node.details.release_date) : null);
 
-        if (!dateA || !dateB) {
-            return 0; // If either date is missing, consider them equal.
-        }
+            if (!dateA || !dateB) {
+                return 0; // If either date is missing, consider them equal.
+            }
 
-        return dateA - dateB;
-    });
-};
+            return dateA - dateB;
+        });
+    };
 
     const addLightboxStyles = () => {
         const style = document.createElement('style');
@@ -920,44 +920,62 @@ const displayResultsCondensed = (page, data, source) => {
 const createPagination = (currentPage, totalResults) => {
     const resultsPerPage = GM_getValue(RESULTS_PER_PAGE_KEY, RESULTS_PER_PAGE_DEFAULT);
     const totalPages = Math.ceil(totalResults / resultsPerPage);
-
     const paginationTop = document.querySelector(".pagination--top");
     const paginationBottom = document.querySelector(".pagination--bottom");
 
-    const paginationContent = (page) => {
+    // Define the maximum number of page ranges to display
+    const maxPageRanges = 5;
+
+    // Calculate the start and end page range to display
+    const startPage = Math.max(1, currentPage - Math.floor(maxPageRanges / 2));
+    const endPage = Math.min(totalPages, startPage + maxPageRanges - 1);
+
+    const paginationContent = (currentPage) => {
         let html = "";
-        if (page > 1) {
-            html += `<a href="#" class="prev-link" style="margin-right: 10px;">&lt; back</a>`;
+
+        // First and Previous links
+        if (currentPage > 1) {
+            html += `<a href="#" class="pagination__link pagination__link--first" data-page="1">&lt;&lt; First</a> `;
+            html += `<a href="#" class="pagination__link pagination__link--prev" data-page="${currentPage - 1}">&lt; Previous</a> `;
         }
-        html += ` Page ${currentPage} of ${totalPages} `;  // Show current page out of total pages
-        if (page < totalPages) {
-            html += `<a href="#" class="next-link" style="margin-left: 10px;">next &gt;</a>`;
+
+        // Page range links (up to 5)
+        for (let page = startPage; page <= endPage; page++) {
+            const pageStart = (page - 1) * resultsPerPage + 1;
+            const pageEnd = Math.min(page * resultsPerPage, totalResults);
+
+            if (page === currentPage) {
+                html += ` <span class="pagination__current-page">${pageStart}-${pageEnd}</span> `;
+            } else {
+                html += ` <a href="#" class="pagination__link pagination__link--page" data-page="${page}">${pageStart}-${pageEnd}</a> `;
+            }
+
+            if (page < endPage) {
+                html += ' | ';
+            }
         }
+
+        // Next and Last links
+        if (currentPage < totalPages) {
+            html += ` | <a href="#" class="pagination__link pagination__link--next" data-page="${currentPage + 1}">Next &gt;</a>`;
+            html += ` <a href="#" class="pagination__link pagination__link--last" data-page="${totalPages}">Last &gt;&gt;</a>`;
+        }
+
         return html;
     };
 
+    // Update the pagination elements
     paginationTop.innerHTML = paginationContent(currentPage);
     paginationBottom.innerHTML = paginationContent(currentPage);
 
-    const prevLinks = document.querySelectorAll(".prev-link");
-    const nextLinks = document.querySelectorAll(".next-link");
-
-    prevLinks.forEach(link => {
+    // Add event listeners for the pagination links
+    const paginationLinks = document.querySelectorAll(".pagination__link");
+    paginationLinks.forEach(link => {
         link.addEventListener("click", (event) => {
             event.preventDefault();
-            const prevPage = Math.max(1, currentPage - 1);
-            GM_setValue(CURRENT_PAGE_KEY, prevPage);
-            displayResults(prevPage);
-            document.dispatchEvent(radarrSignal);
-        });
-    });
-
-    nextLinks.forEach(link => {
-        link.addEventListener("click", (event) => {
-            event.preventDefault();
-            const nextPage = Math.min(totalPages, currentPage + 1);
-            GM_setValue(CURRENT_PAGE_KEY, nextPage);
-            displayResults(nextPage);
+            const targetPage = parseInt(link.getAttribute("data-page"));
+            GM_setValue(CURRENT_PAGE_KEY, targetPage);
+            displayResults(targetPage);
             document.dispatchEvent(radarrSignal);
         });
     });
@@ -992,6 +1010,7 @@ const displayResults = async (page) => {
     try {
         // Placeholder function for fetching and processing data
         const fetchAndProcessData = async () => {
+            const filteredData = GM_getValue(FILTERED_CACHE_KEY);
             const layout = GM_getValue(LAYOUT_KEY, LAYOUT_ORIGINAL);
             const resultType = GM_getValue(RESULT_TYPE_KEY, 'All');
             let data = { edges: [] };
@@ -1001,7 +1020,6 @@ const displayResults = async (page) => {
             today.setHours(0, 0, 0, 0); // Set to midnight to compare only dates
 
             if (resultType === 'Theatrical' || resultType === 'All') {
-                const filteredData = GM_getValue(FILTERED_CACHE_KEY);
                 const imdbCache = filteredData || getCache(CACHE_KEY_IMDB);
                 if (imdbCache) {
                     imdbData = imdbCache.edges.map(edge => ({
