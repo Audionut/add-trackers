@@ -107,6 +107,32 @@
         return `${year}-${month}-${day}`;
     }
 
+    // Helper function to deduplicate results by movie ID
+    const deduplicateResults = (results) => {
+        const uniqueData = [];
+        const seenIds = new Set();
+
+        results.forEach(edge => {
+            // Handle cases where the structure has a node property (IMDb) or not (TMDb)
+            const movie = edge.node || edge; // Fallback to `edge` if `node` doesn't exist (for TMDb data)
+
+            if (!movie || !movie.id) {
+                console.warn("Skipping edge without valid movie ID during deduplication:", edge);
+                return; // Skip if no valid movie ID is found
+            }
+
+            const id = movie.id; // Use only the movie ID as the unique key
+
+            if (!seenIds.has(id)) {
+                // If this ID has not been seen, add it to the uniqueData
+                seenIds.add(id);
+                uniqueData.push(edge);
+            }
+        });
+
+        return uniqueData;
+    };
+
     const fetchDetailsWithRetry = (movie, retries, callback) => {
         //const container = document.querySelector("#torrents-movie-view > div");
         container.innerHTML = `
@@ -394,8 +420,13 @@ const fetchMovieDetails = async () => {
         }
 
         const cachedData = { edges: allEdges };
-        setCache(CACHE_KEY_IMDB, cachedData);
-        //GM_setValue(CACHE_EXPIRATION_KEY_IMDB, Date.now() + 4 * 24 * 60 * 60 * 1000);
+        console.log('IMDb Data before deduplication:', cachedData);
+
+        // Deduplicate before caching
+        const deduplicatedIMDbData = deduplicateResults(cachedData.edges);
+        console.log('IMDb Data after deduplication:', deduplicatedIMDbData);
+
+        setCache(CACHE_KEY_IMDB, { edges: deduplicatedIMDbData });  // Cache deduplicated IMDb data
 
         const nameIds = [];
         cachedData.edges.forEach(edge => {
@@ -435,12 +466,15 @@ const fetchUpcomingDigitalMovies = async (page = 1) => {
                     if (data.page < data.total_pages) {
                         fetchUpcomingDigitalMovies(data.page + 1).then(resolve).catch(reject);
                     } else {
-                        // Once all pages are fetched, filter the results by date using fetchMovieDetails
                         fetchMovieDetails().then((filteredData) => {
-                            console.log('Filtered Data:', filteredData); // Check the data before caching
-                            setCache(CACHE_KEY_TMDB, filteredData);  // Cache only future releases
-                            // Resolve only the filtered data
-                            resolve(filteredData);
+                            console.log('Filtered Data before deduplication:', filteredData);
+
+                            // Deduplicate before caching
+                            const deduplicatedTMDBData = deduplicateResults(filteredData);
+                            console.log('TMDB Data after deduplication:', deduplicatedTMDBData);
+
+                            setCache(CACHE_KEY_TMDB, deduplicatedTMDBData);  // Cache only deduplicated data
+                            resolve(deduplicatedTMDBData); // Resolve only the deduplicated data
                         }).catch(reject);
                     }
                 } else {
@@ -1089,10 +1123,16 @@ const handleSearchForm = (filteredDateData) => {
 
                     // TMDb tag filtering
                     filterTMDBData = filterTMDBData.filter(movie => {
-                        const movieTags = movie.details?.map(genre => genre.name?.toLowerCase()) || [];
+                        // Safely retrieve genre names in lowercase
+                        const movieTags = movie.details?.genres?.map(genre => genre.name?.toLowerCase()) || [];
+
+                        // Log the genres and movie details for debugging
+                        console.log(`Movie ID: ${movie.id}, Title: ${movie.title}, Genres:`, movieTags);
+
+                        // Filter based on the type of tag matching (either 'any' or 'all')
                         return tagsType === "any"
-                            ? tags.some(tag => movieTags.includes(tag))
-                            : tags.every(tag => movieTags.includes(tag));
+                            ? tags.some(tag => movieTags.includes(tag.toLowerCase()))  // Match any tag
+                            : tags.every(tag => movieTags.includes(tag.toLowerCase()));  // Match all tags
                     });
                 }
 
@@ -1227,40 +1267,27 @@ const displayResults = async (page) => {
             const resultType = GM_getValue(RESULT_TYPE_KEY, 'All');
             let imdbData = [];
             let tmdbData = [];
-            const today = new Date();
-            today.setHours(0, 0, 0, 0); // Set to midnight for date comparison
-            console.log("filteredALLData", filteredALLData);
-            // Check for filtered data first
+
+            // Process filtered data directly without deduplication
             if (filteredALLData) {
-                // Filter data for IMDb
                 imdbData = filteredALLData.edges
                     .filter(edge => edge.source === 'IMDb')
-                    .map(edge => ({
-                        ...edge,
-                        source: 'IMDb'
-                    }));
+                    .map(edge => ({ ...edge, source: 'IMDb' }));
 
-                // Filter data for TMDb
                 tmdbData = filteredALLData.edges
                     .filter(edge => edge.source === 'TMDb')
-                    .map(edge => ({
-                        ...edge,
-                        source: 'TMDb'
-                    }));
+                    .map(edge => ({ ...edge, source: 'TMDb' }));
+
+                console.log("Filtered data being used.");
             } else {
-                // Fetch regular caches if no filtered data exists
+                // Use cached unfiltered data directly (already deduplicated in the caching step)
                 if (resultType === 'Theatrical' || resultType === 'All') {
-                    //const imdbCache = getCache(CACHE_KEY_IMDB);
                     if (cachedIMDbData) {
-                        imdbData = cachedIMDbData.edges.map(edge => ({
-                            ...edge,
-                            source: 'IMDb'
-                        }));
+                        imdbData = cachedIMDbData.edges.map(edge => ({ ...edge, source: 'IMDb' }));
                     }
                 }
 
                 if (resultType === 'Digital' || resultType === 'All') {
-                    //const tmdbCache = getCache(CACHE_KEY_TMDB);
                     if (cachedTMDBData) {
                         tmdbData = cachedTMDBData.map(movie => ({
                             node: movie,
@@ -1268,33 +1295,15 @@ const displayResults = async (page) => {
                         }));
                     }
                 }
-            }
 
-            console.log("imdbData:", imdbData);
-            console.log("tmdbData:", tmdbData);
+                console.log("Cached unfiltered data being used.");
+            }
 
             // Combine IMDb and TMDb results
             const combinedResults = [...imdbData, ...tmdbData];
 
-            // Remove duplicates by unique identifier (ID + source)
-            const uniqueData = [];
-            const seenIds = new Set();
-
-            combinedResults.forEach(edge => {
-                if (!edge.node) {
-                    console.warn("Skipping edge without node during processing:", edge);
-                    return; // Skip if no node property is found
-                }
-
-                const id = edge.node.id + edge.source; // Unique ID combining source
-                if (!seenIds.has(id)) {
-                    seenIds.add(id);  // Track seen IDs combined with source
-                    uniqueData.push(edge);  // Add unique movie entry
-                }
-            });
-
-            // Sort the combined unique data by release date
-            const sortedData = sortCombinedDataByDate(uniqueData);
+            // Sort the combined data by release date
+            const sortedData = sortCombinedDataByDate(combinedResults);
 
             console.log("Final sorted data:", sortedData);
 
