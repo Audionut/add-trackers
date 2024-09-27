@@ -33,10 +33,11 @@
     const LAYOUT_KEY = 'displayLayout';
     const LAYOUT_ORIGINAL = 'Original';
     const LAYOUT_CONDENSED = 'Condensed';
-    const FILTERED_CACHE_KEY = 'filteredData';
+    const FILTERED_CACHE_KEY = 'filterALLData';
     const API_KEY_TMDB = 'tmdbApiKey';
     const RESULT_TYPE_KEY = 'resultType';
     const radarrSignal = new CustomEvent('UpcomingReleasesDisplayChanged');
+    const container = document.querySelector("#torrents-movie-view > div");
 
     let digitalReleases = [];
 
@@ -67,8 +68,9 @@
                 return null;
             }
         } else {
-            console.warn(`Data for key ${key} is not in string format or is null, returning as is.`);
-            return compressedData;
+            // Return null when no valid data is found
+            console.warn(`No valid data found for key ${key}.`);
+            return null;
         }
     };
     let aCacheWasCleared = 0;
@@ -96,18 +98,6 @@
         aCacheWasCleared = 1;
     };
 
-    const setFilteredCacheTimer = () => {
-        setTimeout(() => {
-            GM_setValue(FILTERED_CACHE_KEY, null);
-            console.log("Filtered cache cleared after 1 minute");
-        }, 60 * 1000);  // 5 minutes in milliseconds
-    };
-
-    const handleFilteredCache = (filteredData) => {
-        GM_setValue(FILTERED_CACHE_KEY, { edges: filteredData });
-        setFilteredCacheTimer();  // Start the timer every time the filtered cache is set
-    };
-
     // Function to format date to YYYY-MM-DD
     function formatDate(date) {
         const d = new Date(date);
@@ -116,6 +106,99 @@
         const year = d.getFullYear();
         return `${year}-${month}-${day}`;
     }
+
+    const fetchDetailsWithRetry = (movie, retries, callback) => {
+        //const container = document.querySelector("#torrents-movie-view > div");
+        container.innerHTML = `
+            <div class="loading-container">
+                <div class="spinner"></div>
+                <p>Loading upcoming releases...</p>
+            </div>
+        `;
+        const apiKey = GM_getValue(API_KEY_TMDB, '');
+        const url = `https://api.themoviedb.org/3/movie/${movie.id}?api_key=${apiKey}&append_to_response=credits,external_ids,images`;
+
+        GM_xmlhttpRequest({
+            method: 'GET',
+            url: url,
+            onload: function (response) {
+                if (response.status === 200) {
+                    const data = JSON.parse(response.responseText);
+                    movie.details = data;
+                } else if (retries > 0) {
+                    console.warn(`Retrying fetch for movie ID ${movie.id}. Remaining retries: ${retries - 1}`);
+                    fetchDetailsWithRetry(movie, retries - 1, callback);
+                } else {
+                    console.error(`Failed to fetch details for movie ID ${movie.id} after multiple attempts`);
+                }
+                callback();
+            },
+            onerror: function () {
+                if (retries > 0) {
+                    console.warn(`Retrying fetch for movie ID ${movie.id}. Remaining retries: ${retries - 1}`);
+                    fetchDetailsWithRetry(movie, retries - 1, callback);
+                } else {
+                    console.error(`Error occurred while fetching details for movie ID ${movie.id} after multiple attempts`);
+                    callback();
+                }
+            }
+        });
+    };
+
+const sortAndFilterTmdbData = (data) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Set today's date to midnight for accurate comparison
+
+    console.log("Today's date:", today);
+
+    // Filter out movies that are not future releases and movies with a release date before today
+    const filteredDateData = data.filter(movie => {
+        const releaseDate = new Date(movie.release_date); // Ensure release_date is a valid date object
+
+        if (isNaN(releaseDate)) {
+            console.warn("Invalid release date for movie:", movie.title, movie.release_date);
+            return false;
+        }
+
+        // Check if the movie is in the future (isFuture should be true)
+        const isFuture = releaseDate >= today;
+        if (!isFuture) {
+            //console.log(`Excluding movie: ${movie.title} | Release Date: ${releaseDate} | Is Future: ${isFuture}`);
+            return false;
+        }
+
+        //console.log(`Including movie: ${movie.title} | Release Date: ${releaseDate} | Is Future: ${isFuture}`);
+        return true;
+    });
+
+    // Sort the remaining movies by release date in ascending order
+    filteredDateData.sort((a, b) => new Date(a.release_date) - new Date(b.release_date));
+
+    //console.log("Filtered and sorted TMDB data:", filteredDateData);
+    return filteredDateData;
+};
+
+const fetchMovieDetails = async () => {
+    const apiKey = GM_getValue(API_KEY_TMDB, '');
+    if (!apiKey) {
+        console.error('TMDb API key is not set.');
+        return;
+    }
+
+    let remainingRequests = digitalReleases.length;
+    return new Promise((resolve) => {
+        digitalReleases.forEach(movie => {
+            fetchDetailsWithRetry(movie, 3, () => {
+                if (--remainingRequests === 0) {
+                    console.log("Digital releases before filtering:", digitalReleases);
+                    // Filter and sort the TMDb data before caching and displaying
+                    const filteredData = sortAndFilterTmdbData(digitalReleases);
+                    resolve(filteredData); // Resolve the filtered data correctly
+                }
+            });
+        });
+    });
+};
 
     const fetchComingSoonDataWithRetry = async (afterDate = null, retries = 3) => {
         const url = `https://api.graphql.imdb.com/`;
@@ -234,45 +317,6 @@
         });
     };
 
-    const fetchAllComingSoonData = async () => {
-        const container = document.querySelector("#torrents-movie-view > div");
-        container.innerHTML = `
-            <div class="loading-container">
-                <div class="spinner"></div>
-                <p>Loading upcoming releases...</p>
-            </div>
-        `;
-        let allEdges = [];
-        let lastReleaseDate = null;
-
-        while (true) {
-            const newEdges = await fetchComingSoonDataWithRetry(lastReleaseDate ? lastReleaseDate : null);
-            if (newEdges.length === 0) break;
-
-            allEdges = allEdges.concat(newEdges);
-            const lastEdge = newEdges[newEdges.length - 1];
-            lastReleaseDate = `${lastEdge.node.releaseDate.year}-${String(lastEdge.node.releaseDate.month).padStart(2, '0')}-${String(lastEdge.node.releaseDate.day).padStart(2, '0')}`;
-
-            if (newEdges.length < MAX_RESULTS) break;
-        }
-
-        const cachedData = { edges: allEdges };
-        setCache(CACHE_KEY_IMDB, cachedData);
-        GM_setValue(CACHE_EXPIRATION_KEY_IMDB, Date.now() + 4 * 24 * 60 * 60 * 1000);
-
-        const nameIds = [];
-        cachedData.edges.forEach(edge => {
-            edge.node.credits.edges.forEach(credit => {
-                nameIds.push(credit.node.name.id);
-            });
-        });
-
-        const primaryImageUrls = await fetchPrimaryImageUrls(nameIds);
-        setCache(NAME_IMAGES_CACHE_KEY, primaryImageUrls);
-        container.innerHTML = "";
-        displayResults(1);
-    };
-
     const fetchPrimaryImageUrls = async (nameIds) => {
         const url = `https://api.graphql.imdb.com/`;
         const queries = [];
@@ -327,142 +371,99 @@
         return results.flat();
     };
 
-    const fetchUpcomingDigitalMovies = async (page = 1) => {
-        const container = document.querySelector("#torrents-movie-view > div");
+    const fetchAllComingSoonData = async () => {
+        //const container = document.querySelector("#torrents-movie-view > div");
         container.innerHTML = `
             <div class="loading-container">
                 <div class="spinner"></div>
                 <p>Loading upcoming releases...</p>
             </div>
         `;
-        const apiKey = GM_getValue(API_KEY_TMDB, '');
-        if (!apiKey) {
-            console.error('TMDb API key is not set.');
-            return;
+        let allEdges = [];
+        let lastReleaseDate = null;
+
+        while (true) {
+            const newEdges = await fetchComingSoonDataWithRetry(lastReleaseDate ? lastReleaseDate : null);
+            if (newEdges.length === 0) break;
+
+            allEdges = allEdges.concat(newEdges);
+            const lastEdge = newEdges[newEdges.length - 1];
+            lastReleaseDate = `${lastEdge.node.releaseDate.year}-${String(lastEdge.node.releaseDate.month).padStart(2, '0')}-${String(lastEdge.node.releaseDate.day).padStart(2, '0')}`;
+
+            if (newEdges.length < MAX_RESULTS) break;
         }
 
-        const today = new Date();
-        const fourMonthsFromNow = new Date();
-        fourMonthsFromNow.setMonth(today.getMonth() + 4);
+        const cachedData = { edges: allEdges };
+        setCache(CACHE_KEY_IMDB, cachedData);
+        //GM_setValue(CACHE_EXPIRATION_KEY_IMDB, Date.now() + 4 * 24 * 60 * 60 * 1000);
 
-        const url = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&language=en-US&region=US&sort_by=release_date.desc&release_date.gte=${formatDate(today)}&release_date.lte=${formatDate(fourMonthsFromNow)}&with_release_type=4&page=${page}`;
-
-        return new Promise((resolve, reject) => {
-            GM_xmlhttpRequest({
-                method: 'GET',
-                url: url,
-                onload: function (response) {
-                    if (response.status === 200) {
-                        const data = JSON.parse(response.responseText);
-                        digitalReleases = digitalReleases.concat(data.results);
-
-                        if (data.page < data.total_pages) {
-                            fetchUpcomingDigitalMovies(data.page + 1).then(resolve).catch(reject);
-                        } else {
-                            fetchMovieDetails().then(() => {
-                                setCache(CACHE_KEY_TMDB, digitalReleases);
-                                container.innerHTML = "";
-                                displayResults(1);
-                                resolve(digitalReleases);
-                            }).catch(reject);
-                        }
-                    } else {
-                        console.error('Failed to fetch data from TMDb API', response); // Debugging log for errors
-                        reject(new Error('Failed to fetch data from TMDb API'));
-                    }
-                },
-                onerror: function (response) {
-                    console.error('Error occurred while fetching data from TMDb API', response); // Debugging log for errors
-                    reject(new Error('Error occurred while fetching data from TMDb API'));
-                }
+        const nameIds = [];
+        cachedData.edges.forEach(edge => {
+            edge.node.credits.edges.forEach(credit => {
+                nameIds.push(credit.node.name.id);
             });
         });
+
+        const primaryImageUrls = await fetchPrimaryImageUrls(nameIds);
+        setCache(NAME_IMAGES_CACHE_KEY, primaryImageUrls);
+        container.innerHTML = "";
+        //displayResults(1);
     };
 
-    const sortAndFilterTmdbData = (data) => {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0); // Set the time to midnight for accurate comparison
+const fetchUpcomingDigitalMovies = async (page = 1) => {
+    const apiKey = GM_getValue(API_KEY_TMDB, '');
+    if (!apiKey) {
+        console.error('TMDb API key is not set.');
+        return;
+    }
 
-        // Filter out movies with a release date before today
-        const filteredData = data.filter(movie => {
-            const releaseDate = new Date(movie.release_date);
-            return releaseDate >= today;
-        });
+    const today = new Date();
+    const fourMonthsFromNow = new Date();
+    fourMonthsFromNow.setMonth(today.getMonth() + 4);
 
-        // Sort the movies by release date in ascending order
-        filteredData.sort((a, b) => new Date(a.release_date) - new Date(b.release_date));
+    const url = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&language=en-US&region=US&sort_by=release_date.desc&release_date.gte=${formatDate(today)}&release_date.lte=${formatDate(fourMonthsFromNow)}&with_release_type=4&page=${page}`;
 
-        return filteredData;
-    };
-
-    const fetchMovieDetails = async () => {
-        const apiKey = GM_getValue(API_KEY_TMDB, '');
-        if (!apiKey) {
-            console.error('TMDb API key is not set.');
-            return;
-        }
-
-        let remainingRequests = digitalReleases.length;
-        return new Promise((resolve) => {
-            digitalReleases.forEach(movie => {
-                fetchDetailsWithRetry(movie, 3, () => {
-                    if (--remainingRequests === 0) {
-                        // Sort and filter the TMDb data before caching and displaying
-                        digitalReleases = sortAndFilterTmdbData(digitalReleases);
-                        setCache(CACHE_KEY_TMDB, digitalReleases);
-                        resolve();
-                    }
-                });
-            });
-        });
-    };
-
-    const fetchDetailsWithRetry = (movie, retries, callback) => {
-        const container = document.querySelector("#torrents-movie-view > div");
-        container.innerHTML = `
-            <div class="loading-container">
-                <div class="spinner"></div>
-                <p>Loading upcoming releases...</p>
-            </div>
-        `;
-        const apiKey = GM_getValue(API_KEY_TMDB, '');
-        const url = `https://api.themoviedb.org/3/movie/${movie.id}?api_key=${apiKey}&append_to_response=credits,external_ids,images`;
-
+    return new Promise((resolve, reject) => {
         GM_xmlhttpRequest({
             method: 'GET',
             url: url,
             onload: function (response) {
                 if (response.status === 200) {
                     const data = JSON.parse(response.responseText);
-                    movie.details = data;
-                } else if (retries > 0) {
-                    console.warn(`Retrying fetch for movie ID ${movie.id}. Remaining retries: ${retries - 1}`);
-                    fetchDetailsWithRetry(movie, retries - 1, callback);
+                    digitalReleases = digitalReleases.concat(data.results);
+
+                    if (data.page < data.total_pages) {
+                        fetchUpcomingDigitalMovies(data.page + 1).then(resolve).catch(reject);
+                    } else {
+                        // Once all pages are fetched, filter the results by date using fetchMovieDetails
+                        fetchMovieDetails().then((filteredData) => {
+                            console.log('Filtered Data:', filteredData); // Check the data before caching
+                            setCache(CACHE_KEY_TMDB, filteredData);  // Cache only future releases
+                            // Resolve only the filtered data
+                            resolve(filteredData);
+                        }).catch(reject);
+                    }
                 } else {
-                    console.error(`Failed to fetch details for movie ID ${movie.id} after multiple attempts`);
+                    console.error('Failed to fetch data from TMDb API', response); // Debugging log for errors
+                    reject(new Error('Failed to fetch data from TMDb API'));
                 }
-                callback();
             },
-            onerror: function () {
-                if (retries > 0) {
-                    console.warn(`Retrying fetch for movie ID ${movie.id}. Remaining retries: ${retries - 1}`);
-                    fetchDetailsWithRetry(movie, retries - 1, callback);
-                } else {
-                    console.error(`Error occurred while fetching details for movie ID ${movie.id} after multiple attempts`);
-                    callback();
-                }
+            onerror: function (response) {
+                console.error('Error occurred while fetching data from TMDb API', response); // Debugging log for errors
+                reject(new Error('Error occurred while fetching data from TMDb API'));
             }
         });
-    };
+    });
+};
 
     const sortCombinedDataByDate = (data) => {
         return data.sort((a, b) => {
             const dateA = a.node.releaseDate ?
                 new Date(`${a.node.releaseDate.year}-${String(a.node.releaseDate.month).padStart(2, '0')}-${String(a.node.releaseDate.day).padStart(2, '0')}`) :
-                (a.node.details && a.node.details.release_date ? new Date(a.node.details.release_date) : null);
+                (a.node && a.node.release_date ? new Date(a.node.release_date) : null);
             const dateB = b.node.releaseDate ?
                 new Date(`${b.node.releaseDate.year}-${String(b.node.releaseDate.month).padStart(2, '0')}-${String(b.node.releaseDate.day).padStart(2, '0')}`) :
-                (b.node.details && b.node.details.release_date ? new Date(b.node.details.release_date) : null);
+                (b.node && b.node.release_date ? new Date(b.node.release_date) : null);
 
             if (!dateA || !dateB) {
                 return 0; // If either date is missing, consider them equal.
@@ -565,13 +566,13 @@ const displayResultsOriginal = (page, data, source) => {
         });
     }
 
-    const container = document.querySelector("#torrents-movie-view > div");
+    //const container = document.querySelector("#torrents-movie-view > div");
     container.innerHTML = "";
 
     const groupedByDate = pageData.reduce((acc, movie) => {
         const node = movie.node;
         if (!node) return acc;
-        const releaseDate = node.releaseDate ? `${node.releaseDate.year}-${String(node.releaseDate.month).padStart(2, '0')}-${String(node.releaseDate.day).padStart(2, '0')}` : node.details.release_date;
+        const releaseDate = node.releaseDate ? `${node.releaseDate.year}-${String(node.releaseDate.month).padStart(2, '0')}-${String(node.releaseDate.day).padStart(2, '0')}` : node.release_date;
         if (!releaseDate) return acc;
         const dateStr = new Date(releaseDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
         if (!acc[dateStr]) acc[dateStr] = [];
@@ -737,15 +738,6 @@ const displayResultsCondensed = (page, data, source) => {
     const resultsPerPage = GM_getValue(RESULTS_PER_PAGE_KEY, RESULTS_PER_PAGE_DEFAULT);
     const resultType = GM_getValue(RESULT_TYPE_KEY, 'All');
 
-    if (!data || !data.edges || !nameImagesData) {
-        if (source === 'IMDb') {
-            fetchAllComingSoonData();
-        } else if (source === 'TMDb') {
-            fetchUpcomingDigitalMovies();
-        }
-        return;
-    }
-
     const totalResults = data.edges.length;
     const totalPages = Math.ceil(totalResults / resultsPerPage);
 
@@ -767,7 +759,7 @@ const displayResultsCondensed = (page, data, source) => {
     const groupedByDate = pageData.reduce((acc, movie) => {
         const node = movie.node;
         if (!node) return acc;
-        const releaseDate = node.releaseDate ? `${node.releaseDate.year}-${String(node.releaseDate.month).padStart(2, '0')}-${String(node.releaseDate.day).padStart(2, '0')}` : node.details.release_date;
+        const releaseDate = node.releaseDate ? `${node.releaseDate.year}-${String(node.releaseDate.month).padStart(2, '0')}-${String(node.releaseDate.day).padStart(2, '0')}` : node.release_date;
         if (!releaseDate) return acc;
         const dateStr = new Date(releaseDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
         if (!acc[dateStr]) acc[dateStr] = [];
@@ -818,10 +810,12 @@ const displayResultsCondensed = (page, data, source) => {
                 infoDiv.setAttribute('class', 'site-link');
 
                 const titleLink = document.createElement("a");
-                titleLink.href = movie.source === 'IMDb' ? `https://www.imdb.com/title/${node.id}/` : `https://www.themoviedb.org/movie/${node.id}`;
+                titleLink.href = movie.source === 'IMDb'
+                    ? `https://www.imdb.com/title/${node.id}/`
+                    : `https://www.themoviedb.org/movie/${node.id}`;
                 titleLink.target = "_blank";
                 titleLink.rel = "noreferrer";
-                titleLink.textContent = node.titleText ? node.titleText.text : node.details.title;
+                titleLink.textContent = node.titleText?.text || node.details?.title || node.title || node.original_title;
                 titleLink.style.fontWeight = "bold";
                 titleLink.style.fontSize = "1.2em";
                 titleLink.style.textDecoration = "none";
@@ -847,10 +841,10 @@ const displayResultsCondensed = (page, data, source) => {
 
                 const ptpLink = document.createElement("a");
                 if(movie.source === 'IMDb') {
-                    ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id || node.details.title}`;
+                    ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id || node.details?.title}`;
                 }
                 if(movie.source === 'TMDb') {
-                    ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.details.title}`;
+                    ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.details?.title || node.title}`;
                 }
                 ptpLink.target = "_blank";
                 ptpLink.textContent = "(Search PTP requests)";
@@ -859,7 +853,7 @@ const displayResultsCondensed = (page, data, source) => {
                 infoDiv.appendChild(ptpLink);
 
                 const genres = document.createElement("p");
-                const genresList = node.genres ? node.genres.genres : node.details.genres;
+                const genresList = node.genres?.genres || node.details?.genres || [];
                 genresList.forEach(genre => {
                     const genreLink = document.createElement("a");
                     genreLink.href = `https://passthepopcorn.me/torrents.php?action=advanced&taglist=${genre.text || genre.name}`;
@@ -877,7 +871,7 @@ const displayResultsCondensed = (page, data, source) => {
                 castContainer.style.gap = "10px";
 
                 let castCount = 0;
-                const creditsList = node.credits ? node.credits.edges : node.details.credits.cast;
+                const creditsList = node.credits?.edges || node.details?.credits?.cast || [];
                 creditsList.forEach(credit => {
                     const castMember = movie.source === 'IMDb' ? nameImagesData.find(name => name.id === credit.node.name.id) : credit;
 
@@ -1006,75 +1000,243 @@ const addSpinnerStyles = () => {
     document.head.appendChild(style);
 };
 
+const handleSearchForm = (filteredDateData) => {
+    const searchForm = document.querySelector("#filter_torrents_form");
+
+    if (searchForm) {
+        console.log("Form found");
+
+        const searchInput = searchForm.querySelector('input[title="Movie name or IMDb link"]');
+        const tagInput = searchForm.querySelector('#tags');
+        const castInput = searchForm.querySelector('input[title="Comma-separated cast names"]');
+
+        // Log field detection
+        searchInput ? console.log("Search input found:", searchInput) : console.log("Search input NOT found");
+        tagInput ? console.log("Tag input found:", tagInput) : console.log("Tag input NOT found");
+        castInput ? console.log("Cast input found:", castInput) : console.log("Cast input NOT found");
+
+        searchForm.addEventListener("submit", (event) => {
+            event.preventDefault();
+
+            const searchstr = searchInput?.value || "";
+            const taglist = tagInput?.value || "";
+            const castlist = castInput?.value || "";
+
+            console.log("Search string:", searchstr);
+            console.log("Tag list:", taglist);
+            console.log("Cast list:", castlist);
+
+            const tagsType = document.querySelector('input[name="tags_type"]:checked')?.value || "all";
+
+            const cachedIMDbData = getCache(CACHE_KEY_IMDB);
+            const cachedTMDBData = getCache(CACHE_KEY_TMDB);
+            console.log("IMDb cache:", cachedIMDbData);
+            console.log("TMDB cache:", cachedTMDBData);
+
+            if (cachedIMDbData && cachedIMDbData.edges && cachedTMDBData) {
+                let filterIMDbData = cachedIMDbData.edges;
+                let filterTMDBData = cachedTMDBData;
+
+                // Search string filtering
+                if (searchstr) {
+                    filterIMDbData = filterIMDbData.filter(movie =>
+                        movie.node.titleText?.text?.toLowerCase().includes(searchstr.toLowerCase())
+                    );
+                    filterTMDBData = filterTMDBData.filter(movie =>
+                        movie.title?.toLowerCase().includes(searchstr.toLowerCase())
+                    );
+                }
+
+                // Tag filtering
+                if (taglist) {
+                    const tags = taglist.split(',').map(tag => tag.trim().toLowerCase());
+
+                    // IMDb tag filtering
+                    filterIMDbData = filterIMDbData.filter(movie => {
+                        const movieTags = movie.node.genres?.genres?.map(genre => genre.text?.toLowerCase()) || [];
+                        return tagsType === "any"
+                            ? tags.some(tag => movieTags.includes(tag))
+                            : tags.every(tag => movieTags.includes(tag));
+                    });
+
+                    // TMDb tag filtering
+                    filterTMDBData = filterTMDBData.filter(movie => {
+                        const movieTags = movie.details?.map(genre => genre.name?.toLowerCase()) || [];
+                        return tagsType === "any"
+                            ? tags.some(tag => movieTags.includes(tag))
+                            : tags.every(tag => movieTags.includes(tag));
+                    });
+                }
+
+                // Cast filtering
+                if (castlist) {
+                    const casts = castlist.split(',').map(cast => cast.trim().toLowerCase());
+
+                    // IMDb cast filtering
+                    filterIMDbData = filterIMDbData.filter(movie => {
+                        if (!movie.node || !movie.node.credits?.edges) {
+                            console.warn("Skipping IMDb movie without credits:", movie);
+                            return false; // Skip movies without credits or node
+                        }
+                        const movieCasts = movie.node.credits.edges.map(credit => credit.node.name.nameText.text.toLowerCase());
+                        return casts.some(cast => movieCasts.some(movieCast => movieCast.includes(cast)));
+                    });
+
+                    // TMDb cast filtering
+                    filterTMDBData = filterTMDBData.filter(movie => {
+                        if (!movie.details?.credits?.cast) {
+                            console.warn("Skipping TMDb movie without cast details:", movie);
+                            return false; // Skip movies without cast details
+                        }
+                        const movieCasts = movie.details.credits.cast.map(cast => cast.name?.toLowerCase());
+                        return casts.some(cast => movieCasts.some(movieCast => movieCast.includes(cast)));
+                    });
+                }
+                // **Wrap TMDb Data in Node**
+                filterTMDBData = filterTMDBData.map(movie => ({
+                    node: {
+                        id: movie.id,
+                        titleText: { text: movie.title || movie.original_title },
+                        releaseDate: {
+                            day: movie.release_date ? new Date(movie.release_date).getDate() : null,
+                            month: movie.release_date ? new Date(movie.release_date).getMonth() + 1 : null,
+                            year: movie.release_date ? new Date(movie.release_date).getFullYear() : null
+                        },
+                        genres: {
+                            genres: movie.details?.genres?.map(genre => ({ text: genre.name })) || []
+                        },
+                        primaryImage: {
+                            url: movie.poster_path ? `https://image.tmdb.org/t/p/original${movie.poster_path}` : null
+                        },
+                        plot: { plotText: { text: movie.overview } },
+                        popularity: movie.popularity || 0,
+                        imdbId: movie.external_ids?.imdb_id || null,
+                        spokenLanguages: movie.spoken_languages?.map(lang => lang.iso_639_1) || [],
+                        cast: movie.credits?.cast?.map(castMember => ({
+                            name: castMember.name,
+                            character: castMember.character,
+                            profilePath: castMember.profile_path ? `https://image.tmdb.org/t/p/original${castMember.profile_path}` : null
+                        })) || [],
+                        crew: movie.credits?.crew?.map(crewMember => ({
+                            name: crewMember.name,
+                            job: crewMember.job
+                        })) || []
+                    },
+                    source: 'TMDb'
+                }));
+
+                console.log("Filtered IMDB data:", filterIMDbData);
+                console.log("Filtered TMDB data:", filterTMDBData);
+
+                // Handle no filters
+                if (!searchstr && !taglist && !castlist) {
+                    filterIMDbData = null;
+                    filterTMDBData = null;
+                    GM_setValue(FILTERED_CACHE_KEY, null);
+                    displayResults(1);
+                    document.dispatchEvent(radarrSignal);
+                    return;
+                }
+                // Combine IMDb and TMDb results (optional: you can adjust based on needs)
+                const combinedResults = [...filterIMDbData, ...filterTMDBData];
+
+                // Cache and display the filtered results
+                GM_setValue(FILTERED_CACHE_KEY, { edges: combinedResults });
+                document.dispatchEvent(radarrSignal);
+                displayResults(1);
+            } else {
+                console.log("No cached data available.");
+            }
+        });
+
+    } else {
+        console.log("Search form not found.");
+    }
+};
+
 const displayResults = async (page) => {
     try {
-        // Placeholder function for fetching and processing data
         const fetchAndProcessData = async () => {
-            const filteredData = GM_getValue(FILTERED_CACHE_KEY);
+            const filteredALLData = GM_getValue(FILTERED_CACHE_KEY); // Use filtered data if available
+            const cachedIMDbData = getCache(CACHE_KEY_IMDB);
+            const cachedTMDBData = getCache(CACHE_KEY_TMDB);
             const layout = GM_getValue(LAYOUT_KEY, LAYOUT_ORIGINAL);
             const resultType = GM_getValue(RESULT_TYPE_KEY, 'All');
-            let data = { edges: [] };
             let imdbData = [];
             let tmdbData = [];
             const today = new Date();
-            today.setHours(0, 0, 0, 0); // Set to midnight to compare only dates
+            today.setHours(0, 0, 0, 0); // Set to midnight for date comparison
 
-            if (resultType === 'Theatrical' || resultType === 'All') {
-                const imdbCache = filteredData || getCache(CACHE_KEY_IMDB);
-                if (imdbCache) {
-                    imdbData = imdbCache.edges.map(edge => ({
-                        ...edge,
-                        source: 'IMDb'
-                    }));
+            // Check for filtered data first
+            if (filteredALLData) {
+                imdbData = filteredALLData.edges.map(edge => ({
+                    ...edge,
+                    source: 'IMDb'
+                }));
+
+                // TMDb filtered data (exact same formatting style as IMDb)
+                tmdbData = filteredALLData.edges.map(edge => ({
+                    ...edge,
+                    source: 'TMDb'
+                }));
+            } else {
+                // Fetch regular caches if no filtered data exists
+                if (resultType === 'Theatrical' || resultType === 'All') {
+                    //const imdbCache = getCache(CACHE_KEY_IMDB);
+                    if (cachedIMDbData) {
+                        imdbData = cachedIMDbData.edges.map(edge => ({
+                            ...edge,
+                            source: 'IMDb'
+                        }));
+                    }
+                }
+
+                if (resultType === 'Digital' || resultType === 'All') {
+                    //const tmdbCache = getCache(CACHE_KEY_TMDB);
+                    if (cachedTMDBData) {
+                        tmdbData = cachedTMDBData.map(movie => ({
+                            node: movie,
+                            source: 'TMDb'
+                        }));
+                    }
                 }
             }
 
-            if (resultType === 'Digital' || resultType === 'All') {
-                const tmdbCache = getCache(CACHE_KEY_TMDB);
-                if (tmdbCache) {
-                    tmdbData = tmdbCache.map(movie => ({
-                        node: movie,
-                        source: 'TMDb'
-                    }));
-                }
-            }
+            console.log("imdbData:", imdbData);
+            console.log("tmdbData:", tmdbData);
 
-            // Combine IMDb and TMDb data
-            data.edges = [...imdbData, ...tmdbData];
+            // Combine IMDb and TMDb results
+            const combinedResults = [...imdbData, ...tmdbData];
 
-            // Filter out items with dates before today
-            data.edges = data.edges.filter(edge => {
-                const releaseDate = edge.node.releaseDate ?
-                    new Date(`${edge.node.releaseDate.year}-${String(edge.node.releaseDate.month).padStart(2, '0')}-${String(edge.node.releaseDate.day).padStart(2, '0')}`) :
-                    (edge.node.details && edge.node.details.release_date ? new Date(edge.node.details.release_date) : null);
-
-                return releaseDate && releaseDate >= today;
-            });
-
-            // Remove potential duplicates by using a Set or filtering based on a unique identifier like `node.id`
+            // Remove duplicates by unique identifier (ID + source)
             const uniqueData = [];
             const seenIds = new Set();
 
-            data.edges.forEach(edge => {
-                const id = edge.node.id || edge.node.details.id;
+            combinedResults.forEach(edge => {
+                if (!edge.node) {
+                    console.warn("Skipping edge without node during processing:", edge);
+                    return; // Skip if no node property is found
+                }
+
+                const id = edge.node.id + edge.source; // Unique ID combining source
                 if (!seenIds.has(id)) {
-                    seenIds.add(id);
-                    uniqueData.push(edge);
+                    seenIds.add(id);  // Track seen IDs combined with source
+                    uniqueData.push(edge);  // Add unique movie entry
                 }
             });
 
-            data.edges = uniqueData;
+            // Sort the combined unique data by release date
+            const sortedData = sortCombinedDataByDate(uniqueData);
 
-            // Sort the combined data by release date
-            if (data.edges.length > 0) {
-                data.edges = sortCombinedDataByDate(data.edges);
-            }
+            console.log("Final sorted data:", sortedData);
 
+            // Display results based on layout
             if (layout === LAYOUT_ORIGINAL) {
-                displayResultsOriginal(page, data, 'All');
+                displayResultsOriginal(page, { edges: sortedData }, 'All');
             } else if (layout === LAYOUT_CONDENSED) {
-                displayResultsCondensed(page, data, 'All');
+                displayResultsCondensed(page, { edges: sortedData }, 'All');
             }
+
             if (aCacheWasCleared === 1) {
                 setTimeout(() => {
                     document.dispatchEvent(radarrSignal);
@@ -1088,104 +1250,6 @@ const displayResults = async (page) => {
     } catch (error) {
         container.innerHTML = "<p style='color: red; font-size: 1.5em; text-align: center;'>Failed to load data. Please try again later.</p>";
         console.error("Error loading data:", error); // Log the error for debugging
-    }
-};
-
-const handleSearchForm = () => {
-    const searchForm = document.querySelector("#filter_torrents_form");
-
-    if (searchForm) {
-        console.log("Form found");
-
-        // Target the input fields by their `id` since no `name` attributes are provided
-        const searchInput = searchForm.querySelector('input[title="Movie name or IMDb link"]');
-        const tagInput = searchForm.querySelector('#tags');
-        const castInput = searchForm.querySelector('input[title="Comma-separated cast names"]');
-
-        // Check if the elements are found and log them
-        if (searchInput) {
-            console.log("Search input field found:", searchInput);
-        } else {
-            console.log("Search input field NOT found");
-        }
-
-        if (tagInput) {
-            console.log("Tag input field found:", tagInput);
-        } else {
-            console.log("Tag input field NOT found");
-        }
-
-        if (castInput) {
-            console.log("Cast input field found:", castInput);
-        } else {
-            console.log("Cast input field NOT found");
-        }
-
-        // Handle the form submission
-        searchForm.addEventListener("submit", (event) => {
-            event.preventDefault();
-
-            // Get the values directly from the inputs, since `FormData` relies on `name` attributes
-            const searchstr = searchInput ? searchInput.value : "";
-            const taglist = tagInput ? tagInput.value : "";
-            const castlist = castInput ? castInput.value : "";
-
-            console.log("Search string:", searchstr);  // Log the search string
-            console.log("Tag list:", taglist);         // Log the tag list
-            console.log("Cast list:", castlist);       // Log the cast list
-
-            const tagsType = document.querySelector('input[name="tags_type"]:checked')?.value || "all";
-
-            const cachedData = getCache(CACHE_KEY_IMDB);
-            if (cachedData && cachedData.edges) {
-                let filteredData = cachedData.edges;
-
-                // Filter by search string
-                if (searchstr) {
-                    filteredData = filteredData.filter(movie =>
-                        movie.node.titleText.text.toLowerCase().includes(searchstr.toLowerCase())
-                    );
-                }
-
-                // Filter by tag list
-                if (taglist) {
-                    const tags = taglist.split(',').map(tag => tag.trim().toLowerCase());
-                    filteredData = filteredData.filter(movie => {
-                        const movieTags = movie.node.genres.genres.map(genre => genre.text.toLowerCase());
-                        return tagsType === "any"
-                            ? tags.some(tag => movieTags.includes(tag))
-                            : tags.every(tag => movieTags.includes(tag));
-                    });
-                }
-
-                // Filter by cast list
-                if (castlist) {
-                    const casts = castlist.split(',').map(cast => cast.trim().toLowerCase());
-                    filteredData = filteredData.filter(movie => {
-                        const movieCasts = movie.node.credits.edges.map(credit => credit.node.name.nameText.text.toLowerCase());
-                        return casts.some(cast => movieCasts.some(movieCast => movieCast.includes(cast)));
-                    });
-                }
-
-                if (!searchstr && !taglist && !castlist) {
-                    filteredData = null;
-                    GM_setValue(FILTERED_CACHE_KEY, null);  // Reset cache
-                    displayResults(1);
-                    document.dispatchEvent(radarrSignal);
-                    return;
-                }
-
-                // Cache the filtered results
-                GM_setValue(FILTERED_CACHE_KEY, { edges: filteredData });
-                document.dispatchEvent(radarrSignal);
-                displayResults(1);
-            } else {
-                console.log("No cached data available.");
-            }
-        });
-
-    } else {
-        console.log("Search form not found.");
     }
 };
 
@@ -1362,27 +1426,43 @@ const init = () => {
 
     if (Date.now() > cacheExpirationIMDb) {
         clearCache('IMDb');
-        fetchAllComingSoonData();
+        clearCache('TMDb');
+        Promise.all([
+            fetchAllComingSoonData(),
+            fetchUpcomingDigitalMovies()
+        ]).then(() => {
+            // After both fetch functions complete, display results
+            displayResults(currentPage);
+            GM_setValue(CACHE_EXPIRATION_KEY_TMDB, Date.now() + 4 * 24 * 60 * 60 * 1000);
+            GM_setValue(CACHE_EXPIRATION_KEY_IMDB, Date.now() + 4 * 24 * 60 * 60 * 1000);
+        }).catch(error => {
+            console.error("Error fetching data:", error);
+            // Handle error if needed
+        });
     } else {
         const cachedDataIMDb = getCache(CACHE_KEY_IMDB);
+        const cachedDataTMDB = getCache(CACHE_KEY_TMDB);
         const nameImagesData = getCache(NAME_IMAGES_CACHE_KEY);
         if (cachedDataIMDb && cachedDataIMDb.edges.length > 0 && nameImagesData) {
             displayResults(currentPage);
         } else {
             fetchAllComingSoonData();
+            fetchUpcomingDigitalMovies()
+            Promise.all([
+                fetchAllComingSoonData(),
+                fetchUpcomingDigitalMovies()
+            ]).then(() => {
+                // After both fetch functions complete, display results
+                displayResults(currentPage);
+                GM_setValue(CACHE_EXPIRATION_KEY_TMDB, Date.now() + 4 * 24 * 60 * 60 * 1000);
+                GM_setValue(CACHE_EXPIRATION_KEY_IMDB, Date.now() + 4 * 24 * 60 * 60 * 1000);
+            }).catch(error => {
+                console.error("Error fetching data:", error);
+                // Handle error if needed
+            });
         }
     }
 
-    if (Date.now() > cacheExpirationTMDb) {
-        clearCache('TMDb');
-        fetchUpcomingDigitalMovies().then(() => {
-            setCache(CACHE_KEY_TMDB, digitalReleases);
-            GM_setValue(CACHE_EXPIRATION_KEY_TMDB, Date.now() + 4 * 24 * 60 * 60 * 1000);
-            displayResults(currentPage);
-        });
-    } else {
-        displayResults(currentPage);
-    }
     document.dispatchEvent(radarrSignal);
     updateSearchForm();
     handleSearchForm();
