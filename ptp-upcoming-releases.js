@@ -521,21 +521,30 @@ const fetchUpcomingDigitalMovies = async (page = 1) => {
         });
     };
 
-    const createImageElement = (node, size, source) => {
-        const image = document.createElement("img");
-        if (source === 'IMDb') {
-            image.src = node.primaryImage && node.primaryImage.url ? node.primaryImage.url : 'https://ptpimg.me/w6l4kj.png';
-            image.alt = node.primaryImage && node.primaryImage.caption ? node.primaryImage.caption.plainText : 'No image available';
-        } else if (source === 'TMDb') {
-            image.src = node.details && node.details.poster_path ? `https://image.tmdb.org/t/p/original${node.details.poster_path}` : 'https://ptpimg.me/w6l4kj.png';
-            image.alt = node.details && node.details.title ? node.details.title : 'No image available';
-        }
-        image.style.maxWidth = size;
-        image.style.marginRight = "10px";
-        image.classList.add('lightbox-trigger');
-        image.loading = "lazy";
-        return image;
-    };
+const createImageElement = (node, size, source) => {
+    const image = document.createElement("img");
+
+    if (source === 'IMDb') {
+        // IMDb image handling
+        image.src = node.primaryImage && node.primaryImage.url ? node.primaryImage.url : 'https://ptpimg.me/w6l4kj.png';
+        image.alt = node.primaryImage && node.primaryImage.caption ? node.primaryImage.caption.plainText : 'No image available';
+    } else if (source === 'TMDb') {
+        // TMDb image handling for both wrapped and unwrapped data
+        const posterPath = node.details?.poster_path || (node.primaryImage && node.primaryImage.url);
+        const titleText = node.details?.title || node.title;
+
+        // Use direct URL if primaryImage is available, otherwise construct the URL
+        image.src = posterPath && node.primaryImage ? posterPath : (posterPath ? `https://image.tmdb.org/t/p/original${posterPath}` : 'https://ptpimg.me/w6l4kj.png');
+        image.alt = titleText ? titleText : 'No image available';
+    }
+
+    image.style.maxWidth = size;
+    image.style.marginRight = "10px";
+    image.classList.add('lightbox-trigger');
+    image.loading = "lazy";
+
+    return image;
+};
 
 const displayResultsOriginal = (page, data, source) => {
     const nameImagesData = getCache(NAME_IMAGES_CACHE_KEY);
@@ -871,18 +880,34 @@ const displayResultsCondensed = (page, data, source) => {
                 castContainer.style.gap = "10px";
 
                 let castCount = 0;
-                const creditsList = node.credits?.edges || node.details?.credits?.cast || [];
+
+                // Handle IMDb or TMDb cast lists for both wrapped and unwrapped data
+                const creditsList = movie.source === 'IMDb'
+                    ? (node.cast || node.credits?.edges || [])  // IMDb: Handle wrapped and unwrapped data
+                    : (node.cast || node.details?.credits?.cast || []);  // TMDb: Handle wrapped (node.cast) and unwrapped (node.details.credits.cast)
+
                 creditsList.forEach(credit => {
-                    const castMember = movie.source === 'IMDb' ? nameImagesData.find(name => name.id === credit.node.name.id) : credit;
+                    // IMDb case: Check if it's wrapped (node.cast) or unwrapped (credits.edges)
+                    const castMember = movie.source === 'IMDb'
+                        ? (node.cast ? credit : nameImagesData.find(name => name.id === credit.node.name.id)) // IMDb: Handle wrapped and unwrapped
+                        : (node.cast ? credit : credit);  // TMDb: Handle wrapped (node.cast) and unwrapped (credit)
 
                     if (castMember && castCount < 5) {
                         castCount++;
+
+                        // Create a div to hold the cast member details
                         const castDiv = document.createElement("div");
                         castDiv.style.textAlign = "center";
                         castDiv.style.width = "auto";
 
+                        // Create a clickable link for the cast member
                         const castNameLink = document.createElement("a");
-                        const castName = movie.source === 'IMDb' ? credit.node.name.nameText.text : credit.name;
+
+                        // Get the cast name based on whether the data is wrapped or not for both IMDb and TMDb
+                        const castName = movie.source === 'IMDb'
+                            ? (node.cast ? credit.name : credit.node.name.nameText.text)  // IMDb: Wrapped or unwrapped
+                            : (node.cast ? credit.name : credit.name);  // TMDb: Handle both wrapped and unwrapped
+
                         castNameLink.href = `https://passthepopcorn.me/artist.php?artistname=${encodeURIComponent(castName)}`;
                         castNameLink.target = "_blank";
                         castNameLink.textContent = castName;
@@ -890,8 +915,11 @@ const displayResultsCondensed = (page, data, source) => {
                         castNameLink.style.textDecoration = "none";
                         castNameLink.style.color = "white";
                         castNameLink.style.marginTop = "10px";
+
+                        // Append the cast name link to the div
                         castDiv.appendChild(castNameLink);
 
+                        // Append the cast div to the container
                         castContainer.appendChild(castDiv);
                     }
                 });
@@ -1092,7 +1120,40 @@ const handleSearchForm = (filteredDateData) => {
                         return casts.some(cast => movieCasts.some(movieCast => movieCast.includes(cast)));
                     });
                 }
-                // **Wrap TMDb Data in Node**
+
+                filterIMDbData = filterIMDbData.map(movie => ({
+                    node: {
+                        id: movie.node.id, // Movie ID
+                        titleText: { text: movie.node.titleText?.text || '' }, // Title
+                        releaseDate: {
+                            day: movie.node.releaseDate?.day || null,
+                            month: movie.node.releaseDate?.month || null,
+                            year: movie.node.releaseDate?.year || null
+                        }, // Release Date
+                        genres: {
+                            genres: movie.node.genres?.genres?.map(genre => ({ text: genre.text })) || []
+                        }, // Genres
+                        primaryImage: {
+                            url: movie.node.primaryImage?.url || null
+                        }, // Poster Image
+                        plot: { plotText: { text: movie.node.plot?.plotText?.plainText || '' } }, // Plot
+                        popularity: movie.node.popularity || 0, // Popularity score
+                        imdbId: movie.node.id, // IMDb ID
+                        spokenLanguages: movie.node.spokenLanguages?.map(lang => lang.id) || [], // Spoken Languages
+                        cast: movie.node.credits?.edges?.map(castMember => ({
+                            name: castMember.node.name.nameText.text,
+                            category: castMember.node.category?.text,
+                            character: castMember.node.title?.titleText?.text || '', // Character and category
+                            profilePath: castMember.node.primaryImage?.url || null
+                        })) || [], // Cast information
+                        crew: movie.node.credits?.edges?.map(crewMember => ({
+                            name: crewMember.node.name.nameText.text,
+                            job: crewMember.node.job?.text || ''
+                        })) || [] // Crew information
+                    },
+                    source: 'IMDb'  // Explicitly set source to 'IMDb'
+                }));
+
                 filterTMDBData = filterTMDBData.map(movie => ({
                     node: {
                         id: movie.id,
@@ -1108,18 +1169,20 @@ const handleSearchForm = (filteredDateData) => {
                         primaryImage: {
                             url: movie.poster_path ? `https://image.tmdb.org/t/p/original${movie.poster_path}` : null
                         },
-                        plot: { plotText: { text: movie.overview } },
+                        plot: { plotText: { text: movie.overview || '' } },
                         popularity: movie.popularity || 0,
                         imdbId: movie.external_ids?.imdb_id || null,
                         spokenLanguages: movie.spoken_languages?.map(lang => lang.iso_639_1) || [],
-                        cast: movie.credits?.cast?.map(castMember => ({
+
+                        // Correctly map cast and crew from movie.details.credits
+                        cast: movie.details?.credits?.cast?.map(castMember => ({
                             name: castMember.name,
-                            character: castMember.character,
+                            character: castMember.character || '',
                             profilePath: castMember.profile_path ? `https://image.tmdb.org/t/p/original${castMember.profile_path}` : null
                         })) || [],
-                        crew: movie.credits?.crew?.map(crewMember => ({
+                        crew: movie.details?.credits?.crew?.map(crewMember => ({
                             name: crewMember.name,
-                            job: crewMember.job
+                            job: crewMember.job || ''
                         })) || []
                     },
                     source: 'TMDb'
@@ -1166,19 +1229,24 @@ const displayResults = async (page) => {
             let tmdbData = [];
             const today = new Date();
             today.setHours(0, 0, 0, 0); // Set to midnight for date comparison
-
+            console.log("filteredALLData", filteredALLData);
             // Check for filtered data first
             if (filteredALLData) {
-                imdbData = filteredALLData.edges.map(edge => ({
-                    ...edge,
-                    source: 'IMDb'
-                }));
+                // Filter data for IMDb
+                imdbData = filteredALLData.edges
+                    .filter(edge => edge.source === 'IMDb')
+                    .map(edge => ({
+                        ...edge,
+                        source: 'IMDb'
+                    }));
 
-                // TMDb filtered data (exact same formatting style as IMDb)
-                tmdbData = filteredALLData.edges.map(edge => ({
-                    ...edge,
-                    source: 'TMDb'
-                }));
+                // Filter data for TMDb
+                tmdbData = filteredALLData.edges
+                    .filter(edge => edge.source === 'TMDb')
+                    .map(edge => ({
+                        ...edge,
+                        source: 'TMDb'
+                    }));
             } else {
                 // Fetch regular caches if no filtered data exists
                 if (resultType === 'Theatrical' || resultType === 'All') {
