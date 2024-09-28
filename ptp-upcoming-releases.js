@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP upcoming releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.1.2
+// @version      1.1.3
 // @description  Get a list of upcoming releases from IMDB and TMDb and integrate with site search form.
 // @author       Audionut
 // @match        https://passthepopcorn.me/upcoming.php*
@@ -585,15 +585,6 @@ const displayResultsOriginal = (page, data, source) => {
     const resultsPerPage = GM_getValue(RESULTS_PER_PAGE_KEY, RESULTS_PER_PAGE_DEFAULT);
     const resultType = GM_getValue(RESULT_TYPE_KEY, 'All');
 
-    if (!data || !data.edges || !nameImagesData) {
-        if (source === 'IMDb') {
-            fetchAllComingSoonData();
-        } else if (source === 'TMDb') {
-            fetchUpcomingDigitalMovies();
-        }
-        return;
-    }
-
     const totalResults = data.edges.length;
     const totalPages = Math.ceil(totalResults / resultsPerPage);
 
@@ -659,7 +650,7 @@ const displayResultsOriginal = (page, data, source) => {
             titleLink.target = "_blank";
             titleLink.rel = "noreferrer";
             titleLink.setAttribute('class', 'title-link');
-            titleLink.textContent = node.titleText ? node.titleText.text : node.details.title;
+            titleLink.textContent = node.titleText?.text || node.details?.title || node.title || node.original_title;
             titleLink.style.fontWeight = "bold";
             titleLink.style.fontSize = "1.2em";
             titleLink.style.textDecoration = "none";
@@ -688,7 +679,7 @@ const displayResultsOriginal = (page, data, source) => {
                 ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id || node.details.title}`;
             }
             if(movie.source === 'TMDb') {
-                ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.details.title}`;
+                ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.details?.title || node.titleText?.text}`;
             }
             ptpLink.target = "_blank";
             ptpLink.setAttribute('class', 'request-link');
@@ -722,13 +713,21 @@ const displayResultsOriginal = (page, data, source) => {
             castContainer.style.gap = "10px";
 
             let castCount = 0;
-            const creditsList = node.credits ? node.credits.edges : node.details.credits.cast;
-            creditsList.forEach(credit => {
-                const castMember = movie.source === 'IMDb' ? nameImagesData.find(name => name.id === credit.node.name.id) : credit;
+            const creditsList = movie.source === 'IMDb'
+                ? (node.cast || node.credits?.edges || [])  // IMDb: Handle wrapped and unwrapped data
+                : (node.cast || node.details?.credits?.cast || []);  // TMDb: Handle wrapped (node.cast) and unwrapped (node.details.credits.cast)
 
-                // Skip cast members without images
-                const hasValidImage = (movie.source === 'IMDb' && castMember?.primaryImage?.url) ||
-                                      (movie.source === 'TMDb' && castMember?.profile_path);
+            creditsList.forEach(credit => {
+                // IMDb case: Check if it's wrapped (node.cast) or unwrapped (credits.edges)
+                const castMember = movie.source === 'IMDb'
+                    ? (node.cast ? credit : nameImagesData.find(name => name.id === credit.node.name.id)) // IMDb: Handle wrapped and unwrapped
+                    : (node.cast ? credit : credit);  // TMDb: Handle wrapped (node.cast) and unwrapped (credit)
+
+                // Check for valid images
+                const hasValidImage = movie.source === 'IMDb'
+                    ? (node.cast ? castMember?.profilePath : castMember?.primaryImage?.url) // IMDb: Wrapped uses profilePath, unwrapped uses primaryImage.url
+                    : (movie.source === 'TMDb' && castMember?.profilePath) // TMDb: Wrapped data (node.cast)
+                    || (movie.source === 'TMDb' && castMember?.profile_path); // TMDb: Unwrapped data (credits.cast)
 
                 if (castMember && hasValidImage && castCount < 5) {
                     castCount++;
@@ -737,14 +736,18 @@ const displayResultsOriginal = (page, data, source) => {
                     castDiv.style.width = "auto";
 
                     const castImageLink = document.createElement("a");
-                    castImageLink.href = movie.source === 'IMDb' ? `https://www.imdb.com/name/${credit.node.name.id}/` : `https://www.themoviedb.org/person/${credit.id}`;
+                    let test = "test";
+                    castImageLink.href = movie.source === 'IMDb'
+                        ? (node.cast ? `https://www.imdb.com/name/${castMember.id}/` : `https://www.imdb.com/name/${credit.node.name.id}/`)  // IMDb: Wrapped (castMember.id), Unwrapped (credit.node.name.id)
+                        : (node.cast ? `https://www.themoviedb.org/person/${castMember.id}` : `https://www.themoviedb.org/person/${credit.id}`);  // TMDb: Wrapped (castMember.id), Unwrapped (credit.id)
                     castImageLink.target = "_blank";
                     castImageLink.rel = "noreferrer";
 
                     const castImage = document.createElement("img");
-                    castImage.src = movie.source === 'IMDb' ? castMember.primaryImage.url
-                                : `https://image.tmdb.org/t/p/w185${castMember.profile_path}`;
-                    castImage.alt = movie.source === 'IMDb' ? credit.node.name.nameText.text : credit.name;
+                    castImage.src = movie.source === 'IMDb'
+                        ? (node.cast ? castMember.profilePath : castMember.primaryImage.url)  // IMDb: Wrapped (profilePath), Unwrapped (primaryImage.url)
+                        : (node.cast ? castMember.profilePath : `https://image.tmdb.org/t/p/w185${castMember.profile_path}`);  // TMDb: Wrapped (profilePath), Unwrapped (profile_path)
+                    //castImage.alt = movie.source === 'IMDb' ? credit.node.name.nameText.text : credit.name;
                     castImage.style.maxHeight = "150px";
                     castImage.style.width = "auto";
                     castImage.style.display = "block";
@@ -752,7 +755,9 @@ const displayResultsOriginal = (page, data, source) => {
                     castDiv.appendChild(castImageLink);
 
                     const castNameLink = document.createElement("a");
-                    const castName = movie.source === 'IMDb' ? credit.node.name.nameText.text : credit.name;
+                    const castName = movie.source === 'IMDb'
+                        ? (node.cast ? credit.name : credit.node.name.nameText.text)  // IMDb: Wrapped or unwrapped
+                        : (node.cast ? credit.name : credit.name);  // TMDb: Handle both wrapped and unwrapped
                     castNameLink.href = `https://passthepopcorn.me/artist.php?artistname=${encodeURIComponent(castName)}`;
                     castNameLink.target = "_blank";
                     castNameLink.rel = "noreferrer";
@@ -887,7 +892,7 @@ const displayResultsCondensed = (page, data, source) => {
                     ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id || node.details?.title}`;
                 }
                 if(movie.source === 'TMDb') {
-                    ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.details?.title || node.title}`;
+                    ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.details?.title || node.titleText?.text}`;
                 }
                 ptpLink.target = "_blank";
                 ptpLink.textContent = "(Search PTP requests)";
@@ -1092,8 +1097,10 @@ const handleSearchForm = (filteredDateData) => {
 
             const cachedIMDbData = getCache(CACHE_KEY_IMDB);
             const cachedTMDBData = getCache(CACHE_KEY_TMDB);
+            const cachednamesData = getCache(NAME_IMAGES_CACHE_KEY);
             console.log("IMDb cache:", cachedIMDbData);
             console.log("TMDB cache:", cachedTMDBData);
+            console.log("Names cache:", cachednamesData);
 
             if (cachedIMDbData && cachedIMDbData.edges && cachedTMDBData) {
                 let filterIMDbData = cachedIMDbData.edges;
@@ -1161,38 +1168,51 @@ const handleSearchForm = (filteredDateData) => {
                     });
                 }
 
-                filterIMDbData = filterIMDbData.map(movie => ({
-                    node: {
-                        id: movie.node.id, // Movie ID
-                        titleText: { text: movie.node.titleText?.text || '' }, // Title
-                        releaseDate: {
-                            day: movie.node.releaseDate?.day || null,
-                            month: movie.node.releaseDate?.month || null,
-                            year: movie.node.releaseDate?.year || null
-                        }, // Release Date
-                        genres: {
-                            genres: movie.node.genres?.genres?.map(genre => ({ text: genre.text })) || []
-                        }, // Genres
-                        primaryImage: {
-                            url: movie.node.primaryImage?.url || null
-                        }, // Poster Image
-                        plot: { plotText: { text: movie.node.plot?.plotText?.plainText || '' } }, // Plot
-                        popularity: movie.node.popularity || 0, // Popularity score
-                        imdbId: movie.node.id, // IMDb ID
-                        spokenLanguages: movie.node.spokenLanguages?.map(lang => lang.id) || [], // Spoken Languages
-                        cast: movie.node.credits?.edges?.map(castMember => ({
+                // Cast filtering and data mapping for IMDb
+                filterIMDbData = filterIMDbData.map(movie => {
+                    // Extract cast details and map profile paths from cachednamesData
+                    const movieCasts = movie.node.credits?.edges?.map(castMember => {
+                        const castId = castMember.node.name.id;
+                        const cachedCast = cachednamesData.find(cachedName => cachedName.id === castId);
+
+                        return {
                             name: castMember.node.name.nameText.text,
-                            category: castMember.node.category?.text,
-                            character: castMember.node.title?.titleText?.text || '', // Character and category
-                            profilePath: castMember.node.primaryImage?.url || null
-                        })) || [], // Cast information
-                        crew: movie.node.credits?.edges?.map(crewMember => ({
-                            name: crewMember.node.name.nameText.text,
-                            job: crewMember.node.job?.text || ''
-                        })) || [] // Crew information
-                    },
-                    source: 'IMDb'  // Explicitly set source to 'IMDb'
-                }));
+                            id: castMember.node.name.id,
+                            category: castMember.node.category?.text || '',
+                            character: castMember.node.title?.titleText?.text || '', // Character
+                            profilePath: cachedCast ? cachedCast.primaryImage?.url : null // Map the profile image URL from cache
+                        };
+                    }) || [];
+
+                    // Map remaining movie details
+                    return {
+                        node: {
+                            id: movie.node.id,
+                            titleText: { text: movie.node.titleText?.text || '' },
+                            releaseDate: {
+                                day: movie.node.releaseDate?.day || null,
+                                month: movie.node.releaseDate?.month || null,
+                                year: movie.node.releaseDate?.year || null
+                            },
+                            genres: {
+                                genres: movie.node.genres?.genres?.map(genre => ({ text: genre.text })) || []
+                            },
+                            primaryImage: {
+                                url: movie.node.primaryImage?.url || null
+                            },
+                            plot: { plotText: { text: movie.node.plot?.plotText?.plainText || '' } },
+                            popularity: movie.node.popularity || 0,
+                            imdbId: movie.node.id,
+                            spokenLanguages: movie.node.spokenLanguages?.map(lang => lang.id) || [],
+                            cast: movieCasts,  // Use the new cast with profile paths
+                            crew: movie.node.credits?.edges?.map(crewMember => ({
+                                name: crewMember.node.name.nameText.text,
+                                job: crewMember.node.job?.text || ''
+                            })) || []
+                        },
+                        source: 'IMDb'
+                    };
+                });
 
                 filterTMDBData = filterTMDBData.map(movie => ({
                     node: {
@@ -1217,6 +1237,7 @@ const handleSearchForm = (filteredDateData) => {
                         // Correctly map cast and crew from movie.details.credits
                         cast: movie.details?.credits?.cast?.map(castMember => ({
                             name: castMember.name,
+                            id: castMember.id,
                             character: castMember.character || '',
                             profilePath: castMember.profile_path ? `https://image.tmdb.org/t/p/original${castMember.profile_path}` : null
                         })) || [],
