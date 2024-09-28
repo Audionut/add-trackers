@@ -640,6 +640,9 @@ const displayResultsOriginal = (page, data, source) => {
             infoDiv.style.flex = "1";
             infoDiv.style.display = "flex";
             infoDiv.style.flexDirection = "column";
+            infoDiv.style.whiteSpace = "nowrap"; // Prevent wrapping
+            infoDiv.style.overflow = "hidden";   // Hide overflowed content
+            infoDiv.style.textOverflow = "ellipsis"; // Add ellipsis for overflowed content
 
             const titleLinkDiv = document.createElement("div");
             titleLinkDiv.style.display = "flex";
@@ -658,6 +661,9 @@ const displayResultsOriginal = (page, data, source) => {
             titleLink.style.color = "white";
             titleLink.style.display = "block";
             titleLink.style.marginBottom = "10px";
+            titleLink.style.whiteSpace = "nowrap"; // Prevent wrapping
+            titleLink.style.overflow = "hidden";   // Hide overflowed content
+            titleLink.style.textOverflow = "ellipsis"; // Add ellipsis for overflowed content
 
                 if (movie.source === 'TMDb' && resultType === "All") {
                     const digitalLabel = document.createElement('span');
@@ -704,13 +710,17 @@ const displayResultsOriginal = (page, data, source) => {
                 genreLink.textContent = genre.text || genre.name;
                 genreLink.style.color = "white";
                 genreLink.style.marginRight = "5px";
+                genreLink.style.whiteSpace = "nowrap"; // Prevent wrapping
+                genreLink.style.overflow = "hidden";   // Hide overflowed content
+                genreLink.style.textOverflow = "ellipsis"; // Add ellipsis for overflowed content
                 genres.appendChild(genreLink);
             });
             infoDiv.appendChild(genres);
 
             const castContainer = document.createElement("div");
             castContainer.style.display = "flex";
-            castContainer.style.flexWrap = "wrap";
+            castContainer.style.flexWrap = "nowrap"; // Prevent wrapping
+            castContainer.style.overflow = "auto";   // Allow horizontal scrolling if needed
             castContainer.style.gap = "10px";
 
             let castCount = 0;
@@ -735,6 +745,7 @@ const displayResultsOriginal = (page, data, source) => {
                     const castDiv = document.createElement("div");
                     castDiv.style.textAlign = "center";
                     castDiv.style.width = "auto";
+                    castDiv.style.whiteSpace = "nowrap";
 
                     const castImageLink = document.createElement("a");
                     let test = "test";
@@ -767,6 +778,7 @@ const displayResultsOriginal = (page, data, source) => {
                     castNameLink.style.textDecoration = "none";
                     castNameLink.style.color = "white";
                     castNameLink.style.marginTop = "10px";
+                    castNameLink.style.whiteSpace = "nowrap";
                     castDiv.appendChild(castNameLink);
 
                     castContainer.appendChild(castDiv);
