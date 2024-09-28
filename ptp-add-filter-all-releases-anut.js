@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.3.1-A
+// @version      4.3.2-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -2482,6 +2482,38 @@ function toUnixTime(dateString) {
             });
         };
 
+        let queue = [];
+        let isProcessing = false;
+
+        const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+        const processQueue = async () => {
+            if (isProcessing) return;
+            isProcessing = true;
+
+            while (queue.length > 0) {
+                const { tracker, info_hash, resolve, reject } = queue.shift();
+                try {
+                    const seeding_status = await fetch_seeding_status(tracker, info_hash);
+                    resolve(seeding_status);
+                } catch (error) {
+                    reject(error);
+                }
+                await delay(100);
+            }
+
+            isProcessing = false;
+        };
+
+        // This function will add API calls to the queue
+        const enqueueSeedingStatus = (tracker, info_hash) => {
+            return new Promise((resolve, reject) => {
+                queue.push({ tracker, info_hash, resolve, reject });
+                processQueue();
+            });
+        };
+
+        // Original fetch_seeding_status with slight modifications to be used in the queue
         const fetch_seeding_status = async (tracker, info_hash) => {
             const post_query_url = "https://beyond-hd.me/api/torrents/" + BHD_API_TOKEN;
             const postData = {
@@ -2491,23 +2523,16 @@ function toUnixTime(dateString) {
                 seeding: 1
             };
 
-            try {
-                const result = await post_json(post_query_url, tracker, postData);
+            const result = await post_json(post_query_url, tracker, postData);
 
-                if (debug) {
-                    //console.log(`Seeding status URL for ${tracker}`, post_query_url);
-                    //console.log(`Post data for ${tracker}`, postData);
-                    console.log(`Seeding result from ${tracker}`, result);
-                }
+            if (debug) {
+                console.log(`Seeding result from ${tracker}`, result);
+            }
 
-                if (result && result.status_code === 1 && result.total_results === 1) {
-                    return "seeding";  // Return 'seeding' status if valid
-                } else {
-                    return "default";  // Return 'default' if no valid seeding status is found
-                }
-            } catch (error) {
-                console.error(`Error fetching seeding status for ${tracker}:`, error);
-                return "default";  // Return 'default' if an error occurs
+            if (result && result.status_code === 1 && result.total_results === 1) {
+                return "seeding";  // Return 'seeding' status if valid
+            } else {
+                return "default";  // Return 'default' if no valid seeding status is found
             }
         };
 
@@ -2661,7 +2686,8 @@ function toUnixTime(dateString) {
                             // Call the second API to check the seeding status using info_hash
                             if (bhdSeeding) {
                                 if (info_hash) {
-                                    const seeding_status = await fetch_seeding_status(tracker, info_hash);
+                                    console.log("Processing seeding status from BHD, this might take a moment");
+                                    const seeding_status = await enqueueSeedingStatus(tracker, info_hash);
                                     torrentObj.status = seeding_status;  // Update the status based on the second API call
                                 }
                             }
