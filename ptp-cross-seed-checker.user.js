@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Cross-Seed Checker
-// @version      0.1.3
+// @version      0.1.4
 // @author       Ignacio (additions by Audionut)
 // @description  Find cross-seedable and add cross-seed markers to non-ptp releases
 // @match        https://passthepopcorn.me/torrents.php*
@@ -10,7 +10,6 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_registerMenuCommand
-// @run-at       document-start
 // ==/UserScript==
 
 (function() {
@@ -341,17 +340,23 @@ function parsePtpRowsData(ptpRows) {
     }
 
 function parseOtherRowsData(otherRows) {
-    const data = Array.from(otherRows).map(row => {
-        const rawGroup = row.getAttribute('data-releasegroup') || '';
-        const rawName = row.getAttribute('data-releasename') || '';
-        const parsedName = releasenameparser(rawName) || {};
-        const sizeEl = row.querySelector('.nobr .size-span');
-        const rawSize = sizeEl ? sizeEl.getAttribute('title') : '';
-        const size = rawSize ? parseInt(rawSize.replace(/[^0-9]/g, '')) : 0;
-        const classList = Array.from(row.classList);
-        const classid = classList.length > 0 ? classList[classList.length - 1] : '';
-        return { group: rawGroup, size, classid, rawName, parsedName };
-    });
+    const data = Array.from(otherRows)
+        .filter(row => {
+            const classList = Array.from(row.classList);
+            // Exclude rows with 'OPS' or 'RED' in the class list
+            return !classList.some(className => className.includes('OPS') || className.includes('RED'));
+        })
+        .map(row => {
+            const rawGroup = row.getAttribute('data-releasegroup') || '';
+            const rawName = row.getAttribute('data-releasename') || '';
+            const parsedName = releasenameparser(rawName) || {};
+            const sizeEl = row.querySelector('.nobr .size-span');
+            const rawSize = sizeEl ? sizeEl.getAttribute('title') : '';
+            const size = rawSize ? parseInt(rawSize.replace(/[^0-9]/g, '')) : 0;
+            const classList = Array.from(row.classList);
+            const classid = classList.length > 0 ? classList[classList.length - 1] : '';
+            return { group: rawGroup, size, classid, rawName, parsedName };
+        });
 
     return data;
 }
@@ -584,14 +589,14 @@ function PCSfinder(ptpRowsData, otherRow, pnum, dnum) {
     function rearranger(size) {
         const showMarkers = GM_getValue('showMarkers', true);
         let spx = `${size}px`;
-    
+
         return new Promise((resolve, reject) => {
             try {
                 function getMatchedRows(matchedClass) {
                     const allRows = document.querySelectorAll('.torrent_table tr.group_torrent.group_torrent_header');
                     return Array.from(allRows).filter(row => row.classList.contains(matchedClass));
                 }
-    
+
                 function getRowsWithPLAnchors() {
                     const allRows = document.querySelectorAll('.torrent_table tr.group_torrent.group_torrent_header');
                     return Array.from(allRows).filter(row => {
@@ -599,13 +604,13 @@ function PCSfinder(ptpRowsData, otherRow, pnum, dnum) {
                         return plAnchor !== null;
                     });
                 }
-    
+
                 const rowsWithTCS = getMatchedRows('tcs-matched');
                 const rowsWithPCS = getMatchedRows('pcs-matched');
                 const rowsWithPLAnchors = getRowsWithPLAnchors();
-    
+
                 rowsWithPLAnchors.forEach(plRow => {
-    
+
                     const plAnchor = plRow.querySelector('a[title="Permalink"]');
                     if (plAnchor) {
                         const plHref = plAnchor.getAttribute('href');
@@ -617,9 +622,9 @@ function PCSfinder(ptpRowsData, otherRow, pnum, dnum) {
                             const pcsAnchor = pcsRow.getAttribute('data-pl-href');
                             return pcsAnchor === plHref;
                         });
-    
+
                         const combinedRows = [...matchingTCSRows, ...matchingPCSRows]; // TCS rows first, then PCS rows
-    
+
                         if (combinedRows.length > 0) {
                             let emptyRowAbovePl = plRow.previousElementSibling;
                             if (!emptyRowAbovePl || !emptyRowAbovePl.classList.contains('empty-row')) {
@@ -628,13 +633,13 @@ function PCSfinder(ptpRowsData, otherRow, pnum, dnum) {
                                 emptyRowAbovePl.style.height = spx;
                                 plRow.parentNode.insertBefore(emptyRowAbovePl, plRow);
                             }
-    
+
                             let lastInsertedRow = plRow;
                             combinedRows.forEach(combinedRow => {
                                 lastInsertedRow.parentNode.insertBefore(combinedRow, lastInsertedRow.nextSibling);
                                 lastInsertedRow = combinedRow;
                             });
-    
+
                             const emptyRowAfterCombined = lastInsertedRow.nextElementSibling;
                             if (!emptyRowAfterCombined || !emptyRowAfterCombined.classList.contains('empty-row')) {
                                 const emptyRow = document.createElement('tr');
@@ -643,7 +648,7 @@ function PCSfinder(ptpRowsData, otherRow, pnum, dnum) {
                                 lastInsertedRow.parentNode.insertBefore(emptyRow, lastInsertedRow.nextSibling);
                             }
                         }
-    
+
                         if (!showMarkers) {
                             let emptyRowAbovePl = plRow.previousElementSibling;
                             if (!emptyRowAbovePl || !emptyRowAbovePl.classList.contains('empty-row')) {
@@ -655,11 +660,11 @@ function PCSfinder(ptpRowsData, otherRow, pnum, dnum) {
                         }
                     }
                 });
-    
+
                 if (!showMarkers) {
                     const allRows = document.querySelectorAll('.torrent_table tr.group_torrent.group_torrent_header');
                     const groupedByHref = {};
-    
+
                     allRows.forEach(row => {
                         const plAnchor = row.querySelector('a[title="Permalink"]');
                         if (plAnchor) {
@@ -670,7 +675,7 @@ function PCSfinder(ptpRowsData, otherRow, pnum, dnum) {
                             groupedByHref[plHref].push(row);
                         }
                     });
-    
+
                     Object.values(groupedByHref).forEach(group => {
                         if (group.length > 1) {
                             group.forEach((row, index) => {
@@ -688,7 +693,7 @@ function PCSfinder(ptpRowsData, otherRow, pnum, dnum) {
                         }
                     });
                 }
-    
+
                 resolve();
             } catch (error) {
                 console.error('Error in rearranger:', error);
@@ -696,12 +701,12 @@ function PCSfinder(ptpRowsData, otherRow, pnum, dnum) {
             }
         });
     }
-    
+
     function cleaner() {
         return new Promise((resolve, reject) => {
             try {
                 const allRows = document.querySelectorAll('.torrent_table tr');
-    
+
                 const featureFilmRows = Array.from(allRows).filter(row => {
                     const spanElements = row.querySelectorAll('span');
                     return Array.from(spanElements).some(span =>
@@ -713,21 +718,21 @@ function PCSfinder(ptpRowsData, otherRow, pnum, dnum) {
                         span.textContent.includes('Movie Collection')
                     );
                 });
-    
+
                 featureFilmRows.forEach(featureFilmRow => {
                     let prevSibling = featureFilmRow.previousElementSibling;
                     while (prevSibling && prevSibling.classList.contains('empty-row')) {
                         featureFilmRow.parentNode.removeChild(prevSibling);
                         prevSibling = featureFilmRow.previousElementSibling;
                     }
-    
+
                     let nextSibling = featureFilmRow.nextElementSibling;
                     while (nextSibling && nextSibling.classList.contains('empty-row')) {
                         featureFilmRow.parentNode.removeChild(nextSibling);
                         nextSibling = featureFilmRow.nextElementSibling;
                     }
                 });
-    
+
                 const updatedAllRows = document.querySelectorAll('.torrent_table tr');
                 let previousRowWasEmpty = false;
                 Array.from(updatedAllRows).forEach(row => {
@@ -741,7 +746,7 @@ function PCSfinder(ptpRowsData, otherRow, pnum, dnum) {
                         previousRowWasEmpty = false;
                     }
                 });
-    
+
                 Array.from(updatedAllRows).forEach(row => {
                     const idMatch = row.id.match(/group_torrent_header_(\d+)/);
                     if (idMatch) {
@@ -754,14 +759,14 @@ function PCSfinder(ptpRowsData, otherRow, pnum, dnum) {
                         }
                     }
                 });
-    
+
                 featureFilmRows.forEach(row => {
                     let prevSibling = row.previousElementSibling;
                     if (prevSibling && prevSibling.classList.contains('empty-row')) {
                         row.parentNode.removeChild(prevSibling);
                     }
                 });
-    
+
                 resolve();
             } catch (error) {
                 console.error('Error in cleaner:', error);
@@ -769,40 +774,40 @@ function PCSfinder(ptpRowsData, otherRow, pnum, dnum) {
             }
         });
     }
-    
+
     function recleaner() {
         return new Promise((resolve, reject) => {
             try {
                 const allRows = document.querySelectorAll('.torrent_table tr');
                 let previousRowWasEmpty = false;
-    
+
                 //allRows.forEach((row, index) => {
                 //    if (row.className === '' && row.innerText.trim() === '') {
                 //        const prevRow = allRows[index - 1];
                 //        const nextRow = allRows[index + 1];
-    
+
                 //        if (prevRow && prevRow.classList.contains('empty-row')) {
                 //            console.log('recleaner: removing empty row before a non-ID row', prevRow);
                 //            prevRow.remove();
                 //        }
-    
+
                 //        if (nextRow && nextRow.classList.contains('empty-row')) {
                 //            console.log('recleaner: removing empty row after a non-ID row', nextRow);
                 //            nextRow.remove();
                 //        }
                 //    }
                 //});
-    
+
                 allRows.forEach((row, index) => {
                     if (row.classList.contains('torrent_info_row') || (row.className === '' && row.id === '')) {
                         const prevRow = allRows[index - 1];
-    
+
                         if (prevRow && prevRow.classList.contains('empty-row')) {
                             prevRow.remove();
                         }
                     }
                 });
-    
+
                 allRows.forEach(row => {
                     if (row.classList.contains('empty-row')) {
                         if (previousRowWasEmpty) {
@@ -814,13 +819,13 @@ function PCSfinder(ptpRowsData, otherRow, pnum, dnum) {
                         previousRowWasEmpty = false;
                     }
                 });
-    
+
                 // Check the final row to ensure no trailing empty row
                 const lastRow = allRows[allRows.length - 1];
                 if (lastRow && lastRow.classList.contains('empty-row')) {
                     lastRow.remove();
                 }
-    
+
                 resolve();
             } catch (error) {
                 console.error('Error in recleaner:', error);
@@ -828,24 +833,43 @@ function PCSfinder(ptpRowsData, otherRow, pnum, dnum) {
             }
         });
     }
-    
+
     document.addEventListener('PTPAddReleasesFromOtherTrackersComplete', function(event) {
-        rowSorter(pcs, dnum, pnum)
-            .then(() => rearranger(size))
-            .then(() => cleaner())
-            .then(() => recleaner())
-            .catch(error => {
-                console.error('An error occurred:', error);
-            });
+        setTimeout(() => {
+            console.log("Checking cross seed");
+            rowSorter(pcs, dnum, pnum)
+                .then(() => rearranger(size))
+                .then(() => cleaner())
+                .then(() => recleaner())
+                .catch(error => {
+                    console.error('An error occurred:', error);
+                });
+        }, 100); // Delay of 100 milliseconds, adjust as needed
     });
-    
+
     document.addEventListener('SortingComplete', function(event) {
-        rowSorter(pcs, dnum, pnum)
-            .then(() => rearranger(size))
-            .then(() => cleaner())
-            .then(() => recleaner())
-            .catch(error => {
-                console.error('An error occurred:', error);
-            });
+        setTimeout(() => {
+            console.log("Resorting cross seed");
+            rowSorter(pcs, dnum, pnum)
+                .then(() => rearranger(size))
+                .then(() => cleaner())
+                .then(() => recleaner())
+                .catch(error => {
+                    console.error('An error occurred:', error);
+                });
+        }, 100); // Delay of 100 milliseconds, adjust as needed
+    });
+
+    document.addEventListener('AddReleasesStatusChanged', function(event) {
+        setTimeout(() => {
+            console.log("Refiltering cross seed");
+            rowSorter(pcs, dnum, pnum)
+                .then(() => rearranger(size))
+                .then(() => cleaner())
+                .then(() => recleaner())
+                .catch(error => {
+                    console.error('An error occurred:', error);
+                });
+        }, 100); // Delay of 100 milliseconds, adjust as needed
     });
     })();
