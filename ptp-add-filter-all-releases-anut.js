@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.3.2-A
+// @version      4.3.3-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -4292,7 +4292,7 @@ function toUnixTime(dateString) {
                 let first_idx = all_trs.findIndex((a) => a.textContent.includes("Standard Definition"));
                 let sliced = all_trs.slice(first_idx + 1, all_trs.length);
 
-                let last_idx = sliced.findIndex((a) => a.className === "group_torrent" && a.textContent.includes("Other"));
+                let last_idx = sliced.findIndex((a) => a.className === "group_torrent");
                 if (last_idx === -1) last_idx = all_trs.length;
                 filtered_torrents = sliced.slice(0, last_idx);
 
@@ -4304,7 +4304,7 @@ function toUnixTime(dateString) {
                 let first_idx = all_trs.findIndex((a) => a.textContent.includes("High Definition") && !a.textContent.includes("Ultra High Definition"));
                 let sliced = all_trs.slice(first_idx + 1, all_trs.length);
 
-                let last_idx = sliced.findIndex((a) => a.className === "group_torrent" && a.textContent.includes("Other"));
+                let last_idx = sliced.findIndex((a) => a.className === "group_torrent");
                 if (last_idx === -1) last_idx = all_trs.length;
                 filtered_torrents = sliced.slice(0, last_idx);
 
@@ -4316,7 +4316,7 @@ function toUnixTime(dateString) {
                 let first_idx = all_trs.findIndex((a) => a.textContent.includes("Ultra High Definition"));
                 let sliced = all_trs.slice(first_idx + 1, all_trs.length);
 
-                let last_idx = sliced.findIndex((a) => a.className === "group_torrent" && a.textContent.includes("Other"));
+                let last_idx = sliced.findIndex((a) => a.className === "group_torrent");
                 if (last_idx === -1) last_idx = all_trs.length;
                 filtered_torrents = sliced.slice(0, last_idx);
 
