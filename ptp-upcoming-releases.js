@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP upcoming releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.1.4
+// @version      1.1.5
 // @description  Get a list of upcoming releases from IMDB and TMDb and integrate with site search form.
 // @author       Audionut
 // @match        https://passthepopcorn.me/upcoming.php*
@@ -573,6 +573,7 @@ const createImageElement = (node, size, source) => {
     }
 
     image.style.maxWidth = size;
+    //image.style.aspectRatio = "2 / 3";
     image.style.marginRight = "10px";
     image.classList.add('lightbox-trigger');
     image.loading = "lazy";
@@ -856,6 +857,9 @@ const displayResultsCondensed = (page, data, source) => {
                 const infoDiv = document.createElement("div");
                 infoDiv.style.flex = "1";
                 infoDiv.setAttribute('class', 'site-link');
+                infoDiv.style.whiteSpace = "nowrap"; // Prevent wrapping
+                infoDiv.style.overflow = "hidden";   // Hide overflowed content
+                infoDiv.style.textOverflow = "ellipsis"; // Add ellipsis for overflowed content
 
                 const titleLink = document.createElement("a");
                 titleLink.href = movie.source === 'IMDb'
@@ -869,6 +873,9 @@ const displayResultsCondensed = (page, data, source) => {
                 titleLink.style.textDecoration = "none";
                 titleLink.style.color = "white";
                 titleLink.style.marginBottom = "2px";
+                titleLink.style.whiteSpace = "nowrap"; // Prevent wrapping
+                titleLink.style.overflow = "hidden";   // Hide overflowed content
+                titleLink.style.textOverflow = "ellipsis"; // Add ellipsis for overflowed content
                 infoDiv.appendChild(titleLink);
 
                 if (movie.source === 'TMDb' && resultType === "All") {
@@ -908,6 +915,9 @@ const displayResultsCondensed = (page, data, source) => {
                     genreLink.textContent = genre.text || genre.name;
                     genreLink.style.color = "white";
                     genreLink.style.marginRight = "10px";
+                    genreLink.style.whiteSpace = "nowrap"; // Prevent wrapping
+                    genreLink.style.overflow = "hidden";   // Hide overflowed content
+                    genreLink.style.textOverflow = "ellipsis"; // Add ellipsis for overflowed content
                     genres.appendChild(genreLink);
                 });
                 infoDiv.appendChild(genres);
@@ -915,7 +925,8 @@ const displayResultsCondensed = (page, data, source) => {
                 const castContainer = document.createElement("div");
                 castContainer.setAttribute('class', 'cast-list');
                 castContainer.style.display = "flex";
-                castContainer.style.flexWrap = "wrap";
+                castContainer.style.flexWrap = "nowrap"; // Prevent wrapping
+                castContainer.style.overflow = "auto";   // Allow horizontal scrolling if needed
                 castContainer.style.gap = "10px";
 
                 let castCount = 0;
@@ -938,6 +949,7 @@ const displayResultsCondensed = (page, data, source) => {
                         const castDiv = document.createElement("div");
                         castDiv.style.textAlign = "center";
                         castDiv.style.width = "auto";
+                        castDiv.style.whiteSpace = "nowrap";
 
                         // Create a clickable link for the cast member
                         const castNameLink = document.createElement("a");
@@ -954,6 +966,7 @@ const displayResultsCondensed = (page, data, source) => {
                         castNameLink.style.textDecoration = "none";
                         castNameLink.style.color = "white";
                         castNameLink.style.marginTop = "10px";
+                        castNameLink.style.whiteSpace = "nowrap";
 
                         // Append the cast name link to the div
                         castDiv.appendChild(castNameLink);
