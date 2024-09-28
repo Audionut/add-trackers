@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP upcoming releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.1.3
+// @version      1.1.4
 // @description  Get a list of upcoming releases from IMDB and TMDb and integrate with site search form.
 // @author       Audionut
 // @match        https://passthepopcorn.me/upcoming.php*
@@ -175,7 +175,7 @@ const sortAndFilterTmdbData = (data) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0); // Set today's date to midnight for accurate comparison
 
-    console.log("Today's date:", today);
+    //console.log("Today's date:", today);
 
     // Filter out movies that are not future releases and movies with a release date before today
     const filteredDateData = data.filter(movie => {
@@ -216,7 +216,7 @@ const fetchMovieDetails = async () => {
         digitalReleases.forEach(movie => {
             fetchDetailsWithRetry(movie, 3, () => {
                 if (--remainingRequests === 0) {
-                    console.log("Digital releases before filtering:", digitalReleases);
+                    //console.log("Digital releases before filtering:", digitalReleases);
                     // Filter and sort the TMDb data before caching and displaying
                     const filteredData = sortAndFilterTmdbData(digitalReleases);
                     resolve(filteredData); // Resolve the filtered data correctly
@@ -420,11 +420,11 @@ const fetchMovieDetails = async () => {
         }
 
         const cachedData = { edges: allEdges };
-        console.log('IMDb Data before deduplication:', cachedData);
+        //console.log('IMDb Data before deduplication:', cachedData);
 
         // Deduplicate before caching
         const deduplicatedIMDbData = deduplicateResults(cachedData.edges);
-        console.log('IMDb Data after deduplication:', deduplicatedIMDbData);
+        //console.log('IMDb Data after deduplication:', deduplicatedIMDbData);
 
         setCache(CACHE_KEY_IMDB, { edges: deduplicatedIMDbData });  // Cache deduplicated IMDb data
 
@@ -467,11 +467,11 @@ const fetchUpcomingDigitalMovies = async (page = 1) => {
                         fetchUpcomingDigitalMovies(data.page + 1).then(resolve).catch(reject);
                     } else {
                         fetchMovieDetails().then((filteredData) => {
-                            console.log('Filtered Data before deduplication:', filteredData);
+                            //console.log('Filtered Data before deduplication:', filteredData);
 
                             // Deduplicate before caching
                             const deduplicatedTMDBData = deduplicateResults(filteredData);
-                            console.log('TMDB Data after deduplication:', deduplicatedTMDBData);
+                            //console.log('TMDB Data after deduplication:', deduplicatedTMDBData);
 
                             setCache(CACHE_KEY_TMDB, deduplicatedTMDBData);  // Cache only deduplicated data
                             resolve(deduplicatedTMDBData); // Resolve only the deduplicated data
@@ -676,10 +676,10 @@ const displayResultsOriginal = (page, data, source) => {
 
             const ptpLink = document.createElement("a");
             if(movie.source === 'IMDb') {
-                ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id || node.details.title}`;
+                ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id || node.titleText?.text}`;
             }
             if(movie.source === 'TMDb') {
-                ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.details?.title || node.titleText?.text}`;
+                ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.title || node.details?.title || node.titleText?.text}`;
             }
             ptpLink.target = "_blank";
             ptpLink.setAttribute('class', 'request-link');
@@ -1071,16 +1071,16 @@ const handleSearchForm = (filteredDateData) => {
     const searchForm = document.querySelector("#filter_torrents_form");
 
     if (searchForm) {
-        console.log("Form found");
+        //console.log("Form found");
 
         const searchInput = searchForm.querySelector('input[title="Movie name or IMDb link"]');
         const tagInput = searchForm.querySelector('#tags');
         const castInput = searchForm.querySelector('input[title="Comma-separated cast names"]');
 
         // Log field detection
-        searchInput ? console.log("Search input found:", searchInput) : console.log("Search input NOT found");
-        tagInput ? console.log("Tag input found:", tagInput) : console.log("Tag input NOT found");
-        castInput ? console.log("Cast input found:", castInput) : console.log("Cast input NOT found");
+        //searchInput ? console.log("Search input found:", searchInput) : console.log("Search input NOT found");
+        //tagInput ? console.log("Tag input found:", tagInput) : console.log("Tag input NOT found");
+        //castInput ? console.log("Cast input found:", castInput) : console.log("Cast input NOT found");
 
         searchForm.addEventListener("submit", (event) => {
             event.preventDefault();
@@ -1089,18 +1089,18 @@ const handleSearchForm = (filteredDateData) => {
             const taglist = tagInput?.value || "";
             const castlist = castInput?.value || "";
 
-            console.log("Search string:", searchstr);
-            console.log("Tag list:", taglist);
-            console.log("Cast list:", castlist);
+            //console.log("Search string:", searchstr);
+            //console.log("Tag list:", taglist);
+            //console.log("Cast list:", castlist);
 
             const tagsType = document.querySelector('input[name="tags_type"]:checked')?.value || "all";
 
             const cachedIMDbData = getCache(CACHE_KEY_IMDB);
             const cachedTMDBData = getCache(CACHE_KEY_TMDB);
             const cachednamesData = getCache(NAME_IMAGES_CACHE_KEY);
-            console.log("IMDb cache:", cachedIMDbData);
-            console.log("TMDB cache:", cachedTMDBData);
-            console.log("Names cache:", cachednamesData);
+            //console.log("IMDb cache:", cachedIMDbData);
+            //console.log("TMDB cache:", cachedTMDBData);
+            //console.log("Names cache:", cachednamesData);
 
             if (cachedIMDbData && cachedIMDbData.edges && cachedTMDBData) {
                 let filterIMDbData = cachedIMDbData.edges;
@@ -1134,7 +1134,7 @@ const handleSearchForm = (filteredDateData) => {
                         const movieTags = movie.details?.genres?.map(genre => genre.name?.toLowerCase()) || [];
 
                         // Log the genres and movie details for debugging
-                        console.log(`Movie ID: ${movie.id}, Title: ${movie.title}, Genres:`, movieTags);
+                        //console.log(`Movie ID: ${movie.id}, Title: ${movie.title}, Genres:`, movieTags);
 
                         // Filter based on the type of tag matching (either 'any' or 'all')
                         return tagsType === "any"
@@ -1249,8 +1249,8 @@ const handleSearchForm = (filteredDateData) => {
                     source: 'TMDb'
                 }));
 
-                console.log("Filtered IMDB data:", filterIMDbData);
-                console.log("Filtered TMDB data:", filterTMDBData);
+                //console.log("Filtered IMDB data:", filterIMDbData);
+                //console.log("Filtered TMDB data:", filterTMDBData);
 
                 // Handle no filters
                 if (!searchstr && !taglist && !castlist) {
@@ -1299,7 +1299,7 @@ const displayResults = async (page) => {
                     .filter(edge => edge.source === 'TMDb')
                     .map(edge => ({ ...edge, source: 'TMDb' }));
 
-                console.log("Filtered data being used.");
+                //console.log("Filtered data being used.");
             } else {
                 // Use cached unfiltered data directly (already deduplicated in the caching step)
                 if (resultType === 'Theatrical' || resultType === 'All') {
@@ -1317,7 +1317,7 @@ const displayResults = async (page) => {
                     }
                 }
 
-                console.log("Cached unfiltered data being used.");
+                //console.log("Cached unfiltered data being used.");
             }
 
             // Combine IMDb and TMDb results
@@ -1326,7 +1326,7 @@ const displayResults = async (page) => {
             // Sort the combined data by release date
             const sortedData = sortCombinedDataByDate(combinedResults);
 
-            console.log("Final sorted data:", sortedData);
+            //console.log("Final sorted data:", sortedData);
 
             // Display results based on layout
             if (layout === LAYOUT_ORIGINAL) {
