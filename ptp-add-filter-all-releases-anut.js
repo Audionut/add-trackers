@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.3.3-A
+// @version      4.3.4-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -1408,7 +1408,30 @@ function toUnixTime(dateString) {
                             }
                         }
                         torrent_obj.groupId = groupText;
+                        let time = d.querySelector("td:nth-child(9)").textContent;
+                        if (time) {
+                            const match = time.match(/^([A-Za-z]{3})\s(\d{1,2})\s'(\d{2})$/);
+                            
+                            if (match) {
+                                const [_, monthStr, day, year] = match;
+                                const months = {
+                                    Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
+                                    Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11
+                                };
+                                const month = months[monthStr];
+                                const fullYear = parseInt(year, 10) + 2000;  // Adjust the year
+                                const parsedDay = parseInt(day, 10);         // Make sure it's an integer
 
+                                const uploadDate = new Date(fullYear, month, parsedDay);
+
+                                const currentDate = new Date();
+                                currentDate.setHours(0, 0, 0, 0);
+                                // Calculate torrent_obj.time as the difference from midnight to now - everything uploaded on the day will show as just now
+                                torrent_obj.time = Math.floor((uploadDate.getTime() + (Date.now() - currentDate.getTime())) / 1000);
+                            } else {
+                                console.log("KG time format did not match.");
+                            }
+                        }
                         torrent_obj.site = "KG";
                         torrent_obj.snatch = parseInt(d.querySelector("td:nth-child(12)").textContent);
                         torrent_obj.seed = parseInt(d.querySelector("td:nth-child(13)").textContent);
