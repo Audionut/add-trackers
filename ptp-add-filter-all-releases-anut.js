@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.3.4-A
+// @version      4.3.5-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -2476,15 +2476,11 @@ function toUnixTime(dateString) {
                                 return response.json();
                             })
                             .then(data => {
-                                if (data.data.length === 0) {
+                                if (data.data.length === 0 || data.data === "404") {
                                     if (debug) {
                                     console.log(`Data array from ${tracker}`, data);
                                     }
                                     console.log(`${tracker} reached successfully but no results were returned`);
-                                } else if (data.data === "404") {
-                                        console.warn(`${tracker} API is down`);
-                                        displayAlert(`${tracker} API is down`);
-                                        resolve([]);
                                 } else {
                                     if (debug) {
                                         console.log(`Data array from ${tracker}`, data.data);
@@ -3846,6 +3842,8 @@ function toUnixTime(dateString) {
                                     log: torrent.logScore,
                                     cue: torrent.hasCue,
                                     redId: `${Id}`,
+                                    catalog: torrent.remasterCatalogueNumber,
+                                    album: d.groupName,
                                 };
 
                                 return torrentObj;
@@ -3921,6 +3919,8 @@ function toUnixTime(dateString) {
                                     log: torrent.logScore,
                                     cue: torrent.hasCue,
                                     opsId: `${Id}`,
+                                    catalog: torrent.remasterCatalogueNumber,
+                                    album: d.groupName,
                                 };
 
                                 return torrentObj;
