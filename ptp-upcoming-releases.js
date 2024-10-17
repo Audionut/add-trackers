@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP upcoming releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.1.5
+// @version      1.1.6
 // @description  Get a list of upcoming releases from IMDB and TMDb and integrate with site search form.
 // @author       Audionut
 // @match        https://passthepopcorn.me/upcoming.php*
@@ -564,7 +564,7 @@ const createImageElement = (node, size, source) => {
         image.alt = node.primaryImage && node.primaryImage.caption ? node.primaryImage.caption.plainText : 'No image available';
     } else if (source === 'TMDb') {
         // TMDb image handling for both wrapped and unwrapped data
-        const posterPath = node.details?.poster_path || (node.primaryImage && node.primaryImage.url);
+        const posterPath = node.details?.poster_path || node.poster_path || (node.primaryImage && node.primaryImage.url);
         const titleText = node.details?.title || node.title;
 
         // Use direct URL if primaryImage is available, otherwise construct the URL
@@ -681,6 +681,10 @@ const displayResultsOriginal = (page, data, source) => {
                     titleLink.appendChild(digitalLabel);
                 }
 
+            const radarLink = document.createElement("a");
+            radarLink.setAttribute('class', 'radarLink');
+            radarLink.style.float = "left";
+
             const ptpLink = document.createElement("a");
             if(movie.source === 'IMDb') {
                 ptpLink.href = `https://passthepopcorn.me/requests.php?search=${node.id || node.titleText?.text}`;
@@ -695,17 +699,19 @@ const displayResultsOriginal = (page, data, source) => {
             ptpLink.style.fontSize = "0.9em";
 
             titleLinkDiv.appendChild(titleLink);
+            titleLinkDiv.appendChild(radarLink);
             titleLinkDiv.appendChild(ptpLink);
             infoDiv.appendChild(titleLinkDiv);
 
             const plot = document.createElement("p");
-            plot.textContent = node.plot ? node.plot.plotText.plainText : node.details.overview || "No plot available.";
+            plot.textContent = node.plot?.plotText?.plainText || node.details?.overview || "No plot available.";
             infoDiv.appendChild(plot);
 
             const genres = document.createElement("p");
-            const genresList = node.genres ? node.genres.genres : node.details.genres;
+            const genresList = node.genres?.genres || (node.details?.genres?.length ? node.details.genres : []);
             genresList.forEach(genre => {
                 const genreLink = document.createElement("a");
+                genreLink.setAttribute('class', 'genres');
                 genreLink.href = `https://passthepopcorn.me/torrents.php?action=advanced&taglist=${genre.text || genre.name}`;
                 genreLink.textContent = genre.text || genre.name;
                 genreLink.style.color = "white";
@@ -1351,6 +1357,8 @@ const displayResults = async (page) => {
             // Sort the combined data by release date
             const sortedData = sortCombinedDataByDate(combinedResults);
 
+            //console.log("Cached IMDB data", cachedIMDbData);
+            //console.log("Cached TMDB data", cachedTMDBData);
             //console.log("Final sorted data:", sortedData);
 
             // Display results based on layout
