@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP upcoming releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.1.6
+// @version      1.1.7
 // @description  Get a list of upcoming releases from IMDB and TMDb and integrate with site search form.
 // @author       Audionut
 // @match        https://passthepopcorn.me/upcoming.php*
@@ -490,22 +490,22 @@ const fetchUpcomingDigitalMovies = async (page = 1) => {
     });
 };
 
-    const sortCombinedDataByDate = (data) => {
-        return data.sort((a, b) => {
-            const dateA = a.node.releaseDate ?
-                new Date(`${a.node.releaseDate.year}-${String(a.node.releaseDate.month).padStart(2, '0')}-${String(a.node.releaseDate.day).padStart(2, '0')}`) :
-                (a.node && a.node.release_date ? new Date(a.node.release_date) : null);
-            const dateB = b.node.releaseDate ?
-                new Date(`${b.node.releaseDate.year}-${String(b.node.releaseDate.month).padStart(2, '0')}-${String(b.node.releaseDate.day).padStart(2, '0')}`) :
-                (b.node && b.node.release_date ? new Date(b.node.release_date) : null);
+const sortCombinedDataByDate = (data) => {
+    return data.sort((a, b) => {
+        const dateA = a.node.releaseDate ?
+            new Date(`${a.node.releaseDate.year}-${String(a.node.releaseDate.month || 1).padStart(2, '0')}-${String(a.node.releaseDate.day || 1).padStart(2, '0')}`) :
+            (a.node && a.node.release_date ? new Date(a.node.release_date) : null);
+        const dateB = b.node.releaseDate ?
+            new Date(`${b.node.releaseDate.year}-${String(b.node.releaseDate.month || 1).padStart(2, '0')}-${String(b.node.releaseDate.day || 1).padStart(2, '0')}`) :
+            (b.node && b.node.release_date ? new Date(b.node.release_date) : null);
 
-            if (!dateA || !dateB) {
-                return 0; // If either date is missing, consider them equal.
-            }
+        if (!dateA || !dateB || isNaN(dateA) || isNaN(dateB)) {
+            return 0; // Consider them equal if either date is invalid
+        }
 
-            return dateA - dateB;
-        });
-    };
+        return dateA - dateB;
+    });
+};
 
     const addLightboxStyles = () => {
         const style = document.createElement('style');
@@ -1342,7 +1342,37 @@ const displayResults = async (page) => {
                 if (resultType === 'Digital' || resultType === 'All') {
                     if (cachedTMDBData) {
                         tmdbData = cachedTMDBData.map(movie => ({
-                            node: movie,
+                            node: {
+                                id: movie.id,
+                                titleText: { text: movie.title || movie.original_title },
+                                releaseDate: {
+                                    day: movie.release_date ? new Date(movie.release_date).getDate() : null,
+                                    month: movie.release_date ? new Date(movie.release_date).getMonth() + 1 : null,
+                                    year: movie.release_date ? new Date(movie.release_date).getFullYear() : null
+                                },
+                                genres: {
+                                    genres: movie.details?.genres?.map(genre => ({ text: genre.name })) || []
+                                },
+                                primaryImage: {
+                                    url: movie.poster_path ? `https://image.tmdb.org/t/p/original${movie.poster_path}` : null
+                                },
+                                plot: { plotText: { text: movie.overview || '' } },
+                                popularity: movie.popularity || 0,
+                                imdbId: movie.external_ids?.imdb_id || null,
+                                spokenLanguages: movie.spoken_languages?.map(lang => lang.iso_639_1) || [],
+
+                                // Correctly map cast and crew from movie.details.credits
+                                cast: movie.details?.credits?.cast?.map(castMember => ({
+                                    name: castMember.name,
+                                    id: castMember.id,
+                                    character: castMember.character || '',
+                                    profilePath: castMember.profile_path ? `https://image.tmdb.org/t/p/original${castMember.profile_path}` : null
+                                })) || [],
+                                crew: movie.details?.credits?.crew?.map(crewMember => ({
+                                    name: crewMember.name,
+                                    job: crewMember.job || ''
+                                })) || []
+                            },
                             source: 'TMDb'
                         }));
                     }
@@ -1350,9 +1380,13 @@ const displayResults = async (page) => {
 
                 //console.log("Cached unfiltered data being used.");
             }
-
+            //console.log("imdbData:", imdbData);
+            //console.log("tmdbData:", tmdbData);
+            const imdbSorted = sortCombinedDataByDate(imdbData);
+            const tmdbSorted = sortCombinedDataByDate(tmdbData);
+            //console.log("sortedtmdbData:", tmdbSorted);
             // Combine IMDb and TMDb results
-            const combinedResults = [...imdbData, ...tmdbData];
+            const combinedResults = [...imdbSorted, ...tmdbSorted];
 
             // Sort the combined data by release date
             const sortedData = sortCombinedDataByDate(combinedResults);
