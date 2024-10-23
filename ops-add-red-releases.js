@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OPS - add RED releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.3
+// @version      1.4
 // @description  Add releases from RED to OPS
 // @author       Audionut
 // @match        https://orpheus.network/torrents.php?id=*
@@ -268,6 +268,7 @@
                 onload: (res) => {
                     if (res.status === 200) {
                         const responseJson = JSON.parse(res.responseText);
+                        //console.log(`RED API response: ${JSON.stringify(responseJson, null, 2)}`);
                         setCache(cacheKey, responseJson);
                         resolve(responseJson);
                     } else {
@@ -337,6 +338,7 @@
                 </span>
                 <a href="${torrentLink}" target="_blank">▶ [${torrentDetails}] ${leechLabel}</a>
             </td>
+            <td id="RED_filecount_placeholder" class="hidden">${torrent.fileCount}</td>
             <td class="number_column td_size nobr">${sizeDisplay}</td>
             <td class="number_column m_td_right td_snatched">${snatched}</td>
             <td class="number_column m_td_right td_seeders">${seeders}</td>
@@ -498,6 +500,10 @@
                 toleranceMatches
             };
         }
+
+        //console.log("Finished adding RED releases");
+        const event = new CustomEvent('OPSaddREDreleasescomplete');
+        document.dispatchEvent(event);
 
         return null;
     }
