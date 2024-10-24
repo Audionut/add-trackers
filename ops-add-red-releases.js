@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name         OPS - add RED releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.4
+// @version      2.0
 // @description  Add releases from RED to OPS
 // @author       Audionut
 // @match        https://orpheus.network/torrents.php?id=*
+// @match        https://orpheus.network/artist.php?id=*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_addStyle
 // @grant        GM_getValue
@@ -16,7 +17,6 @@
 // @downloadURL  https://github.com/Audionut/add-trackers/raw/main/ops-add-red-releases.js
 // @updateURL    https://github.com/Audionut/add-trackers/raw/main/ops-add-red-releases.js
 // @icon         https://orpheus.network/favicon.ico
-// @run-at       document-idle
 // ==/UserScript==
 
 (function() {
@@ -87,23 +87,7 @@
                 }
             `,
             events: {
-                open: function(doc) {
-                    console.log('Settings panel opened');
-
-                    // Apply styles directly to the iframe (this.frame)
-                    let style = this.frame.style;
-                    style.width = "500px"; // Adjust the width of the iframe
-                    style.height = "400px"; // Adjust the height of the iframe
-                    style.top = "10%"; // Adjust the top position as needed
-                    style.left = "50%"; // Center horizontally
-                    style.transform = "translateX(-50%)"; // Horizontal centering with transform
-                    style.borderRadius = "10px"; // Adds border radius
-                    style.boxShadow = "0 0 10px rgba(0, 0, 0, 0.5)"; // Apply a shadow to the iframe
-                    style.backgroundColor = "#333"; // Ensure the background is dark
-                    style.position = "fixed"; // Fixed positioning to keep it in place
-                },
                 save: function() {
-                    console.log('Saving settings...');
                     const fields = GM_config.fields;
                     for (const field in fields) {
                         if (fields.hasOwnProperty(field)) {
@@ -115,145 +99,115 @@
             }
         });
 
-        // Register the menu command to open the settings panel
         GM_registerMenuCommand('Configure API & Cache Settings', () => { GM_config.open(); });
     }
 
-    const opsApiUrl = 'https://orpheus.network/ajax.php?action=torrent&id=';
+    const opsApiArtistUrl = 'https://orpheus.network/ajax.php?action=artist&id=';
     const redApiUrl = 'https://redacted.ch/ajax.php?action=artist&artistreleases=1&artistname=';
 
     const OPS_API_KEY = GM_getValue('OPS_API_KEY');
     const RED_API_KEY = GM_getValue('RED_API_KEY');
     const sizeMatching = GM_getValue('sizeMatching', 0);
-    const CACHE_EXPIRY_DAYS = GM_getValue('CACHE_EXPIRY_TIME', 7); // Default to 7 days
+    const CACHE_EXPIRY_DAYS = GM_getValue('CACHE_EXPIRY_TIME', 7);
     const CACHE_EXPIRY_TIME = CACHE_EXPIRY_DAYS * 24 * 60 * 60 * 1000; // Convert days to milliseconds
-    const OPS_RATE_LIMIT = 5; // Max 5 requests per 10 seconds
-    const OPS_RATE_INTERVAL = 10000; // 10 seconds
 
-    let opsRequestQueue = [];
-    let opsRequestCount = 0;
-    let opsRequestTimer;
+    // Function to extract artist ID and artist name from the page header
+    function extractArtistData() {
+        let artistLink = document.querySelector('.header h2 a[href*="artist.php?id="]');
+        let artistName, artistId;
+
+        if (artistLink) {
+            artistId = artistLink.href.match(/id=(\d+)/)[1];
+            artistName = artistLink.textContent.trim();
+        } else {
+            const artistNameElement = document.querySelector('.header h2');
+            const artistIdLink = document.querySelector('.linkbox a[href*="artistid="]');
+
+            if (artistNameElement && artistIdLink) {
+                artistName = artistNameElement.textContent.trim();
+                artistId = artistIdLink.href.match(/artistid=(\d+)/)[1];
+            }
+        }
+
+        if (artistName && artistId) {
+            return { artistId, artistName };
+        }
+
+        console.warn('Artist data not found.');
+        return null;
+    }
 
     // Function to compress and cache data
     const setCache = (key, data) => {
-        try {
-            const cacheData = {
-                timestamp: Date.now(), // Store the current time
-                data: data
-            };
-            const stringData = JSON.stringify(cacheData);
-            const compressedData = LZString.compress(stringData);
-            GM_setValue(key, compressedData);
-            //console.log(`Data compressed and cached under key: ${key}`);
-        } catch (e) {
-            console.error(`Failed to compress and cache data for key: ${key}`, e);
-        }
+        const cacheData = {
+            timestamp: Date.now(),
+            data: data
+        };
+        const stringData = JSON.stringify(cacheData);
+        const compressedData = LZString.compress(stringData);
+        GM_setValue(key, compressedData);
     };
 
     // Function to decompress and retrieve cached data
     const getCache = (key) => {
         const compressedData = GM_getValue(key, null);
         if (compressedData && typeof compressedData === 'string') {
-            try {
-                const decompressedData = LZString.decompress(compressedData);
-                if (decompressedData) {
-                    const cacheData = JSON.parse(decompressedData);
-
-                    // Check if the cache is expired
-                    const currentTime = Date.now();
-                    if (currentTime - cacheData.timestamp > CACHE_EXPIRY_TIME) {
-                        console.log(`Cache expired for key: ${key}`);
-                        GM_deleteValue(key); // Delete expired cache
-                        return null; // Return null if expired
-                    }
-
-                    return cacheData.data; // Return the cached data if still valid
-                } else {
-                    //console.warn(`Data for key ${key} was not properly compressed or decompressed.`);
+            const decompressedData = LZString.decompress(compressedData);
+            if (decompressedData) {
+                const cacheData = JSON.parse(decompressedData);
+                const currentTime = Date.now();
+                if (currentTime - cacheData.timestamp > CACHE_EXPIRY_TIME) {
+                    GM_deleteValue(key); // Delete expired cache
                     return null;
                 }
-            } catch (e) {
-                console.error(`Failed to decompress data for key: ${key}`, e);
-                return null;
+                return cacheData.data;
             }
-        } else {
-            //console.warn(`Data for key ${key} is not in string format or is null, returning as is.`);
-            return compressedData;
         }
+        return null;
     };
 
-    // Function to handle OPS API rate limiting
-    function handleOpsRateLimit(requestFn) {
-        if (opsRequestCount < OPS_RATE_LIMIT) {
-            opsRequestCount++;
-            requestFn();
-
-            // Reset the request count after the interval
-            if (!opsRequestTimer) {
-                opsRequestTimer = setTimeout(() => {
-                    opsRequestCount = 0;
-                    opsRequestTimer = null;
-                    processOpsQueue(); // Process any remaining requests in the queue
-                }, OPS_RATE_INTERVAL);
-            }
-        } else {
-            // Add the request to the queue if the limit is reached
-            opsRequestQueue.push(requestFn);
-        }
-    }
-
-    // Function to process the queued OPS API requests
-    function processOpsQueue() {
-        while (opsRequestQueue.length > 0 && opsRequestCount < OPS_RATE_LIMIT) {
-            const requestFn = opsRequestQueue.shift();
-            handleOpsRateLimit(requestFn);
-        }
-    }
-
-    // Function to send OPS API request with caching
-    const opsApiRequest = (torrentId) => {
-        const cacheKey = `OPS_${torrentId}`;
+    // Function to send OPS API request with caching (now using artist ID)
+    const opsApiRequest = (artistId) => {
+        const cacheKey = `OPS_${artistId}`;
         const cachedData = getCache(cacheKey);
 
         if (cachedData) {
-            //console.log('OPS API data from cache:', cachedData);
+            console.log('OPS API data from cache:', cachedData);
             return Promise.resolve(cachedData);
         }
 
         return new Promise((resolve, reject) => {
-            handleOpsRateLimit(() => {
-                GM_xmlhttpRequest({
-                    url: `${opsApiUrl}${torrentId}`,
-                    method: 'GET',
-                    headers: {
-                        'Authorization': OPS_API_KEY,
-                        'Content-Type': 'application/json',
-                    },
-                    onload: (res) => {
-                        if (res.status === 200) {
-                            const responseJson = JSON.parse(res.responseText);
-                            //console.log("OPS API Data:", responseJson);
-                            setCache(cacheKey, responseJson);
-                            resolve(responseJson);
-                        } else {
-                            reject(new Error(`OPS API Error: HTTP ${res.status}`));
-                        }
-                    },
-                    onerror: (err) => {
-                        reject(err);
+            GM_xmlhttpRequest({
+                url: `${opsApiArtistUrl}${artistId}`,
+                method: 'GET',
+                headers: {
+                    'Authorization': OPS_API_KEY,
+                    'Content-Type': 'application/json',
+                },
+                onload: (res) => {
+                    if (res.status === 200) {
+                        const responseJson = JSON.parse(res.responseText);
+                        console.log(`OPS API response: ${JSON.stringify(responseJson, null, 2)}`);
+                        setCache(cacheKey, responseJson);
+                        resolve(responseJson);
+                    } else {
+                        reject(new Error(`OPS API Error: HTTP ${res.status}`));
                     }
-                });
+                },
+                onerror: (err) => {
+                    reject(err);
+                }
             });
         });
     };
 
-    // Function to send RED API request with caching
+    // Function to send RED API request with caching (using artist name)
     const redApiRequest = (artistName) => {
         const cacheKey = `RED_${artistName}`;
         const cachedData = getCache(cacheKey);
 
         if (cachedData) {
-            //console.log('RED API data from cache:', cachedData);
+            console.log('RED API data from cache:', cachedData);
             return Promise.resolve(cachedData);
         }
 
@@ -268,7 +222,7 @@
                 onload: (res) => {
                     if (res.status === 200) {
                         const responseJson = JSON.parse(res.responseText);
-                        //console.log(`RED API response: ${JSON.stringify(responseJson, null, 2)}`);
+                        console.log(`RED API response: ${JSON.stringify(responseJson, null, 2)}`);
                         setCache(cacheKey, responseJson);
                         resolve(responseJson);
                     } else {
@@ -282,57 +236,169 @@
         });
     };
 
+    // Function to match torrents between OPS and RED
+    function findMatchingTorrent(opsData, redData) {
+        const opsTorrents = opsData.response.torrentgroup;
+        const redTorrents = redData.response.torrentgroup;
+
+        const exactMatches = [];
+        const toleranceMatches = [];
+        const unmatchedRedTorrents = [];
+
+        redTorrents.forEach(redGroup => {
+            const redGroupName = normalize(redGroup.groupName);
+
+            opsTorrents.forEach(opsGroup => {
+                const opsGroupName = normalize(opsGroup.groupName);
+
+                if (opsGroupName === redGroupName) {
+                    // Now match torrents within this group
+                    opsGroup.torrent.forEach(opsTorrent => {
+                        redGroup.torrent.forEach(redTorrent => {
+                            const exactSizeMatch = redTorrent.size === opsTorrent.size;
+                            const sizeDifference = Math.abs(redTorrent.size - opsTorrent.size);
+                            const sizeTolerance = 1024 * 1024 * sizeMatching; // MiB tolerance
+
+                            const allPropsMatch = (
+                                (!redTorrent.media || !opsTorrent.media || normalize(redTorrent.media) === normalize(opsTorrent.media)) &&
+                                (!redTorrent.format || !opsTorrent.format || normalize(redTorrent.format) === normalize(opsTorrent.format)) &&
+                                (!redTorrent.encoding || !opsTorrent.encoding || normalize(redTorrent.encoding) === normalize(opsTorrent.encoding)) &&
+                                (!redTorrent.remasterTitle || !opsTorrent.remasterTitle || normalize(redTorrent.remasterTitle) === normalize(opsTorrent.remasterTitle)) &&
+                                (!redTorrent.remasterYear || !opsTorrent.remasterYear || redTorrent.remasterYear === opsTorrent.remasterYear)
+                            );
+
+                            let labelMismatch = !normalize(redTorrent.remasterRecordLabel).includes(normalize(opsTorrent.remasterRecordLabel));
+                            let fileCountMismatch = redTorrent.fileCount !== opsTorrent.fileCount;
+                            let sizeToleranceMatch = sizeDifference < sizeTolerance && !exactSizeMatch;
+
+                            if (allPropsMatch && (exactSizeMatch || sizeToleranceMatch)) {
+                                if (labelMismatch && redTorrent.remasterRecordLabel) {
+                                    redTorrent.remasterRecordLabelAppended = redTorrent.remasterRecordLabel;
+                                }
+                                if (fileCountMismatch) {
+                                    redTorrent.fileCountAppended = `RED FileCount: ${redTorrent.fileCount}`;
+                                }
+                                if (sizeToleranceMatch) {
+                                    const sizeDifferenceMiB = sizeDifference / (1024 ** 2);
+                                    redTorrent.sizeToleranceAppended = `SizeDifference: ${sizeDifferenceMiB.toFixed(2)} MiB`;
+                                }
+                                appendMatchHtml(opsTorrent.id, redTorrent);
+                                exactMatches.push(redTorrent);
+                            } else if (allPropsMatch && sizeDifference < sizeTolerance) {
+                                toleranceMatches.push(redTorrent);
+                            } else {
+                                unmatchedRedTorrents.push(redGroup);
+                            }
+                        });
+                    });
+                } else {
+                    unmatchedRedTorrents.push(redGroup);
+                }
+            });
+        });
+        const event = new CustomEvent('OPSaddREDreleasescomplete');
+        document.dispatchEvent(event);
+        if (exactMatches.length > 0 || toleranceMatches.length > 0) {
+            return {
+                exactMatches,
+                toleranceMatches
+            };
+        }
+
+        return null;
+    }
+
+    // Extract artist info and initiate the API requests
+    const artistData = extractArtistData();
+    if (artistData) {
+        opsApiRequest(artistData.artistId)
+            .then(opsResponse => {
+                return redApiRequest(artistData.artistName).then(redResponse => {
+                    findMatchingTorrent(opsResponse, redResponse);
+                });
+            })
+            .catch(error => {
+                console.error('API request error:', error);
+            });
+    } else {
+        console.error('No artist data found on the page.');
+    }
+
+    // Helper function to normalize strings (trim, convert to lowercase, etc.)
+    function normalize(str) {
+        if (!str) return '';
+        const textarea = document.createElement('textarea');
+        textarea.innerHTML = str;
+        let decodedStr = textarea.value;
+        decodedStr = decodedStr.replace(/\s*[-–—]\s*/g, '-');
+        decodedStr = decodedStr.replace(/\s+/g, ' ');
+        return decodedStr.trim().toLowerCase().replace(/['"]/g, '');
+    }
+
+    function appendMatchHtml(torrentId, exactMatch) {
+        const torrentRow = document.getElementById(`torrent${torrentId}`);
+
+        if (torrentRow) {
+            const matchHtml = createMatchHtml(exactMatch);
+
+            // Check if we are on an artist page or a torrent page
+            const isArtistPage = window.location.href.includes('artist.php?id=');
+
+            if (isArtistPage) {
+                // On artist pages, append directly to the torrentRow
+                const matchRow = document.createElement('tr');
+                matchRow.id = `torrent${torrentId}_match`;
+                matchRow.classList.add('torrent_row', 'exact_match_row', 'group_torrent');
+                matchRow.style.fontWeight = 'normal';
+                matchRow.innerHTML = matchHtml;
+                torrentRow.parentNode.insertBefore(matchRow, torrentRow.nextSibling);
+            } else {
+                // On torrent pages, find the hidden row and append as usual
+                let hiddenRow = torrentRow.nextElementSibling;
+                while (hiddenRow && !hiddenRow.id.includes(`torrent_${torrentId}`)) {
+                    hiddenRow = hiddenRow.nextElementSibling;
+                }
+
+                if (hiddenRow) {
+                    const matchRow = document.createElement('tr');
+                    matchRow.id = `torrent${torrentId}_match`;
+                    matchRow.classList.add('torrent_row', 'exact_match_row', 'group_torrent');
+                    matchRow.style.fontWeight = 'normal';
+                    matchRow.innerHTML = matchHtml;
+                    hiddenRow.parentNode.insertBefore(matchRow, hiddenRow.nextSibling);
+                } else {
+                    console.warn(`No hidden row found for torrent ID: ${torrentId}`);
+                }
+            }
+        } else {
+            //console.warn(`No element found for torrent ID: ${torrentId}`);
+        }
+    }
+
     function createMatchHtml(torrent) {
         const { leechers, seeders, snatched, size, media, format, encoding, scene, logScore, hasCue, groupId, id, remasterRecordLabelAppended, fileCountAppended, sizeToleranceAppended, isFreeload, freeTorrent, isNeutralleech } = torrent;
 
-        let sizeDisplay;
-        if (size >= 1024 ** 3) {
-            sizeDisplay = (size / (1024 ** 3)).toFixed(2) + ' GiB'; // Convert to GiB if size >= 1 GiB
-        } else {
-            sizeDisplay = (size / (1024 ** 2)).toFixed(2) + ' MiB'; // Convert to MiB if size < 1 GiB
-        }
-
-        // Dynamically build the info string
+        let sizeDisplay = (size >= 1024 ** 3) ? (size / (1024 ** 3)).toFixed(2) + ' GiB' : (size / (1024 ** 2)).toFixed(2) + ' MiB';
         let torrentDetails = `RED / ${media} / ${format} / ${encoding}`;
 
-        if (scene) {
-            torrentDetails += ` / Scene`;
-        }
-        if (logScore) {
-            torrentDetails += ` / Log (${logScore}%)`;
-        }
-        if (hasCue) {
-            torrentDetails += ` / Cue`;
-        }
-        if (remasterRecordLabelAppended) {
-            torrentDetails += ` / (RED label) ${remasterRecordLabelAppended}`;
-        }
-        if (fileCountAppended) {
-            torrentDetails += ` / ${fileCountAppended}`;
-        }
-        if (sizeToleranceAppended) {
-            torrentDetails += ` / ${sizeToleranceAppended}`;
-        }
+        if (scene) torrentDetails += ` / Scene`;
+        if (logScore) torrentDetails += ` / Log (${logScore}%)`;
+        if (hasCue) torrentDetails += ` / Cue`;
+        if (remasterRecordLabelAppended) torrentDetails += ` / (RED label) ${remasterRecordLabelAppended}`;
+        if (fileCountAppended) torrentDetails += ` / ${fileCountAppended}`;
+        if (sizeToleranceAppended) torrentDetails += ` / ${sizeToleranceAppended}`;
 
-        // Construct the correct link for the torrent
+        // Determine if we are on an artist or torrent page based on the URL
+        const isArtistPage = window.location.href.includes('artist.php?id=');
+        const colspanValue = isArtistPage ? 2 : 1;  // Use colspan 2 for artist page, 1 for torrent page
+
         const torrentLink = `https://redacted.ch/torrents.php?id=${groupId}&torrentid=${id}#torrent${id}`;
+        const leechLabel = isFreeload ? '<strong class="torrent_label tooltip tl_free" title="Freeload!" style="white-space: nowrap;">Freeload!</strong>' :
+            freeTorrent ? '<strong class="torrent_label tooltip tl_free" title="Freeleech!" style="white-space: nowrap;">Freeleech!</strong>' :
+                isNeutralleech ? '<strong class="torrent_label tooltip tl_neutral" title="Neutral Leech!" style="white-space: nowrap;">Neutral Leech!</strong>' : '';
 
-        // Construct the download link for RED API call
-        const downloadUrl = `https://redacted.ch/ajax.php?action=download&id=${id}`;
-
-        // Determine which label to show based on freeload, freeTorrent, or neutral leech
-        let leechLabel = '';
-        if (isFreeload) {
-            leechLabel = '<strong class="torrent_label tooltip tl_free" title="Freeload!" style="white-space: nowrap;">Freeload!</strong>';
-        } else if (freeTorrent) {
-            leechLabel = '<strong class="torrent_label tooltip tl_free" title="Freeleech!" style="white-space: nowrap;">Freeleech!</strong>';
-        } else if (isNeutralleech) {
-            leechLabel = '<strong class="torrent_label tooltip tl_neutral" title="Neutral Leech!" style="white-space: nowrap;">Neutral Leech!</strong>';
-        }
-
-        // Returning the content inside the <tr> that matches the current HTML structure
         return `
-            <td class="td_info" colspan="1">
+            <td class="td_info" colspan="${colspanValue}">
                 <span class="torrent_links_block">
                     [ <a href="#" class="dl-link" data-id="${id}" title="Download">DL</a> ]
                 </span>
@@ -348,36 +414,27 @@
 
     document.addEventListener('click', function (event) {
         if (event.target.classList.contains('dl-link')) {
-            event.preventDefault(); // Prevent the default link behavior
+            event.preventDefault();
             const torrentId = event.target.getAttribute('data-id');
             const downloadUrl = `https://redacted.ch/ajax.php?action=download&id=${torrentId}`;
 
-            //console.log("Attempting to download torrent:", torrentId);
-            console.log("Download URL:", downloadUrl);
-
-            // Make the API request to download the torrent file
             GM_xmlhttpRequest({
                 url: downloadUrl,
                 method: 'GET',
-                headers: {
-                    'Authorization': RED_API_KEY, // Your RED API key
-                },
-                responseType: 'blob', // Receive the response as a file
+                headers: { 'Authorization': RED_API_KEY },
+                responseType: 'blob',
                 onload: (res) => {
                     if (res.status === 200) {
-                        console.log('Download successful');
-                        // Successfully downloaded .torrent file, now handle the file download
                         const blob = new Blob([res.response], { type: 'application/x-bittorrent' });
                         const url = window.URL.createObjectURL(blob);
                         const a = document.createElement('a');
                         a.href = url;
-                        a.download = `torrent_${torrentId}.torrent`; // Set the download filename
+                        a.download = `torrent_${torrentId}.torrent`;
                         document.body.appendChild(a);
                         a.click();
-                        window.URL.revokeObjectURL(url); // Clean up after download
+                        window.URL.revokeObjectURL(url);
                     } else {
                         console.error('Failed to download torrent:', res.responseText);
-                        console.error('HTTP Status:', res.status); // Log status for debugging
                     }
                 },
                 onerror: (err) => {
@@ -386,168 +443,5 @@
             });
         }
     });
-
-    // Function to insert the exact match HTML under the hidden row after the matched torrent ID
-    function appendMatchHtml(torrentId, exactMatch) {
-        const torrentRow = document.getElementById(`torrent${torrentId}`);
-
-        if (torrentRow) {
-            const matchHtml = createMatchHtml(exactMatch);
-
-            // Locate the next hidden row after the current torrent row
-            let hiddenRow = torrentRow.nextElementSibling;
-
-            // Check if the hidden row has a specific class or attribute that identifies it
-            while (hiddenRow && !hiddenRow.id.includes(`torrent_${torrentId}`)) {
-                hiddenRow = hiddenRow.nextElementSibling;
-            }
-
-            if (hiddenRow) {
-                // Append the exact match HTML inside the hidden row
-                const matchRow = document.createElement('tr');
-                matchRow.id = `torrent${torrentId}_match`; // Give the new row a unique ID
-                matchRow.classList.add('torrent_row', 'exact_match_row', 'group_torrent');
-                matchRow.style.fontWeight = 'normal';
-                matchRow.innerHTML = matchHtml;
-
-                hiddenRow.parentNode.insertBefore(matchRow, hiddenRow.nextSibling);
-            } else {
-                console.warn(`No hidden row found for torrent ID: ${torrentId}`);
-            }
-        } else {
-            console.warn(`No element found for torrent ID: ${torrentId}`);
-        }
-    }
-
-    // Helper function to normalize strings (trim, convert to lowercase, decode HTML entities, normalize spaces around dashes and special characters)
-    function normalize(str) {
-        if (!str) return '';
-        const textarea = document.createElement('textarea');
-        textarea.innerHTML = str;
-        let decodedStr = textarea.value;  // Decode HTML entities
-        // Replace en-dash (–), em-dash (—), and hyphen (-) with a single hyphen and remove spaces around them
-        decodedStr = decodedStr.replace(/\s*[-–—]\s*/g, '-');
-        // Replace multiple spaces with a single space
-        decodedStr = decodedStr.replace(/\s+/g, ' ');
-        return decodedStr.trim().toLowerCase().replace(/['"]/g, ''); // Remove quotes and trim spaces
-    }
-
-    function findMatchingTorrent(opsData, redData) {
-        const opsTorrent = opsData.response.torrent;
-        const redTorrents = redData.response.torrentgroup;
-
-        // Arrays to store exact and tolerance matches
-        const exactMatches = [];
-        const toleranceMatches = [];
-        const unmatchedRedTorrents = [];
-
-        redTorrents.forEach(group => {
-            const opsGroupName = normalize(opsData.response.group.name);
-            const redGroupName = normalize(group.groupName);
-
-            const groupMatch = opsGroupName === redGroupName;
-
-            if (!groupMatch) {
-                unmatchedRedTorrents.push(group);
-                return;
-            }
-
-            // Compare the torrent properties once a group match is found
-            group.torrent.forEach(torrent => {
-                const exactSizeMatch = torrent.size === opsTorrent.size;
-                const sizeDifference = Math.abs(torrent.size - opsTorrent.size);
-                const sizeTolerance = 1024 * 1024 * sizeMatching;
-                const fileCountMatch = torrent.fileCount === opsTorrent.fileCount;
-
-                const allPropsMatch = (
-                    (!torrent.media || !opsTorrent.media || normalize(torrent.media) === normalize(opsTorrent.media)) &&
-                    (!torrent.format || !opsTorrent.format || normalize(torrent.format) === normalize(opsTorrent.format)) &&
-                    (!torrent.encoding || !opsTorrent.encoding || normalize(torrent.encoding) === normalize(opsTorrent.encoding)) &&
-                    (!torrent.remasterTitle || !opsTorrent.remasterTitle || normalize(torrent.remasterTitle) === normalize(opsTorrent.remasterTitle)) &&
-                    (!torrent.remasterYear || !opsTorrent.remasterYear || torrent.remasterYear === opsTorrent.remasterYear)
-                );
-
-                // Allow mismatch in remasterRecordLabel, fileCount, or size tolerance but append the differences
-                let labelMismatch = !normalize(torrent.remasterRecordLabel).includes(normalize(opsTorrent.remasterRecordLabel));
-                let fileCountMismatch = torrent.fileCount !== opsTorrent.fileCount;
-                let sizeToleranceMatch = sizeDifference < sizeTolerance && !exactSizeMatch;
-
-                if (allPropsMatch && (exactSizeMatch || sizeToleranceMatch)) {
-                    if (labelMismatch && torrent.remasterRecordLabel) {
-                        torrent.remasterRecordLabelAppended = torrent.remasterRecordLabel; // Append remasterRecordLabel
-                    }
-                    if (fileCountMismatch) {
-                        torrent.fileCountAppended = `RED FileCount: ${torrent.fileCount}`; // Append fileCount from RED API
-                    }
-                    if (sizeToleranceMatch) {
-                        const sizeDifferenceMiB = Math.abs(torrent.size - opsTorrent.size) / (1024 ** 2); // Calculate size difference in MiB
-                        torrent.sizeToleranceAppended = `SizeDifference: ${sizeDifferenceMiB.toFixed(2)} MiB`; // Append size difference
-                    }
-
-                    appendMatchHtml(opsTorrent.id, torrent);
-                    exactMatches.push(torrent);
-                } else if (allPropsMatch && sizeDifference < sizeTolerance) {
-                    toleranceMatches.push(torrent);
-                } else {
-                    unmatchedRedTorrents.push(group);
-                }
-            });
-        });
-
-        if (exactMatches.length > 0 || toleranceMatches.length > 0) {
-            return {
-                exactMatches,
-                toleranceMatches
-            };
-        }
-
-        //console.log("Finished adding RED releases");
-        const event = new CustomEvent('OPSaddREDreleasescomplete');
-        document.dispatchEvent(event);
-
-        return null;
-    }
-
-    // Process the extracted torrent ID
-    function processTorrentId(torrentId) {
-        opsApiRequest(torrentId)
-            .then(opsResponse => {
-                const artistName = opsResponse.response.group.musicInfo.artists[0].name;
-                //console.log('Extracted artist name:', artistName);
-
-                return redApiRequest(artistName).then(redResponse => {
-                    findMatchingTorrent(opsResponse, redResponse);
-                });
-            })
-            .catch(error => {
-                console.error('API request error:', error);
-            });
-    }
-
-    // Find all elements with torrent links and process them
-    const groupInfoElements = document.querySelectorAll('.torrent_links_block');
-    //console.log("Found Group Info Elements:", groupInfoElements.length);
-    groupInfoElements.forEach(groupInfo => {
-        const torrentId = extractTorrentId(groupInfo);
-        //console.log('Group Info Element:', groupInfo);
-        if (torrentId) {
-            //console.log('Extracted torrent ID:', torrentId);
-            processTorrentId(torrentId);
-        } else {
-            console.log('No torrent ID found.');
-        }
-    });
-
-    // Helper function to extract torrent ID from anchor tag
-    function extractTorrentId(groupInfo) {
-        const match = groupInfo.querySelector('a[href*="torrentid"]');
-        createSettingsMenu();
-        if (match) {
-            //console.log("Match found:", match.href);
-            const torrentId = match.href.match(/torrentid=(\d+)/);
-            return torrentId ? torrentId[1] : null;
-        }
-        return null;
-    }
 
 })();
