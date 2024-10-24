@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OPS - add RED releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      2.0
+// @version      2.1
 // @description  Add releases from RED to OPS
 // @author       Audionut
 // @match        https://orpheus.network/torrents.php?id=*
@@ -137,6 +137,18 @@
         return null;
     }
 
+    // Add the h2 text as the first child of <div id="SnatchData">
+    const snatchDataDiv = document.querySelector('.header');
+    let searchingHeader = document.getElementById('searching-header');
+    if (!searchingHeader) {
+        searchingHeader = document.createElement('h2');
+        searchingHeader.classList.add('page__title');
+        searchingHeader.textContent = "Pulling data from RED API.....";
+        searchingHeader.style.color = "yellow";
+        searchingHeader.id = "searching-header";
+        snatchDataDiv.insertBefore(searchingHeader, snatchDataDiv.secondChild);
+    }
+
     // Function to compress and cache data
     const setCache = (key, data) => {
         const cacheData = {
@@ -210,7 +222,7 @@
             console.log('RED API data from cache:', cachedData);
             return Promise.resolve(cachedData);
         }
-
+        //console.log(`RED API URL: ${redApiUrl}${encodeURIComponent(artistName)}`);
         return new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
                 url: `${redApiUrl}${encodeURIComponent(artistName)}`,
@@ -298,6 +310,9 @@
         });
         const event = new CustomEvent('OPSaddREDreleasescomplete');
         document.dispatchEvent(event);
+        if (searchingHeader) {
+            searchingHeader.remove();
+        }
         if (exactMatches.length > 0 || toleranceMatches.length > 0) {
             return {
                 exactMatches,
