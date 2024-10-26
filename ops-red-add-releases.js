@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OPS/RED - add releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0
+// @version      1.1
 // @description  Add releases to/from RED/OPS
 // @author       Audionut
 // @match        https://orpheus.network/torrents.php?id=*
@@ -168,14 +168,19 @@
     } else {
         console.warn('linkbox div not found, cannot append cache flush link.');
     }
-
+    let siteName;
+    if (!isOPS) {
+        siteName = "OPS";
+    } else {
+        siteName = "RED";
+    }
     // Add the h2 text as the first child of <div id="SnatchData">
     const snatchDataDiv = document.querySelector('.header');
     let searchingHeader = document.getElementById('searching-header');
     if (!searchingHeader) {
         searchingHeader = document.createElement('h2');
         searchingHeader.classList.add('page__title');
-        searchingHeader.textContent = "Pulling data from RED API.....";
+        searchingHeader.textContent = `Pulling data from ${siteName} API.....`;
         searchingHeader.style.color = "yellow";
         searchingHeader.id = "searching-header";
         snatchDataDiv.insertBefore(searchingHeader, snatchDataDiv.secondChild);
@@ -411,57 +416,76 @@
     let whatVersion = 1; // Default to version 1
 
     function appendMatchHtml(torrentId, exactMatch) {
-        const torrentRow = document.getElementById(`torrent${torrentId}`);
+        const torrentRowId = `torrent${torrentId}`;
+        let torrentRow = document.getElementById(torrentRowId);
+
+        // Determine the version based on whatVersion
+        const matchHtml = createMatchHtml(exactMatch, `version${whatVersion}`);
+        const isArtistPage = window.location.href.includes('artist.php?id=');
+
+        if (!torrentRow && isArtistPage && !isOPS) {
+            // On artist pages without isOPS, locate the torrent row by searching for the torrentId within each row
+            const rows = document.querySelectorAll('.torrent_row');
+            rows.forEach(row => {
+                if (row.innerHTML.includes(`torrentid=${torrentId}`)) {
+                    torrentRow = row;
+                }
+            });
+        }
 
         if (torrentRow) {
-            // Use the value of whatVersion to determine which version of the HTML to create
-            const matchHtml = createMatchHtml(exactMatch, `version${whatVersion}`);
-
-            // Check if we are on an artist page or a torrent page
-            const isArtistPage = window.location.href.includes('artist.php?id=');
+            const matchRow = document.createElement('tr');
+            matchRow.id = `${torrentRowId}_match`;
+            matchRow.classList.add('torrent_row', 'exact_match_row', 'group_torrent');
+            matchRow.style.fontWeight = 'normal';
+            matchRow.innerHTML = matchHtml;
 
             if (isArtistPage) {
-                // On artist pages, append directly to the torrentRow
-                const matchRow = document.createElement('tr');
-                matchRow.id = `torrent${torrentId}_match`;
-                matchRow.classList.add('torrent_row', 'exact_match_row', 'group_torrent');
-                matchRow.style.fontWeight = 'normal';
-                matchRow.innerHTML = matchHtml;
+                // Insert directly after the matched row
                 torrentRow.parentNode.insertBefore(matchRow, torrentRow.nextSibling);
             } else {
-                // On torrent pages, find the hidden row and append as usual
+                // On torrent pages, insert after the "hidden" row as usual
                 let hiddenRow = torrentRow.nextElementSibling;
                 while (hiddenRow && !hiddenRow.id.includes(`torrent_${torrentId}`)) {
                     hiddenRow = hiddenRow.nextElementSibling;
                 }
 
                 if (hiddenRow) {
-                    const matchRow = document.createElement('tr');
-                    matchRow.id = `torrent${torrentId}_match`;
-                    matchRow.classList.add('torrent_row', 'exact_match_row', 'group_torrent');
-                    matchRow.style.fontWeight = 'normal';
-                    matchRow.innerHTML = matchHtml;
                     hiddenRow.parentNode.insertBefore(matchRow, hiddenRow.nextSibling);
                 } else {
                     console.warn(`No hidden row found for torrent ID: ${torrentId}`);
                 }
             }
         } else {
-            // console.warn(`No element found for torrent ID: ${torrentId}`);
+            //console.warn(`No element found for torrent ID: ${torrentId}`);
         }
     }
 
     function createMatchHtml(torrent, version = 'version1') {
         const { leechers, seeders, snatched, size, media, format, encoding, scene, logScore, hasCue, groupId, id, remasterRecordLabelAppended, fileCountAppended, sizeToleranceAppended, isFreeload, freeTorrent, isNeutralleech } = torrent;
 
+        const isArtistPage = window.location.href.includes('artist.php?id=');
         let sizeDisplay;
         let torrentDetails;
+        let siteIcon;
+        let details;
+        let siteDlLink;
         if (!isOPS) {
-            torrentDetails = `OPS / ${media} / ${format} / ${encoding}`;
+            if (isArtistPage) {
+              torrentDetails = `&nbsp;OPS / ${media} / ${format} / ${encoding}`;
+            } else {
+              torrentDetails = `OPS / ${media} / ${format} / ${encoding}`;
+            }
             sizeDisplay = (size >= 1024 ** 3) ? (size / (1024 ** 3)).toFixed(2) + ' GB' : (size / (1024 ** 2)).toFixed(2) + ' MB';
+            siteIcon = "»";
+            details = `${torrentDetails}`;
+            siteDlLink = `<a href="https://orpheus.network/download/torrentId=${id}#" class="dl-link" data-id="${id}" title="Download">DL</a>`;
         } else {
             torrentDetails = `RED / ${media} / ${format} / ${encoding}`;
             sizeDisplay = (size >= 1024 ** 3) ? (size / (1024 ** 3)).toFixed(2) + ' GiB' : (size / (1024 ** 2)).toFixed(2) + ' MiB';
+            siteIcon = "▶"
+            details = `[${torrentDetails}]`;
+            siteDlLink = "<a href=\"#\" class=\"dl-link\" data-id=\"" + id + "\" title=\"Download\">DL</a>";
         }
 
         if (scene) torrentDetails += ` / Scene`;
@@ -471,7 +495,6 @@
         if (fileCountAppended) torrentDetails += ` / ${fileCountAppended}`;
         if (sizeToleranceAppended) torrentDetails += ` / ${sizeToleranceAppended}`;
 
-        const isArtistPage = window.location.href.includes('artist.php?id=');
         const colspanValue = isArtistPage ? 2 : 1;
         let torrentLink;
         if (!isOPS) {
@@ -483,39 +506,30 @@
             freeTorrent ? '<strong class="torrent_label tooltip tl_free" title="Freeleech!" style="white-space: nowrap;">Freeleech!</strong>' :
             isNeutralleech ? '<strong class="torrent_label tooltip tl_neutral" title="Neutral Leech!" style="white-space: nowrap;">Neutral Leech!</strong>' : '';
 
+        let placeHolder;
         if (version === 'version1') {
-            //console.log("version 1 triggered");
-            return `
-                <td class="td_info" colspan="${colspanValue}">
-                    <span class="torrent_links_block">
-                        [ <a href="#" class="dl-link" data-id="${id}" title="Download">DL</a> ]
-                    </span>
-                    <a href="${torrentLink}" target="_blank">▶ [${torrentDetails}] ${leechLabel}</a>
-                </td>
-                <td class="RED_filecount_placeholder hidden">${torrent.fileCount}</td>
-                <td class="number_column td_size nobr">${sizeDisplay}</td>
-                <td class="number_column m_td_right td_snatched">${snatched}</td>
-                <td class="number_column m_td_right td_seeders">${seeders}</td>
-                <td class="number_column m_td_right td_leechers">${leechers}</td>
-            `;
-        } else if (version === 'version2') {
-            //console.log("version 2 triggered");
-            return `
-                <td class="td_info" colspan="${colspanValue}">
-                    <span class="torrent_links_block">
-                        [ <a href="#" class="dl-link" data-id="${id}" title="Download">DL</a> ]
-                    </span>
-                    <a href="${torrentLink}" target="_blank">▶ [${torrentDetails}] ${leechLabel}</a>
-                </td>
-                <td class="RED_filecount_placeholder number_column hidden">${torrent.fileCount}</td>
-                <td class="number_column td_size nobr">${sizeDisplay}</td>
-                <td class="number_column m_td_right td_snatched">${snatched}</td>
-                <td class="number_column m_td_right td_seeders">${seeders}</td>
-                <td class="number_column m_td_right td_leechers">${leechers}</td>
-            `;
+            placeHolder = "RED_filecount_placeholder hidden";
+        } else {
+            placeHolder = "RED_filecount_placeholder number_column hidden";
         }
-    }
 
+            return `
+                <td class="td_info" colspan="${colspanValue}">
+                    <span class="torrent_links_block">
+                        ${isOPS || (!isOPS && !isArtistPage) ? `[ ${siteDlLink} ]` : siteDlLink}
+                    </span>
+                    ${!isOPS && isArtistPage
+                        ? `&nbsp;&nbsp;${siteIcon} <a href="${torrentLink}" target="_blank">${details} ${leechLabel}</a>`
+                        : `<a href="${torrentLink}" target="_blank">${siteIcon} ${details} ${leechLabel}</a>`
+                    }
+                </td>
+                <td class="${placeHolder}">${torrent.fileCount}</td>
+                <td class="number_column td_size nobr">${sizeDisplay}</td>
+                <td class="number_column m_td_right td_snatched">${snatched}</td>
+                <td class="number_column m_td_right td_seeders">${seeders}</td>
+                <td class="number_column m_td_right td_leechers">${leechers}</td>
+            `;
+    }
     document.addEventListener('vardisplay3', function () {
         //console.log("found event signal 3");
         whatVersion = 1;
