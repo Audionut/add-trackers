@@ -2,7 +2,7 @@
 // @name           Gazelle File Count
 // @namespace      NWCD/OPS/RED
 // @description    Shows the number of tracks and/or files in each torrent
-// @version        2.0.2
+// @version        2.0.3
 // @match          https://notwhat.cd/torrents.php*id=*
 // @match          https://orpheus.network/torrents.php*id=*
 // @match          https://redacted.ch/torrents.php*id=*
@@ -22,7 +22,7 @@
 //    3 = Number of tracks plus extra files (12+3)
 //    4 = Only the number of tracks (12)
 
-        var display = 4;
+        var display = 1;
 
 
 
@@ -192,10 +192,10 @@ if (table) {
   }, false);
 
   function checkAndDispatchEvents() {
-      if (display === 3) {
+      if (display === 2 || display === 3) {
           const event = new CustomEvent('vardisplay3');
           document.dispatchEvent(event);
-      } else if (display === 4) {
+      } else if (display === 1 || display === 4) {
           const event = new CustomEvent('vardisplay4');
           document.dispatchEvent(event);
       }
