@@ -454,12 +454,14 @@
     function createMatchHtml(torrent, version = 'version1') {
         const { leechers, seeders, snatched, size, media, format, encoding, scene, logScore, hasCue, groupId, id, remasterRecordLabelAppended, fileCountAppended, sizeToleranceAppended, isFreeload, freeTorrent, isNeutralleech } = torrent;
 
-        let sizeDisplay = (size >= 1024 ** 3) ? (size / (1024 ** 3)).toFixed(2) + ' GiB' : (size / (1024 ** 2)).toFixed(2) + ' MiB';
+        let sizeDisplay;
         let torrentDetails;
         if (!isOPS) {
             torrentDetails = `OPS / ${media} / ${format} / ${encoding}`;
+            sizeDisplay = (size >= 1024 ** 3) ? (size / (1024 ** 3)).toFixed(2) + ' GB' : (size / (1024 ** 2)).toFixed(2) + ' MB';
         } else {
             torrentDetails = `RED / ${media} / ${format} / ${encoding}`;
+            sizeDisplay = (size >= 1024 ** 3) ? (size / (1024 ** 3)).toFixed(2) + ' GiB' : (size / (1024 ** 2)).toFixed(2) + ' MiB';
         }
 
         if (scene) torrentDetails += ` / Scene`;
