@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OPS - add RED releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      2.1
+// @version      2.2
 // @description  Add releases from RED to OPS
 // @author       Audionut
 // @match        https://orpheus.network/torrents.php?id=*
@@ -284,30 +284,39 @@
                             let sizeToleranceMatch = sizeDifference < sizeTolerance && !exactSizeMatch;
 
                             if (allPropsMatch && (exactSizeMatch || sizeToleranceMatch)) {
-                                if (labelMismatch && redTorrent.remasterRecordLabel) {
-                                    redTorrent.remasterRecordLabelAppended = redTorrent.remasterRecordLabel;
+                                if (!exactMatches.some(t => t.id === redTorrent.id)) { // Check for duplicates
+                                    if (labelMismatch && redTorrent.remasterRecordLabel) {
+                                        redTorrent.remasterRecordLabelAppended = redTorrent.remasterRecordLabel;
+                                    }
+                                    if (fileCountMismatch) {
+                                        redTorrent.fileCountAppended = `RED FileCount: ${redTorrent.fileCount}`;
+                                    }
+                                    if (sizeToleranceMatch) {
+                                        const sizeDifferenceMiB = sizeDifference / (1024 ** 2);
+                                        redTorrent.sizeToleranceAppended = `SizeDifference: ${sizeDifferenceMiB.toFixed(2)} MiB`;
+                                    }
+                                    appendMatchHtml(opsTorrent.id, redTorrent);
+                                    exactMatches.push(redTorrent);
                                 }
-                                if (fileCountMismatch) {
-                                    redTorrent.fileCountAppended = `RED FileCount: ${redTorrent.fileCount}`;
-                                }
-                                if (sizeToleranceMatch) {
-                                    const sizeDifferenceMiB = sizeDifference / (1024 ** 2);
-                                    redTorrent.sizeToleranceAppended = `SizeDifference: ${sizeDifferenceMiB.toFixed(2)} MiB`;
-                                }
-                                appendMatchHtml(opsTorrent.id, redTorrent);
-                                exactMatches.push(redTorrent);
                             } else if (allPropsMatch && sizeDifference < sizeTolerance) {
-                                toleranceMatches.push(redTorrent);
+                                if (!toleranceMatches.some(t => t.id === redTorrent.id)) { // Check for duplicates
+                                    toleranceMatches.push(redTorrent);
+                                }
                             } else {
-                                unmatchedRedTorrents.push(redGroup);
+                                if (!unmatchedRedTorrents.some(t => t.id === redGroup.id)) { // Check for duplicates in unmatched
+                                    unmatchedRedTorrents.push(redGroup);
+                                }
                             }
                         });
                     });
                 } else {
-                    unmatchedRedTorrents.push(redGroup);
+                    if (!unmatchedRedTorrents.some(t => t.id === redGroup.id)) { // Check for duplicates in unmatched
+                        unmatchedRedTorrents.push(redGroup);
+                    }
                 }
             });
         });
+
         const event = new CustomEvent('OPSaddREDreleasescomplete');
         document.dispatchEvent(event);
         if (searchingHeader) {
@@ -350,11 +359,14 @@
         return decodedStr.trim().toLowerCase().replace(/['"]/g, '');
     }
 
+    let whatVersion = 1; // Default to version 1
+
     function appendMatchHtml(torrentId, exactMatch) {
         const torrentRow = document.getElementById(`torrent${torrentId}`);
 
         if (torrentRow) {
-            const matchHtml = createMatchHtml(exactMatch);
+            // Use the value of whatVersion to determine which version of the HTML to create
+            const matchHtml = createMatchHtml(exactMatch, `version${whatVersion}`);
 
             // Check if we are on an artist page or a torrent page
             const isArtistPage = window.location.href.includes('artist.php?id=');
@@ -386,11 +398,11 @@
                 }
             }
         } else {
-            //console.warn(`No element found for torrent ID: ${torrentId}`);
+            // console.warn(`No element found for torrent ID: ${torrentId}`);
         }
     }
 
-    function createMatchHtml(torrent) {
+    function createMatchHtml(torrent, version = 'version1') {
         const { leechers, seeders, snatched, size, media, format, encoding, scene, logScore, hasCue, groupId, id, remasterRecordLabelAppended, fileCountAppended, sizeToleranceAppended, isFreeload, freeTorrent, isNeutralleech } = torrent;
 
         let sizeDisplay = (size >= 1024 ** 3) ? (size / (1024 ** 3)).toFixed(2) + ' GiB' : (size / (1024 ** 2)).toFixed(2) + ' MiB';
@@ -403,29 +415,56 @@
         if (fileCountAppended) torrentDetails += ` / ${fileCountAppended}`;
         if (sizeToleranceAppended) torrentDetails += ` / ${sizeToleranceAppended}`;
 
-        // Determine if we are on an artist or torrent page based on the URL
         const isArtistPage = window.location.href.includes('artist.php?id=');
-        const colspanValue = isArtistPage ? 2 : 1;  // Use colspan 2 for artist page, 1 for torrent page
+        const colspanValue = isArtistPage ? 2 : 1;
 
         const torrentLink = `https://redacted.ch/torrents.php?id=${groupId}&torrentid=${id}#torrent${id}`;
         const leechLabel = isFreeload ? '<strong class="torrent_label tooltip tl_free" title="Freeload!" style="white-space: nowrap;">Freeload!</strong>' :
             freeTorrent ? '<strong class="torrent_label tooltip tl_free" title="Freeleech!" style="white-space: nowrap;">Freeleech!</strong>' :
-                isNeutralleech ? '<strong class="torrent_label tooltip tl_neutral" title="Neutral Leech!" style="white-space: nowrap;">Neutral Leech!</strong>' : '';
+            isNeutralleech ? '<strong class="torrent_label tooltip tl_neutral" title="Neutral Leech!" style="white-space: nowrap;">Neutral Leech!</strong>' : '';
 
-        return `
-            <td class="td_info" colspan="${colspanValue}">
-                <span class="torrent_links_block">
-                    [ <a href="#" class="dl-link" data-id="${id}" title="Download">DL</a> ]
-                </span>
-                <a href="${torrentLink}" target="_blank">▶ [${torrentDetails}] ${leechLabel}</a>
-            </td>
-            <td id="RED_filecount_placeholder" class="hidden">${torrent.fileCount}</td>
-            <td class="number_column td_size nobr">${sizeDisplay}</td>
-            <td class="number_column m_td_right td_snatched">${snatched}</td>
-            <td class="number_column m_td_right td_seeders">${seeders}</td>
-            <td class="number_column m_td_right td_leechers">${leechers}</td>
-        `;
+        if (version === 'version1') {
+            //console.log("version 1 triggered");
+            return `
+                <td class="td_info" colspan="${colspanValue}">
+                    <span class="torrent_links_block">
+                        [ <a href="#" class="dl-link" data-id="${id}" title="Download">DL</a> ]
+                    </span>
+                    <a href="${torrentLink}" target="_blank">▶ [${torrentDetails}] ${leechLabel}</a>
+                </td>
+                <td class="RED_filecount_placeholder hidden">${torrent.fileCount}</td>
+                <td class="number_column td_size nobr">${sizeDisplay}</td>
+                <td class="number_column m_td_right td_snatched">${snatched}</td>
+                <td class="number_column m_td_right td_seeders">${seeders}</td>
+                <td class="number_column m_td_right td_leechers">${leechers}</td>
+            `;
+        } else if (version === 'version2') {
+            //console.log("version 2 triggered");
+            return `
+                <td class="td_info" colspan="${colspanValue}">
+                    <span class="torrent_links_block">
+                        [ <a href="#" class="dl-link" data-id="${id}" title="Download">DL</a> ]
+                    </span>
+                    <a href="${torrentLink}" target="_blank">▶ [${torrentDetails}] ${leechLabel}</a>
+                </td>
+                <td class="RED_filecount_placeholder number_column hidden">${torrent.fileCount}</td>
+                <td class="number_column td_size nobr">${sizeDisplay}</td>
+                <td class="number_column m_td_right td_snatched">${snatched}</td>
+                <td class="number_column m_td_right td_seeders">${seeders}</td>
+                <td class="number_column m_td_right td_leechers">${leechers}</td>
+            `;
+        }
     }
+
+    document.addEventListener('vardisplay3', function () {
+        //console.log("found event signal 3");
+        whatVersion = 1;
+    });
+
+    document.addEventListener('vardisplay4', function () {
+        //console.log("found event signal 4");
+        whatVersion = 2;
+    });
 
     document.addEventListener('click', function (event) {
         if (event.target.classList.contains('dl-link')) {
@@ -458,5 +497,4 @@
             });
         }
     });
-
 })();
