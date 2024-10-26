@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OPS - add RED releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      2.2
+// @version      2.3
 // @description  Add releases from RED to OPS
 // @author       Audionut
 // @match        https://orpheus.network/torrents.php?id=*
@@ -239,6 +239,9 @@
                         resolve(responseJson);
                     } else {
                         reject(new Error(`RED API Error: HTTP ${res.status}`));
+                        if (searchingHeader) {
+                            searchingHeader.remove();
+                        }
                     }
                 },
                 onerror: (err) => {
