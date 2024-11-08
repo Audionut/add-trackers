@@ -249,9 +249,16 @@
     const allTitleRows = document.querySelectorAll('.basic-movie-list__movie__title-row');
     const links = Array.from(allTitleRows).map(row => {
         const link = row.querySelector('a.basic-movie-list__movie__title');
-        const year = row.querySelector('.basic-movie-list__movie__year').textContent;
-        const director = row.querySelector('.basic-movie-list__movie__director-list').textContent;
-        return { href: link.href, title: link.textContent, year, director };
+        const yearElement = row.querySelector('.basic-movie-list__movie__year');
+        const directorElement = row.querySelector('.basic-movie-list__movie__director-list');
+
+        // Use optional chaining and default values to handle null values gracefully
+        const href = link?.href || ''; // Default to an empty string if link or href is null
+        const title = link?.textContent || ''; // Default title if textContent is null
+        const year = yearElement?.textContent || ''; // Default year if year element is null
+        const director = directorElement?.textContent || ''; // Default director if director element is null
+
+        return { href, title, year, director };
     });
 
     const targetDiv = document.getElementById('torrents-movie-view');
