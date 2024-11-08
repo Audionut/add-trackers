@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP - Add to collage from search
-// @version      1.2
+// @version      1.3
 // @description  Search for torrents matching a collection, filter and add, with caching
 // @namespace    https://github.com/Audionut/add-trackers
 // @icon         https://passthepopcorn.me/favicon.ico
@@ -42,12 +42,36 @@
         GM_setValue(`collage_${collageId}`, compressedData);
     }
 
+    const CURRENTPAGE_CACHE_EXPIRATION = 10 * 60 * 1000; // 10 minutes in milliseconds
+
+    function setCurrentPageCache(collageId) {
+        const timestamp = Date.now(); // Current time in milliseconds
+        GM_setValue('currentpage_collageid', collageId);
+        GM_setValue('currentpage_timestamp', timestamp); // Set a unique timestamp for this key
+    }
+
+    function getCurrentPageCache() {
+        const cachedCollageId = GM_getValue('currentpage_collageid');
+        const cachedTimestamp = GM_getValue('currentpage_timestamp');
+        const now = Date.now();
+
+        // Check if the currentpage cache is still valid
+        if (cachedCollageId && cachedTimestamp && (now - cachedTimestamp) < CURRENTPAGE_CACHE_EXPIRATION) {
+            return cachedCollageId;
+        } else {
+            // Cache expired or not set; clear the currentpage cache and return null
+            GM_deleteValue('currentpage_collageid');
+            GM_deleteValue('currentpage_timestamp');
+            return null;
+        }
+    }
+
     function showLoadingSpinner() {
         const spinner = document.createElement('div');
         spinner.classList.add('loading-container');
         spinner.innerHTML = `
             <div class="spinner"></div>
-            <p>Loading upcoming releases...</p>
+            <p>Fetching titles from collection...</p>
         `;
         ul.innerHTML = ''; // Clear previous results
         ul.appendChild(spinner);
@@ -88,12 +112,7 @@
 
         // Set a new cache key if we're on the match page
         if (isMatchPage) {
-            GM_setValue('currentpage_collageid', collageId);
-        }
-
-        // Load collageId from cache if we are on a refreshed page with pagination
-        if (isRefreshedPage && !collageId) {
-            collageId = GM_getValue('currentpage_collageid');
+            setCurrentPageCache(collageId);
         }
 
         // Proceed only if we have a collageId
@@ -187,18 +206,15 @@
         }
     }
 
-    // Call function on load if page refresh has occurred with a cached collageId
+    // When retrieving the currentpage cache, use the unique expiration time
     window.addEventListener("load", () => {
         const currentUrl = window.location.href;
-
-        // Only load the cache key if "page=" is present in the URL
         const isPagedUrl = /https:\/\/passthepopcorn\.me\/torrents\.php\?page=.*&action=/.test(currentUrl);
 
         if (isPagedUrl) {
-            const cachedCollageId = GM_getValue('currentpage_collageid');
+            const cachedCollageId = getCurrentPageCache();
 
             if (cachedCollageId) {
-                // Directly call the function since the `load` event ensures all resources are ready
                 fetchAndDisplayCollage(cachedCollageId);
             }
         }
