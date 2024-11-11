@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OPS/RED - add releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.1
+// @version      1.2
 // @description  Add releases to/from RED/OPS
 // @author       Audionut
 // @match        https://orpheus.network/torrents.php?id=*
@@ -38,6 +38,12 @@
                 type: 'text',
                 default: GM_getValue('RED_API_KEY', ''),
                 tooltip: 'Enter your RED API Key'
+            },
+            High_Lighting: {
+                label: 'Add highlighting to the added rows',
+                type: 'checkbox',
+                default: GM_getValue('High_Lighting', false),
+                tooltip: 'Add or not'
             },
             sizeMatching: {
                 label: 'Size Tolerance (in MiB)',
@@ -116,10 +122,11 @@
     const targetApiKey = isOPS ? GM_getValue('RED_API_KEY') : GM_getValue('OPS_API_KEY');
     const OPS_API_KEY = GM_getValue('OPS_API_KEY');
     const RED_API_KEY = GM_getValue('RED_API_KEY');
+    const highLighting = GM_getValue('High_Lighting', false);
     const sizeMatching = GM_getValue('sizeMatching', 0);
     const CACHE_EXPIRY_DAYS = GM_getValue('CACHE_EXPIRY_TIME', 14);
     const CACHE_EXPIRY_TIME = CACHE_EXPIRY_DAYS * 24 * 60 * 60 * 1000; // Convert days to milliseconds
-
+    const isArtistPage = window.location.href.includes('artist.php?id=');
     // Function to extract artist name from the page header
     function extractArtistData() {
         let artistLink = document.querySelector('.header h2 a[href*="artist.php?id="]');
@@ -289,6 +296,9 @@
         });
     };
 
+    let match_group;
+    let release_Type;
+
     // Function to match torrents between OPS and RED
     function findMatchingTorrent(sourceData, targetData) {
         // Assign source and target torrents based on current site
@@ -304,6 +314,7 @@
 
             sourceTorrents.forEach(sourceGroup => {
                 const sourceGroupName = normalize(sourceGroup.groupName);
+                release_Type = sourceGroup.releaseType;
 
                 if (sourceGroupName === targetGroupName) {
                     // Now match torrents within this group
@@ -312,6 +323,7 @@
                             const exactSizeMatch = targetTorrent.size === sourceTorrent.size;
                             const sizeDifference = Math.abs(targetTorrent.size - sourceTorrent.size);
                             const sizeTolerance = 1024 * 1024 * sizeMatching; // MiB tolerance
+                            match_group = sourceTorrent.groupId;
 
                             const allPropsMatch = (
                                 (!targetTorrent.media || !sourceTorrent.media || normalize(targetTorrent.media) === normalize(sourceTorrent.media)) &&
@@ -413,15 +425,60 @@
         return decodedStr.trim().toLowerCase().replace(/['"]/g, '');
     }
 
-    let whatVersion = 1; // Default to version 1
+    if (isArtistPage) {
+        if (isOPS) {
+            // Function to toggle the hidden class on dynamically added torrent rows
+            function toggleHiddenForDynamicRows(groupId) {
+                const dynamicRows = document.querySelectorAll(`.torrent_row.exact_match_row.group_torrent.groupid_${match_group}`);
+                dynamicRows.forEach(row => {
+                    // Toggle the 'hidden' class based on its current state
+                    if (row.classList.contains('hidden')) {
+                        row.classList.remove('hidden');
+                    } else {
+                        row.classList.add('hidden');
+                    }
+                });
+            }
+
+            // Listen for the toggle_group event on the group link
+            document.getElementById('showimg_1282625').addEventListener('click', (event) => {
+                event.preventDefault(); // Prevent default link behavior if needed
+
+                // Call the function to toggle hidden on all rows with the group ID
+                toggleHiddenForDynamicRows(1282625);
+            });
+        } else {
+            // If not OPS, listen for the toggle_edition event on the specified group
+            const editionToggleLink = document.querySelector(`.groupid_2292984 .edition_info a`);
+
+            if (editionToggleLink) {
+                editionToggleLink.addEventListener('click', (event) => {
+                    event.preventDefault(); // Prevent default link behavior
+
+                    // Get the edition number from the matching row's classes
+                    const editionRow = editionToggleLink.closest('.torrent_row');
+                    const editionClass = Array.from(editionRow.classList).find(cls => cls.startsWith('edition_'));
+
+                    // Toggle the hidden class for rows with the specified group ID and edition
+                    const editionRows = document.querySelectorAll(`.torrent_row.groupid_2292984.${editionClass}`);
+                    editionRows.forEach(row => {
+                        if (row.classList.contains('hidden')) {
+                            row.classList.remove('hidden');
+                        } else {
+                            row.classList.add('hidden');
+                        }
+                    });
+                });
+            }
+        }
+    }
 
     function appendMatchHtml(torrentId, exactMatch) {
         const torrentRowId = `torrent${torrentId}`;
         let torrentRow = document.getElementById(torrentRowId);
 
         // Determine the version based on whatVersion
-        const matchHtml = createMatchHtml(exactMatch, `version${whatVersion}`);
-        const isArtistPage = window.location.href.includes('artist.php?id=');
+        const matchHtml = createMatchHtml(exactMatch);
 
         if (!torrentRow && isArtistPage && !isOPS) {
             // On artist pages without isOPS, locate the torrent row by searching for the torrentId within each row
@@ -436,8 +493,22 @@
         if (torrentRow) {
             const matchRow = document.createElement('tr');
             matchRow.id = `${torrentRowId}_match`;
-            matchRow.classList.add('torrent_row', 'exact_match_row', 'group_torrent');
+
+            if (!isArtistPage) {
+              // Extract the edition class from the original torrent row and add it to the new row
+              const editionClass = Array.from(torrentRow.classList).find(cls => cls.startsWith('edition_'));
+              if (highLighting) {
+                  matchRow.classList.add('torrent_row', `releases_${release_Type}`, `groupid_${match_group}`, 'group_torrent', 'colhead_dark', editionClass);
+              } else {
+                  matchRow.classList.add('torrent_row', `releases_${release_Type}`, `groupid_${match_group}`, 'group_torrent', editionClass);
+              }
+            } else {
+                matchRow.classList.add('torrent_row', 'exact_match_row', 'group_torrent', `groupid_${match_group}`);
+            }
             matchRow.style.fontWeight = 'normal';
+            if (!isOPS && !isArtistPage && highLighting) {
+                matchRow.style.fontSize = '0.91em';
+            }
             matchRow.innerHTML = matchHtml;
 
             if (isArtistPage) {
@@ -464,7 +535,6 @@
     function createMatchHtml(torrent, version = 'version1') {
         const { leechers, seeders, snatched, size, media, format, encoding, scene, logScore, hasCue, groupId, id, remasterRecordLabelAppended, fileCountAppended, sizeToleranceAppended, isFreeload, freeTorrent, isNeutralleech } = torrent;
 
-        const isArtistPage = window.location.href.includes('artist.php?id=');
         let sizeDisplay;
         let torrentDetails;
         let siteIcon;
@@ -472,28 +542,28 @@
         let siteDlLink;
         if (!isOPS) {
             if (isArtistPage) {
-              torrentDetails = `&nbsp;OPS / ${media} / ${format} / ${encoding}`;
+              torrentDetails = `&nbsp;${format} / ${encoding}`;
             } else {
-              torrentDetails = `OPS / ${media} / ${format} / ${encoding}`;
+              torrentDetails = `${format} / ${encoding}`;
             }
             sizeDisplay = (size >= 1024 ** 3) ? (size / (1024 ** 3)).toFixed(2) + ' GB' : (size / (1024 ** 2)).toFixed(2) + ' MB';
             siteIcon = "»";
             details = `${torrentDetails}`;
             siteDlLink = `<a href="https://orpheus.network/download/torrentId=${id}#" class="dl-link" data-id="${id}" title="Download">DL</a>`;
         } else {
-            torrentDetails = `RED / ${media} / ${format} / ${encoding}`;
+            torrentDetails = `${media} / ${format} / ${encoding}`;
             sizeDisplay = (size >= 1024 ** 3) ? (size / (1024 ** 3)).toFixed(2) + ' GiB' : (size / (1024 ** 2)).toFixed(2) + ' MiB';
             siteIcon = "▶"
-            details = `[${torrentDetails}]`;
+            details = `${torrentDetails}`;
             siteDlLink = "<a href=\"#\" class=\"dl-link\" data-id=\"" + id + "\" title=\"Download\">DL</a>";
         }
 
-        if (scene) torrentDetails += ` / Scene`;
-        if (logScore) torrentDetails += ` / Log (${logScore}%)`;
-        if (hasCue) torrentDetails += ` / Cue`;
-        if (remasterRecordLabelAppended) torrentDetails += ` / (RED label) ${remasterRecordLabelAppended}`;
-        if (fileCountAppended) torrentDetails += ` / ${fileCountAppended}`;
-        if (sizeToleranceAppended) torrentDetails += ` / ${sizeToleranceAppended}`;
+        if (scene) details += ` / Scene`;
+        if (logScore) details += ` / Log (${logScore}%)`;
+        if (hasCue) details += ` / Cue`;
+        if (remasterRecordLabelAppended) details += ` / (RED label) ${remasterRecordLabelAppended}`;
+        if (fileCountAppended) details += ` / ${fileCountAppended}`;
+        if (sizeToleranceAppended) details += ` / ${sizeToleranceAppended}`;
 
         const colspanValue = isArtistPage ? 2 : 1;
         let torrentLink;
@@ -506,39 +576,36 @@
             freeTorrent ? '<strong class="torrent_label tooltip tl_free" title="Freeleech!" style="white-space: nowrap;">Freeleech!</strong>' :
             isNeutralleech ? '<strong class="torrent_label tooltip tl_neutral" title="Neutral Leech!" style="white-space: nowrap;">Neutral Leech!</strong>' : '';
 
-        let placeHolder;
-        if (version === 'version1') {
-            placeHolder = "RED_filecount_placeholder hidden";
-        } else {
-            placeHolder = "RED_filecount_placeholder number_column hidden";
+        let darkLines = "";
+        if (highLighting) {
+            if (!isOPS) {
+                darkLines = "text-align: right; padding-right: 15px !important;";
+            } else {
+                darkLines = "";
+            }
         }
 
             return `
-                <td class="td_info" colspan="${colspanValue}">
-                    <span class="torrent_links_block">
-                        ${isOPS || (!isOPS && !isArtistPage) ? `[ ${siteDlLink} ]` : siteDlLink}
-                    </span>
+                <td class="td_info" colspan=${colspanValue}>
                     ${!isOPS && isArtistPage
                         ? `&nbsp;&nbsp;${siteIcon} <a href="${torrentLink}" target="_blank">${details} ${leechLabel}</a>`
                         : `<a href="${torrentLink}" target="_blank">${siteIcon} ${details} ${leechLabel}</a>`
                     }
+                    <span class="torrent_links_block" style="float: right;">
+                        ${isOPS || (!isOPS && !isArtistPage) ? `${siteDlLink}` : siteDlLink}
+                    </span>
+                    ${!isOPS
+                        ? `<strong class="torrent_label tooltip tl_notice">OPS</strong>`
+                        : `<strong class="torrent hidden"></strong>`
+                    }
                 </td>
-                <td class="${placeHolder}">${torrent.fileCount}</td>
-                <td class="number_column td_size nobr">${sizeDisplay}</td>
-                <td class="number_column m_td_right td_snatched">${snatched}</td>
-                <td class="number_column m_td_right td_seeders">${seeders}</td>
-                <td class="number_column m_td_right td_leechers">${leechers}</td>
+                <td class="number_column td_filecount nobr ${isOPS ? '' : 'hidden'}">${torrent.fileCount}</td>
+                <td class="number_column td_size nobr" style="${darkLines}">${sizeDisplay}</td>
+                <td class="number_column m_td_right td_snatched" style="${darkLines}">${snatched}</td>
+                <td class="number_column m_td_right td_seeders" style="${darkLines}">${seeders}</td>
+                <td class="number_column m_td_right td_leechers" style="${darkLines}">${leechers}</td>
             `;
     }
-    document.addEventListener('vardisplay3', function () {
-        //console.log("found event signal 3");
-        whatVersion = 1;
-    });
-
-    document.addEventListener('vardisplay4', function () {
-        //console.log("found event signal 4");
-        whatVersion = 2;
-    });
 
     document.addEventListener('click', function (event) {
         if (event.target.classList.contains('dl-link')) {
