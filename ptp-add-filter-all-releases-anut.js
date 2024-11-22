@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.3.5-A
+// @version      4.3.6-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -85,6 +85,8 @@
         "tvv_auth": {"label": "TVV_AUTH_KEY", "type": "text", "default": "", "tooltip": "Find from a torrent download link at TVV"},
         "tvv_torr": {"label": "TVV_TORR_PASS", "type": "text", "default": "", "tooltip": "Needed to access TVV xml output"},
         "easysearch": {"label": "TVV easy searching", "type": "checkbox", "default": true, "tooltip": "TVV has strict searching limits, especially for lower user groups. Disable this to search with more expensive options, better feedback including seeding status, but you're more likely to hit searching to soon error."},
+        "ulcx": {"label": "ULCX *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
+        "ulcx_api": {"label": "ULCX_API_TOKEN", "type": "text", "default": ""},
         "media": {"label": "RED/OPS media filtering", "type": "text", "default": "", "tooltip": "Filter torrents from RED/OPS by media. CD, WEB, Vinyl"},
         "format": {"label": "RED/OPS format filtering", "type": "text", "default": "", "tooltip": "Filter torrents from RED/OPS by format. FLAC, MP3"},
         "show_icon": {"label": "Show Tracker Icon", "type": "checkbox", "default": true, "tooltip": "Display the tracker icon next to releases"},
@@ -231,6 +233,7 @@
                     "rtf": GM_config.fields.rtf.node,
                     "tik": GM_config.fields.tik.node,
                     "tvv": GM_config.fields.tvv.node,
+                    "ulcx": GM_config.fields.ulcx.node,
                     "hidesamesize": GM_config.fields.hidesamesize.node,
                 };
 
@@ -304,6 +307,7 @@
             "IFL": GM_config.get("ifl"),
             "RED": GM_config.get("red"),
             "OPS": GM_config.get("ops"),
+            "ULCX": GM_config.get("ulcx"),
         };
 
         const movie_only_dict = {};
@@ -404,6 +408,7 @@
     const IFL_API_TOKEN = GM_config.get("ifl_api");
     const RED_API_TOKEN = GM_config.get("red_api");
     const OPS_API_TOKEN = GM_config.get("ops_api");
+    const ULCX_API_TOKEN = GM_config.get("ulcx_api");
 
     // We need to use XML response with TVV and have to define some parameters for it to work correctly.
     const TVV_AUTH_KEY = GM_config.get("tvv_auth"); // If you want to use TVV - find your authkey from a torrent download link
@@ -747,6 +752,7 @@ function toUnixTime(dateString) {
             "TL": " data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAABj1BMVEUUJg4TJgwUJw4UHg8TMQ0UHA4JHQJgbVyxt69OXEoIHAMTJg0UJQ4UIw4RZQgPhwYSRgsVIA8HHAI2RzH////z9PMeMBgJHQMVGw8RWwkMygAMzgANsgETLA0VIg8VKA8ADABMW0gsPScABwATFg4RdgcNwQANwgATPQwUHw8UJw4KHgYnOCO2vLS3vbVibl4MEAYOcAQMywANvQATOwwLHwXKzsj+/v5SUE4AYgAMHwbQ1M5WVFMAYQAJHQUuPyq+w73Bxr9uemsNEQcNbwRJWEUsPSYACAASFg0RcgcDFwBWZFIFGQAUGA8QcgcTJw0DGABYZlQ5SjUHGgA1RjAVGA9baFcvQCoACQATFw4RcwcTLw0VGg8UKA5JWETP085mcmIKDgUOcgQMzAANvwANwAAPewYUIg8NIAYTJg7r7Oo6PTUDTAAMzQAM1AAPjQQVHw8EGABHVkPy8/IuPCkIGAMOjQQMxwANxgAMzwAPigUBFgAmOCCCjH+or6ZTYE4UIQ0UIg4RWgkPgQYQdwaTMbSlAAAABnRSTlN+/f39/X4wlRL+AAAA3ElEQVR4nGNgYGRj5+Dk4ubh5eMXEGRiYGASEhYRERUTl5CUkpaRlWNikFdQFBERUVJWUZVWU9fQ1GLQ1tEFCujpGxgaqRmbAAVMzUREzIFCFpZQAStrEXOQgI0tVMDO3gHIdXRydoEKyCu4AgXc3D08oQJaXt5AAWEfXz+ogH9AIFAgKBhNIMQnFCbA7RUGFAiPiIwyUjeOjoll0PKJAwrEJyQmJaekpsmmM8RmZGYBRUSyc3LVjPPyCxiYtAqLioGOLSktK6+orGIGeje2uqa2rp6robGpuYWFFQA5mzPC0wEkIAAAAABJRU5ErkJggg==",
             "MTeam": " data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAKHSURBVEhLY5QU4cxnY2XKZmFmZGOgIvj5+983ZibGZkY9dcGPxxb68gHF/jMxMTKCJP/9+0+QDQLY5GD07z//GDT911xl4uZgYQcKgDVQE7CyMDEAQ4WdCcQB2QqjiWXjkkMXA1sA8yaIJpaNSw5DDERgs5kQG5ccuhh9fEBLgDeIPn7+9f/T198Y4sj8P3/+ocjBaBgbaxB9//mXIaXh8F8N/zU7gGl5W2Ldob9AMRQ1959+ZvTP2/1DyWvlCeu4Le8OnnlBfBB1zL3IsP/k8+iPX357AbHPrmPPQptnnge7CARAmSi0eN+rS/ff6b758Mvq0et3ylHl+48/fPYFqgIBsFqw68SzNy/f/1gD5TJ8/PJrw+4TT19CuQxX7rwHiS16/frnXRD/PZDLzMLYt+PoE7A8MsAaBxJC7LxK4twiIDEQkOLlFZYQ4uQHsUHy3Jws///+/S8IloSC/wyMgtxcrMTFQXmSAfuH77/Xyohx60qKcBl/Z/i5tjJFnxOmRlWOj9FcVzRGSpQr3hhYKkiIcNgL8bI3+jvIERcHFnqiDLtnedrwcLOeM9QUOr1rloe9jZEEVJaBgRGod2GbPXtqsPr8i8yMb4OcFQ7snuUhycvNClWBAFiDCMRWV+D/ryLLy+xlK8ugqSiAkhRBmI2F6X9mmAawQGPiqUox+C8mxIHVHKxBhCSGVRyZDwQgDyHrQVUPImgJcAYRlMYqjswHgv9AFrIeFPWjQQQC+IPo18+/v5G9iOxNIIVVHJkPBFiDCGg6sAHA8JtRgI+tXl6Kp5CTnZkdJIkMbj/8+ESAh01EVJiTAyqEAv7++f//4s1394AtEyUWFtSWw5cvf76+/fizEgAAzycMc0THjAAAAABJRU5ErkJggg==",
             "IFL": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB8AAAAQCAYAAADu+KTsAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAE1UlEQVQ4jYWVW2xUZRDHf3PO6dlz2m2XUqDlLndCC0EUBASjMYQAESWhfTAKkURIjCZogjceODwY1IgkRmM0IUBiNK4mXhA0NHLRoEAwhksBKbe2W0opvW23u93bGR92C62gfsl5OZnfzHzf/GcG/ucoGApy+8chtf7DWvKM5LnBrHrGQGtBVRDRijd0eEIZZxSTFBeVYvzJLs2nfudN38UMhPi1LMgv116Wrn6m38l9njolRZinNkm8bIfO7w0yW0OEZChxo5xIUQVn24ZLvYAOZC22UgCketIsSZi8qz7NQMI0SEens8Y/zsi0wZNpn9Vx5UzJHv24W+QnURW2YuJJpi3G6uY+nnO26amUsAiTuGETIUCvWlQlXRYG9WZdJcnv6kQ6+hOwAB8gGORYn0+Db9FNANtx+PTcg3Jj4lv6aleW95IuC5MBVvSYbAzt01IV+UIOKQpiG8xNm4xCsAscfhsSZPcIh0YjhLYPp7yzKDunl9jsSzSVzdQfdp4R6UQ9w2IGqiBOihezAVwC4DjU9jwtX0u9CpulFWgFzowP64HrwktRl5Wh09rFLNlf9ZEG/QjTsOnARiXAkMq5XDg8QfryVelUuBjSs+1RYssv075KVXcJWzGokewwT6elDJYX2JwuLGL/UJcPRVC2oKCCpwaeWg01cnV8OdvsQq7EClk2Ti9ObDpFpVpMNx1uuQ57XZcPIudRPDVQFVQNUdVuqap16K3ro2POKLaPQzzfAujNMg8bp7CIz7s2SK2Q11K/qDwU8AmreekRaRtbrzubS3i+hbInRizmsN/I62MqqD2/VjoEtLtfiV6+YdQzBPwR9By/Sd/cOP5UoMFQkIzFSArotm2uiqdCNYNa4vapkSyqRtMUuVwynB/TpMZGnzkysWezfHlhrbRLWA08vQe7RQFcojcNMskY6RCQD2KRwSZNIH/LSvRuB3e6FWAjHA3QfamXzKIKra0C0Brx8cT/N9AnJZCV3BgAQ0ALHK7hYCRtJoIoMwYMhkFhPQMRXarhoZ5IpozoPoj67VxeWqbvPF6qb69UEPSffI0BEMcf7YNTjNVx++alpZzA5mbCZsn6k1rQ/7x5wQjqGbnAnj9G351ylobZj+oup1nmRUpI7PeJVnSSWBEjveB+3RFCcnXOsWET+Sob1rAZI7vYgHgx1l+54GE1m9dJxC3i+3SAqZ9leHZZvQYQ8RHR3Of5Kp6O1u1TbxBf00ZiSYSuGaJKIR0t0Gf6EMvg2w0kqwAQL8/XZNfryYJ1XKlOkpnuEjjWKK+1oNWmxTlUVHngD3bXRQnFAyw+WExwmKaOutxoMbimSTpKi2mYFafzIRCziMDeS2z8ExFN6ftBC6PVxw9lUKeX1ML1+snxg6wc0sdVO8HV0Xs4sjBJ3wwX69wkRn+bq3hlbhH0j7sFTeqeTvFUopyZFN0KQCQL101ocaHVtMhcK6Vw7w3ZVCdKrrqAep4xZos7KkZmWoZs+QRW/XwRfSFDUwgiDtxKuXDiYcZ+c0DW9KIIkt9CAxNQkAkaK++mfVKSyLAMLVYBbbESoo0bmFfvyWOZQYsl72igvCZr/Zhm2udDY9aktXMI6fomeeV6brHcbX8nAb3Tp/nVOFi5Gjbv5hC02kQ9C60278n2C3DA+RutY1ISHJBJiwAAAABJRU5ErkJggg==",
+            "ULCX": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAA7EAAAOxAGVKw4bAAADRklEQVQ4jV3TTUwcdRiA8ef9z+zODizfXxVKoRhslVRTIkbKpVaNTSs1euhFYzxoPGjqwRhOJmsMBxMRDqYX0oOJ9VATE5uoMW3l0JaC2opiWWJTdGm1UFhYdmfZZXZnXg/Ixef8XH/CfyUSahIJCQE+uqW7/RL7GyLsUtAwZM2NMPd6l6T+/woAqoKInruv8T/SPFofpbPZpfrSOlkXTJOFAr4lLO2rZ+aFJsmpqoiImkRCDSI6tqAtqQwnXEOPV8b+vYB/+sJo78iF0d7FAGmIUWUM++ZWeX58QVtERBMJNYKqnFuhMrnK8c5qagfbyh1vz9o3z14cOciV86+CwMDxz9498V6yQykWFNsSyhW1nH+ribxBRP9e47GIIb6ySfaDpD1/9s7lCNcvvcjwme8YHv+GGxMvjUx/XZwrYYa61wbb4zSl0xxARGX8ru5OexwKAqK2hd4LYFTm3iS/YY3V92uuzMb72akKLKtwyu77ZKCeB+8W2CwGFFttpmwvzwELonEH616BYn8NjYW2R3qNYf1QmokwJCh2P9mvUH1sCevbJeY74+yNCbEM9NhlQ0PBJ3Rs7EAoNzk0uBoEhFLxRL0+A2yiYgFho2va1ktcP1ZHcaNEzWyaGjtdpNTXTG00xL6RIbNlEEQkNCY0pZKNhlYYcdRoYLIhJmbjzqyyVA7ZrIlSazIey60ulY/vCttf66Dp6FenH8bfIq9UMTmxxeUfSh7E8f3wyBcfP30whh2J4Lo2pZghZY50sPB9ir8+nDGzXT4eUxd72Srky2Dj5UK8nJaUCIV8kZnJvpfjOL6FE7MR12LenGyVxeYoKw0O7k0fxct5/Hg1GhMs6hoqaGx0VKhk+opLNpdNKtG0h1G4/0aXLNuoSuMKv2QztM/5RI9WVCi/zZ5JHR6s3R+viaMaLvtsNt7+M4sTe+rnEpG6CMFDlSRBRXZgjC1oCz7PvpO66gy1DvyaDjDPVRENQuzJAlpliA0v/7Tn0z19ywrXTnXLiqqKbFvahvH5La2+VqZnr0VEBeOHWGGI5RjsEHQRVg/XkTzZLN4OQBtgB8Yr3ZJVmP7yjj6QLtGWL1MnBssRvCqX20Pt8o+AJhJqErLN+V9lAIdSSyRDdQAAAABJRU5ErkJggg==",
             "RED": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAABYlAAAWJQFJUiTwAAACF0lEQVQ4jZWSzUtUYRTGf+d+6TDKRDnUItq0aNEqWrRoo4sWbUKFEdxHQf9ArWoWbtq60vZFCSG0CwOToIwUEWQoUYQoaZww547OOOq9T4t7ZxoMiZ7N+573POfjec+BDkhy+AeOc7wOh5lZDLC9rVHgpudx3gwdHPDVjJnxcZ6bWZxyBWAAxaKcYtHicllnPY9pM7JHRzwLApYAHR5y2YxRM5AY7uuz75IcM4uRZJJsY0PdW1t6V6lo8qT2KxU9Lpc1v7ysbCvOAVwzk8TtRoNmPm93U6enQiFQoRBIciU5+bzdbzb5kTvNvVSC2+5gfV2vSyXdkGSzs/KOV5+akivJVj7r+uqa3rRsx8z09gMXd2pkymWWAKe/nwhAMCgYBBgZIQac/V1WajX8cxe4ZGZppSZe02ViYMB+tqeSBL4EJBg27JUZEVB9/1ETLZ4DMDfHmhm1zU2NKdQtAIKgNW8jyLgACo+GGg2N9fay//ABq219M3O6srikb2EoVXf0FKAoeYIhweCdBfkA9bpeSFLpi37Nz+tqe5G6AwIz9vb2CDMZqgCPkiWZBlgA/0mipVqtcugYu76P35YgIQlHwgfcjn9w1WGnPj/lqp0gJcdARHKm4okseWvhL44DEMU4QK6rix6JHk6AGT25HK7gVBQlsR5AI6SU7Way2eRaNsvCn6YS1GrJPY75VK9zRjGLYUjppEL/hd9J+SWd+NGkdgAAAABJRU5ErkJggg==",
             "OPS": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAwAAAAMCAYAAABWdVznAAAACXBIWXMAABYlAAAWJQFJUiTwAAAA60lEQVQokY3Qu06bURCF0bXNb6xgJbiwokQJFZEoUuYteGBqHgCqVPQE5AKEAHGxSSbNGOhgyjlzvn3hnVNVgbxajLCFOb5hG39xhpMky6pK+niCr/iOn5hi2awxFjhIcpWq2sBOk3+gcIyrVpr3+xkOh15+auoDjpKctvJTA57wEXsDvrzKssD5OiBu29IK15gNHTS4a4XnIpr+AQNuYITLlpu09DRJJaku4nN/vMdiwEnb2sUGUlVjzPCrFa/b3vm61hn2m7ZqO5tt8zdOsUjymKpKkqqqTey1jVFT/+ACd0n+vSR7aeXN+Q8e8lc4WzpijAAAAABJRU5ErkJggg=="
         };
@@ -764,7 +770,8 @@ function toUnixTime(dateString) {
                 (tracker === "HUNO") ||
                 (tracker === "TIK") ||
                 (tracker === "LST") ||
-                (tracker === "IFL")
+                (tracker === "IFL") ||
+                (tracker === "ULCX")
             )
                 return true;
             else return false;
@@ -1580,7 +1587,7 @@ function toUnixTime(dateString) {
                 if (html.querySelector('item') === null) return false;
                 else return true;
             }
-            else if (tracker === "BLU" || tracker === "Aither" || tracker === "RFX" || tracker === "OE" || tracker === "HUNO" || tracker === "TIK" || tracker === "LST" || tracker === "IFL") {
+            else if (tracker === "BLU" || tracker === "Aither" || tracker === "RFX" || tracker === "OE" || tracker === "HUNO" || tracker === "TIK" || tracker === "LST" || tracker === "IFL" || tracker === "ULCX") {
                 if (html.querySelector(".torrent-search--list__no-result") === null) return true;
                 else return false;
             }
@@ -2179,6 +2186,12 @@ function toUnixTime(dateString) {
                         imdb_id.split("tt")[1] +
                         "&categories[0]=1&categories[1]=2&categories[2]=6&categories[3]=8&perPage=100&api_token=" +
                         LST_API_TOKEN;
+                } else if (tracker === "ULCX") {
+                    api_query_url =
+                        "https://upload.cx/api/torrents/filter?imdbId=" +
+                        imdb_id.split("tt")[1] +
+                        "&categories[0]=1&categories[1]=2&categories[2]=6&categories[3]=8&perPage=100&api_token=" +
+                        ULCX_API_TOKEN;
                 }
                 else if (tracker === "TVV") {
                     if (!easysearching) {
@@ -4058,7 +4071,8 @@ function toUnixTime(dateString) {
                 tracker === "HUNO" ||
                 tracker === "TIK" ||
                 tracker === "LST" ||
-                tracker === "IFL"
+                tracker === "IFL" ||
+                tracker === "ULCX"
             ) {
                 torrent_objs = json.data.map((element) => {
                     let originalInfoText;
@@ -4448,6 +4462,10 @@ function toUnixTime(dateString) {
 
         const add_as_first = (div, quality) => {
             let all_trs = [...document.querySelectorAll("tr.group_torrent")];
+            //console.warn("All TRs text content:");
+            all_trs.forEach((tr, index) => {
+                //console.warn(`Row ${index} text content:`, tr.textContent.trim());
+            });
             let first_idx;
 
             if (quality === "SD") {
@@ -4719,11 +4737,36 @@ function toUnixTime(dateString) {
             let sd_ptp_torrents = get_filtered_torrents("SD").sort((a, b) => a.size < b.size ? 1 : -1);
             let hd_ptp_torrents = get_filtered_torrents("HD").sort((a, b) => a.size < b.size ? 1 : -1);
             let uhd_ptp_torrents = get_filtered_torrents("UHD").sort((a, b) => a.size < b.size ? 1 : -1);
-            let soundtrack_ptp_torrents = get_filtered_torrents("Soundtrack").sort((a, b) => a.size < b.size ? 1 : -1);
+            let soundtrack_ptp_torrents = get_filtered_torrents("Soundtrack")
+                .sort((a, b) => {
+                    // Compare by year first
+                    if (a.year !== b.year) {
+                        return a.year < b.year ? 1 : -1; // Sort descending by year
+                    }
+                    // If years are the same, compare by title
+                    return a.title.localeCompare(b.title); // Sort alphabetically by title
+                });
 
             create_needed_groups(external_torrents);
 
-            external_torrents.forEach((torrent, i) => {
+            // Separate torrents that need album handling (OPS and RED) from others
+            const albumTrackers = ["OPS", "RED"];
+            const albumGroups = {};
+            const nonAlbumTorrents = [];
+
+            external_torrents.forEach(torrent => {
+                if (albumTrackers.includes(torrent.site) && torrent.album) {
+                    if (!albumGroups[torrent.album]) {
+                        albumGroups[torrent.album] = [];
+                    }
+                    albumGroups[torrent.album].push(torrent);
+                } else {
+                    nonAlbumTorrents.push(torrent);
+                }
+            });
+
+            // Handle non-album torrents (maintain existing functionality)
+            nonAlbumTorrents.forEach((torrent, i) => {
                 let seeders = parseInt(torrent.seed);
                 if (hide_dead_external_torrents && parseInt(seeders) === 0) return;
 
@@ -4797,7 +4840,7 @@ function toUnixTime(dateString) {
                         if (torrent.site === "MTV") {
                             torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__tags torrent-info__tags--internal'>Internal</span>" : false;
                         }
-                        if (torrent.site === "BLU" || torrent.site === "Aither" || torrent.site === "RFX" || torrent.site === "OE" || torrent.site === "HUNO" || torrent.site === "LST" || torrent.site === "FL" || tracker === "IFL") {
+                        if (torrent.site === "BLU" || torrent.site === "Aither" || torrent.site === "RFX" || torrent.site === "OE" || torrent.site === "HUNO" || torrent.site === "LST" || torrent.site === "FL" || tracker === "IFL" || tracker === "ULCX") {
                             get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__tags torrent-info__tags--internal'>Internal</span>") : false;
                             get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__download-modifier'>DU</span>") : false;
                             get_api_featured(torrent.featured) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__download-modifier'>Featured</span>") : false;
@@ -4825,7 +4868,7 @@ function toUnixTime(dateString) {
                         if (torrent.site === "MTV") {
                             torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
                         }
-                        if (torrent.site === "BLU" || torrent.site === "Aither" || torrent.site === "RFX" || torrent.site === "OE" || torrent.site === "HUNO" || torrent.site === "LST" || torrent.site === "FL" || tracker === "IFL") {
+                        if (torrent.site === "BLU" || torrent.site === "Aither" || torrent.site === "RFX" || torrent.site === "OE" || torrent.site === "HUNO" || torrent.site === "LST" || torrent.site === "FL" || tracker === "IFL" || tracker === "ULCX") {
                             get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #baaf92'>Internal</span>") : false;
                             get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__DU' style='font-weight: bold; color: #279d29'>DU</span>") : false;
                             get_api_featured(torrent.featured) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__Featured' style='font-weight: bold; color: #997799'>Featured</span>") : false;
@@ -4861,25 +4904,6 @@ function toUnixTime(dateString) {
                     }
                     if (torrent.trumpable != null && torrent.trumpable != false) {
                         cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__trumpable'>Trumpable</span>`;
-                    }
-                }
-                if (improved_tags) {
-                    if (torrent.site === "RED" || torrent.site === "OPS") {
-                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__tags-media'>${torrent.media}</span>`;
-                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__tags-format'>${torrent.format}</span>`;
-                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__tags-encoding'>${torrent.encoding}</span>`;
-                        if (torrent.title != null) {
-                            cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__tags-media'>${torrent.title}</span>`;
-                        }
-                        if (torrent.year != null) {
-                            cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__tags-media'>${torrent.year}</span>`;
-                        }
-                        if (torrent.log != 0) {
-                            cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__tags-media'>${torrent.log}%</span>`;
-                        }
-                        if (torrent.hasCue != false) {
-                            cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__tags-media'>Cue</span>`;
-                        }
                     }
                 }
 
@@ -4942,66 +4966,6 @@ function toUnixTime(dateString) {
                             } else {
                                 console.warn(`Failed to fetch download URL for torrent ID ${torrentId}`);
                             }
-                        } else if (tracker === "RED") {
-                            const downloadUrl = `https://redacted.ch/ajax.php?action=download&id=${torrentId}`;
-                            console.log("Download URL for RED:", downloadUrl);
-
-                            GM_xmlhttpRequest({
-                                url: downloadUrl,
-                                method: 'GET',
-                                headers: {
-                                    'Authorization': GM_config.get("red_api"),
-                                },
-                                responseType: 'blob', // Receive the response as a file
-                                onload: (res) => {
-                                    if (res.status === 200) {
-                                        console.log('Download successful for RED');
-                                        const blob = new Blob([res.response], { type: 'application/x-bittorrent' });
-                                        const url = window.URL.createObjectURL(blob);
-                                        const a = document.createElement('a');
-                                        a.href = url;
-                                        a.download = `torrent_${torrentId}.torrent`;
-                                        document.body.appendChild(a);
-                                        a.click();
-                                        window.URL.revokeObjectURL(url); // Clean up after download
-                                    } else {
-                                        console.error('Failed to download torrent from RED:', res.responseText);
-                                    }
-                                },
-                                onerror: (err) => {
-                                    console.error('Error during download request for RED:', err);
-                                }
-                            });
-                        } else if (tracker === "OPS") {
-                            const downloadUrl = `https://orpheus.network/ajax.php?action=download&id=${torrentId}`;
-                            console.log("Download URL for OPS:", downloadUrl);
-
-                            GM_xmlhttpRequest({
-                                url: downloadUrl,
-                                method: 'GET',
-                                headers: {
-                                    'Authorization': GM_config.get("ops_api"),
-                                },
-                                responseType: 'blob', // Receive the response as a file
-                                onload: (res) => {
-                                    if (res.status === 200) {
-                                        console.log('Download successful for OPS');
-                                        const blob = new Blob([res.response], { type: 'application/x-bittorrent' });
-                                        const url = window.URL.createObjectURL(blob);
-                                        const a = document.createElement('a');
-                                        a.href = url;
-                                        a.download = `torrent_${torrentId}.torrent`;
-                                        document.body.appendChild(a);
-                                        a.click();
-                                        window.URL.revokeObjectURL(url); // Clean up after download
-                                    } else {
-                                        console.error('Failed to download torrent from OPS:', res.responseText);
-                                    }
-                                },
-                                onerror: (err) => {
-                                    console.error('Error during download request for OPS:', err);
-                                }
-                            });
                         }
                     } catch (error) {
                         console.warn(`Error fetching download URL for torrent ID ${torrentId}:`, error);
@@ -5039,34 +5003,6 @@ function toUnixTime(dateString) {
                                     event.preventDefault();
                                     const torrentId = element.getAttribute('data-torrent-id');
                                     fetchDownloadUrl(torrentId, 'MTeam'); // Pass 'MTeam' to handle the MTeam case
-                                }
-                            });
-                        } else if (tracker === "RED") {
-                            element.href = torrent.download_link;
-                            element.setAttribute('data-torrent-id', torrent.redId);
-                            element.setAttribute('data-tracker', 'RED');
-
-                            element.addEventListener('click', function(event) {
-                                const downloadCompleted = element.getAttribute('data-download-completed');
-
-                                if (!downloadCompleted) {
-                                    event.preventDefault();
-                                    const torrentId = element.getAttribute('data-torrent-id');
-                                    fetchDownloadUrl(torrentId, 'RED'); // Pass 'RED' to handle the RED case
-                                }
-                            });
-                        } else if (tracker === "OPS") {
-                            element.href = torrent.download_link;
-                            element.setAttribute('data-torrent-id', torrent.opsId);
-                            element.setAttribute('data-tracker', 'OPS');
-
-                            element.addEventListener('click', function(event) {
-                                const downloadCompleted = element.getAttribute('data-download-completed');
-
-                                if (!downloadCompleted) {
-                                    event.preventDefault();
-                                    const torrentId = element.getAttribute('data-torrent-id');
-                                    fetchDownloadUrl(torrentId, 'OPS');
                                 }
                             });
                         } else {
@@ -5108,7 +5044,7 @@ function toUnixTime(dateString) {
 
                 cln.querySelector(".size-span").textContent = ptp_format_size;
 
-                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV", "LST", "ANT", "RTF", "AvistaZ", "CinemaZ", "PHD", "TL", "FL", "MTeam", "IFL", "RED", "OPS"];
+                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV", "LST", "ANT", "RTF", "AvistaZ", "CinemaZ", "PHD", "TL", "FL", "MTeam", "IFL", "RED", "OPS", "ULCX"];
                 if (byteSizedTrackers.includes(torrent.site)) {
                     cln.querySelector(".size-span").setAttribute("title", api_sized);
                 } else {
@@ -5168,6 +5104,245 @@ function toUnixTime(dateString) {
                 let size = torrent.size;
 
                 doms.push({ tracker, dom_path, quality, discount, info_text, group_id, seeders, leechers, snatchers, dom_id, size });
+            });
+
+            // Handle album torrents (for OPS and RED)
+            Object.keys(albumGroups).forEach(album => {
+                // Insert the album header
+                let headerDiv = get_group_header_div(album);
+                insert_group(album, headerDiv);
+
+                // Insert torrents for the current album
+                albumGroups[album].forEach((torrent, i) => {
+                    let group_torrents;
+                    //let ref_div;
+                    let tracker = torrent.site;
+                    let dom_id = tracker + "_" + i;
+                    const group_id = torrent.groupId;
+                    let seeders = parseInt(torrent.seed);
+                    if (hide_dead_external_torrents && parseInt(seeders) === 0) return;
+
+                    let ref_div = get_ref_div(torrent, soundtrack_ptp_torrents); // Example of sorting under soundtrack
+                    let cln = line_example.cloneNode(true);
+
+                    if (improved_tags && show_tracker_name) {
+                        cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] `;
+                    } else if (improved_tags) {
+                        cln.querySelector(".torrent-info-link").textContent = ``;
+                    } else if (show_tracker_name) {
+                        cln.querySelector(".torrent-info-link").textContent = `[${torrent.site}] ` + torrent.info_text;
+                    } else {
+                        cln.querySelector(".torrent-info-link").textContent = torrent.info_text;
+                    }
+
+                    // Improved tags for RED/OPS
+                    if (improved_tags && (torrent.site === "RED" || torrent.site === "OPS")) {
+                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__tags-media'>${torrent.media}</span>`;
+                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__tags-format'>${torrent.format}</span>`;
+                        cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__tags-encoding'>${torrent.encoding}</span>`;
+                        if (torrent.title) {
+                            cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__tags-title'>${torrent.title}</span>`;
+                        }
+                        if (torrent.year !== null) {
+                            cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__tags-year'>${torrent.year}</span>`;
+                        }
+                        if (torrent.log !== 0) {
+                            cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__tags-log'>${torrent.log}%</span>`;
+                        }
+                        if (torrent.hasCue !== false) {
+                            cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__tags-cue'>Cue</span>`;
+                        }
+                    }
+
+                    // Handle Freeleech, Half-leech, and other discounts
+                    if (!hide_tags) {
+                        const torrentInfoLink = cln.querySelector(".torrent-info-link");
+                        if (improved_tags) {
+                            if (torrent.discount === "Freeleech" || torrent.discount === "FL" || torrent.discount === "Golden") {
+                                torrentInfoLink.innerHTML += " / <span class='torrent-info__download-modifier torrent-info__download-modifier--free'>Freeleech!</span>";
+                            } else if (torrent.discount === "50% Freeleech" || torrent.discount === "50%" || torrent.discount === "Bronze") {
+                                torrentInfoLink.innerHTML += " / <span class='torrent-info__download-modifier torrent-info__download-modifier--half'>Half-leech!</span>";
+                            } else if (torrent.discount != "None") {
+                                torrentInfoLink.innerHTML += ` / <span class='torrent-info__download-modifier'>${torrent.discount}!</span>`;
+                            }
+                        } else {
+                            if (torrent.discount != "None") {
+                                cln.querySelector(".torrent-info-link").innerHTML += ` / <span class='torrent-info__download-modifier torrent-info__download-modifier--free'>${torrent.discount}!</span>`;
+                            }
+                        }
+                    }
+
+                    // Set size, snatch, seed, leech values
+                    cln.querySelector(".size-span").textContent = get_ptp_format_size(torrent.size);
+                    cln.querySelector("td:nth-child(3)").textContent = torrent.snatch; // snatch
+                    cln.querySelector("td:nth-child(4)").textContent = torrent.seed; // seed
+                    cln.querySelector("td:nth-child(5)").textContent = torrent.leech; // leech
+                    cln.querySelector(".link_3").href = torrent.torrent_page;
+                    cln.className += " " + dom_id;
+                    cln.id += " " + dom_id;
+                    if (torrent?.datasetRelease) {
+                        if (cln?.dataset?.releasename) {
+                            cln.dataset.releasename += torrent.datasetRelease;
+                        } else {
+                            cln.dataset.releasename = torrent.datasetRelease;
+                        }
+                    } else if (torrent.info_text && cln.dataset.releasename) {
+                        cln.dataset.releasename += `[${torrent.site}] ` + torrent.info_text;
+                    } else if (torrent.info_text) {
+                        cln.dataset.releasename = `[${torrent.site}] ` + torrent.info_text;
+                    }
+
+                    cln.querySelector(".size-span").setAttribute("title", torrent.size);
+                    if (group_id && cln.dataset.releasegroup) {
+                        cln.dataset.releasegroup += group_id;
+                    } else if (group_id || group_id === "") {
+                        cln.dataset.releasegroup = group_id;
+                    }
+
+                    if (open_in_new_tab) cln.querySelector(".link_3").target = "_blank";
+
+                    if (show_tracker_icon) {
+                        cln.querySelector("img").src = get_tracker_icon(torrent.site);
+                        cln.querySelector("img").title = torrent.site;
+                    }
+
+                    async function fetchDownloadUrl(torrentId, tracker) {
+                        try {
+                            if (tracker === "RED") {
+                                const downloadUrl = `https://redacted.ch/ajax.php?action=download&id=${torrentId}`;
+                                console.log("Download URL for RED:", downloadUrl);
+
+                                GM_xmlhttpRequest({
+                                    url: downloadUrl,
+                                    method: 'GET',
+                                    headers: {
+                                        'Authorization': GM_config.get("red_api"),
+                                    },
+                                    responseType: 'blob', // Receive the response as a file
+                                    onload: (res) => {
+                                        if (res.status === 200) {
+                                            console.log('Download successful for RED');
+                                            const blob = new Blob([res.response], { type: 'application/x-bittorrent' });
+                                            const url = window.URL.createObjectURL(blob);
+                                            const a = document.createElement('a');
+                                            a.href = url;
+                                            a.download = `torrent_${torrentId}.torrent`;
+                                            document.body.appendChild(a);
+                                            a.click();
+                                            window.URL.revokeObjectURL(url); // Clean up after download
+                                        } else {
+                                            console.error('Failed to download torrent from RED:', res.responseText);
+                                        }
+                                    },
+                                    onerror: (err) => {
+                                        console.error('Error during download request for RED:', err);
+                                    }
+                                });
+                            } else if (tracker === "OPS") {
+                                const downloadUrl = `https://orpheus.network/ajax.php?action=download&id=${torrentId}`;
+                                console.log("Download URL for OPS:", downloadUrl);
+
+                                GM_xmlhttpRequest({
+                                    url: downloadUrl,
+                                    method: 'GET',
+                                    headers: {
+                                        'Authorization': GM_config.get("ops_api"),
+                                    },
+                                    responseType: 'blob', // Receive the response as a file
+                                    onload: (res) => {
+                                        if (res.status === 200) {
+                                            console.log('Download successful for OPS');
+                                            const blob = new Blob([res.response], { type: 'application/x-bittorrent' });
+                                            const url = window.URL.createObjectURL(blob);
+                                            const a = document.createElement('a');
+                                            a.href = url;
+                                            a.download = `torrent_${torrentId}.torrent`;
+                                            document.body.appendChild(a);
+                                            a.click();
+                                            window.URL.revokeObjectURL(url); // Clean up after download
+                                        } else {
+                                            console.error('Failed to download torrent from OPS:', res.responseText);
+                                        }
+                                    },
+                                    onerror: (err) => {
+                                        console.error('Error during download request for OPS:', err);
+                                    }
+                                });
+                            }
+                        } catch (error) {
+                            console.warn(`Error fetching download URL for torrent ID ${torrentId}:`, error);
+                        }
+                    }
+
+                    // Handle the download link based on the tracker
+                    let elements = cln.querySelector(".basic-movie-list__torrent__action").querySelectorAll("a");
+                    if (elements.length > 0) {
+                        let element;
+                        if (hideBlankLinks === "DL") {
+                            element = [...elements].find(a => a.textContent.trim() === "DL");
+                        } else if (hideBlankLinks === "Download") {
+                            element = [...elements].find(a => a.textContent.trim().toUpperCase() === "DOWNLOAD");
+                        } else if (hideBlankLinks === "Spaced") {
+                            element = [...elements].find(a => a.textContent.trim() === "DL");
+                            if (element) {
+                                element.style.paddingRight = "51px";
+                            }
+                        }
+
+                        // Handle specific tracker download links
+                        if (element) {
+                            if (torrent.site === "RED") {
+                                element.href = torrent.download_link;
+                                element.setAttribute('data-torrent-id', torrent.redId);
+                                element.setAttribute('data-tracker', 'RED');
+                                element.addEventListener('click', function(event) {
+                                    const downloadCompleted = element.getAttribute('data-download-completed');
+                                    if (!downloadCompleted) {
+                                        event.preventDefault();
+                                        const torrentId = element.getAttribute('data-torrent-id');
+                                        fetchDownloadUrl(torrentId, 'RED');
+                                    }
+                                });
+                            } else if (torrent.site === "OPS") {
+                                element.href = torrent.download_link;
+                                element.setAttribute('data-torrent-id', torrent.opsId);
+                                element.setAttribute('data-tracker', 'OPS');
+                                element.addEventListener('click', function(event) {
+                                    const downloadCompleted = element.getAttribute('data-download-completed');
+                                    if (!downloadCompleted) {
+                                        event.preventDefault();
+                                        const torrentId = element.getAttribute('data-torrent-id');
+                                        fetchDownloadUrl(torrentId, 'OPS');
+                                    }
+                                });
+                            } else {
+                                element.href = torrent.download_link; // Fallback for other trackers
+                            }
+                        }
+                    } else {
+                        console.log("No elements found matching the criteria.");
+                    }
+                    const groupTorrent = cln.querySelector('.torrent-info-link');
+                    let newHtml = groupTorrent.outerHTML;
+
+                    if (torrent.time && torrent.time !== "None") {
+                        if (groupTorrent) {
+                            newHtml += `<span class='release time' title="${torrent.time}"></span>`;
+                        }
+                    }
+                    // Append the cloned row to the DOM
+                    if (ref_div !== false) {
+                        insertAfter(cln, ref_div);
+                    } else {
+                        add_as_first(cln, torrent.quality);
+                    }
+
+                    doms.push({
+                        tracker: torrent.site, dom_path: cln, quality: torrent.quality, discount: torrent.discount,
+                        info_text: torrent.info_text, group_id: torrent.groupId, seeders, leechers: torrent.leech,
+                        snatchers: torrent.snatch, dom_id: torrent.site + "_" + i, size: torrent.size
+                    });
+                });
             });
 
             console.log("Finished adding releases for other scripts");
@@ -6313,9 +6488,37 @@ function toUnixTime(dateString) {
             trackers.forEach(t => promises.push(fetch_tracker(t, imdb_id, show_name, show_nbl_name, red_name, tvdbId, tvmazeId)));
             Promise.all(promises)
                 .then(torrents_lists => {
-                    var all_torrents = [].concat.apply([], torrents_lists).sort((a, b) => a.size < b.size ? 1 : -1);
+                    // Combine all torrents into one array
+                    var all_torrents = [].concat.apply([], torrents_lists)
+                        .sort((a, b) => {
+                            // Check if both torrents are soundtracks
+                            if (a.quality === "Soundtrack" && b.quality === "Soundtrack") {
+                                // Sort by groupId (album title) first
+                                if ((a.album || '').localeCompare(b.album || '') !== 0) {
+                                    return (a.album || '').localeCompare(b.album || ''); // Sort alphabetically by groupId (album title)
+                                }
+                                // Sort by year if groupId is the same
+                                if (a.year !== b.year) {
+                                    return a.year < b.year ? 1 : -1; // Sort descending by year
+                                }
+                                // Sort by title if year is the same
+                                if ((a.title || '').localeCompare(b.title || '') !== 0) {
+                                    return (a.title || '').localeCompare(b.title || ''); // Sort alphabetically by title
+                                }
+                                // Sort by catalog if title is the same
+                                if ((a.catalog || '').localeCompare(b.catalog || '') !== 0) {
+                                    return (a.catalog || '').localeCompare(b.catalog || ''); // Sort alphabetically by catalog
+                                }
+                                // If catalog is the same, sort by size
+                                return a.size > b.size ? 1 : -1;
+                            }
+                            // Otherwise, sort by size for non-soundtrack torrents
+                            return a.size < b.size ? 1 : -1; // Sort descending by size
+                        });
+
+                    // Add external torrents to the page
                     add_external_torrents(all_torrents);
-                    //document.querySelectorAll(".basic-movie-list__torrent__action").forEach(d => { d.style.marginLeft = "12px"; });
+
                     original_table = document.querySelector("table.torrent_table").cloneNode(true);
 
                     // Only apply default filters if there are any specified
