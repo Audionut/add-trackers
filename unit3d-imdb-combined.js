@@ -1,13 +1,15 @@
 // ==UserScript==
 // @name         UNIT3D - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.0
+// @version      1.0.1
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://blutopia.cc/torrents/similar/*
 // @match        https://aither.cc/torrents/similar/*
 // @match        https://reelflix.xyz/torrents/similar/*
 // @match        https://onlyencodes.cc/torrents/similar/*
+// @match        https://upload.cx/torrents/similar/*
+// @match        https://lst.gg/torrents/similar/*
 // @icon         data:image/png;base64,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
 // @downloadURL  https://github.com/Audionut/add-trackers/raw/main/unit3d-imdb-combined.js
 // @updateURL    https://github.com/Audionut/add-trackers/raw/main/unit3d-imdb-combined.js
@@ -478,7 +480,25 @@
             }
 
             let title = movie.titleText.text;
-            let searchLink = `https://blutopia.cc/torrents?imdbId=${movie.id}`;
+            let siteURL = window.location.hostname;
+            let searchLink;
+
+            if (siteURL.includes("blutopia.cc")) {
+                searchLink = `https://${siteURL}/torrents?imdbId=${movie.id}`;
+            } else if (siteURL.includes("aither.cc")) {
+                searchLink = `https://${siteURL}/torrents?imdbId=${movie.id}`;
+            } else if (siteURL.includes("reelflix.xyz")) {
+                searchLink = `https://${siteURL}/torrents?imdbId=${movie.id}`;
+            } else if (siteURL.includes("onlyencodes.cc")) {
+                searchLink = `https://${siteURL}/torrents?imdbId=${movie.id}`;
+            } else if (siteURL.includes("upload.cx")) {
+                searchLink = `https://${siteURL}/torrents?imdbId=${movie.id}`;
+            } else if (siteURL.includes("lst.gg")) {
+                searchLink = `https://${siteURL}/torrents?imdbId=${movie.id}`;
+            } else {
+                console.warn("Unknown site, cannot generate IMDb search.");
+                searchLink = `#`;
+            }
             let image = movie.primaryImage.url;
 
             var movieDiv = document.createElement('div');
