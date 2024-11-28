@@ -6,8 +6,8 @@
 // @author       Audionut
 // @match        https://orpheus.network/torrents.php?id=*
 // @match        https://orpheus.network/artist.php?id=*
-// @match        https://redacted.ch/torrents.php?id=*
-// @match        https://redacted.ch/artist.php?id=*
+// @match        https://redacted.sh/torrents.php?id=*
+// @match        https://redacted.sh/artist.php?id=*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_addStyle
 // @grant        GM_getValue
@@ -112,11 +112,11 @@
     }
 
     const isOPS = window.location.hostname.includes("orpheus.network");
-    const sourceSiteUrl = isOPS ? 'https://orpheus.network' : 'https://redacted.ch';
-    const targetSiteUrl = isOPS ? 'https://redacted.ch' : 'https://orpheus.network';
+    const sourceSiteUrl = isOPS ? 'https://orpheus.network' : 'https://redacted.sh';
+    const targetSiteUrl = isOPS ? 'https://redacted.sh' : 'https://orpheus.network';
 
     const opsApiUrl = 'https://orpheus.network/ajax.php?action=artist&artistreleases=1&artistname=';
-    const redApiUrl = 'https://redacted.ch/ajax.php?action=artist&artistreleases=1&artistname=';
+    const redApiUrl = 'https://redacted.sh/ajax.php?action=artist&artistreleases=1&artistname=';
 
     const sourceApiKey = isOPS ? GM_getValue('OPS_API_KEY') : GM_getValue('RED_API_KEY');
     const targetApiKey = isOPS ? GM_getValue('RED_API_KEY') : GM_getValue('OPS_API_KEY');
@@ -570,7 +570,7 @@
         if (!isOPS) {
             torrentLink = `https://orpheus.network/torrents.php?id=${groupId}&torrentid=${id}#torrent${id}`;
         } else {
-            torrentLink = `https://redacted.ch/torrents.php?id=${groupId}&torrentid=${id}#torrent${id}`;
+            torrentLink = `https://redacted.sh/torrents.php?id=${groupId}&torrentid=${id}#torrent${id}`;
         }
         const leechLabel = isFreeload ? '<strong class="torrent_label tooltip tl_free" title="Freeload!" style="white-space: nowrap;">Freeload!</strong>' :
             freeTorrent ? '<strong class="torrent_label tooltip tl_free" title="Freeleech!" style="white-space: nowrap;">Freeleech!</strong>' :
@@ -617,7 +617,7 @@
                 downloadUrl = `https://orpheus.network/ajax.php?action=download&id=${torrentId}`;
                 api_key = OPS_API_KEY;
             } else {
-                downloadUrl = `https://redacted.ch/ajax.php?action=download&id=${torrentId}`;
+                downloadUrl = `https://redacted.sh/ajax.php?action=download&id=${torrentId}`;
                 api_key = RED_API_KEY;
             }
 
