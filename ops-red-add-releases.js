@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OPS/RED - add releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.2
+// @version      1.2.1
 // @description  Add releases to/from RED/OPS
 // @author       Audionut
 // @match        https://orpheus.network/torrents.php?id=*
