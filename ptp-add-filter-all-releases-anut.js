@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.3.6-A
+// @version      4.3.7-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -29,6 +29,9 @@
         "avistaz_pid": {"label": "Avistaz PID", "type": "text", "default": ""},
         "ant": {"label": "ANT *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "ant_api": {"label": "ANT_API_TOKEN", "type": "text", "default": ""},
+        "ar": {"label": "AlphaRatio * ", "type": "checkbox", "default": false, "tooltip": "Enter authkey and torrent pass below, get from download link"},
+        "ar_auth": {"label": "AR auth key", "type": "text", "default": ""},
+        "ar_pass": {"label": "AR torrent pass", "type": "text", "default": ""},
         "bhd": {"label": "BHD *", "type": "checkbox", "default": false, "tooltip": "Enter API and RSS key below"},
         "bhd_api": {"label": "BHD_API_TOKEN", "type": "text", "default": ""},
         "bhd_rss": {"label": "BHD_RSS_KEY", "type": "text", "default": ""},
@@ -140,6 +143,7 @@
     function toggleAuthFields(key, isAuthEnabled) {
         const multi_auth = {
             "bhd": ["bhd_api", "bhd_rss", "bhd_seeding"],
+            "ar": ["ar_auth", "ar_pass"],
             "fl": ["fl_user", "fl_pass"],
             "hdb": ["hdb_user", "hdb_pass"],
             "tvv": ["tvv_auth", "tvv_torr", "easysearch"],
@@ -212,6 +216,7 @@
                 const api_based_nodes = {
                     "aither": GM_config.fields.aither.node,
                     "ant": GM_config.fields.ant.node,
+                    "ar": GM_config.fields.ar.node,
                     "avistaz": GM_config.fields.avistaz.node,
                     "bhd": GM_config.fields.bhd.node,
                     "blu": GM_config.fields.blu.node,
@@ -308,6 +313,7 @@
             "RED": GM_config.get("red"),
             "OPS": GM_config.get("ops"),
             "ULCX": GM_config.get("ulcx"),
+            "AR": GM_config.get("ar"),
         };
 
         const movie_only_dict = {};
@@ -409,6 +415,8 @@
     const RED_API_TOKEN = GM_config.get("red_api");
     const OPS_API_TOKEN = GM_config.get("ops_api");
     const ULCX_API_TOKEN = GM_config.get("ulcx_api");
+    const AR_AUTH = GM_config.get("ar_auth");
+    const AR_PASS = GM_config.get("ar_pass");
 
     // We need to use XML response with TVV and have to define some parameters for it to work correctly.
     const TVV_AUTH_KEY = GM_config.get("tvv_auth"); // If you want to use TVV - find your authkey from a torrent download link
@@ -754,7 +762,8 @@ function toUnixTime(dateString) {
             "IFL": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB8AAAAQCAYAAADu+KTsAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAE1UlEQVQ4jYWVW2xUZRDHf3PO6dlz2m2XUqDlLndCC0EUBASjMYQAESWhfTAKkURIjCZogjceODwY1IgkRmM0IUBiNK4mXhA0NHLRoEAwhksBKbe2W0opvW23u93bGR92C62gfsl5OZnfzHzf/GcG/ucoGApy+8chtf7DWvKM5LnBrHrGQGtBVRDRijd0eEIZZxSTFBeVYvzJLs2nfudN38UMhPi1LMgv116Wrn6m38l9njolRZinNkm8bIfO7w0yW0OEZChxo5xIUQVn24ZLvYAOZC22UgCketIsSZi8qz7NQMI0SEens8Y/zsi0wZNpn9Vx5UzJHv24W+QnURW2YuJJpi3G6uY+nnO26amUsAiTuGETIUCvWlQlXRYG9WZdJcnv6kQ6+hOwAB8gGORYn0+Db9FNANtx+PTcg3Jj4lv6aleW95IuC5MBVvSYbAzt01IV+UIOKQpiG8xNm4xCsAscfhsSZPcIh0YjhLYPp7yzKDunl9jsSzSVzdQfdp4R6UQ9w2IGqiBOihezAVwC4DjU9jwtX0u9CpulFWgFzowP64HrwktRl5Wh09rFLNlf9ZEG/QjTsOnARiXAkMq5XDg8QfryVelUuBjSs+1RYssv075KVXcJWzGokewwT6elDJYX2JwuLGL/UJcPRVC2oKCCpwaeWg01cnV8OdvsQq7EClk2Ti9ObDpFpVpMNx1uuQ57XZcPIudRPDVQFVQNUdVuqap16K3ro2POKLaPQzzfAujNMg8bp7CIz7s2SK2Q11K/qDwU8AmreekRaRtbrzubS3i+hbInRizmsN/I62MqqD2/VjoEtLtfiV6+YdQzBPwR9By/Sd/cOP5UoMFQkIzFSArotm2uiqdCNYNa4vapkSyqRtMUuVwynB/TpMZGnzkysWezfHlhrbRLWA08vQe7RQFcojcNMskY6RCQD2KRwSZNIH/LSvRuB3e6FWAjHA3QfamXzKIKra0C0Brx8cT/N9AnJZCV3BgAQ0ALHK7hYCRtJoIoMwYMhkFhPQMRXarhoZ5IpozoPoj67VxeWqbvPF6qb69UEPSffI0BEMcf7YNTjNVx++alpZzA5mbCZsn6k1rQ/7x5wQjqGbnAnj9G351ylobZj+oup1nmRUpI7PeJVnSSWBEjveB+3RFCcnXOsWET+Sob1rAZI7vYgHgx1l+54GE1m9dJxC3i+3SAqZ9leHZZvQYQ8RHR3Of5Kp6O1u1TbxBf00ZiSYSuGaJKIR0t0Gf6EMvg2w0kqwAQL8/XZNfryYJ1XKlOkpnuEjjWKK+1oNWmxTlUVHngD3bXRQnFAyw+WExwmKaOutxoMbimSTpKi2mYFafzIRCziMDeS2z8ExFN6ftBC6PVxw9lUKeX1ML1+snxg6wc0sdVO8HV0Xs4sjBJ3wwX69wkRn+bq3hlbhH0j7sFTeqeTvFUopyZFN0KQCQL101ocaHVtMhcK6Vw7w3ZVCdKrrqAep4xZos7KkZmWoZs+QRW/XwRfSFDUwgiDtxKuXDiYcZ+c0DW9KIIkt9CAxNQkAkaK++mfVKSyLAMLVYBbbESoo0bmFfvyWOZQYsl72igvCZr/Zhm2udDY9aktXMI6fomeeV6brHcbX8nAb3Tp/nVOFi5Gjbv5hC02kQ9C60278n2C3DA+RutY1ISHJBJiwAAAABJRU5ErkJggg==",
             "ULCX": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAA7EAAAOxAGVKw4bAAADRklEQVQ4jV3TTUwcdRiA8ef9z+zODizfXxVKoRhslVRTIkbKpVaNTSs1euhFYzxoPGjqwRhOJmsMBxMRDqYX0oOJ9VATE5uoMW3l0JaC2opiWWJTdGm1UFhYdmfZZXZnXg/Ixef8XH/CfyUSahIJCQE+uqW7/RL7GyLsUtAwZM2NMPd6l6T+/woAqoKInruv8T/SPFofpbPZpfrSOlkXTJOFAr4lLO2rZ+aFJsmpqoiImkRCDSI6tqAtqQwnXEOPV8b+vYB/+sJo78iF0d7FAGmIUWUM++ZWeX58QVtERBMJNYKqnFuhMrnK8c5qagfbyh1vz9o3z14cOciV86+CwMDxz9498V6yQykWFNsSyhW1nH+ribxBRP9e47GIIb6ySfaDpD1/9s7lCNcvvcjwme8YHv+GGxMvjUx/XZwrYYa61wbb4zSl0xxARGX8ru5OexwKAqK2hd4LYFTm3iS/YY3V92uuzMb72akKLKtwyu77ZKCeB+8W2CwGFFttpmwvzwELonEH616BYn8NjYW2R3qNYf1QmokwJCh2P9mvUH1sCevbJeY74+yNCbEM9NhlQ0PBJ3Rs7EAoNzk0uBoEhFLxRL0+A2yiYgFho2va1ktcP1ZHcaNEzWyaGjtdpNTXTG00xL6RIbNlEEQkNCY0pZKNhlYYcdRoYLIhJmbjzqyyVA7ZrIlSazIey60ulY/vCttf66Dp6FenH8bfIq9UMTmxxeUfSh7E8f3wyBcfP30whh2J4Lo2pZghZY50sPB9ir8+nDGzXT4eUxd72Srky2Dj5UK8nJaUCIV8kZnJvpfjOL6FE7MR12LenGyVxeYoKw0O7k0fxct5/Hg1GhMs6hoqaGx0VKhk+opLNpdNKtG0h1G4/0aXLNuoSuMKv2QztM/5RI9WVCi/zZ5JHR6s3R+viaMaLvtsNt7+M4sTe+rnEpG6CMFDlSRBRXZgjC1oCz7PvpO66gy1DvyaDjDPVRENQuzJAlpliA0v/7Tn0z19ywrXTnXLiqqKbFvahvH5La2+VqZnr0VEBeOHWGGI5RjsEHQRVg/XkTzZLN4OQBtgB8Yr3ZJVmP7yjj6QLtGWL1MnBssRvCqX20Pt8o+AJhJqErLN+V9lAIdSSyRDdQAAAABJRU5ErkJggg==",
             "RED": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAABYlAAAWJQFJUiTwAAACF0lEQVQ4jZWSzUtUYRTGf+d+6TDKRDnUItq0aNEqWrRoo4sWbUKFEdxHQf9ArWoWbtq60vZFCSG0CwOToIwUEWQoUYQoaZww547OOOq9T4t7ZxoMiZ7N+573POfjec+BDkhy+AeOc7wOh5lZDLC9rVHgpudx3gwdHPDVjJnxcZ6bWZxyBWAAxaKcYtHicllnPY9pM7JHRzwLApYAHR5y2YxRM5AY7uuz75IcM4uRZJJsY0PdW1t6V6lo8qT2KxU9Lpc1v7ysbCvOAVwzk8TtRoNmPm93U6enQiFQoRBIciU5+bzdbzb5kTvNvVSC2+5gfV2vSyXdkGSzs/KOV5+akivJVj7r+uqa3rRsx8z09gMXd2pkymWWAKe/nwhAMCgYBBgZIQac/V1WajX8cxe4ZGZppSZe02ViYMB+tqeSBL4EJBg27JUZEVB9/1ETLZ4DMDfHmhm1zU2NKdQtAIKgNW8jyLgACo+GGg2N9fay//ABq219M3O6srikb2EoVXf0FKAoeYIhweCdBfkA9bpeSFLpi37Nz+tqe5G6AwIz9vb2CDMZqgCPkiWZBlgA/0mipVqtcugYu76P35YgIQlHwgfcjn9w1WGnPj/lqp0gJcdARHKm4okseWvhL44DEMU4QK6rix6JHk6AGT25HK7gVBQlsR5AI6SU7Way2eRaNsvCn6YS1GrJPY75VK9zRjGLYUjppEL/hd9J+SWd+NGkdgAAAABJRU5ErkJggg==",
-            "OPS": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAwAAAAMCAYAAABWdVznAAAACXBIWXMAABYlAAAWJQFJUiTwAAAA60lEQVQokY3Qu06bURCF0bXNb6xgJbiwokQJFZEoUuYteGBqHgCqVPQE5AKEAHGxSSbNGOhgyjlzvn3hnVNVgbxajLCFOb5hG39xhpMky6pK+niCr/iOn5hi2awxFjhIcpWq2sBOk3+gcIyrVpr3+xkOh15+auoDjpKctvJTA57wEXsDvrzKssD5OiBu29IK15gNHTS4a4XnIpr+AQNuYITLlpu09DRJJaku4nN/vMdiwEnb2sUGUlVjzPCrFa/b3vm61hn2m7ZqO5tt8zdOsUjymKpKkqqqTey1jVFT/+ACd0n+vSR7aeXN+Q8e8lc4WzpijAAAAABJRU5ErkJggg=="
+            "OPS": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAwAAAAMCAYAAABWdVznAAAACXBIWXMAABYlAAAWJQFJUiTwAAAA60lEQVQokY3Qu06bURCF0bXNb6xgJbiwokQJFZEoUuYteGBqHgCqVPQE5AKEAHGxSSbNGOhgyjlzvn3hnVNVgbxajLCFOb5hG39xhpMky6pK+niCr/iOn5hi2awxFjhIcpWq2sBOk3+gcIyrVpr3+xkOh15+auoDjpKctvJTA57wEXsDvrzKssD5OiBu29IK15gNHTS4a4XnIpr+AQNuYITLlpu09DRJJaku4nN/vMdiwEnb2sUGUlVjzPCrFa/b3vm61hn2m7ZqO5tt8zdOsUjymKpKkqqqTey1jVFT/+ACd0n+vSR7aeXN+Q8e8lc4WzpijAAAAABJRU5ErkJggg==",
+            "AR": "data:image/x-icon;base64,AAABAAEAEBAAAAEAIABoBAAAFgAAACgAAAAQAAAAIAAAAAEAIAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wDGua9Vp2Mm3b1kJd29diTdu3Yk3aRqJd2bc0a8////AOTf2iakbCzXt3Ql3b52Jd25ViXdoVAq1+bj4B////8A9fX1CcXAwEHSSA/y/XQA//mHAP+ikH2G4ODhH////wD9/f0Bzs3NMrl0I97+dgD/zVsn3M3KyDj///8A////AP///wD///8AuIZ2jv5iAP/1hgD/tKmdZf///wD///8A////AN7Z1CvgeQH/+1cA/8GekXH///8A////AP///wD///8A////AODe4iLTXg7384UA/8/Fukj///8A////AP///wC+mW2T/nYA/89LFu7s6+oV////AP///wD///8A////AP///wD///8AwYE9xvOFAf/Sx7xG18i3ScCLSrm4gkS/43sF+v1YAP/FinWR////AP///wD///8A////AP///wD///8A////AMGHQsD0hgD/yb6zUO7r6BfNv65VrI1pm8ttBP/+egD/xayRdP///wD///8A////AP///wD///8A////AP///wDBh0LA8oUB/4dpaK7///8A////AMGTioG8PQT/5IAC/9t8DfLq6OYZ////AP///wD///8A////AP///wD///8AwYdDwPCEAf+YRBP25uTpHPPz9ArIVCjd5UcD/7lnBv/yhAH/urWwVP///wD///8A////AP///wD///8A////AMKJRMHyhQH/qT4K/8idkXfLt7JU8kgB/6U0Cv/IbwX/8IIB/8O/uUr///8A////AP///wD///8A////AP///wDHhzvJ94cA/1UnFf+/UCngt2RKwvpIAf9kLhH/84UB/9l9E+7v7ewT////AP///wD///8A////AOXh3SO0g0TCz3cM9uJ8A/+2Zgj/1WwF/9VtBf/jcQP/1HYE/8l7H+Pby7lI////AP///wD///8A////AP///wD7+/sD4NzYKuPg3CXk4d4j4+DcJrGMgo3GRgj/o3xwoOTh3ST29vUK////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wDm4+cd+7WZZevl5R7///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A//8AAP//AADAwQAA4eMAAOPnAADzxwAA8wcAAPOPAADxhwAA8YcAAPGHAADwBwAA4A8AAP4/AAD//wAA//8AAA=="
         };
 
         const get_tracker_icon = (tracker) => {
@@ -792,7 +801,8 @@ function toUnixTime(dateString) {
               (tracker === "FL") ||
               (tracker === "MTeam") ||
               (tracker === "RED") ||
-              (tracker === "OPS")
+              (tracker === "OPS") ||
+              (tracker === "AR")
               ) {
                 return true;
             } else {
@@ -1840,6 +1850,7 @@ function toUnixTime(dateString) {
                 'FL': 'GET',
                 'RED': 'GET',
                 'OPS': 'GET',
+                'AR': 'GET',
             };
             const method = methodMapping[tracker] || 'POST';
 
@@ -2069,7 +2080,7 @@ function toUnixTime(dateString) {
             return [];
         }
 
-        const fetch_tracker = async (tracker, imdb_id, show_name, show_nbl_name, red_name, tvdbId, tvmazeId, timeout = timer, retryCount = 0) => {
+        const fetch_tracker = async (tracker, imdb_id, show_name, show_nbl_name, red_name, tvdbId, tvmazeId, year, timeout = timer, retryCount = 0) => {
             return new Promise(async (resolve, reject) => {
                 const timer = setTimeout(() => {
                     console.warn(`${tracker} is timing out`);
@@ -2131,7 +2142,6 @@ function toUnixTime(dateString) {
                         action: "search",
                         rsskey: BHD_RSS_KEY,
                         imdb_id: imdb_id.split("tt")[1],
-                        //folder_name: "Stuart.Little.1999.REPACK.BluRay.1080p.DTS-HD.MA.5.1.AVC.REMUX-FraMeSToR",
                     };
                 } else if (tracker === "BLU") {
                     api_query_url =
@@ -2275,12 +2285,15 @@ function toUnixTime(dateString) {
                 else if (tracker === "RED") {
                     const releasetype = "Soundtrack";
                     const page = 1;
-                    post_query_url = `https://redacted.ch/ajax.php?action=browse&searchstr=${encodeURIComponent(red_name)}&releasetype=${releasetype}&year=${pageYear}&page=${page}`;
+                    post_query_url = `https://redacted.sh/ajax.php?action=browse&searchstr=${encodeURIComponent(red_name)}&releasetype=${releasetype}&year=${pageYear}&page=${page}`;
                 }
                 else if (tracker === "OPS") {
                     const releasetype = "Soundtrack";
                     const page = 1;
                     post_query_url = `https://orpheus.network/ajax.php?action=browse&searchstr=${encodeURIComponent(red_name)}&releasetype=${releasetype}&year=${pageYear}`;
+                }
+                else if (tracker === "AR") {
+                    post_query_url = "https://alpharatio.cc/ajax.php?action=browse&searchstr=" + show_nbl_name + " " + year;
                 }
                 else if (tracker === "PTP") {
                     query_url = "https://passthepopcorn.me/torrents.php?imdb=" + imdb_id;
@@ -2437,6 +2450,14 @@ function toUnixTime(dateString) {
                                             console.log(`Data fetched successfully from ${tracker}`);
                                             resolve(get_post_torrent_objects(tracker, result));
                                         }
+                                    } else if (result && tracker === "AR") {
+                                        if (result.response.results.length === 0) {
+                                            console.log("AR reached successfully but no results were returned");
+                                            resolve([]);
+                                        } else {
+                                            console.log(`Data fetched successfully from ${tracker}`);
+                                            resolve(get_post_torrent_objects(tracker, result));
+                                        }
                                     } else {
                                         console.warn(`Unhandled tracker or response format for ${tracker}`);
                                         resolve([]);
@@ -2467,7 +2488,7 @@ function toUnixTime(dateString) {
                                     resolve([]);
                                 } else {
                                     if (debug) {
-                                        console.log(`HTML data from ${tracker}`, result);
+                                        console.log(`Result from ${tracker}`, result);
                                     }
                                     console.log(`Data fetched successfully from ${tracker}`);
                                     resolve(get_torrent_objs(tracker, result));
@@ -3826,8 +3847,8 @@ function toUnixTime(dateString) {
 
                                 const groupId = d.groupId;
                                 const Id = torrent.torrentId;
-                                const torrentLink = `https://redacted.ch/torrents.php?id=${groupId}&torrentid=${Id}#torrent${Id}`;
-                                const downloadUrl = `https://redacted.ch/ajax.php?action=download&id=${Id}`;
+                                const torrentLink = `https://redacted.sh/torrents.php?id=${groupId}&torrentid=${Id}#torrent${Id}`;
+                                const downloadUrl = `https://redacted.sh/ajax.php?action=download&id=${Id}`;
 
                                 // Construct the torrent object
                                 const torrentObj = {
@@ -3840,7 +3861,7 @@ function toUnixTime(dateString) {
                                     snatch: torrent.snatches || 0,
                                     seed: torrent.seeders || 0,
                                     leech: torrent.leechers || 0,
-                                    download_link: `https://redacted.ch/download/${Id}`,
+                                    download_link: `https://redacted.sh/download/${Id}`,
                                     torrent_page: torrentLink || "",
                                     discount: torrent.isFreeleech ? "Freeleech" : "None",
                                     status: "default",
@@ -3958,6 +3979,59 @@ function toUnixTime(dateString) {
                         });
                 } catch (error) {
                     console.error("An error occurred while processing RED tracker:", error);
+                }
+            }
+            else if (tracker === "AR") {
+                try {
+                    // Ensure `postData` contains the result array from AlphaRatio
+                    torrent_objs = postData.response.results.map((d) => {
+                        // Convert size from bytes to MiB
+                        const size = parseInt(d.size / (1024 * 1024));
+                        const api_size = parseInt(d.size);
+
+                        // Extract release time and validate
+                        const inputTime = parseInt(d.groupTime); // AlphaRatio uses UNIX timestamps
+                        if (isNaN(inputTime)) {
+                            console.warn(`Invalid time for ${d.groupName}`);
+                            return null;
+                        }
+
+                        // Construct download link and torrent page link
+                        const download = `https://alpharatio.cc/torrents.php?action=download&id=${d.torrentId}&authkey=${AR_AUTH}&torrent_pass=${AR_PASS}`;
+                        const torrentPage = `https://alpharatio.cc/torrents.php?id=${d.groupId}&torrentid=${d.torrentId}#torrent${d.torrentId}`;
+
+                        // Build the torrent object
+                        const torrentObj = {
+                            api_size: api_size,
+                            datasetRelease: d.groupName || "",
+                            size: size,
+                            info_text: d.groupName || "",
+                            tracker: tracker,
+                            site: "AR",
+                            snatch: d.snatches || 0,
+                            seed: d.seeders || 0,
+                            leech: d.leechers || 0,
+                            download_link: download,
+                            torrent_page: torrentPage,
+                            discount: d.isFreeleech ? "Freeleech" : "None",
+                            status: "default",
+                            time: inputTime,
+                        };
+
+                        // Add additional properties if needed (e.g., quality determination)
+                        const mappedObj = {
+                            ...torrentObj,
+                            quality: get_torrent_quality(torrentObj), // Assuming this function exists
+                        };
+
+                        return mappedObj; // Return the processed torrent object
+                    }).filter(obj => obj !== null); // Filter out invalid objects
+
+                    if (debug) {
+                        console.log(`Processed torrent objects for ${tracker}:`, torrent_objs);
+                    }
+                } catch (error) {
+                    console.error(`An error occurred while processing ${tracker} tracker:`, error);
                 }
             }
             if (debug) {
@@ -5044,7 +5118,7 @@ function toUnixTime(dateString) {
 
                 cln.querySelector(".size-span").textContent = ptp_format_size;
 
-                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV", "LST", "ANT", "RTF", "AvistaZ", "CinemaZ", "PHD", "TL", "FL", "MTeam", "IFL", "RED", "OPS", "ULCX"];
+                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV", "LST", "ANT", "RTF", "AvistaZ", "CinemaZ", "PHD", "TL", "FL", "MTeam", "IFL", "RED", "OPS", "ULCX", "AR"];
                 if (byteSizedTrackers.includes(torrent.site)) {
                     cln.querySelector(".size-span").setAttribute("title", api_sized);
                 } else {
@@ -5209,7 +5283,7 @@ function toUnixTime(dateString) {
                     async function fetchDownloadUrl(torrentId, tracker) {
                         try {
                             if (tracker === "RED") {
-                                const downloadUrl = `https://redacted.ch/ajax.php?action=download&id=${torrentId}`;
+                                const downloadUrl = `https://redacted.sh/ajax.php?action=download&id=${torrentId}`;
                                 console.log("Download URL for RED:", downloadUrl);
 
                                 GM_xmlhttpRequest({
@@ -6464,12 +6538,18 @@ function toUnixTime(dateString) {
             let show_nbl_name;
             let red_name;
 
+            let year = null;
+            const yearMatch = name_url.match(/\[(\d{4})\]/); // Matches a year in the format [YYYY]
+            if (yearMatch) {
+                year = yearMatch[1]; // Extract the year (first capture group)
+            }
+
+            // Process show name
             const akaIndex = name_url.indexOf(" AKA ");
             if (akaIndex !== -1) {
                 show_name = name_url.substring(0, akaIndex);
                 show_nbl_name = show_name;
             } else {
-                const yearMatch = name_url.match(/\[\d{4}\]/);
                 show_name = yearMatch ? name_url.substring(0, yearMatch.index).trim() : name_url;
                 show_nbl_name = show_name;
             }
@@ -6480,12 +6560,11 @@ function toUnixTime(dateString) {
             }
 
             red_name = show_name.replace(/[:\-]+/g, '').trim();
-
             show_name = show_name.trim().replace(/[\s:]+$/, '');
             show_nbl_name = show_nbl_name.trim().replace(/[\s:]+$/, '');
 
             let promises = [];
-            trackers.forEach(t => promises.push(fetch_tracker(t, imdb_id, show_name, show_nbl_name, red_name, tvdbId, tvmazeId)));
+            trackers.forEach(t => promises.push(fetch_tracker(t, imdb_id, show_name, show_nbl_name, red_name, tvdbId, tvmazeId, year)));
             Promise.all(promises)
                 .then(torrents_lists => {
                     // Combine all torrents into one array
