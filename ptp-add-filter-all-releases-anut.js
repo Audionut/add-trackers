@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.3.8-A
+// @version      4.3.9-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -563,6 +563,7 @@
             });
         }
         console.log("Active trackers:", trackers);
+        const active_trackers = trackers;
         console.log("Excluded trackers:", excludedTrackers.map(e => `${e.tracker} - ${e.reason}`));
 
 function toUnixTime(dateString) {
@@ -1895,7 +1896,7 @@ function toUnixTime(dateString) {
                 } else if (response.status === 401) {
                     const jsonResponse = JSON.parse(response.responseText);
                     console.log(`raw response from ${tracker}`, response.responseText);
-                    if (tracker === 'RTF' && jsonResponse.error && jsonResponse.message === "Invalid API token.") {
+                    if (tracker === 'RTF' && jsonResponse.error && jsonResponse.message === "Invalid API token") {
                         displayAlert("Something went wrong with RTF API token");
                     }
                     return { status: 'REAUTH_NEEDED' };
@@ -5927,6 +5928,41 @@ function toUnixTime(dateString) {
             });
             filterByTracker.append(trackerContents);
             div.append(filterByTracker);
+
+            let unavailableTrackers = active_trackers.filter(tracker => !trackers.includes(tracker));
+
+            if (unavailableTrackers.length > 0) {
+                let unavailableTrackersSection = document.createElement("div");
+                unavailableTrackersSection.style = "display: flex; align-items: baseline";
+                unavailableTrackersSection.style.margin = "4px 0";
+
+                let unavailableLabel = document.createElement("div");
+                unavailableLabel.textContent = "Unavailable: ";
+                unavailableLabel.style.cursor = "default";
+                unavailableLabel.style.flex = "0 0 60px";
+                unavailableTrackersSection.appendChild(unavailableLabel);
+
+                let unavailableContents = document.createElement("div");
+
+                unavailableTrackers.forEach((tracker_name) => {
+                    let div = document.createElement("div");
+                    div.id = `unavailable-${tracker_name.toLowerCase()}`;
+                    div.className = "filter-box";
+                    div.textContent = tracker_name;
+                    div.style.padding = "2px 5px";
+                    div.style.margin = "3px";
+                    div.style.display = "inline-block";
+                    div.style.cursor = "pointer";
+                    div.style.fontSize = "1em";
+                    div.style.textAlign = "center";
+                    div.style.backgroundColor = "rgba(255, 0, 0, 0.5)"; // Light red to indicate unavailability
+
+                    unavailableContents.append(div);
+                });
+
+                unavailableTrackersSection.append(unavailableContents);
+                div.append(unavailableTrackersSection);
+            }
 
             // Filter by discount section
             let additional_settings = document.createElement("div");
