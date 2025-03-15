@@ -1,10 +1,12 @@
 // ==UserScript==
 // @name         PTP Seeding Highlighter
 // @namespace    https://passthepopcorn.me/
-// @version      1.3.1
+// @version      1.3.2
 // @description  Highlights movies that have seeding torrents
 // @match        https://passthepopcorn.me/bookmarks.php*
 // @match        https://passthepopcorn.me/top10.php*
+// @match        https://passthepopcorn.me/collages.php?id=*
+// @match        https://passthepopcorn.me/collages.php?page=*&id=*
 // @grant        none
 // ==/UserScript==
 
@@ -1458,12 +1460,24 @@ function applyOverlay(groupId) {
         `a[href*='torrents.php?id=${groupId}']`,
         `*[data-group-id='${groupId}']`,
         `div[data-coverviewjsonindex] a[href*='id=${groupId}']`,
-        `.js-movie-tooltip-triggerer a[href*='id=${groupId}']`
+        `.js-movie-tooltip-triggerer a[href*='id=${groupId}']`,
+        // Add selector for collage pages
+        `a.cover-movie-list__movie__cover-link[href*='id=${groupId}']`,
+        // More generic selector as fallback
+        `a[href*='id=${groupId}']`
     ];
 
     let movieElement = null;
     for (const selector of selectors) {
-        movieElement = document.querySelector(selector);
+        const elements = document.querySelectorAll(selector);
+        // Use the first element that has a valid parent container
+        for (const element of elements) {
+            const container = findMovieContainer(element);
+            if (container) {
+                movieElement = element;
+                break;
+            }
+        }
         if (movieElement) break;
     }
 
@@ -1472,33 +1486,8 @@ function applyOverlay(groupId) {
         return;
     }
 
-    // Try to get the container in multiple ways based on page type
-    let movieContainer = null;
-    
-    // First try the standard bookmark page structure
-    movieContainer = movieElement.closest('.cover-movie-list__movie') || 
-                    movieElement.closest('.js-movie-tooltip-triggerer');
-    
-    // If not found and this is a link, check if the parent itself is the container
-    // (This handles the top10 page structure)
-    if (!movieContainer && movieElement.tagName === 'A') {
-        const parent = movieElement.parentNode;
-        if (parent && (
-            parent.classList.contains('cover-movie-list__movie') ||
-            parent.classList.contains('js-movie-tooltip-triggerer')
-        )) {
-            movieContainer = parent;
-        } else {
-            // Try one level up (grandparent) - sometimes needed in top10 page
-            const grandparent = parent && parent.parentNode;
-            if (grandparent && (
-                grandparent.classList.contains('cover-movie-list__movie') ||
-                grandparent.classList.contains('js-movie-tooltip-triggerer')
-            )) {
-                movieContainer = grandparent;
-            }
-        }
-    }
+    // Use the improved container finder function
+    const movieContainer = findMovieContainer(movieElement);
 
     if (!movieContainer) {
         log(`Could not find movie container for ID: ${groupId}`);
@@ -1508,7 +1497,15 @@ function applyOverlay(groupId) {
     log(`Found container for ${groupId}:`, movieContainer);
 
     // Find the cover link (the image)
-    const coverLink = movieContainer.querySelector('.cover-movie-list__movie__cover-link');
+    // First try to use the element itself if it's already a cover link
+    let coverLink = null;
+    if (movieElement.classList && movieElement.classList.contains('cover-movie-list__movie__cover-link')) {
+        coverLink = movieElement;
+    } else {
+        // Otherwise look for the cover link inside the container
+        coverLink = movieContainer.querySelector('.cover-movie-list__movie__cover-link');
+    }
+
     if (!coverLink) {
         log(`Could not find cover link for ID: ${groupId}`);
         return;
@@ -1523,6 +1520,69 @@ function applyOverlay(groupId) {
 
     // Force a repaint to ensure changes are applied
     void coverLink.offsetWidth;
+}
+
+// Helper function to find the movie container from any movie-related element
+function findMovieContainer(element) {
+    if (!element) return null;
+    
+    // If the element itself is a container, return it
+    if (element.classList && (
+        element.classList.contains('cover-movie-list__movie') ||
+        element.classList.contains('js-movie-tooltip-triggerer')
+    )) {
+        return element;
+    }
+    
+    // If this is a cover link, return its parent
+    if (element.classList && element.classList.contains('cover-movie-list__movie__cover-link')) {
+        return element.parentNode;
+    }
+    
+    // Try to find the closest container
+    const container = element.closest('.cover-movie-list__movie') || 
+                     element.closest('.js-movie-tooltip-triggerer');
+    
+    if (container) return container;
+    
+    // If no container found, check parent relationships (for collage and top10 pages)
+    let parent = element.parentNode;
+    if (!parent) return null;
+    
+    // Check if the parent is a container
+    if (parent.classList && (
+        parent.classList.contains('cover-movie-list__movie') ||
+        parent.classList.contains('js-movie-tooltip-triggerer')
+    )) {
+        return parent;
+    }
+    
+    // Check one level up (grandparent)
+    const grandparent = parent.parentNode;
+    if (!grandparent) return null;
+    
+    if (grandparent.classList && (
+        grandparent.classList.contains('cover-movie-list__movie') ||
+        grandparent.classList.contains('js-movie-tooltip-triggerer')
+    )) {
+        return grandparent;
+    }
+    
+    // For collage pages, find a parent with a child that has cover-movie-list__movie__title
+    let currentElement = element;
+    for (let i = 0; i < 4; i++) { // Check up to 4 levels up
+        if (!currentElement || !currentElement.parentNode) break;
+        
+        currentElement = currentElement.parentNode;
+        
+        // Check if this element contains a movie title element
+        if (currentElement.querySelector && 
+            currentElement.querySelector('.cover-movie-list__movie__title, .cover-movie-list__movie__cover-link')) {
+            return currentElement;
+        }
+    }
+    
+    return null;
 }
 
 if (document.readyState === 'loading') {
