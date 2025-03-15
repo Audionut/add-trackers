@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP Seeding Highlighter
 // @namespace    https://passthepopcorn.me/
-// @version      1.3.3
+// @version      1.3.4
 // @description  Highlights movies that have seeding torrents
 // @match        https://passthepopcorn.me/bookmarks.php*
 // @match        https://passthepopcorn.me/top10.php*
@@ -16,16 +16,17 @@
 
     // User Configuration
     const CONFIG = {
-        // Set to false to disable the orange highlight around seeding movie covers
+        // Set to false to disable the highlight around seeding movie covers
         enableHighlight: true,
 
         // Highlight color (only applies if enableHighlight is true)
         highlightColor: 'rgba(255, 165, 0, 0.5)', // Orange by default
 
         // Highlight intensity (0-30px recommended)
+        // How thic the overlay is
         highlightIntensity: 10,
 
-        // Use filename or attributes in tooltip
+        // Use torrent filename or torrent attributes in tooltip
         useFilenameInTooltip: false,
 
         // Display additional info in the tooltip
@@ -33,10 +34,22 @@
         showFileSize: true,        // Show file size info
         showSeeders: true,         // Show number of seeders
 
+        // Set false to have the permalink at the bigging of the tooltip
+        PLLast: true,
+
+        // Whether to modify the "DVD Image" tooltip to show NTSC/PAL designation
+        // ie: 'PAL DVD image' instead of just 'DVD image'
+        showDVDRegionInTooltip: false,
+
         // Quality filtering - only highlight movies with these qualities
         // Set to [] (empty array) to show all qualities
         // Examples: ['1080p', '2160p', 'remux', 'x265', 'blu-ray']
         filterQualities: [],
+
+        // Checkbox state filtering - only highlight movies with these checkbox states
+        // Set to [] (empty array) to show all checkbox states
+        // Available options: ['checked', 'unchecked', 'gp'] (case-insensitive)
+        filterCheckboxState: [],
 
         // Debug mode - set to true for additional console logging
         debug: false
@@ -922,12 +935,22 @@ function processTooltip(tooltip, movieFormats) {  // Accept movieFormats as para
                 const linkPrefix = `<a href="torrents.php?id=${groupId}&torrentid=${torrent.torrentId}" style="margin-right: 5px; color: #6699cc; font-weight: bold;">[PL]</a>`;
 
                 // Use the extracted title or fallback to the summary
-                if (fullTitle) {
-                    torrentEl.innerHTML = `• ${checkboxIndicator}${fullTitle}${infoSuffix} ${linkPrefix}`;
+                if (CONFIG.PLLast) {
+                  if (fullTitle) {
+                      torrentEl.innerHTML = `• ${checkboxIndicator}${fullTitle}${infoSuffix} ${linkPrefix}`;
+                  } else {
+                      // Create a summary description if we couldn't find the exact title
+                      const desc = `${torrent.resolution} ${torrent.codec} ${torrent.source} ${torrent.features.join(' ')}`.trim();
+                      torrentEl.innerHTML = `• ${checkboxIndicator}${desc}${infoSuffix} ${linkPrefix}`;
+                  }
                 } else {
-                    // Create a summary description if we couldn't find the exact title
-                    const desc = `${torrent.resolution} ${torrent.codec} ${torrent.source} ${torrent.features.join(' ')}`.trim();
-                    torrentEl.innerHTML = `• ${checkboxIndicator}${desc}${infoSuffix} ${linkPrefix}`;
+                  if (fullTitle) {
+                      torrentEl.innerHTML = `• ${linkPrefix}${checkboxIndicator}${fullTitle}${infoSuffix}`;
+                  } else {
+                      // Create a summary description if we couldn't find the exact title
+                      const desc = `${torrent.resolution} ${torrent.codec} ${torrent.source} ${torrent.features.join(' ')}`.trim();
+                      torrentEl.innerHTML = `• ${linkPrefix}${checkboxIndicator}${desc}${infoSuffix}`;
+                  }
                 }
 
                 // Add special format indicator if applicable
@@ -1009,12 +1032,18 @@ function processTooltip(tooltip, movieFormats) {  // Accept movieFormats as para
                                 torrent.specialFormats.includes('image') &&
                                 !isDVDRip(torrent) &&
                                 formatLower.includes('dvd image')) {
-                                // Create a custom format name with NTSC/PAL designation if available
+
+                                // Create a custom format name with NTSC/PAL designation if enabled
                                 let formatName = format;
-                                if (torrent.specialFormats.includes('ntsc')) {
-                                    formatName = "NTSC DVD Image";
-                                } else if (torrent.specialFormats.includes('pal')) {
-                                    formatName = "PAL DVD Image";
+                                if (CONFIG.showDVDRegionInTooltip) {
+                                    if (torrent.specialFormats.includes('ntsc')) {
+                                        formatName = "NTSC DVD Image";
+                                    } else if (torrent.specialFormats.includes('pal')) {
+                                        formatName = "PAL DVD Image";
+                                    }
+                                } else {
+                                    // When DVDRegionInTooltip is false, use the original format for matching
+                                    formatName = "DVD Image";
                                 }
                                 matches.push(formatName);
                             }
@@ -1091,7 +1120,7 @@ function highlightMatchingQualities(tooltipContent, matchingFormats) {
         if (!matchingFormats[category]) return null;
         const ntscFormat = matchingFormats[category].find(f => f === 'NTSC DVD Image');
         const palFormat = matchingFormats[category].find(f => f === 'PAL DVD Image');
-        return ntscFormat || palFormat;
+        return CONFIG.showDVDRegionInTooltip ? (ntscFormat || palFormat) : null;
     };
 
     const dvdFormatSD = hasDVDImageFormat('SD');
@@ -1104,8 +1133,8 @@ function highlightMatchingQualities(tooltipContent, matchingFormats) {
 
         // Check if this is an SD, HD, or UHD div
         if (text.startsWith('SD:')) {
-            // Special handling for DVD Image with NTSC/PAL
-            if (dvdFormatSD && text.toLowerCase().includes('dvd image')) {
+            // Special handling for DVD Image with NTSC/PAL if enabled
+            if (dvdFormatSD && text.toLowerCase().includes('dvd image') && CONFIG.showDVDRegionInTooltip) {
                 // Replace "DVD Image" with custom format but don't modify other formats
                 const formatText = text.substring(3).trim();
                 let newFormatText = formatText;
@@ -1127,7 +1156,31 @@ function highlightMatchingQualities(tooltipContent, matchingFormats) {
 
                 div.innerHTML = `SD: ${updatedFormats.join(', ')}`;
             } else {
-                highlightMatchingFormatsInDiv(div, matchingFormats.SD);
+                // Check if we have a DVD match but showDVDRegionInTooltip is false
+                const hasDVDMatch = !CONFIG.showDVDRegionInTooltip &&
+                                    matchingFormats.SD &&
+                                    matchingFormats.SD.some(f =>
+                                        f === 'NTSC DVD Image' ||
+                                        f === 'PAL DVD Image' ||
+                                        f === 'DVD Image');
+
+                // If there's a DVD match but we shouldn't show region, convert to generic DVD Image for highlighting
+                if (hasDVDMatch) {
+                    // For highlighting purposes, convert NTSC/PAL DVD Image to just "DVD Image"
+                    const modifiedFormats = [...(matchingFormats.SD || [])];
+
+                    // Replace any NTSC/PAL DVD Image with generic DVD Image
+                    for (let i = 0; i < modifiedFormats.length; i++) {
+                        if (modifiedFormats[i] === 'NTSC DVD Image' || modifiedFormats[i] === 'PAL DVD Image') {
+                            modifiedFormats[i] = 'DVD Image';
+                        }
+                    }
+
+                    highlightMatchingFormatsInDiv(div, modifiedFormats);
+                } else {
+                    // Normal highlighting for non-DVD formats or when no DVD matches
+                    highlightMatchingFormatsInDiv(div, matchingFormats.SD);
+                }
             }
         } else if (text.startsWith('HD:')) {
             highlightMatchingFormatsInDiv(div, matchingFormats.HD);
@@ -1379,6 +1432,11 @@ function init() {
         console.log("Quality filtering disabled. Showing all seeding torrents.");
     }
 
+    // Log the active checkbox state filters if any
+    if (CONFIG.filterCheckboxState && CONFIG.filterCheckboxState.length > 0) {
+        console.log(`Checkbox state filtering enabled. Only showing: ${CONFIG.filterCheckboxState.join(', ')}`);
+    }
+
     injectGlobalStyle();
 
     // Set up page change detection if not already done
@@ -1467,61 +1525,95 @@ function applyOverlay(groupId) {
         return;
     }
 
+    const seedingMovie = window.seedingMoviesMap.get(groupId);
+    if (!seedingMovie || !seedingMovie.seedingTorrents) {
+        log(`No seeding torrents found for ID: ${groupId}, skipping overlay`);
+        return;
+    }
+
+    // Check if we should filter by checkbox state
+    if (CONFIG.filterCheckboxState && CONFIG.filterCheckboxState.length > 0) {
+        const filterStates = CONFIG.filterCheckboxState.map(s => s.toLowerCase());
+
+        // Check if any seeding torrent matches the checkbox filter
+        const matchesCheckboxFilter = seedingMovie.seedingTorrents.some(torrent => {
+            // Check for Golden Popcorn status
+            if (torrent.isGoldenPopcorn && filterStates.includes('gp')) {
+                log(`Torrent ${torrent.torrentId} matches checkbox filter: Golden Popcorn`);
+                return true;
+            }
+
+            // Check for checked status (not GP)
+            if (!torrent.isGoldenPopcorn && torrent.isChecked && filterStates.includes('checked')) {
+                log(`Torrent ${torrent.torrentId} matches checkbox filter: Checked`);
+                return true;
+            }
+
+            // Check for unchecked status (not GP and not checked)
+            if (!torrent.isGoldenPopcorn && !torrent.isChecked && filterStates.includes('unchecked')) {
+                log(`Torrent ${torrent.torrentId} matches checkbox filter: Unchecked`);
+                return true;
+            }
+
+            return false;
+        });
+
+        if (!matchesCheckboxFilter) {
+            log(`Movie ${groupId} doesn't match any checkbox filter, skipping overlay`);
+            return;
+        } else {
+            log(`Movie ${groupId} matches checkbox filter, continuing checks`);
+        }
+    }
+
     // Check if we should filter by quality
     if (CONFIG.filterQualities && CONFIG.filterQualities.length > 0) {
-        const seedingMovie = window.seedingMoviesMap.get(groupId);
-        if (!seedingMovie || !seedingMovie.seedingTorrents) {
-            log(`No seeding torrents found for ID: ${groupId}, skipping overlay`);
-            return;
-        }
+        // Convert filter qualities to lowercase for case-insensitive matching
+        const filterLower = CONFIG.filterQualities.map(q => q.toLowerCase());
 
         // Check if any seeding torrent matches the filter qualities
         const matchesFilter = seedingMovie.seedingTorrents.some(torrent => {
-            // Convert filter qualities to lowercase for case-insensitive matching
-            const filterLower = CONFIG.filterQualities.map(q => q.toLowerCase());
-            
-            // Check various torrent properties against the filter
             return filterLower.some(filter => {
                 // Check resolution directly
                 if (torrent.resolution && torrent.resolution.toLowerCase() === filter) {
                     log(`Torrent ${torrent.torrentId} matches filter by resolution: ${filter}`);
                     return true;
                 }
-                
+
                 // Check codec
                 if (torrent.codec && torrent.codec.toLowerCase().includes(filter)) {
                     log(`Torrent ${torrent.torrentId} matches filter by codec: ${filter}`);
                     return true;
                 }
-                
+
                 // Check source
                 if (torrent.source && torrent.source.toLowerCase().includes(filter)) {
                     log(`Torrent ${torrent.torrentId} matches filter by source: ${filter}`);
                     return true;
                 }
-                
+
                 // Check features (remux, HDR, etc.)
                 if (torrent.features && torrent.features.some(f => f.toLowerCase().includes(filter))) {
                     log(`Torrent ${torrent.torrentId} matches filter by feature: ${filter}`);
                     return true;
                 }
-                
+
                 // Check special formats
                 if (torrent.specialFormats && torrent.specialFormats.some(f => f.toLowerCase().includes(filter))) {
                     log(`Torrent ${torrent.torrentId} matches filter by special format: ${filter}`);
                     return true;
                 }
-                
+
                 // Check title as a fallback
                 if (torrent.fullTitle && torrent.fullTitle.toLowerCase().includes(filter)) {
                     log(`Torrent ${torrent.torrentId} matches filter by title: ${filter}`);
                     return true;
                 }
-                
+
                 return false;
             });
         });
-        
+
         if (!matchesFilter) {
             log(`Movie ${groupId} doesn't match any quality filter, skipping overlay`);
             return;
