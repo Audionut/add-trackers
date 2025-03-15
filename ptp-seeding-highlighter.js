@@ -913,13 +913,15 @@ function processTooltip(tooltip, movieFormats) {  // Accept movieFormats as para
                     infoSuffix += ` [${torrent.seedersCount} seeders]`;
                 }
 
+                const linkPrefix = `<a href="torrents.php?id=${groupId}&torrentid=${torrent.torrentId}" style="margin-right: 5px; color: #6699cc; font-weight: bold;">[PL]</a>`;
+
                 // Use the extracted title or fallback to the summary
                 if (fullTitle) {
-                    torrentEl.innerHTML = `• ${checkboxIndicator}${fullTitle}${infoSuffix}`;
+                    torrentEl.innerHTML = `• ${checkboxIndicator}${fullTitle}${infoSuffix} ${linkPrefix}`;
                 } else {
                     // Create a summary description if we couldn't find the exact title
                     const desc = `${torrent.resolution} ${torrent.codec} ${torrent.source} ${torrent.features.join(' ')}`.trim();
-                    torrentEl.innerHTML = `• ${checkboxIndicator}${desc}${infoSuffix}`;
+                    torrentEl.innerHTML = `• ${checkboxIndicator}${desc}${infoSuffix} ${linkPrefix}`;
                 }
 
                 // Add special format indicator if applicable
