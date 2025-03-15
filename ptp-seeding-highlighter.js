@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP Seeding Highlighter
 // @namespace    https://passthepopcorn.me/
-// @version      1.3.2
+// @version      1.3.3
 // @description  Highlights movies that have seeding torrents
 // @match        https://passthepopcorn.me/bookmarks.php*
 // @match        https://passthepopcorn.me/top10.php*
@@ -107,7 +107,7 @@ function extractJsonData() {
         // Process each section in the coverViewJsonData array
         for (let i = 0; i < window.coverViewJsonData.length; i++) {
             const section = window.coverViewJsonData[i];
-            
+
             // Skip empty sections
             if (!section || !section.Movies || !Array.isArray(section.Movies)) {
                 continue;
@@ -118,7 +118,7 @@ function extractJsonData() {
         }
 
         log(`Successfully extracted JSON data: ${allMovies.length} movies found across all sections`);
-        
+
         // Only log sample data in debug mode
         if (CONFIG.debug && allMovies.length > 0) {
             const sampleMovie = allMovies[0];
@@ -198,19 +198,12 @@ function extractSeedingTorrentsWithQualities(movies) {
 
                         // Extract checkbox status (checked, unchecked, or Golden Popcorn)
                         const isGoldenPopcorn = torrent.Title && torrent.Title.includes('quality.gif');
-                        const isChecked = !isGoldenPopcorn && torrent.Title && torrent.Title.includes('&#9745;');
-
-                        // Create checkbox indicator if enabled in config
-                        let checkboxIndicator = '';
-                        if (CONFIG.showCheckbox) {
-                            if (isGoldenPopcorn) {
-                                checkboxIndicator = '✿ '; // Golden Popcorn flower
-                            } else if (isChecked) {
-                                checkboxIndicator = '✅ '; // Checked box
-                            } else {
-                                checkboxIndicator = '☐ '; // Unchecked box
-                            }
-                        }
+                        const isChecked = !isGoldenPopcorn && torrent.Title &&
+                        (torrent.Title.includes('☑') ||
+                         torrent.Title.includes('✓') ||
+                         torrent.Title.includes('✅') ||
+                         torrent.Title.includes('&#9745;') ||
+                         /checked/i.test(torrent.Title));
 
                         // Get torrent name based on configuration
                         let fullTorrentName;
@@ -894,6 +887,12 @@ function processTooltip(tooltip, movieFormats) {  // Accept movieFormats as para
                 // Try to find the exact title from JSON data (already done in extraction)
                 const fullTitle = torrent.fullTitle || null;
 
+                console.log(`Torrent checkbox state for ${torrent.torrentId}:`, {
+                    isGoldenPopcorn: torrent.isGoldenPopcorn,
+                    isChecked: torrent.isChecked,
+                    fullTitle: torrent.fullTitle
+                });
+
                 // Create checkbox indicator if enabled in config
                 let checkboxIndicator = '';
                 if (CONFIG.showCheckbox) {
@@ -1105,10 +1104,10 @@ function highlightMatchingQualities(tooltipContent, matchingFormats) {
                 // Replace "DVD Image" with custom format but don't modify other formats
                 const formatText = text.substring(3).trim();
                 let newFormatText = formatText;
-                
+
                 // Split formats by comma
                 const formats = formatText.split(',').map(f => f.trim());
-                
+
                 // Find and replace just the DVD Image format, not others
                 const updatedFormats = formats.map(format => {
                     if (format.toLowerCase() === 'dvd image') {
@@ -1120,7 +1119,7 @@ function highlightMatchingQualities(tooltipContent, matchingFormats) {
                     }
                     return format;
                 });
-                
+
                 div.innerHTML = `SD: ${updatedFormats.join(', ')}`;
             } else {
                 highlightMatchingFormatsInDiv(div, matchingFormats.SD);
@@ -1525,7 +1524,7 @@ function applyOverlay(groupId) {
 // Helper function to find the movie container from any movie-related element
 function findMovieContainer(element) {
     if (!element) return null;
-    
+
     // If the element itself is a container, return it
     if (element.classList && (
         element.classList.contains('cover-movie-list__movie') ||
@@ -1533,22 +1532,22 @@ function findMovieContainer(element) {
     )) {
         return element;
     }
-    
+
     // If this is a cover link, return its parent
     if (element.classList && element.classList.contains('cover-movie-list__movie__cover-link')) {
         return element.parentNode;
     }
-    
+
     // Try to find the closest container
-    const container = element.closest('.cover-movie-list__movie') || 
+    const container = element.closest('.cover-movie-list__movie') ||
                      element.closest('.js-movie-tooltip-triggerer');
-    
+
     if (container) return container;
-    
+
     // If no container found, check parent relationships (for collage and top10 pages)
     let parent = element.parentNode;
     if (!parent) return null;
-    
+
     // Check if the parent is a container
     if (parent.classList && (
         parent.classList.contains('cover-movie-list__movie') ||
@@ -1556,32 +1555,32 @@ function findMovieContainer(element) {
     )) {
         return parent;
     }
-    
+
     // Check one level up (grandparent)
     const grandparent = parent.parentNode;
     if (!grandparent) return null;
-    
+
     if (grandparent.classList && (
         grandparent.classList.contains('cover-movie-list__movie') ||
         grandparent.classList.contains('js-movie-tooltip-triggerer')
     )) {
         return grandparent;
     }
-    
+
     // For collage pages, find a parent with a child that has cover-movie-list__movie__title
     let currentElement = element;
     for (let i = 0; i < 4; i++) { // Check up to 4 levels up
         if (!currentElement || !currentElement.parentNode) break;
-        
+
         currentElement = currentElement.parentNode;
-        
+
         // Check if this element contains a movie title element
-        if (currentElement.querySelector && 
+        if (currentElement.querySelector &&
             currentElement.querySelector('.cover-movie-list__movie__title, .cover-movie-list__movie__cover-link')) {
             return currentElement;
         }
     }
-    
+
     return null;
 }
 
