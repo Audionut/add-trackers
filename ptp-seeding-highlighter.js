@@ -18,40 +18,46 @@
     const CONFIG = {
         // Set to false to disable the highlight around seeding movie covers
         enableHighlight: true,
-
+    
         // Highlight color (only applies if enableHighlight is true)
         highlightColor: 'rgba(255, 165, 0, 0.5)', // Orange by default
-
+    
         // Highlight intensity (0-30px recommended)
-        // How thic the overlay is
+        // How thick the overlay is
         highlightIntensity: 10,
-
+    
+        // Show alternate highlight for non-matching seeding torrents
+        showNonMatchingOverlay: false,
+        
+        // Color for non-matching seeding torrents
+        nonMatchingHighlightColor: 'rgba(0, 128, 0, 0.5)', // Green by default
+        
         // Use torrent filename or torrent attributes in tooltip
         useFilenameInTooltip: false,
-
+    
         // Display additional info in the tooltip
         showCheckbox: true,        // Show checkbox status (checked/unchecked/GP)
         showFileSize: true,        // Show file size info
         showSeeders: true,         // Show number of seeders
-
-        // Set false to have the permalink at the bigging of the tooltip
+    
+        // Set false to have the permalink at the beginning of the tooltip
         PLLast: true,
-
+    
         // Whether to modify the "DVD Image" tooltip to show NTSC/PAL designation
         // ie: 'PAL DVD image' instead of just 'DVD image'
         showDVDRegionInTooltip: false,
-
+    
         // Quality filtering - only highlight movies with these qualities
         // Set to [] (empty array) to show all qualities
         // Examples: ['1080p', '2160p', 'remux', 'x265', 'blu-ray']
         // Accepts more than one quality, but only one needs to match
         filterQualities: [],
-
+    
         // Checkbox state filtering - only highlight movies with these checkbox states
         // Set to [] (empty array) to show all checkbox states
         // Available options: ['checked', 'unchecked', 'gp'] (case-insensitive)
         filterCheckboxState: [],
-
+    
         // Debug mode - set to true for additional console logging
         debug: false
     };
@@ -78,6 +84,15 @@ function injectGlobalStyle() {
         /* Style the cover link directly */
         .cover-movie-list__movie__cover-link.seeding-movie-cover {
             box-shadow: 0 0 ${CONFIG.highlightIntensity}px 10px ${CONFIG.highlightColor} !important;
+            border-radius: 8px !important;
+            position: relative !important;
+            z-index: 1 !important;
+            display: block !important;
+        }
+        
+        /* Style for non-matching seeding movies */
+        .cover-movie-list__movie__cover-link.non-matching-seeding-movie-cover {
+            box-shadow: 0 0 ${CONFIG.highlightIntensity}px 10px ${CONFIG.nonMatchingHighlightColor} !important;
             border-radius: 8px !important;
             position: relative !important;
             z-index: 1 !important;
@@ -835,6 +850,91 @@ function extractFormatAttributesFromHTML(htmlString) {
     return [];
 }
 
+function checkMovieMatchesFilters(groupId) {
+    const seedingMovie = window.seedingMoviesMap.get(groupId);
+    if (!seedingMovie || !seedingMovie.seedingTorrents) {
+        return false;
+    }
+
+    // Check if we should filter by checkbox state
+    if (CONFIG.filterCheckboxState && CONFIG.filterCheckboxState.length > 0) {
+        const filterStates = CONFIG.filterCheckboxState.map(s => s.toLowerCase());
+
+        // Check if any seeding torrent matches the checkbox filter
+        const matchesCheckboxFilter = seedingMovie.seedingTorrents.some(torrent => {
+            // Check for Golden Popcorn status
+            if (torrent.isGoldenPopcorn && filterStates.includes('gp')) {
+                return true;
+            }
+
+            // Check for checked status (not GP)
+            if (!torrent.isGoldenPopcorn && torrent.isChecked && filterStates.includes('checked')) {
+                return true;
+            }
+
+            // Check for unchecked status (not GP and not checked)
+            if (!torrent.isGoldenPopcorn && !torrent.isChecked && filterStates.includes('unchecked')) {
+                return true;
+            }
+
+            return false;
+        });
+
+        if (!matchesCheckboxFilter) {
+            return false;
+        }
+    }
+
+    // Check if we should filter by quality
+    if (CONFIG.filterQualities && CONFIG.filterQualities.length > 0) {
+        // Convert filter qualities to lowercase for case-insensitive matching
+        const filterLower = CONFIG.filterQualities.map(q => q.toLowerCase());
+
+        // Check if any seeding torrent matches the filter qualities
+        const matchesFilter = seedingMovie.seedingTorrents.some(torrent => {
+            return filterLower.some(filter => {
+                // Check resolution directly
+                if (torrent.resolution && torrent.resolution.toLowerCase() === filter) {
+                    return true;
+                }
+
+                // Check codec
+                if (torrent.codec && torrent.codec.toLowerCase().includes(filter)) {
+                    return true;
+                }
+
+                // Check source
+                if (torrent.source && torrent.source.toLowerCase().includes(filter)) {
+                    return true;
+                }
+
+                // Check features (remux, HDR, etc.)
+                if (torrent.features && torrent.features.some(f => f.toLowerCase().includes(filter))) {
+                    return true;
+                }
+
+                // Check special formats
+                if (torrent.specialFormats && torrent.specialFormats.some(f => f.toLowerCase().includes(filter))) {
+                    return true;
+                }
+
+                // Check title as a fallback
+                if (torrent.fullTitle && torrent.fullTitle.toLowerCase().includes(filter)) {
+                    return true;
+                }
+
+                return false;
+            });
+        });
+
+        if (!matchesFilter) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 function processTooltip(tooltip, movieFormats) {  // Accept movieFormats as parameter
     const tooltipContent = tooltip.querySelector('.qtip-content');
     if (!tooltipContent) return;
@@ -1437,12 +1537,22 @@ function init() {
     if (CONFIG.filterCheckboxState && CONFIG.filterCheckboxState.length > 0) {
         console.log(`Checkbox state filtering enabled. Only showing: ${CONFIG.filterCheckboxState.join(', ')}`);
     }
+    
+    // Log non-matching overlay settings
+    if (CONFIG.showNonMatchingOverlay) {
+        console.log(`Non-matching seeding torrents will be highlighted in ${CONFIG.nonMatchingHighlightColor}`);
+    }
 
     injectGlobalStyle();
 
     // Set up page change detection if not already done
     if (!window.pageChangeObserver) {
         window.pageChangeObserver = setupPageChangeDetection();
+    }
+    
+    // Add monitor for highlighted covers
+    if (!window.highlightMonitor) {
+        window.highlightMonitor = monitorHighlightedCovers();
     }
 
     // Try to highlight immediately, then set up retries if needed
@@ -1497,17 +1607,50 @@ async function highlightSeedingMovies() {
         // Store for later use when tooltips appear naturally
         window.seedingMoviesMap = seedingMoviesMap;
 
+        // Track non-matching movies for alternate highlight
+        const nonMatchingMovies = new Map();
+
         // Apply overlays to all seeding movies immediately
         if (CONFIG.enableHighlight) {
             log(`Applying overlays to ${seedingMoviesMap.size} seeding movies`);
+            
+            // First determine which movies match/don't match filters
             for (const [groupId, movieData] of seedingMoviesMap.entries()) {
                 try {
-                    log(`Applying overlay for seeding movie: ${movieData.title}`);
-                    applyOverlay(groupId);
+                    const matchesFilter = checkMovieMatchesFilters(groupId);
+                    if (!matchesFilter && CONFIG.showNonMatchingOverlay) {
+                        nonMatchingMovies.set(groupId, movieData);
+                    }
+                } catch (error) {
+                    console.error(`Error checking filters for ${movieData.title}:`, error);
+                }
+            }
+
+            // Apply primary highlight to matching movies
+            for (const [groupId, movieData] of seedingMoviesMap.entries()) {
+                try {
+                    if (!nonMatchingMovies.has(groupId)) {
+                        log(`Applying primary overlay for matching movie: ${movieData.title}`);
+                        applyOverlay(groupId, false);
+                    }
                 } catch (error) {
                     console.error(`Error applying overlay for ${movieData.title}:`, error);
                 }
             }
+            
+            // Apply alternate highlight to non-matching movies
+            if (CONFIG.showNonMatchingOverlay) {
+                log(`Applying alternate overlays to ${nonMatchingMovies.size} non-matching seeding movies`);
+                for (const [groupId, movieData] of nonMatchingMovies.entries()) {
+                    try {
+                        log(`Applying alternate overlay for non-matching movie: ${movieData.title}`);
+                        applyOverlay(groupId, true);
+                    } catch (error) {
+                        console.error(`Error applying non-matching overlay for ${movieData.title}:`, error);
+                    }
+                }
+            }
+            
             log("Overlays applied. Waiting for user hover to update with format details.");
         } else {
             log("Overlays disabled in configuration. Only tooltip highlighting will be active.");
@@ -1519,10 +1662,15 @@ async function highlightSeedingMovies() {
     }
 }
 
-function applyOverlay(groupId) {
+function applyOverlay(groupId, isNonMatching = false) {
     // Skip if highlighting is disabled in config
     if (!CONFIG.enableHighlight) {
         log(`Highlighting disabled, skipping overlay for ID: ${groupId}`);
+        return;
+    }
+
+    // Skip non-matching movies if their overlay is disabled
+    if (isNonMatching && !CONFIG.showNonMatchingOverlay) {
         return;
     }
 
@@ -1532,94 +1680,12 @@ function applyOverlay(groupId) {
         return;
     }
 
-    // Check if we should filter by checkbox state
-    if (CONFIG.filterCheckboxState && CONFIG.filterCheckboxState.length > 0) {
-        const filterStates = CONFIG.filterCheckboxState.map(s => s.toLowerCase());
-
-        // Check if any seeding torrent matches the checkbox filter
-        const matchesCheckboxFilter = seedingMovie.seedingTorrents.some(torrent => {
-            // Check for Golden Popcorn status
-            if (torrent.isGoldenPopcorn && filterStates.includes('gp')) {
-                log(`Torrent ${torrent.torrentId} matches checkbox filter: Golden Popcorn`);
-                return true;
-            }
-
-            // Check for checked status (not GP)
-            if (!torrent.isGoldenPopcorn && torrent.isChecked && filterStates.includes('checked')) {
-                log(`Torrent ${torrent.torrentId} matches checkbox filter: Checked`);
-                return true;
-            }
-
-            // Check for unchecked status (not GP and not checked)
-            if (!torrent.isGoldenPopcorn && !torrent.isChecked && filterStates.includes('unchecked')) {
-                log(`Torrent ${torrent.torrentId} matches checkbox filter: Unchecked`);
-                return true;
-            }
-
-            return false;
-        });
-
-        if (!matchesCheckboxFilter) {
-            log(`Movie ${groupId} doesn't match any checkbox filter, skipping overlay`);
+    // If this is a regular matching overlay, check filters
+    // We can skip this check for non-matching overlays since they've already been filtered
+    if (!isNonMatching) {
+        // Check if movie matches the filters (reusing logic from checkMovieMatchesFilters)
+        if (!checkMovieMatchesFilters(groupId)) {
             return;
-        } else {
-            log(`Movie ${groupId} matches checkbox filter, continuing checks`);
-        }
-    }
-
-    // Check if we should filter by quality
-    if (CONFIG.filterQualities && CONFIG.filterQualities.length > 0) {
-        // Convert filter qualities to lowercase for case-insensitive matching
-        const filterLower = CONFIG.filterQualities.map(q => q.toLowerCase());
-
-        // Check if any seeding torrent matches the filter qualities
-        const matchesFilter = seedingMovie.seedingTorrents.some(torrent => {
-            return filterLower.some(filter => {
-                // Check resolution directly
-                if (torrent.resolution && torrent.resolution.toLowerCase() === filter) {
-                    log(`Torrent ${torrent.torrentId} matches filter by resolution: ${filter}`);
-                    return true;
-                }
-
-                // Check codec
-                if (torrent.codec && torrent.codec.toLowerCase().includes(filter)) {
-                    log(`Torrent ${torrent.torrentId} matches filter by codec: ${filter}`);
-                    return true;
-                }
-
-                // Check source
-                if (torrent.source && torrent.source.toLowerCase().includes(filter)) {
-                    log(`Torrent ${torrent.torrentId} matches filter by source: ${filter}`);
-                    return true;
-                }
-
-                // Check features (remux, HDR, etc.)
-                if (torrent.features && torrent.features.some(f => f.toLowerCase().includes(filter))) {
-                    log(`Torrent ${torrent.torrentId} matches filter by feature: ${filter}`);
-                    return true;
-                }
-
-                // Check special formats
-                if (torrent.specialFormats && torrent.specialFormats.some(f => f.toLowerCase().includes(filter))) {
-                    log(`Torrent ${torrent.torrentId} matches filter by special format: ${filter}`);
-                    return true;
-                }
-
-                // Check title as a fallback
-                if (torrent.fullTitle && torrent.fullTitle.toLowerCase().includes(filter)) {
-                    log(`Torrent ${torrent.torrentId} matches filter by title: ${filter}`);
-                    return true;
-                }
-
-                return false;
-            });
-        });
-
-        if (!matchesFilter) {
-            log(`Movie ${groupId} doesn't match any quality filter, skipping overlay`);
-            return;
-        } else {
-            log(`Movie ${groupId} matches quality filter, applying overlay`);
         }
     }
 
@@ -1679,15 +1745,79 @@ function applyOverlay(groupId) {
         return;
     }
 
-    // Apply styling directly to the cover link element - no DOM manipulation
-    coverLink.style.boxShadow = `0 0 ${CONFIG.highlightIntensity}px 10px ${CONFIG.highlightColor}`;
-    coverLink.style.borderRadius = '8px';
-    coverLink.style.position = 'relative'; // Ensure positioning context
-    coverLink.style.zIndex = '1'; // Ensure it's above other elements
-    coverLink.classList.add('seeding-movie-cover'); // Add class for potential CSS targeting
+    // First, remove any existing highlight classes to avoid conflicts
+    coverLink.classList.remove('seeding-movie-cover', 'non-matching-seeding-movie-cover');
+    
+    // Add appropriate class for CSS styling
+    if (isNonMatching) {
+        coverLink.classList.add('non-matching-seeding-movie-cover');
+    } else {
+        coverLink.classList.add('seeding-movie-cover');
+    }
 
+    // Choose highlight color based on whether this is a non-matching movie
+    const highlightColor = isNonMatching ? 
+        CONFIG.nonMatchingHighlightColor : 
+        CONFIG.highlightColor;
+
+    // Apply the inline style as a backup to the CSS class
+    // This provides redundancy to ensure the highlight persists
+    coverLink.style.boxShadow = `0 0 ${CONFIG.highlightIntensity}px 10px ${highlightColor} !important`;
+    coverLink.style.borderRadius = '8px';
+    coverLink.style.position = 'relative'; 
+    coverLink.style.zIndex = '1';
+    
     // Force a repaint to ensure changes are applied
     void coverLink.offsetWidth;
+    
+    // Store a data attribute to track which type of overlay is applied
+    coverLink.setAttribute('data-highlight-type', isNonMatching ? 'non-matching' : 'matching');
+    
+    // Log the application
+    log(`Applied ${isNonMatching ? 'non-matching' : 'matching'} overlay to movie ${groupId}`);
+}
+
+function monitorHighlightedCovers() {
+    const observer = new MutationObserver((mutations) => {
+        mutations.forEach(mutation => {
+            // If the mutation is on a cover link element
+            if (mutation.target.classList && 
+                mutation.target.classList.contains('cover-movie-list__movie__cover-link')) {
+                
+                // Check if this is a cover that should have a highlight
+                const highlightType = mutation.target.getAttribute('data-highlight-type');
+                if (highlightType) {
+                    const isNonMatching = highlightType === 'non-matching';
+                    
+                    // If the highlight class was removed, reapply it
+                    if (!mutation.target.classList.contains(isNonMatching ? 
+                        'non-matching-seeding-movie-cover' : 'seeding-movie-cover')) {
+                        
+                        log(`Detected highlight removal, reapplying ${highlightType} highlight`);
+                        
+                        // Reapply the class
+                        if (isNonMatching) {
+                            mutation.target.classList.add('non-matching-seeding-movie-cover');
+                            mutation.target.style.boxShadow = 
+                                `0 0 ${CONFIG.highlightIntensity}px 10px ${CONFIG.nonMatchingHighlightColor} !important`;
+                        } else {
+                            mutation.target.classList.add('seeding-movie-cover');
+                            mutation.target.style.boxShadow = 
+                                `0 0 ${CONFIG.highlightIntensity}px 10px ${CONFIG.highlightColor} !important`;
+                        }
+                    }
+                }
+            }
+        });
+    });
+    
+    observer.observe(document.body, {
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['class', 'style']
+    });
+    
+    return observer;
 }
 
 // Helper function to find the movie container from any movie-related element
