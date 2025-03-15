@@ -33,6 +33,11 @@
         showFileSize: true,        // Show file size info
         showSeeders: true,         // Show number of seeders
 
+        // Quality filtering - only highlight movies with these qualities
+        // Set to [] (empty array) to show all qualities
+        // Examples: ['1080p', '2160p', 'remux', 'x265', 'blu-ray']
+        filterQualities: [],
+
         // Debug mode - set to true for additional console logging
         debug: false
     };
@@ -1366,6 +1371,14 @@ function setupPageChangeDetection() {
 
 function init() {
     console.log("Initializing PTP Bookmarks Seeding Highlighter");
+
+    // Log the active quality filters if any
+    if (CONFIG.filterQualities && CONFIG.filterQualities.length > 0) {
+        console.log(`Quality filtering enabled. Only showing: ${CONFIG.filterQualities.join(', ')}`);
+    } else {
+        console.log("Quality filtering disabled. Showing all seeding torrents.");
+    }
+
     injectGlobalStyle();
 
     // Set up page change detection if not already done
@@ -1452,6 +1465,69 @@ function applyOverlay(groupId) {
     if (!CONFIG.enableHighlight) {
         log(`Highlighting disabled, skipping overlay for ID: ${groupId}`);
         return;
+    }
+
+    // Check if we should filter by quality
+    if (CONFIG.filterQualities && CONFIG.filterQualities.length > 0) {
+        const seedingMovie = window.seedingMoviesMap.get(groupId);
+        if (!seedingMovie || !seedingMovie.seedingTorrents) {
+            log(`No seeding torrents found for ID: ${groupId}, skipping overlay`);
+            return;
+        }
+
+        // Check if any seeding torrent matches the filter qualities
+        const matchesFilter = seedingMovie.seedingTorrents.some(torrent => {
+            // Convert filter qualities to lowercase for case-insensitive matching
+            const filterLower = CONFIG.filterQualities.map(q => q.toLowerCase());
+            
+            // Check various torrent properties against the filter
+            return filterLower.some(filter => {
+                // Check resolution directly
+                if (torrent.resolution && torrent.resolution.toLowerCase() === filter) {
+                    log(`Torrent ${torrent.torrentId} matches filter by resolution: ${filter}`);
+                    return true;
+                }
+                
+                // Check codec
+                if (torrent.codec && torrent.codec.toLowerCase().includes(filter)) {
+                    log(`Torrent ${torrent.torrentId} matches filter by codec: ${filter}`);
+                    return true;
+                }
+                
+                // Check source
+                if (torrent.source && torrent.source.toLowerCase().includes(filter)) {
+                    log(`Torrent ${torrent.torrentId} matches filter by source: ${filter}`);
+                    return true;
+                }
+                
+                // Check features (remux, HDR, etc.)
+                if (torrent.features && torrent.features.some(f => f.toLowerCase().includes(filter))) {
+                    log(`Torrent ${torrent.torrentId} matches filter by feature: ${filter}`);
+                    return true;
+                }
+                
+                // Check special formats
+                if (torrent.specialFormats && torrent.specialFormats.some(f => f.toLowerCase().includes(filter))) {
+                    log(`Torrent ${torrent.torrentId} matches filter by special format: ${filter}`);
+                    return true;
+                }
+                
+                // Check title as a fallback
+                if (torrent.fullTitle && torrent.fullTitle.toLowerCase().includes(filter)) {
+                    log(`Torrent ${torrent.torrentId} matches filter by title: ${filter}`);
+                    return true;
+                }
+                
+                return false;
+            });
+        });
+        
+        if (!matchesFilter) {
+            log(`Movie ${groupId} doesn't match any quality filter, skipping overlay`);
+            return;
+        } else {
+            log(`Movie ${groupId} matches quality filter, applying overlay`);
+        }
     }
 
     // Try multiple selector strategies to find the movie element
