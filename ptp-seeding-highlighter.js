@@ -44,6 +44,7 @@
         // Quality filtering - only highlight movies with these qualities
         // Set to [] (empty array) to show all qualities
         // Examples: ['1080p', '2160p', 'remux', 'x265', 'blu-ray']
+        // Accepts more than one quality, but only one needs to match
         filterQualities: [],
 
         // Checkbox state filtering - only highlight movies with these checkbox states
