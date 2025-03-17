@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP Seeding Highlighter
 // @namespace    https://passthepopcorn.me/
-// @version      1.3.6
+// @version      1.3.7
 // @description  Highlights movies that have seeding torrents
 // @match        https://passthepopcorn.me/bookmarks.php*
 // @match        https://passthepopcorn.me/top10.php*
@@ -530,9 +530,9 @@ function matchSeedingTorrentsWithTooltip(tooltipFormats, seedingTorrents) {
 
         // Check if this is an extras or workprint torrent - more robust detection
         const isExtras = torrent.features.includes('extras') ||
-                        /extras|workprint|commentary|interview|deleted\sscene|behind\sthe\sscene/i.test(torrent.title) ||
+                        /extras|workprint|interview|deleted\sscene|behind\sthe\sscene/i.test(torrent.title) ||
                         (torrent.fullTitle &&
-                         /extras|workprint|commentary|interview|deleted\sscene|behind\sthe\sscene/i.test(torrent.fullTitle));
+                         /extras|workprint|interview|deleted\sscene|behind\sthe\sscene/i.test(torrent.fullTitle));
 
         if (isExtras) {
             log(`Found extras/workprint content: ${torrent.torrentId} - ${torrent.fullTitle}`);
@@ -548,7 +548,6 @@ function matchSeedingTorrentsWithTooltip(tooltipFormats, seedingTorrents) {
                     const formatLower = format.toLowerCase();
                     if (formatLower.includes('extras') ||
                         formatLower.includes('workprint') ||
-                        formatLower.includes('commentary') ||
                         formatLower.includes('interview') ||
                         formatLower.includes('deleted') ||
                         formatLower.includes('behind the scene')) {
