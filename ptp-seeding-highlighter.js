@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP Seeding Highlighter
 // @namespace    https://passthepopcorn.me/
-// @version      1.3.5
+// @version      1.3.6
 // @description  Highlights movies that have seeding torrents
 // @match        https://passthepopcorn.me/bookmarks.php*
 // @match        https://passthepopcorn.me/top10.php*
@@ -520,6 +520,75 @@ function matchSeedingTorrentsWithTooltip(tooltipFormats, seedingTorrents) {
 
                 continue; // Skip to next torrent
             }
+        }
+    }
+
+    // Step 1.5: Special case for extras and workprint content
+    for (const torrent of seedingTorrents) {
+        // Skip if already matched
+        if (matchedTorrents.has(torrent.torrentId)) continue;
+
+        // Check if this is an extras or workprint torrent - more robust detection
+        const isExtras = torrent.features.includes('extras') ||
+                        /extras|workprint|commentary|interview|deleted\sscene|behind\sthe\sscene/i.test(torrent.title) ||
+                        (torrent.fullTitle &&
+                         /extras|workprint|commentary|interview|deleted\sscene|behind\sthe\sscene/i.test(torrent.fullTitle));
+
+        if (isExtras) {
+            log(`Found extras/workprint content: ${torrent.torrentId} - ${torrent.fullTitle}`);
+
+            // Look for any "Extras" format in all categories
+            let foundExtrasMatch = false;
+
+            // First try to find existing extras/workprint formats in the tooltip
+            ['SD', 'HD', 'UHD'].forEach(category => {
+                if (foundExtrasMatch || !tooltipFormats[category]) return;
+
+                tooltipFormats[category].split(',').map(f => f.trim()).forEach(format => {
+                    const formatLower = format.toLowerCase();
+                    if (formatLower.includes('extras') ||
+                        formatLower.includes('workprint') ||
+                        formatLower.includes('commentary') ||
+                        formatLower.includes('interview') ||
+                        formatLower.includes('deleted') ||
+                        formatLower.includes('behind the scene')) {
+
+                        if (!matchingFormats[category].includes(format)) {
+                            matchingFormats[category].push(format);
+                        }
+                        foundExtrasMatch = true;
+                        matchedTorrents.add(torrent.torrentId);
+                        log(`Matched existing extras format in tooltip: ${format} (category: ${category})`);
+                    }
+                });
+            });
+
+            // If no extras format found in any category, create our own based on resolution
+            if (!foundExtrasMatch) {
+                // Determine category based on resolution
+                let category = 'SD';
+                let extrasFormat = "Extras";
+
+                if (torrent.resolution === '2160p') {
+                    category = 'UHD';
+                    extrasFormat = "UHD Extras";
+                } else if (torrent.resolution === '1080p' || torrent.resolution === '720p') {
+                    category = 'HD';
+                    extrasFormat = "HD Extras";
+                } else {
+                    // For 576p, 480p, or unknown resolutions
+                    extrasFormat = "SD Extras";
+                }
+
+                if (!matchingFormats[category].includes(extrasFormat)) {
+                    matchingFormats[category].push(extrasFormat);
+                    log(`Added new extras format: ${extrasFormat} (category: ${category})`);
+                }
+
+                matchedTorrents.add(torrent.torrentId);
+            }
+
+            continue; // Skip to next torrent to prevent further matching attempts
         }
     }
 
@@ -1077,6 +1146,44 @@ function processTooltip(tooltip, movieFormats) {  // Accept movieFormats as para
                         formatInfo[category].split(',').map(f => f.trim()).forEach(format => {
                             const formatLower = format.toLowerCase();
 
+                            // Special case extras - this needs to be the first check, before resolution and other matches
+                            const isExtras = torrent.features.includes('extras') ||
+                                            /extras|workprint|interview|deleted\sscene|behind\sthe\sscene/i.test(torrent.title) ||
+                                            (torrent.fullTitle &&
+                                            /extras|workprint|interview|deleted\sscene|behind\sthe\sscene/i.test(torrent.fullTitle));
+
+                            if (isExtras) {
+                                // First check if there's an "Extras" format already in this category
+                                let foundExtrasFormat = false;
+
+                                if (formatInfo[category]) {
+                                    formatInfo[category].split(',').map(f => f.trim()).forEach(format => {
+                                        const formatLower = format.toLowerCase();
+                                        if (formatLower.includes('extras') ||
+                                            formatLower.includes('workprint') ||
+                                            formatLower.includes('interview') ||
+                                            formatLower.includes('deleted') ||
+                                            formatLower.includes('behind the scene')) {
+                                            matches.push(format);
+                                            foundExtrasFormat = true;
+                                        }
+                                    });
+                                }
+
+                                // If no extras format found in this category, add our own
+                                if (!foundExtrasFormat && !matches.length) {
+                                    if (torrent.resolution === '2160p') {
+                                        matches.push("UHD Extras");
+                                    } else if (torrent.resolution === '1080p' || torrent.resolution === '720p') {
+                                        matches.push("HD Extras");
+                                    } else {
+                                        matches.push("SD Extras");
+                                    }
+                                }
+
+                                return; // Skip all other checks for this category
+                            }
+
                             // Special case 1: 1080p remux should match remux in HD category
                             if (torrent.features.includes('remux') && torrent.resolution === '1080p' &&
                                 category === 'HD' && formatLower.includes('remux')) {
@@ -1210,12 +1317,16 @@ function highlightMatchingQualities(tooltipContent, matchingFormats) {
     // Reset any previous highlighting by removing all spans
     const existingHighlights = tooltipContent.querySelectorAll('span.seeding-highlight');
     existingHighlights.forEach(el => {
-        // Replace with the original text content
         el.outerHTML = el.textContent;
     });
 
     // Check if we need to add "Remux" to UHD section
     const hasUHDRemux = matchingFormats.UHD && matchingFormats.UHD.includes("Remux");
+
+    // Check if we need to add Extras format
+    const hasSDExtras = matchingFormats.SD && matchingFormats.SD.includes("SD Extras");
+    const hasHDExtras = matchingFormats.HD && matchingFormats.HD.includes("HD Extras");
+    const hasUHDExtras = matchingFormats.UHD && matchingFormats.UHD.includes("UHD Extras");
 
     // Check for custom DVD image formats (NTSC/PAL)
     const hasDVDImageFormat = (category) => {
@@ -1239,9 +1350,6 @@ function highlightMatchingQualities(tooltipContent, matchingFormats) {
             if (dvdFormatSD && text.toLowerCase().includes('dvd image') && CONFIG.showDVDRegionInTooltip) {
                 // Replace "DVD Image" with custom format but don't modify other formats
                 const formatText = text.substring(3).trim();
-                let newFormatText = formatText;
-
-                // Split formats by comma
                 const formats = formatText.split(',').map(f => f.trim());
 
                 // Find and replace just the DVD Image format, not others
@@ -1257,6 +1365,14 @@ function highlightMatchingQualities(tooltipContent, matchingFormats) {
                 });
 
                 div.innerHTML = `SD: ${updatedFormats.join(', ')}`;
+            } else if (hasSDExtras && !text.toLowerCase().includes('extras')) {
+                // Add "SD Extras" to SD formats if not already present
+                const formatText = text.substring(3).trim();
+                div.innerHTML = `SD: ${formatText}, <span class="seeding-highlight" style="color: orange; font-weight: bold;">Extras</span>`;
+
+                // Filter out Extras from further highlighting to avoid duplicates
+                const filteredFormats = matchingFormats.SD.filter(format => format !== "SD Extras");
+                highlightMatchingFormatsInDiv(div, filteredFormats);
             } else {
                 // Check if we have a DVD match but showDVDRegionInTooltip is false
                 const hasDVDMatch = !CONFIG.showDVDRegionInTooltip &&
@@ -1285,23 +1401,43 @@ function highlightMatchingQualities(tooltipContent, matchingFormats) {
                 }
             }
         } else if (text.startsWith('HD:')) {
-            highlightMatchingFormatsInDiv(div, matchingFormats.HD);
-        } else if (text.startsWith('UHD:')) {
-            // Special handling for UHD with Remux
-            if (hasUHDRemux) {
-                // First check if "Remux" is already in the text
-                if (!text.toLowerCase().includes('remux')) {
-                    // Add "Remux" to the UHD formats list
-                    const formatText = text.substring(4).trim();
-                    div.innerHTML = `UHD: ${formatText}, <span class="seeding-highlight" style="color: orange; font-weight: bold;">Remux</span>`;
+            if (hasHDExtras && !text.toLowerCase().includes('extras')) {
+                // Add "HD Extras" to HD formats if not already present
+                const formatText = text.substring(3).trim();
+                div.innerHTML = `HD: ${formatText}, <span class="seeding-highlight" style="color: orange; font-weight: bold;">Extras</span>`;
 
-                    // Filter out "Remux" from the matching formats to avoid duplicating it
-                    const filteredFormats = matchingFormats.UHD.filter(format => format !== "Remux");
-                    highlightMatchingFormatsInDiv(div, filteredFormats);
-                } else {
-                    // If "Remux" is already in the text, just highlight normally
-                    highlightMatchingFormatsInDiv(div, matchingFormats.UHD);
+                // Filter out Extras from further highlighting to avoid duplicates
+                const filteredFormats = matchingFormats.HD.filter(format => format !== "HD Extras");
+                highlightMatchingFormatsInDiv(div, filteredFormats);
+            } else {
+                highlightMatchingFormatsInDiv(div, matchingFormats.HD);
+            }
+        } else if (text.startsWith('UHD:')) {
+            // Special handling for UHD with Remux or Extras
+            if ((hasUHDRemux || hasUHDExtras) &&
+                (!text.toLowerCase().includes('remux') || !text.toLowerCase().includes('extras'))) {
+
+                // Start with the existing format text
+                const formatText = text.substring(4).trim();
+                let newText = formatText;
+                let filteredFormats = [...(matchingFormats.UHD || [])];
+
+                // Add Remux if needed
+                if (hasUHDRemux && !text.toLowerCase().includes('remux')) {
+                    newText += ', <span class="seeding-highlight" style="color: orange; font-weight: bold;">Remux</span>';
+                    filteredFormats = filteredFormats.filter(format => format !== "Remux");
                 }
+
+                // Add UHD Extras if needed
+                if (hasUHDExtras && !text.toLowerCase().includes('extras')) {
+                    newText += ', <span class="seeding-highlight" style="color: orange; font-weight: bold;">Extras</span>';
+                    filteredFormats = filteredFormats.filter(format => format !== "UHD Extras");
+                }
+
+                div.innerHTML = `UHD: ${newText}`;
+
+                // Highlight any remaining formats
+                highlightMatchingFormatsInDiv(div, filteredFormats);
             } else {
                 // Standard highlighting
                 highlightMatchingFormatsInDiv(div, matchingFormats.UHD);
