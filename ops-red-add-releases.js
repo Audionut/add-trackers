@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OPS/RED - add releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.2.1
+// @version      1.2.2
 // @description  Add releases to/from RED/OPS
 // @author       Audionut
 // @match        https://orpheus.network/torrents.php?id=*
@@ -44,6 +44,12 @@
                 type: 'checkbox',
                 default: GM_getValue('High_Lighting', false),
                 tooltip: 'Add or not'
+            },
+            showFileCount: {
+                label: 'Show file count column',
+                type: 'checkbox',
+                default: GM_getValue('showFileCount', true),
+                tooltip: 'Show or hide the file count column for added torrents'
             },
             sizeMatching: {
                 label: 'Size Tolerance (in MiB)',
@@ -585,6 +591,8 @@
             }
         }
 
+        const showFileCount = GM_getValue('showFileCount', true);
+    
             return `
                 <td class="td_info" colspan=${colspanValue}>
                     ${!isOPS && isArtistPage
@@ -599,7 +607,7 @@
                         : `<strong class="torrent hidden"></strong>`
                     }
                 </td>
-                <td class="number_column td_filecount nobr ${isOPS ? '' : 'hidden'}">${torrent.fileCount}</td>
+                <td class="number_column td_filecount nobr ${showFileCount ? '' : 'hidden'}">${torrent.fileCount}</td>
                 <td class="number_column td_size nobr" style="${darkLines}">${sizeDisplay}</td>
                 <td class="number_column m_td_right td_snatched" style="${darkLines}">${snatched}</td>
                 <td class="number_column m_td_right td_seeders" style="${darkLines}">${seeders}</td>
