@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OPS/RED - add releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.2.2
+// @version      1.2.3
 // @description  Add releases to/from RED/OPS
 // @author       Audionut
 // @match        https://orpheus.network/torrents.php?id=*
@@ -29,7 +29,7 @@
         // Remove any existing modal
         const oldModal = document.getElementById('opsRedSettingsModal');
         if (oldModal) oldModal.remove();
-    
+
         // Modal HTML
         const modal = document.createElement('div');
         modal.id = 'opsRedSettingsModal';
@@ -39,6 +39,7 @@
                 <label><span>OPS API Key</span><input type="text" id="ops_api_key" value="${GM_getValue('OPS_API_KEY', '')}" /></label>
                 <label><span>RED API Key</span><input type="text" id="red_api_key" value="${GM_getValue('RED_API_KEY', '')}" /></label>
                 <label><span>Add highlighting to the added rows</span><input type="checkbox" id="highlighting" ${GM_getValue('High_Lighting', false) ? 'checked' : ''} /></label>
+                <label><span>Show "OPS" label on matched rows at RED</span><input type="checkbox" id="show_ops_label" ${GM_getValue('showOPSLabel', true) ? 'checked' : ''} /></label>
                 <label><span>Show file count column</span><input type="checkbox" id="show_file_count" ${GM_getValue('showFileCount', true) ? 'checked' : ''} /></label>
                 <label><span>Size Tolerance (in MiB)</span><input type="number" id="size_matching" value="${GM_getValue('sizeMatching', 0)}" min="0" style="width:60px;" /></label>
                 <label><span>Cache Expiry Time (in days)</span><input type="number" id="cache_expiry" value="${GM_getValue('CACHE_EXPIRY_TIME', 7)}" min="1" style="width:60px;" /></label>
@@ -49,7 +50,7 @@
             </div>
         `;
         document.body.appendChild(modal);
-    
+
         // CSS
         GM_addStyle(`
             #opsRedSettingsModal {
@@ -79,13 +80,14 @@
             }
             .opsRedSettingsBtns button:hover { background: #555; }
         `);
-    
+
         // Save handler
         document.getElementById('opsRedSettingsSave').onclick = function() {
             GM_setValue('OPS_API_KEY', document.getElementById('ops_api_key').value.trim());
             GM_setValue('RED_API_KEY', document.getElementById('red_api_key').value.trim());
             GM_setValue('High_Lighting', document.getElementById('highlighting').checked);
             GM_setValue('showFileCount', document.getElementById('show_file_count').checked);
+            GM_setValue('showOPSLabel', document.getElementById('show_ops_label').checked);
             GM_setValue('sizeMatching', Number(document.getElementById('size_matching').value));
             GM_setValue('CACHE_EXPIRY_TIME', Number(document.getElementById('cache_expiry').value));
             document.getElementById('opsRedSettingsModal').remove();
@@ -101,7 +103,7 @@
             if (e.target === modal) modal.remove();
         };
     }
-    
+
     // Register menu command
     GM_registerMenuCommand('Configure API & Cache Settings', createSettingsMenu);
 
@@ -121,6 +123,7 @@
     const CACHE_EXPIRY_DAYS = GM_getValue('CACHE_EXPIRY_TIME', 14);
     const CACHE_EXPIRY_TIME = CACHE_EXPIRY_DAYS * 24 * 60 * 60 * 1000; // Convert days to milliseconds
     const isArtistPage = window.location.href.includes('artist.php?id=');
+    const showOPSLabel = GM_getValue('showOPSLabel', true);
     // Function to extract artist name from the page header
     function extractArtistData() {
         let artistLink = document.querySelector('.header h2 a[href*="artist.php?id="]');
@@ -543,7 +546,7 @@
             sizeDisplay = (size >= 1024 ** 3) ? (size / (1024 ** 3)).toFixed(2) + ' GB' : (size / (1024 ** 2)).toFixed(2) + ' MB';
             siteIcon = "»";
             details = `${torrentDetails}`;
-            siteDlLink = `<a href="https://orpheus.network/download/torrentId=${id}#" class="dl-link" data-id="${id}" title="Download">DL</a>`;
+            siteDlLink = `<a href="https://orpheus.network/download/torrentId=${id}#" class="dl-link" data-id="${id}" title="Download">DL</a>&nbsp;&nbsp;`;
         } else {
             torrentDetails = `${media} / ${format} / ${encoding}`;
             sizeDisplay = (size >= 1024 ** 3) ? (size / (1024 ** 3)).toFixed(2) + ' GiB' : (size / (1024 ** 2)).toFixed(2) + ' MiB';
@@ -555,8 +558,7 @@
         if (scene) details += ` / Scene`;
         if (logScore) details += ` / Log (${logScore}%)`;
         if (hasCue) details += ` / Cue`;
-        if (remasterRecordLabelAppended) details += ` / (RED label) ${remasterRecordLabelAppended}`;
-        if (fileCountAppended) details += ` / ${fileCountAppended}`;
+        if (remasterRecordLabelAppended) details += ` /`;
         if (sizeToleranceAppended) details += ` / ${sizeToleranceAppended}`;
 
         const colspanValue = isArtistPage ? 2 : 1;
@@ -580,7 +582,7 @@
         }
 
         const showFileCount = GM_getValue('showFileCount', true);
-    
+
             return `
                 <td class="td_info" colspan=${colspanValue}>
                     ${!isOPS && isArtistPage
@@ -590,12 +592,12 @@
                     <span class="torrent_links_block" style="float: right;">
                         ${isOPS || (!isOPS && !isArtistPage) ? `${siteDlLink}` : siteDlLink}
                     </span>
-                    ${!isOPS
+                    ${(!isOPS && showOPSLabel)
                         ? `<strong class="torrent_label tooltip tl_notice">OPS</strong>`
                         : `<strong class="torrent hidden"></strong>`
                     }
                 </td>
-                <td class="number_column td_filecount nobr ${showFileCount ? '' : 'hidden'}">${torrent.fileCount}</td>
+                <td class="number_column td_filecount nobr ${(showFileCount && !(window.location.hostname === 'redacted.sh' && isArtistPage)) ? '' : 'hidden'}">${torrent.fileCount}</td>
                 <td class="number_column td_size nobr" style="${darkLines}">${sizeDisplay}</td>
                 <td class="number_column m_td_right td_snatched" style="${darkLines}">${snatched}</td>
                 <td class="number_column m_td_right td_seeders" style="${darkLines}">${seeders}</td>
