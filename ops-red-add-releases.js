@@ -26,96 +26,84 @@
     'use strict';
 
     function createSettingsMenu() {
-        const fields = {
-            OPS_API_KEY: {
-                label: 'OPS API Key',
-                type: 'text',
-                default: GM_getValue('OPS_API_KEY', ''),
-                tooltip: 'Enter your OPS API Key'
-            },
-            RED_API_KEY: {
-                label: 'RED API Key',
-                type: 'text',
-                default: GM_getValue('RED_API_KEY', ''),
-                tooltip: 'Enter your RED API Key'
-            },
-            High_Lighting: {
-                label: 'Add highlighting to the added rows',
-                type: 'checkbox',
-                default: GM_getValue('High_Lighting', false),
-                tooltip: 'Add or not'
-            },
-            showFileCount: {
-                label: 'Show file count column',
-                type: 'checkbox',
-                default: GM_getValue('showFileCount', true),
-                tooltip: 'Show or hide the file count column for added torrents'
-            },
-            sizeMatching: {
-                label: 'Size Tolerance (in MiB)',
-                type: 'number',
-                default: GM_getValue('sizeMatching', 0),
-                tooltip: 'Allowed difference in size for matching (in MiB)'
-            },
-            CACHE_EXPIRY_TIME: {
-                label: 'Cache Expiry Time (in days)',
-                type: 'number',
-                default: GM_getValue('CACHE_EXPIRY_TIME', 7), // default 7 days
-                tooltip: 'Cache expiry time in days'
+        // Remove any existing modal
+        const oldModal = document.getElementById('opsRedSettingsModal');
+        if (oldModal) oldModal.remove();
+    
+        // Modal HTML
+        const modal = document.createElement('div');
+        modal.id = 'opsRedSettingsModal';
+        modal.innerHTML = `
+            <div class="opsRedSettingsBox">
+                <div class="opsRedSettingsHeader">API Configuration Settings</div>
+                <label><span>OPS API Key</span><input type="text" id="ops_api_key" value="${GM_getValue('OPS_API_KEY', '')}" /></label>
+                <label><span>RED API Key</span><input type="text" id="red_api_key" value="${GM_getValue('RED_API_KEY', '')}" /></label>
+                <label><span>Add highlighting to the added rows</span><input type="checkbox" id="highlighting" ${GM_getValue('High_Lighting', false) ? 'checked' : ''} /></label>
+                <label><span>Show file count column</span><input type="checkbox" id="show_file_count" ${GM_getValue('showFileCount', true) ? 'checked' : ''} /></label>
+                <label><span>Size Tolerance (in MiB)</span><input type="number" id="size_matching" value="${GM_getValue('sizeMatching', 0)}" min="0" style="width:60px;" /></label>
+                <label><span>Cache Expiry Time (in days)</span><input type="number" id="cache_expiry" value="${GM_getValue('CACHE_EXPIRY_TIME', 7)}" min="1" style="width:60px;" /></label>
+                <div class="opsRedSettingsBtns">
+                    <button id="opsRedSettingsSave">Save</button>
+                    <button id="opsRedSettingsClose">Close</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    
+        // CSS
+        GM_addStyle(`
+            #opsRedSettingsModal {
+                position: fixed; z-index: 99999; left: 0; top: 0; width: 100vw; height: 100vh;
+                background: none; display: flex; align-items: center; justify-content: center;
             }
+            .opsRedSettingsBox {
+                background: #333; color: #fff; border-radius: 10px; box-shadow: 0 0 10px #000a;
+                padding: 18px 22px 12px 22px; min-width: 260px; max-width: 95vw; font-size: 14px;
+                display: flex; flex-direction: column; gap: 10px;
+            }
+            .opsRedSettingsHeader {
+                font-size: 16px; font-weight: bold; text-align: center; margin-bottom: 8px;
+            }
+            .opsRedSettingsBox label {
+                display: flex; align-items: center; gap: 8px; justify-content: space-between;
+            }
+            .opsRedSettingsBox input[type="text"], .opsRedSettingsBox input[type="number"] {
+                background: #222; color: #fff; border: 1px solid #555; border-radius: 3px; padding: 3px 6px;
+            }
+            .opsRedSettingsBox input[type="checkbox"] { transform: scale(1.1); }
+            .opsRedSettingsBtns {
+                display: flex; gap: 12px; justify-content: center; margin-top: 8px;
+            }
+            .opsRedSettingsBtns button {
+                background: #444; color: #fff; border: none; border-radius: 4px; padding: 5px 16px; cursor: pointer;
+            }
+            .opsRedSettingsBtns button:hover { background: #555; }
+        `);
+    
+        // Save handler
+        document.getElementById('opsRedSettingsSave').onclick = function() {
+            GM_setValue('OPS_API_KEY', document.getElementById('ops_api_key').value.trim());
+            GM_setValue('RED_API_KEY', document.getElementById('red_api_key').value.trim());
+            GM_setValue('High_Lighting', document.getElementById('highlighting').checked);
+            GM_setValue('showFileCount', document.getElementById('show_file_count').checked);
+            GM_setValue('sizeMatching', Number(document.getElementById('size_matching').value));
+            GM_setValue('CACHE_EXPIRY_TIME', Number(document.getElementById('cache_expiry').value));
+            document.getElementById('opsRedSettingsModal').remove();
+            alert('Settings saved!');
+            location.reload();
         };
-
-        GM_config.init({
-            id: 'APIConfig',
-            title: 'API Configuration Settings',
-            fields: fields,
-            css: `
-                #APIConfig {
-                    background: #333;
-                    color: #fff;
-                    padding: 20px;
-                    width: 400px;
-                    max-width: 90%;
-                    border-radius: 10px;
-                    box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
-                    position: fixed;
-                    top: 50%;
-                    left: 50%;
-                    transform: translate(-50%, -50%);
-                }
-                #APIConfig .field_label {
-                    color: #fff;
-                    width: 90%;
-                }
-                #APIConfig .config_header {
-                    color: #fff;
-                    padding-bottom: 10px;
-                }
-                #APIConfig .config_var {
-                    display: flex;
-                    justify-content: space-between;
-                    padding: 8px 0;
-                }
-                #APIConfig .config_var input {
-                    width: 60%;
-                    padding: 4px;
-                }
-            `,
-            events: {
-                save: function() {
-                    const fields = GM_config.fields;
-                    for (const field in fields) {
-                        if (fields.hasOwnProperty(field)) {
-                            const value = GM_config.get(field);
-                            GM_setValue(field, value);
-                        }
-                    }
-                }
-            }
-        });
-
-        GM_registerMenuCommand('Configure API & Cache Settings', () => { GM_config.open(); });
+        // Close handler
+        document.getElementById('opsRedSettingsClose').onclick = function() {
+            document.getElementById('opsRedSettingsModal').remove();
+        };
+        // Close on outside click
+        modal.onclick = function(e) {
+            if (e.target === modal) modal.remove();
+        };
     }
+    
+    // Register menu command
+    GM_registerMenuCommand('Configure API & Cache Settings', createSettingsMenu);
 
     const isOPS = window.location.hostname.includes("orpheus.network");
     const sourceSiteUrl = isOPS ? 'https://orpheus.network' : 'https://redacted.sh';
