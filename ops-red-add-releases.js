@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OPS/RED - add releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.2.3
+// @version      1.2.4
 // @description  Add releases to/from RED/OPS
 // @author       Audionut
 // @match        https://orpheus.network/torrents.php?id=*
@@ -386,6 +386,12 @@
     // Function to initiate the API requests based on the current site
     const artistData = extractArtistData();
     if (artistData) {
+
+        if (!OPS_API_KEY || !RED_API_KEY) {
+            console.error('API keys are missing for add releases. Please configure them in the settings.');
+            return;
+        }
+
         if (isOPS) {
             opsApiRequest(artistData.artistName)
                 .then(opsResponse => {
