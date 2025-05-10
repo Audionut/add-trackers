@@ -26,7 +26,7 @@
     const SHOW_AWARDS = true; // Change to false to hide awards data
     const SHOW_SOUNDTRACKS = true; // Change to false to hide soundtracks data
     const CACHE_EXPIRY_DAYS = 7; // Default to 7 days of API cache
-    const SHOW_ALTERNATE_VERSIONS = true // Show or don't show details about different versions of the movie
+    const SHOW_ALTERNATE_VERSIONS = true; // Show or don't show details about different versions of the movie
     const ALTERNATE_VERSIONS_PANEL_OPEN = false; // Set to true to open the alternate versions panel by default
 
     // order of the panels in the sidebar
