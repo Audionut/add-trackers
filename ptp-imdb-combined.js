@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.1.0
+// @version      1.1.1
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -234,7 +234,7 @@
                         releaseYear {
                             year
                         }
-                        alternateVersions(first: 10) {
+                        alternateVersions(first: 50) {
                             edges {
                                 node {
                                     text {
