@@ -26,7 +26,8 @@
     const SHOW_AWARDS = true; // Change to false to hide awards data
     const SHOW_SOUNDTRACKS = true; // Change to false to hide soundtracks data
     const CACHE_EXPIRY_DAYS = 7; // Default to 7 days of API cache
-    const SHOW_ALTERNATE_VERSIONS = true
+    const SHOW_ALTERNATE_VERSIONS = true // Show or don't show details about different versions of the movie
+    const ALTERNATE_VERSIONS_PANEL_OPEN = false; // Set to true to open the alternate versions panel by default
 
     // order of the panels in the sidebar
     const techspecsLocation = 1;
@@ -1222,10 +1223,10 @@
         heading.innerHTML = `<span class="panel__heading__title"><span style="color: rgb(242, 219, 131);">IMDb</span> Alternate Versions</span>`;
         panel.appendChild(heading);
 
-        // Panel body (hidden by default)
+        // Panel body (toggle display based on option)
         const body = document.createElement('div');
         body.className = 'panel__body';
-        body.style.display = 'none';
+        body.style.display = ALTERNATE_VERSIONS_PANEL_OPEN ? 'block' : 'none';
 
         alternateVersionsEdges.forEach((edge, idx) => {
             const node = edge.node;
