@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.9
+// @version      1.1.0
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -1218,12 +1218,14 @@
         // Panel heading
         const heading = document.createElement('div');
         heading.className = 'panel__heading';
+        heading.style.cursor = 'pointer';
         heading.innerHTML = `<span class="panel__heading__title"><span style="color: rgb(242, 219, 131);">IMDb</span> Alternate Versions</span>`;
         panel.appendChild(heading);
 
-        // Panel body
+        // Panel body (hidden by default)
         const body = document.createElement('div');
         body.className = 'panel__body';
+        body.style.display = 'none';
 
         alternateVersionsEdges.forEach((edge, idx) => {
             const node = edge.node;
@@ -1279,6 +1281,11 @@
         });
 
         panel.appendChild(body);
+
+        // Toggle panel body on heading click
+        heading.addEventListener('click', () => {
+            body.style.display = body.style.display === 'none' ? 'block' : 'none';
+        });
 
         // Find the synopsis panel and insert after it
         const synopsisPanel = document.getElementById('synopsis-and-trailer');
