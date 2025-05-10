@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.8
+// @version      1.0.9
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -26,6 +26,7 @@
     const SHOW_AWARDS = true; // Change to false to hide awards data
     const SHOW_SOUNDTRACKS = true; // Change to false to hide soundtracks data
     const CACHE_EXPIRY_DAYS = 7; // Default to 7 days of API cache
+    const SHOW_ALTERNATE_VERSIONS = true
 
     // order of the panels in the sidebar
     const techspecsLocation = 1;
@@ -232,6 +233,15 @@
                         }
                         releaseYear {
                             year
+                        }
+                        alternateVersions(first: 10) {
+                            edges {
+                                node {
+                                    text {
+                                        plainText
+                                    }
+                                }
+                            }
                         }
                         runtimes(first: 5) {
                             edges {
@@ -462,6 +472,7 @@
                         if (data && data.data && data.data.title) {
                             const titleData = data.data.title;
                             const soundtracks = titleData.soundtrack.edges;
+                            const alternateVersions = titleData.alternateVersions.edges;
 
                             const awardNominations = titleData.awardNominations.edges.map(edge => edge.node);
                             allAwards.push(...awardNominations);
@@ -1195,6 +1206,91 @@
         return div;
     };
 
+    function displayAlternateVersionsPanel(alternateVersionsEdges) {
+        if (!alternateVersionsEdges || !alternateVersionsEdges.length) return;
+        console.log("Alternate Versions:", alternateVersionsEdges);
+
+        // Create the panel container
+        const panel = document.createElement('div');
+        panel.className = 'panel';
+        panel.id = 'alternate_versions_panel';
+
+        // Panel heading
+        const heading = document.createElement('div');
+        heading.className = 'panel__heading';
+        heading.innerHTML = `<span class="panel__heading__title"><span style="color: rgb(242, 219, 131);">IMDb</span> Alternate Versions</span>`;
+        panel.appendChild(heading);
+
+        // Panel body
+        const body = document.createElement('div');
+        body.className = 'panel__body';
+
+        alternateVersionsEdges.forEach((edge, idx) => {
+            const node = edge.node;
+            if (node && node.text && node.text.plainText) {
+                const versionDiv = document.createElement('div');
+                versionDiv.style.marginBottom = '12px';
+                versionDiv.style.fontSize = '1em';
+
+                // Split at the first newline
+                const text = node.text.plainText;
+                const newlineIdx = text.indexOf('\n');
+                let header, details;
+                if (newlineIdx !== -1) {
+                    header = text.slice(0, newlineIdx);
+                    details = text.slice(newlineIdx + 1);
+                } else {
+                    header = text;
+                    details = '';
+                }
+
+                // Bold the title up to the first ' - ' not in parentheses
+                const match = header.match(/^((?:[^(]|\([^)]*\))*)\s-\s(.*)$/s);
+                let headerHtml;
+                if (match) {
+                    headerHtml = `<strong>${match[1].trim()}</strong> - ${match[2]}`;
+                } else {
+                    headerHtml = header;
+                }
+
+                // Create clickable header
+                const headerDiv = document.createElement('div');
+                headerDiv.innerHTML = headerHtml;
+                headerDiv.style.cursor = 'pointer';
+                headerDiv.style.userSelect = 'none';
+                headerDiv.style.padding = '2px 0';
+
+                // Create details div, hidden by default
+                const detailsDiv = document.createElement('div');
+                detailsDiv.style.display = 'none';
+                detailsDiv.style.whiteSpace = 'pre-line';
+                detailsDiv.style.marginTop = '4px';
+                detailsDiv.textContent = details;
+
+                // Toggle details on header click
+                headerDiv.addEventListener('click', () => {
+                    detailsDiv.style.display = detailsDiv.style.display === 'none' ? 'block' : 'none';
+                });
+
+                versionDiv.appendChild(headerDiv);
+                versionDiv.appendChild(detailsDiv);
+                body.appendChild(versionDiv);
+            }
+        });
+
+        panel.appendChild(body);
+
+        // Find the synopsis panel and insert after it
+        const synopsisPanel = document.getElementById('synopsis-and-trailer');
+        if (synopsisPanel && synopsisPanel.parentNode) {
+            synopsisPanel.parentNode.insertBefore(panel, synopsisPanel.nextSibling);
+        } else {
+            // Fallback: append to sidebar
+            const sidebar = document.querySelector('div.sidebar');
+            if (sidebar) sidebar.appendChild(panel);
+        }
+    }
+
     // Initialize panels
     fetchIMDBData(imdbId).then(data => {
         // The data returned now contains titleData, processedSoundtracks, and idToNameMap
@@ -1227,6 +1323,9 @@
                 appendSongs(processedSoundtracks, idToNameMap);
             } else if (SHOW_SOUNDTRACKS) {
                 console.warn("No soundtracks found");
+            }
+            if (SHOW_ALTERNATE_VERSIONS && titleData.alternateVersions && titleData.alternateVersions.edges.length > 0) {
+                displayAlternateVersionsPanel(titleData.alternateVersions.edges);
             }
         } else {
             console.error("Failed to retrieve valid title data");
