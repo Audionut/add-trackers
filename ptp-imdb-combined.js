@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.1.1
+// @version      1.1.2
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -28,6 +28,7 @@
     const CACHE_EXPIRY_DAYS = 7; // Default to 7 days of API cache
     const SHOW_ALTERNATE_VERSIONS = true; // Show or don't show details about different versions of the movie
     const ALTERNATE_VERSIONS_PANEL_OPEN = false; // Set to true to open the alternate versions panel by default
+    const SHOW_KEYWORDS = true; // Show or don't show keywords
 
     // order of the panels in the sidebar
     const techspecsLocation = 1;
@@ -244,7 +245,28 @@
                                 }
                             }
                         }
-                        runtimes(first: 5) {
+                        keywords(first: 150) {
+                            edges {
+                                node {
+                                    interestScore {
+                                        usersInterested
+                                        usersVoted
+                                    }
+                                    itemCategory {
+                                        id
+                                        itemCategoryId
+                                        language { id }
+                                        text
+                                    }
+                                    keyword {
+                                        id
+                                        text { text }
+                                    }
+                                    legacyId
+                                }
+                            }
+                        }
+                        runtimes(first: 10) {
                             edges {
                                 node {
                                     id
@@ -474,6 +496,7 @@
                             const titleData = data.data.title;
                             const soundtracks = titleData.soundtrack.edges;
                             const alternateVersions = titleData.alternateVersions.edges;
+                            const keywords = titleData.keywords.edges;
 
                             const awardNominations = titleData.awardNominations.edges.map(edge => edge.node);
                             allAwards.push(...awardNominations);
@@ -1209,7 +1232,6 @@
 
     function displayAlternateVersionsPanel(alternateVersionsEdges) {
         if (!alternateVersionsEdges || !alternateVersionsEdges.length) return;
-        console.log("Alternate Versions:", alternateVersionsEdges);
 
         // Create the panel container
         const panel = document.createElement('div');
@@ -1299,6 +1321,66 @@
         }
     }
 
+    function displayKeywordsPanel(keywordsEdges) {
+        if (!keywordsEdges || !keywordsEdges.length) return;
+
+        // Create the panel container
+        const panel = document.createElement('div');
+        panel.className = 'panel';
+        panel.id = 'imdb_keywords_panel';
+
+        // Panel heading
+        const heading = document.createElement('div');
+        heading.className = 'panel__heading';
+        heading.innerHTML = `<span class="panel__heading__title"><span style="color: rgb(242, 219, 131);">IMDb</span> Keywords</span>`;
+        panel.appendChild(heading);
+
+        // Panel body
+        const body = document.createElement('div');
+        body.className = 'panel__body';
+
+        // Collect and format keywords
+        const keywordList = document.createElement('div');
+        keywordList.style.display = 'flex';
+        keywordList.style.flexWrap = 'wrap';
+        keywordList.style.gap = '8px';
+
+        keywordsEdges.forEach(edge => {
+            const node = edge.node;
+            if (node && node.keyword && node.keyword.text && node.keyword.text.text) {
+                const keywordText = node.keyword.text.text;
+                const keywordUrlPart = keywordText.trim().toLowerCase().replace(/\s+/g, '-');
+                const url = `https://www.imdb.com/search/title/?keywords=${encodeURIComponent(keywordUrlPart)}&explore=keywords`;
+
+                const kw = document.createElement('a');
+                kw.textContent = keywordText;
+                kw.href = url;
+                kw.target = "_blank";
+                kw.rel = "noopener noreferrer";
+                kw.style.background = '#222';
+                kw.style.color = '#F2DB83';
+                kw.style.padding = '2px 8px';
+                kw.style.borderRadius = '8px';
+                kw.style.fontSize = '0.95em';
+                kw.style.marginBottom = '4px';
+                kw.style.textDecoration = 'none';
+
+                keywordList.appendChild(kw);
+            }
+        });
+
+        body.appendChild(keywordList);
+        panel.appendChild(body);
+
+        // Insert at the very bottom of the sidebar
+        const sidebar = document.querySelector('div.sidebar');
+        if (sidebar) {
+            sidebar.appendChild(panel);
+        } else {
+            console.error("Sidebar not found");
+        }
+    }
+
     // Initialize panels
     fetchIMDBData(imdbId).then(data => {
         // The data returned now contains titleData, processedSoundtracks, and idToNameMap
@@ -1334,6 +1416,11 @@
             }
             if (SHOW_ALTERNATE_VERSIONS && titleData.alternateVersions && titleData.alternateVersions.edges.length > 0) {
                 displayAlternateVersionsPanel(titleData.alternateVersions.edges);
+            }
+            if (SHOW_KEYWORDS && titleData.keywords && titleData.keywords.edges.length > 0) {
+                displayKeywordsPanel(titleData.keywords.edges);
+            } else {
+                console.warn("No keywords found");
             }
         } else {
             console.error("Failed to retrieve valid title data");

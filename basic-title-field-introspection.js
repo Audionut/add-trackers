@@ -13,25 +13,36 @@
 (function () {
     'use strict';
 
-    const fetchIntrospectionData = async () => {
+    // Helper: get IMDb ID from the page
+    function getImdbId() {
+        const link = document.querySelector("a#imdb-title-link.rating");
+        if (!link) return null;
+        const imdbUrl = link.getAttribute("href");
+        if (!imdbUrl) return null;
+        const imdbId = imdbUrl.split("/")[4];
+        return imdbId || null;
+    }
+
+    // Fetch TitleKeyword details for a given IMDb ID
+    function fetchTitleKeywords(imdbId) {
         const url = `https://api.graphql.imdb.com/`;
         const query = {
             query: `
                 {
-                    __type(name: "Runtime") {
-                        name
-                        fields {
-                            name
-                            type {
-                                name
-                                kind
-                                ofType {
-                                    name
-                                    kind
-                                    ofType {
-                                        name
-                                        kind
+                    title(id: "${imdbId}") {
+                        keywords(first: 10) {
+                            edges {
+                                node {
+                                    interestScore {
+                                        score
                                     }
+                                    itemCategory {
+                                        text
+                                    }
+                                    keyword {
+                                        text
+                                    }
+                                    legacyId
                                 }
                             }
                         }
@@ -50,16 +61,23 @@
             onload: function (response) {
                 if (response.status >= 200 && response.status < 300) {
                     const data = JSON.parse(response.responseText);
-                    console.log("Introspection data:", data);
+                    console.log("IMDb TitleKeyword details:", data);
+                    // You can process and display the data here as needed
                 } else {
-                    console.error("Failed to fetch introspection data", response);
+                    console.error("Failed to fetch TitleKeyword data", response);
                 }
             },
             onerror: function (response) {
                 console.error("Request error", response);
             }
         });
-    };
+    }
 
-    fetchIntrospectionData();
+    // Main
+    const imdbId = getImdbId();
+    if (imdbId) {
+        fetchTitleKeywords(imdbId);
+    } else {
+        console.error("IMDb ID not found on page.");
+    }
 })();
