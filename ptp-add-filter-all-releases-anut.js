@@ -2320,7 +2320,7 @@ function toUnixTime(dateString) {
                     post_query_url = `https://orpheus.network/ajax.php?action=browse&searchstr=${encodeURIComponent(red_name)}&releasetype=${releasetype}&year=${pageYear}`;
                 }
                 else if (tracker === "AR") {
-                    post_query_url = "https://alpharatio.cc/ajax.php?action=browse&searchstr=" + show_nbl_name + " " + year;
+                    post_query_url = "https://alpharatio.cc/ajax.php?action=browse&searchstr=" + show_nbl_name + " " + year + "&taglist=&tags_type=1&order_by=time&order_way=desc&scene=&freetorrent=&uploader=&archive=&filter_cat[1]=1&filter_cat[2]=1&filter_cat[3]=1&filter_cat[4]=1&filter_cat[5]=1&filter_cat[6]=1&filter_cat[7]=1&filter_cat[8]=1&filter_cat[9]=1&filter_cat[10]=1&filter_cat[11]=1&filter_cat[12]=1&filter_cat[13]=1&filter_cat[14]=1&filter_cat[15]=1&filter_cat[16]=1&filter_cat[17]=1";
                 }
                 else if (tracker === "PTP") {
                     query_url = "https://passthepopcorn.me/torrents.php?imdb=" + imdb_id;
