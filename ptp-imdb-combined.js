@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.1.2
+// @version      1.1.3
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -29,6 +29,7 @@
     const SHOW_ALTERNATE_VERSIONS = true; // Show or don't show details about different versions of the movie
     const ALTERNATE_VERSIONS_PANEL_OPEN = false; // Set to true to open the alternate versions panel by default
     const SHOW_KEYWORDS = true; // Show or don't show keywords
+    const KEYWORDS_PANEL_OPEN = false; // Set to true to open the keywords panel by default
 
     // order of the panels in the sidebar
     const techspecsLocation = 1;
@@ -1338,6 +1339,7 @@
         // Panel body
         const body = document.createElement('div');
         body.className = 'panel__body';
+        body.style.display = KEYWORDS_PANEL_OPEN ? 'block' : 'none';
 
         // Collect and format keywords
         const keywordList = document.createElement('div');
@@ -1371,6 +1373,11 @@
 
         body.appendChild(keywordList);
         panel.appendChild(body);
+
+        // Toggle panel body on heading click
+        heading.addEventListener('click', () => {
+            body.style.display = body.style.display === 'none' ? 'block' : 'none';
+        });
 
         // Insert at the very bottom of the sidebar
         const sidebar = document.querySelector('div.sidebar');
