@@ -4,6 +4,8 @@
 // @description  Add alternate versions tracking to the sidebar
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
+// @downloadURL  https://raw.githubusercontent.com/Audionut/add-trackers/refs/heads/main/ptp-alternate-versions.js
+// @updateURL    https://raw.githubusercontent.com/Audionut/add-trackers/refs/heads/main/ptp-alternate-versions.js
 // ==/UserScript==
 
 (function () {
