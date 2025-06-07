@@ -1,11 +1,13 @@
 // ==UserScript==
 // @name         PTP - Alternate Versions Sidebar
-// @version      1.2.0
+// @version      1.3.0
 // @description  Add alternate versions tracking to the sidebar
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
 // @downloadURL  https://raw.githubusercontent.com/Audionut/add-trackers/refs/heads/main/ptp-alternate-versions.js
 // @updateURL    https://raw.githubusercontent.com/Audionut/add-trackers/refs/heads/main/ptp-alternate-versions.js
+// @grant        GM.getValue
+// @grant        GM.setValue
 // ==/UserScript==
 
 (function () {
@@ -16,7 +18,9 @@
         SORT_BY: 'popularity',       // Options: 'name', 'popularity', 'count', 'seeders', 'snatches'
         SORT_ORDER: 'desc',          // Options: 'asc' (ascending), 'desc' (descending)
         FILTER_MODE: 'exclusive',    // Options: 'editions_only' (hide other editions), 'exclusive' (show only selected edition)
-        SHOW_STATS: 'all'            // Options: 'name' (name only), 'minimal' (name + seeders), 'all' (all stats)
+        SHOW_STATS: 'all',            // Options: 'name' (name only), 'minimal' (name + seeders), 'all' (all stats)
+        SHOW_SETTINGS: true,           // New: toggle for settings panel
+        CUSTOM_IGNORE_TAGS: []          // New: user-defined ignore tags
     };
 
     // POPULARITY SCORE WEIGHTING CONSTANTS (adjust these to fine-tune scoring)
@@ -59,7 +63,7 @@
         // Site tags
         'Downloaded', 'Snatched', 'Seeding', 'Trumpable', 'Release Group', 'Scene', 'Freeleech', 'Half Leech', 'Neutral Leech',
         // Legitimate edition tags that are not Alternate Versions
-        'Masters of Cinema', 'Collection'
+        'Masters of Cinema', 'Collection', 'StudioCanal', 'Kino Lorber'
     ];
 
     // Boxset/Collection editions to ignore
@@ -83,7 +87,8 @@
     ];
 
     function isIgnoredTag(tag) {
-        return IGNORE_TAGS.some(ignored => {
+        const allIgnoreTags = getAllIgnoreTags();
+        return allIgnoreTags.some(ignored => {
             if (ignored instanceof RegExp) {
                 return ignored.test(tag);
             }
@@ -627,14 +632,354 @@
         return document.getElementById(detailRowId);
     }
 
+    // Combine default and custom ignore tags
+    function getAllIgnoreTags() {
+        return [...IGNORE_TAGS, ...USER_SETTINGS.CUSTOM_IGNORE_TAGS];
+    }
+
+    // Settings management functions
+    async function saveSettings() {
+        if (typeof GM !== "undefined" && GM.setValue) {
+            await GM.setValue('ptp-alternate-versions-settings', JSON.stringify(USER_SETTINGS));
+        } else {
+            localStorage.setItem('ptp-alternate-versions-settings', JSON.stringify(USER_SETTINGS));
+        }
+    }
+
+    async function loadSettings() {
+        let saved;
+        if (typeof GM !== "undefined" && GM.getValue) {
+            saved = await GM.getValue('ptp-alternate-versions-settings');
+        } else {
+            saved = localStorage.getItem('ptp-alternate-versions-settings');
+        }
+        if (saved) {
+            try {
+                const parsedSettings = JSON.parse(saved);
+                Object.assign(USER_SETTINGS, parsedSettings);
+            } catch (e) {
+                console.log('[DEBUG] Failed to load settings:', e);
+            }
+        }
+    }
+
+    function addCustomIgnoreTag(tag) {
+        if (tag && !USER_SETTINGS.CUSTOM_IGNORE_TAGS.includes(tag)) {
+            USER_SETTINGS.CUSTOM_IGNORE_TAGS.push(tag);
+            saveSettings();
+            refreshPanels(); // Refresh to apply new ignore tag
+        }
+    }
+
+    function removeCustomIgnoreTag(tag) {
+        const index = USER_SETTINGS.CUSTOM_IGNORE_TAGS.indexOf(tag);
+        if (index > -1) {
+            USER_SETTINGS.CUSTOM_IGNORE_TAGS.splice(index, 1);
+            saveSettings();
+            refreshPanels(); // Refresh to apply changes
+        }
+    }
+
+    function refreshPanels() {
+        // Remove existing panels
+        const existingPanel = document.getElementById('alternate-versions-panel');
+        const existingSettings = document.getElementById('settings-panel');
+        if (existingPanel) existingPanel.remove();
+        if (existingSettings) existingSettings.remove();
+        
+        // Re-run main function
+        main();
+    }
+
+    let customTagsListElement = null;
+
+    function updateCustomTagsList() {
+        if (!customTagsListElement) return;
+        
+        customTagsListElement.innerHTML = '';
+        
+        if (USER_SETTINGS.CUSTOM_IGNORE_TAGS.length === 0) {
+            customTagsListElement.innerHTML = '<div style="color: #888; font-style: italic; padding: 10px;">No custom tags added</div>';
+            return;
+        }
+
+        USER_SETTINGS.CUSTOM_IGNORE_TAGS.forEach(tag => {
+            const tagItem = document.createElement('div');
+            tagItem.style.cssText = `
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 3px 5px;
+                margin: 2px 0;
+                background: #3a3a3a;
+                border-radius: 3px;
+            `;
+
+            const tagText = document.createElement('span');
+            tagText.textContent = tag;
+            tagText.style.fontSize = '0.9em';
+
+            const removeButton = document.createElement('button');
+            removeButton.textContent = '×';
+            removeButton.style.cssText = `
+                background: #d32f2f;
+                color: white;
+                border: none;
+                border-radius: 3px;
+                width: 20px;
+                height: 20px;
+                cursor: pointer;
+                font-size: 12px;
+                line-height: 1;
+            `;
+
+            removeButton.addEventListener('click', () => {
+                removeCustomIgnoreTag(tag);
+                updateCustomTagsList();
+            });
+
+            tagItem.appendChild(tagText);
+            tagItem.appendChild(removeButton);
+            customTagsListElement.appendChild(tagItem);
+        });
+    }
+
+    // Create settings panel
+    function createSettingsPanel(editions) {
+        const panel = document.createElement('div');
+        panel.className = 'panel';
+        panel.id = 'settings-panel';
+        panel.style.display = USER_SETTINGS.SHOW_SETTINGS ? 'block' : 'none';
+
+        const heading = document.createElement('div');
+        heading.className = 'panel__heading';
+        heading.innerHTML = '<span class="panel__heading__title">Alternate Versions Settings</span>';
+
+        const body = document.createElement('div');
+        body.className = 'panel__body';
+        body.style.padding = '10px';
+
+        // --- User Settings Controls ---
+        // Sort By
+        const sortByLabel = document.createElement('label');
+        sortByLabel.textContent = 'Sort by: ';
+        const sortBySelect = document.createElement('select');
+        ['popularity', 'name', 'count', 'seeders', 'snatches'].forEach(opt => {
+            const option = document.createElement('option');
+            option.value = opt;
+            option.textContent = opt.charAt(0).toUpperCase() + opt.slice(1);
+            if (USER_SETTINGS.SORT_BY === opt) option.selected = true;
+            sortBySelect.appendChild(option);
+        });
+        sortBySelect.addEventListener('change', () => {
+            USER_SETTINGS.SORT_BY = sortBySelect.value;
+            saveSettings();
+            refreshPanels();
+        });
+
+        // Sort Order
+        const sortOrderLabel = document.createElement('label');
+        sortOrderLabel.textContent = 'Order: ';
+        const sortOrderSelect = document.createElement('select');
+        ['asc', 'desc'].forEach(opt => {
+            const option = document.createElement('option');
+            option.value = opt;
+            option.textContent = opt.toUpperCase();
+            if (USER_SETTINGS.SORT_ORDER === opt) option.selected = true;
+            sortOrderSelect.appendChild(option);
+        });
+        sortOrderSelect.addEventListener('change', () => {
+            USER_SETTINGS.SORT_ORDER = sortOrderSelect.value;
+            saveSettings();
+            refreshPanels();
+        });
+
+        // Filter Mode
+        const filterModeLabel = document.createElement('label');
+        filterModeLabel.textContent = 'Filter mode: ';
+        const filterModeSelect = document.createElement('select');
+        [['exclusive', 'Exclusive'], ['editions_only', 'Editions Only']].forEach(([val, txt]) => {
+            const option = document.createElement('option');
+            option.value = val;
+            option.textContent = txt;
+            if (USER_SETTINGS.FILTER_MODE === val) option.selected = true;
+            filterModeSelect.appendChild(option);
+        });
+        filterModeSelect.addEventListener('change', () => {
+            USER_SETTINGS.FILTER_MODE = filterModeSelect.value;
+            saveSettings();
+            refreshPanels();
+        });
+
+        // Show Stats
+        const showStatsLabel = document.createElement('label');
+        showStatsLabel.textContent = 'Show stats: ';
+        const showStatsSelect = document.createElement('select');
+        [['all', 'All'], ['minimal', 'Minimal'], ['name', 'Name Only']].forEach(([val, txt]) => {
+            const option = document.createElement('option');
+            option.value = val;
+            option.textContent = txt;
+            if (USER_SETTINGS.SHOW_STATS === val) option.selected = true;
+            showStatsSelect.appendChild(option);
+        });
+        showStatsSelect.addEventListener('change', () => {
+            USER_SETTINGS.SHOW_STATS = showStatsSelect.value;
+            saveSettings();
+            refreshPanels();
+        });
+
+        // --- Add all controls to body ---
+        [sortByLabel, sortBySelect, sortOrderLabel, sortOrderSelect, filterModeLabel, filterModeSelect, showStatsLabel, showStatsSelect].forEach(el => {
+            el.style.marginRight = '10px';
+            body.appendChild(el);
+        });
+
+        body.appendChild(document.createElement('hr'));
+
+        // --- Add Edition Ignore Controls ---
+        const ignoreLabel = document.createElement('div');
+        ignoreLabel.textContent = 'Add edition to ignore:';
+        ignoreLabel.style.margin = '10px 0 5px 0';
+        body.appendChild(ignoreLabel);
+
+        const editionList = document.createElement('ul');
+        editionList.style.listStyle = 'none';
+        editionList.style.padding = '0';
+        editionList.style.margin = '0';
+
+        editions.forEach(edition => {
+            const li = document.createElement('li');
+            li.style.display = 'flex';
+            li.style.alignItems = 'center';
+            li.style.marginBottom = '4px';
+
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = edition.name;
+            nameSpan.style.flex = '1';
+
+            const addBtn = document.createElement('button');
+            addBtn.textContent = 'Add to ignore';
+            addBtn.style.cssText = `
+                margin-left: 8px;
+                background: #d32f2f;
+                color: white;
+                border: none;
+                border-radius: 3px;
+                padding: 2px 8px;
+                cursor: pointer;
+                font-size: 0.9em;
+            `;
+            addBtn.addEventListener('click', () => {
+                addCustomIgnoreTag(edition.name);
+                updateCustomTagsList();
+            });
+
+            li.appendChild(nameSpan);
+            li.appendChild(addBtn);
+            editionList.appendChild(li);
+        });
+        body.appendChild(editionList);
+
+        // --- Custom ignore tags management ---
+        body.appendChild(document.createElement('hr'));
+        const customTagsLabel = document.createElement('div');
+        customTagsLabel.textContent = 'Custom ignore tags:';
+        customTagsLabel.style.margin = '10px 0 5px 0';
+        body.appendChild(customTagsLabel);
+
+        const tagsList = document.createElement('div');
+        tagsList.id = 'custom-tags-list';
+        tagsList.style.cssText = `
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #444;
+            background: #2a2a2a;
+            border-radius: 3px;
+            padding: 5px;
+        `;
+        customTagsListElement = tagsList;
+        body.appendChild(tagsList);
+
+        // Add new tag input
+        const addSection = document.createElement('div');
+        addSection.style.marginTop = '10px';
+        const addInput = document.createElement('input');
+        addInput.type = 'text';
+        addInput.placeholder = 'Enter tag to ignore...';
+        addInput.style.cssText = `
+            width: 60%;
+            padding: 5px;
+            border: 1px solid #444;
+            background: #2a2a2a;
+            color: white;
+            border-radius: 3px;
+            margin-right: 5px;
+        `;
+        const addButton = document.createElement('button');
+        addButton.textContent = 'Add Tag';
+        addButton.style.cssText = `
+            padding: 5px 10px;
+            background: #4a90e2;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.9em;
+        `;
+        addButton.addEventListener('click', () => {
+            const tag = addInput.value.trim();
+            if (tag) {
+                addCustomIgnoreTag(tag);
+                addInput.value = '';
+                updateCustomTagsList();
+            }
+        });
+        addInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') addButton.click();
+        });
+        addSection.appendChild(addInput);
+        addSection.appendChild(addButton);
+        body.appendChild(addSection);
+
+        panel.appendChild(heading);
+        panel.appendChild(body);
+
+        // Initialize the custom tags list
+        updateCustomTagsList();
+
+        return panel;
+    }
+
+    // --- MAIN PANEL ---
     function createAlternateVersionsPanel(editions) {
         const panel = document.createElement('div');
         panel.className = 'panel';
         panel.id = 'alternate-versions-panel';
 
+        // Panel heading with settings button
         const heading = document.createElement('div');
         heading.className = 'panel__heading';
-        heading.innerHTML = '<span class="panel__heading__title">Alternate Versions</span>';
+        heading.innerHTML = `
+            <span class="panel__heading__title">Alternate Versions</span>
+            <span style="float: right; font-size: 0.9em;">
+                <a id="altver-settings-btn" style="cursor: pointer;">(Settings)</a>
+            </span>
+        `;
+
+        // Settings button click handler
+        setTimeout(() => {
+            const settingsBtn = document.getElementById('altver-settings-btn');
+            if (settingsBtn) {
+                settingsBtn.addEventListener('click', () => {
+                    USER_SETTINGS.SHOW_SETTINGS = !USER_SETTINGS.SHOW_SETTINGS;
+                    saveSettings();
+                    const settingsPanel = document.getElementById('settings-panel');
+                    if (settingsPanel) {
+                        settingsPanel.style.display = USER_SETTINGS.SHOW_SETTINGS ? 'block' : 'none';
+                    }
+                });
+            }
+        }, 0);
 
         const body = document.createElement('div');
         body.className = 'panel__body';
@@ -683,10 +1028,8 @@
             const showStats = USER_SETTINGS.SHOW_STATS.toLowerCase();
 
             if (showStats === 'name') {
-                // Name only mode: just show the edition name
                 leftDiv.innerHTML = `<strong>${edition.name}</strong>`;
             } else {
-                // Minimal and all modes: show name with count
                 leftDiv.innerHTML = `<strong>${edition.name}</strong>`;
                 if (edition.count > 1) {
                     leftDiv.innerHTML += ` <span style="color: #888; font-size: 0.9em;">(${edition.count})</span>`;
@@ -701,13 +1044,10 @@
             rightDiv.style.gap = '8px';
 
             if (showStats === 'name') {
-                // Name only mode: hide right div completely
                 rightDiv.style.display = 'none';
             } else if (showStats === 'minimal') {
-                // Minimal mode: only show seeders
                 rightDiv.innerHTML = `<span>↑${edition.seeders}</span>`;
             } else {
-                // All mode: show popularity score, snatches, and seeders
                 rightDiv.innerHTML = `
                     <span style="font-size: 0.9em; color: #ffa500;">★${edition.popularityScore}</span>
                     <span>↓${edition.snatches} ↑${edition.seeders}</span>
@@ -727,16 +1067,8 @@
         return panel;
     }
 
-    function main() {
-        // Add CSS for hidden torrents
-        const style = document.createElement('style');
-        style.textContent = `
-            tr.group_torrent.hidden,
-            tr[id^="torrent_"].hidden {
-                display: none !important;
-            }
-        `;
-        document.head.appendChild(style);
+    async function main() {
+        await loadSettings();
 
         // Find the torrent table
         const torrentTable = document.querySelector('#torrent-table');
@@ -769,7 +1101,7 @@
                         qualityCount: 0,
                         totalAge: 0,
                         averageAge: 0,
-                        torrents: []  // New: store individual torrent data
+                        torrents: []
                     };
                 }
 
@@ -817,19 +1149,25 @@
         // Find the sidebar and album art panel
         const sidebar = document.querySelector('.sidebar');
         const albumArtPanel = sidebar?.querySelector('.box_albumart.panel');
-
         if (!sidebar || !albumArtPanel) return;
 
-        // Create and insert the panel
-        const alternateVersionsPanel = createAlternateVersionsPanel(editions);
+        // Remove old panels if they exist (but only once, not on every toggle)
+        const oldAlt = document.getElementById('alternate-versions-panel');
+        const oldSet = document.getElementById('settings-panel');
+        if (oldAlt) oldAlt.remove();
+        if (oldSet) oldSet.remove();
 
-        // Insert after the album art panel
-        const nextElement = albumArtPanel.nextElementSibling;
-        if (nextElement) {
-            sidebar.insertBefore(alternateVersionsPanel, nextElement);
-        } else {
-            sidebar.appendChild(alternateVersionsPanel);
-        }
+        // Create both panels
+        const alternateVersionsPanel = createAlternateVersionsPanel(editions);
+        const settingsPanel = createSettingsPanel(editions);
+
+        // Always insert both panels directly after album art
+        let insertAfter = albumArtPanel;
+        insertAfter.parentNode.insertBefore(alternateVersionsPanel, insertAfter.nextSibling);
+        insertAfter.parentNode.insertBefore(settingsPanel, alternateVersionsPanel.nextSibling);
+
+        // Show/hide settings panel only
+        settingsPanel.style.display = USER_SETTINGS.SHOW_SETTINGS ? 'block' : 'none';
     }
 
     // Run when page loads
