@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP - Alternate Versions Sidebar
-// @version      1.3.0
+// @version      1.3.1
 // @description  Add alternate versions tracking to the sidebar
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -827,6 +827,52 @@
             saveSettings();
             refreshPanels();
         });
+
+        // --- Weights Controls ---
+        body.appendChild(document.createElement('hr'));
+        const weightsLabel = document.createElement('div');
+        weightsLabel.textContent = 'Scoring Penalty (0 = off, 1 = max):';
+        weightsLabel.style.margin = '10px 0 5px 0';
+        body.appendChild(weightsLabel);
+
+        const weightsTable = document.createElement('table');
+        weightsTable.style.width = '100%';
+        weightsTable.style.marginBottom = '10px';
+        weightsTable.innerHTML = `
+            <tr>
+                <th style="text-align:left;">Weight</th>
+                <th style="text-align:left;">Value</th>
+            </tr>
+        `;
+        [
+            ['QUALITY_TORRENT', 'GP Torrents'],
+            ['AGE_FACTOR', 'Torrent Age'],
+            ['SNATCH_RATIO', 'Snatch/Seeder Ratio'],
+            ['EDITION_COUNT', 'Edition Count Bonus'],
+            ['SEEDER_COUNT', 'Seeder Count Bonus']
+        ].forEach(([key, label]) => {
+            const tr = document.createElement('tr');
+            const tdLabel = document.createElement('td');
+            tdLabel.textContent = label;
+            const tdInput = document.createElement('td');
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.min = '0';
+            input.max = '1';
+            input.step = '0.01';
+            input.value = typeof WEIGHTS[key] === 'number' ? WEIGHTS[key] : 0;
+            input.style.width = '60px';
+            input.addEventListener('change', () => {
+                WEIGHTS[key] = Math.max(0, Math.min(1, parseFloat(input.value) || 0));
+                saveSettings();
+                refreshPanels();
+            });
+            tdInput.appendChild(input);
+            tr.appendChild(tdLabel);
+            tr.appendChild(tdInput);
+            weightsTable.appendChild(tr);
+        });
+        body.appendChild(weightsTable);
 
         // --- Add all controls to body ---
         [sortByLabel, sortBySelect, sortOrderLabel, sortOrderSelect, filterModeLabel, filterModeSelect, showStatsLabel, showStatsSelect].forEach(el => {
