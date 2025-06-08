@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP - Alternate Versions Sidebar
-// @version      1.3.1
+// @version      1.4.0
 // @description  Add alternate versions tracking to the sidebar
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -30,7 +30,8 @@
         AGE_FACTOR: 0.2,         // Weight for torrent age (0 = no effect, 1 = full penalty for older torrents)
         SNATCH_RATIO: 0.5,      // Weight for snatch/seeder ratio (0 = no effect, 1 = full penalty for poor ratio)
         EDITION_COUNT: 0.8,     // Weight for number of torrents in edition (0 = no effect, 1 = full penalty for lesser torrents)
-        SEEDER_COUNT: 0.8        // Weight for high seeder count (0 = no effect, 1 = full bonus for highest seeders)
+        SEEDER_COUNT: 0.8,        // Weight for high seeder count (0 = no effect, 1 = full bonus for highest seeders)
+        THEATRICAL_PENALTY: 0.0 // Weight for Theatrical editions (0 = no effect, 1 = full penalty for Theatrical editions)
     };
 
     // Additional scoring constants
@@ -38,6 +39,11 @@
         MAX_AGE_DAYS: 7300,       // Maximum age to consider for scoring
         BASE_SCORE: 100,         // Base score to start with before applying penalties/bonuses
         MIN_SEEDERS: 1           // Minimum seeders to avoid division by zero
+    };
+
+    const THRESHOLDS = {
+        AGE_THRESHOLD: 182,      // Default: 182 days (~6 months)
+        FRESH_THRESHOLD: 182     // Default: 182 days (~6 months)
     };
 
     // Define video/audio attributes and other tags to ignore
@@ -61,30 +67,50 @@
         // Groups (last tag pattern)
         /^[A-Z0-9]{2,10}$/i,
         // Site tags
-        'Downloaded', 'Snatched', 'Seeding', 'Trumpable', 'Release Group', 'Scene', 'Freeleech', 'Half Leech', 'Neutral Leech',
+        'Downloaded', 'Snatched', 'Seeding', 'Trumpable', 'Release Group', 'Scene', 'Freeleech', 'Half Leech', 'Neutral Leech', 'Half-Leech',
         // Legitimate edition tags that are not Alternate Versions
         'Masters of Cinema', 'Collection', 'StudioCanal', 'Kino Lorber'
     ];
 
     // Boxset/Collection editions to ignore
     const BOXSET_KEYWORDS = [
-        'Anniversary Edition',
-        'Collector\'s Edition',
-        'Ultimate Edition',
-        'Definitive Edition',
-        'Complete Collection',
+        'Collector\'s',
+        'Definitive',
         'Box Set',
         'Boxset',
         'Disc Set',
-        'disc edition',
         'Collection',
         'Anthology',
         '2in1',
         '3in1',
         '4in1',
         '5in1',
-        '2D/3D'
+        '2D/3D',
+        '2-Disc',
+        '3-Disc',
+        '4-Disc',
+        '5-Disc',
+        '6-Disc'
     ];
+
+    const userSettingTooltips = {
+        filterMode: "Exclusive: Show only selected edition and hide everything else. Editions Only: Hide only the other detected editions.",
+        showStats: "Name: Name only. Minimal: Name + seeder count. All: Name, Torrent count, Popularity core, Snatched count, Seeder count."
+    };
+
+    const weightTooltips = {
+        QUALITY_TORRENT: "GP torrents naturally have a higher seedcount regardless of edition. Adjust the penalty applied to GP torrents to account for their natural increased seedcount advantage not indicative of edition desirability.",
+        AGE_FACTOR: "Older torrents can gather more seeders over time. Adjust the penalty applied to older torrents to offset any naturally increased seedcount advantage not indicative of edition desirability.",
+        SNATCH_RATIO: "This will apply a penalty for any editions with increased snatched/seeder ratio, which potentially indicates less desirable editions. A sliding scale, so that an edition with 1000 snatches and 100 seeders, gets less penalty than an edition with 100 snatches and 10 seeders, even though they have the same snatch ratio.",
+        EDITION_COUNT: "This will apply a penalty for any editions that have less torrent on site. More torrents in an edition potentially indicates more deseriability. It also helps to offset editions with low (1-2) torrent counts that have better 'stats', because there's less torrents with which to generate useful averages.",
+        SEEDER_COUNT: "This will appply a bonus for editions with more seeders. Uses an average, so that an edition with 5 torrents and with 300 seeders, will get more bonus than an edition with 10 torrents and also with 300 seeders.",
+        THEATRICAL_PENALTY: "This will apply an additional penalty to Theatrical editions, which may have a natural advantage that is not indicative of edition desirability."
+    };
+
+    const thresholdTooltips = {
+        AGE_THRESHOLD: "The number of days after which a torrent is considered 'old' for age-based penalties. Penalty scales with age so that as torrents get even older, penalties are increased.",
+        FRESH_THRESHOLD: "(Snatch Ratio only) The number of days used to determine if a torrent is 'fresh'. This is the tipping point for the snatch ratio penalty, so that torrents younger than this are penalised more as their age decreases. Younger torrents are more likely to have excellnt snatch ratios",
+    };
 
     function isIgnoredTag(tag) {
         const allIgnoreTags = getAllIgnoreTags();
@@ -97,9 +123,24 @@
     }
 
     function isBoxsetEdition(tag) {
-        return BOXSET_KEYWORDS.some(keyword =>
-            tag.toLowerCase().includes(keyword.toLowerCase())
-        );
+        // Fuzzy match: ignore if the tag contains a boxset keyword (case-insensitive, as a word)
+        const lowerTag = tag.toLowerCase().trim();
+        return BOXSET_KEYWORDS.some(keyword => {
+            const lowerKeyword = keyword.toLowerCase();
+            // Exact match or substring match (as a word)
+            if (lowerTag === lowerKeyword) return true;
+            if (lowerTag.replace(/\s+/g, ' ') === lowerKeyword) return true;
+            // Fuzzy: keyword appears anywhere in the tag (as a word, not just substring)
+            // e.g. "Ultimate Collector's Edition" matches "Collector's Edition"
+            if (lowerTag.includes(lowerKeyword)) return true;
+            // Fuzzy: keyword appears as a separate word (e.g. "4K Restoration" matches "Restoration")
+            if (lowerTag.split(/[\s/-]+/).some(word => lowerKeyword.includes(word) || word.includes(lowerKeyword))) return true;
+            return false;
+        });
+    }
+
+    function getEditionBase(name) {
+        return name.trim().toLowerCase().replace(/\b(cut|version)\b$/, '').replace(/\s+/g, ' ').trim();
     }
 
     function isOtherSubEdition(torrentRow) {
@@ -139,24 +180,48 @@
             tags = text.split('/').map(tag => tag.trim());
         }
 
-        // First, check for boxset editions and ignore them completely
-        const hasBoxsetEdition = tags.some(tag => isBoxsetEdition(tag));
-        if (hasBoxsetEdition) {
-            return null; // Ignore boxset editions completely
-        }
+        console.log('[DEBUG] All tags:', tags);
 
         // Remove ignored tags and find potential editions
         const relevantTags = tags.filter(tag => !isIgnoredTag(tag));
+
+        // console.log('[DEBUG] Relevant tags:', relevantTags);
+
+        // If any relevant tag is *exactly* a boxset keyword, ignore this torrent
+        if (relevantTags.some(tag => isBoxsetEdition(tag))) {
+            // But only if ALL relevant tags are boxset keywords, otherwise keep the edition
+            const allBoxset = relevantTags.every(tag => isBoxsetEdition(tag));
+            // console.log('[DEBUG] All relevant tags are boxset:', allBoxset, relevantTags);
+            if (allBoxset) {
+                // console.log('[DEBUG] Ignoring row because all relevant tags are boxset:', tags);
+                return null; // Ignore boxset-only editions completely
+            }
+        }
 
         // Check for multiple editions in a single tag (e.g., "Theatrical Cut & Special Edition")
         const multiEditionPattern = /(&|and|\+)/i;
         const hasMultipleEditions = relevantTags.some(tag => multiEditionPattern.test(tag));
         if (hasMultipleEditions) {
+            // console.log('[DEBUG] Ignoring row because of multiple editions in a tag:', relevantTags);
             return null; // Ignore torrents with multiple editions
         }
 
-        // If multiple relevant tags found, ignore this torrent (multiple editions)
+        // If multiple relevant tags found, prefer the first non-boxset tag as edition
         if (relevantTags.length > 1) {
+            // console.log('[DEBUG] Multiple relevant tags:', relevantTags);
+            // Pick the first tag that is NOT a boxset keyword
+            const nonBoxset = relevantTags.find(tag => !isBoxsetEdition(tag));
+            if (nonBoxset) {
+                // Normalize "Theatrical Cut" variations to just "Theatrical"
+                if (nonBoxset.toLowerCase().includes('theatrical')) {
+                    // console.log('[DEBUG] Returning Theatrical for:', nonBoxset);
+                    return 'Theatrical';
+                }
+                // console.log('[DEBUG] Returning non-boxset edition:', nonBoxset);
+                return nonBoxset;
+            }
+            // If all are boxset, ignore
+            // console.log('[DEBUG] All relevant tags are boxset (should not reach here):', relevantTags);
             return null;
         }
 
@@ -165,12 +230,15 @@
             const tag = relevantTags[0];
             // Normalize "Theatrical Cut" variations to just "Theatrical"
             if (tag.toLowerCase().includes('theatrical')) {
+                // console.log('[DEBUG] Returning Theatrical for:', tag);
                 return 'Theatrical';
             }
+            // console.log('[DEBUG] Returning single relevant tag as edition:', tag);
             return tag;
         }
 
         // No relevant tags found, default to Theatrical
+        // console.log('[DEBUG] No relevant tags found, defaulting to Theatrical');
         return 'Theatrical';
     }
 
@@ -278,90 +346,59 @@
 
         // Calculate score for each individual torrent, then average
         torrents.forEach((torrent, index) => {
-            //console.log(`[DEBUG] Processing torrent ${index}:`, torrent);
-
             let torrentScore = SCORING.BASE_SCORE;
-            //console.log(`[DEBUG] Starting torrent score: ${torrentScore}`);
 
-            // Age factor (penalty for older torrents)
-            if (WEIGHTS.AGE_FACTOR > 0) {
-                const ageInDays = isNaN(torrent.age) ? 0 : torrent.age;
-                //console.log(`[DEBUG] Age in days: ${ageInDays}, SCORING.MAX_AGE_DAYS: ${SCORING.MAX_AGE_DAYS}`);
-                const ageThreshold = 1095;
-                const ageFactor = Math.min(ageInDays / ageThreshold, 1);
-                //console.log(`[DEBUG] Age factor: ${ageFactor}`);
+            // Remove AGE_FACTOR and QUALITY_TORRENT from here!
+            // They are now only used in snatch_ratio and seeder_count below.
 
-                const scaledAgeFactor = Math.pow(ageFactor, 0.5); // Square root scaling
-                const agePenalty = scaledAgeFactor * 30 * WEIGHTS.AGE_FACTOR;
-                //console.log(`[DEBUG] Scaled age factor: ${scaledAgeFactor}`);
-                //console.log(`[DEBUG] Age penalty: ${agePenalty}`);
-
-                torrentScore -= agePenalty;
-                //console.log(`[DEBUG] Torrent score after age penalty: ${torrentScore}`);
+            // Theatrical penalty
+            if (
+                WEIGHTS.THEATRICAL_PENALTY > 0 &&
+                (editionData.name.toLowerCase() === 'theatrical' ||
+                editionData.name.toLowerCase().includes('theatrical'))
+            ) {
+                const theatricalPenalty = SCORING.BASE_SCORE * WEIGHTS.THEATRICAL_PENALTY / 3;
+                torrentScore -= theatricalPenalty;
             }
 
             const finalTorrentScore = Math.max(0, torrentScore);
-            //console.log(`[DEBUG] Final torrent score: ${finalTorrentScore}`);
-
             totalScore += finalTorrentScore;
-            //console.log(`[DEBUG] Running total score: ${totalScore}`);
         });
 
         // Average the individual torrent scores
         let finalScore = totalScore / count;
         //console.log(`[DEBUG] Average score after torrent processing: ${finalScore}`);
 
-        // Quality torrent factor
-        if (WEIGHTS.QUALITY_TORRENT > 0) {
-            const qualityPercentage = qualityCount / count;
-            //console.log(`[DEBUG] Quality percentage: ${qualityPercentage}`);
-
-            let qualityMultiplier;
-            if (qualityPercentage > 0.75) {
-                qualityMultiplier = 1.0 + qualityPercentage * 3.0;
-            } else if (qualityPercentage > 0.5) {
-                qualityMultiplier = 1.0 + qualityPercentage * 2.0;
-            } else {
-                qualityMultiplier = 1.0 + qualityPercentage * 1.0;
-            }
-            //console.log(`[DEBUG] Quality multiplier: ${qualityMultiplier}`);
-
-            const qualityPenalty = 25 * qualityMultiplier * WEIGHTS.QUALITY_TORRENT;
-            //console.log(`[DEBUG] Quality penalty: ${qualityPenalty}`);
-
-            finalScore -= qualityPenalty;
-            //console.log(`[DEBUG] Score after quality penalty: ${finalScore}`);
-        }
-
         // Snatch to seeder ratio
         if (WEIGHTS.SNATCH_RATIO > 0) {
-            //console.log(`[DEBUG] Processing snatch ratio. Snatches: ${snatches}, Seeders: ${seeders}`);
-
             const effectiveSeeders = Math.max(seeders, SCORING.MIN_SEEDERS);
             const snatchRatio = snatches / effectiveSeeders;
-            //console.log(`[DEBUG] Effective seeders: ${effectiveSeeders}, Snatch ratio: ${snatchRatio}`);
-
             const idealRatio = 1.0;
             if (snatchRatio > idealRatio) {
                 const excessRatio = snatchRatio - idealRatio;
-                //console.log(`[DEBUG] Excess ratio: ${excessRatio}`);
-
                 const maxSnatches = Math.max(...allEditions.map(e => e.snatches));
                 const snatchVolumeFactor = maxSnatches > 0 ? snatches / maxSnatches : 0;
                 const volumeMultiplier = 1 + (1 - snatchVolumeFactor) * 2.5;
-                //console.log(`[DEBUG] Max snatches: ${maxSnatches}, Volume factor: ${snatchVolumeFactor}, Volume multiplier: ${volumeMultiplier}`);
 
-                const ageThreshold = 182; // 6 months in days
+                // Age penalty adjustment (user-adjustable)
+                const ageThreshold = THRESHOLDS.AGE_THRESHOLD;
                 const ageFactor = Math.min(averageAge / ageThreshold, 1);
-                const ageMultiplier = 3.0 - (ageFactor * 2.0);
-                //console.log(`[DEBUG] Average age: ${averageAge}, Age threshold: ${ageThreshold}, Age factor: ${ageFactor}, Age multiplier: ${ageMultiplier}`);
+                const scaledAgePenalty = Math.pow(ageFactor, 0.5) * WEIGHTS.AGE_FACTOR;
+                const ageMultiplier = 1 + scaledAgePenalty;
 
-                const freshThreshold = 182; // 6 months in days
+                // GP/Quality penalty adjustment (user-adjustable, per-torrent)
+                let gpMultiplier = 1;
+                if (WEIGHTS.QUALITY_TORRENT > 0 && count > 0) {
+                    // Calculate the fraction of GP torrents
+                    const gpCount = editionData.torrents.filter(t => t.isQuality).length;
+                    gpMultiplier = 1 + (gpCount / count) * WEIGHTS.QUALITY_TORRENT * 3;
+                }
+
+                // ...Fresh/maturity penalty...
+                const freshThreshold = THRESHOLDS.FRESH_THRESHOLD;
                 const matureTorrents = torrents.filter(t => t.age >= freshThreshold).length;
                 const maturityPercentage = matureTorrents / torrents.length;
                 const freshPercentage = 1 - maturityPercentage;
-                //console.log(`[DEBUG] Mature torrents: ${matureTorrents}/${torrents.length}, Maturity %: ${maturityPercentage}, Fresh %: ${freshPercentage}`);
-
                 let maturityMultiplier;
                 if (freshPercentage > 0.75) {
                     maturityMultiplier = 1.0 + freshPercentage * 4.0;
@@ -370,84 +407,56 @@
                 } else {
                     maturityMultiplier = 1.0 + freshPercentage * 1.0;
                 }
-                //console.log(`[DEBUG] Maturity multiplier: ${maturityMultiplier}`);
 
                 const basePenalty = Math.min(excessRatio * 15, 50);
-                const ratioPenalty = basePenalty * volumeMultiplier * ageMultiplier * maturityMultiplier * WEIGHTS.SNATCH_RATIO;
-                //console.log(`[DEBUG] Base penalty: ${basePenalty}, Final ratio penalty: ${ratioPenalty}`);
-
+                // Apply age and GP multipliers only here:
+                const ratioPenalty = basePenalty * volumeMultiplier * ageMultiplier * gpMultiplier * maturityMultiplier * WEIGHTS.SNATCH_RATIO;
                 finalScore -= ratioPenalty;
-                //console.log(`[DEBUG] Score after ratio penalty: ${finalScore}`);
             }
         }
 
-        // Edition count factor (penalty for editions with fewer torrents)
-        if (WEIGHTS.EDITION_COUNT > 0 && totalEditions > 1) {
-            const editionCountFactor = count / totalEditions; // 0-1, higher is better
-            //console.log(`[DEBUG] Edition count factor: ${editionCountFactor}`);
-            const editionCountPenalty = (1 - editionCountFactor) * 25 * WEIGHTS.EDITION_COUNT; // 0-25, higher is worse
-            //console.log(`[DEBUG] Edition count penalty: ${editionCountPenalty}`);
-            finalScore -= editionCountPenalty;
-            //console.log(`[DEBUG] Score after edition count penalty: ${finalScore}`);
-        }
-
-        // Seeder count factor (bonus for editions with high seeder counts)
+        // --- Seeder count bonus (with age/gp penalty adjustment) ---
         if (WEIGHTS.SEEDER_COUNT > 0 && allEditions) {
-            //console.log(`[DEBUG] Processing seeder count bonus`);
-
-            // Calculate average seeders per torrent for fair comparison
             const currentAvgSeeders = seeders / count;
-            //console.log(`[DEBUG] Current edition: ${seeders} seeders / ${count} torrents = ${currentAvgSeeders} avg seeders per torrent`);
-
-            // Find the maximum average seeders per torrent across all editions
             const maxAvgSeeders = Math.max(...allEditions.map(e => e.seeders / e.count));
-            //console.log(`[DEBUG] Max average seeders per torrent across all editions: ${maxAvgSeeders}`);
-
             if (maxAvgSeeders > 0) {
-                const seederFactor = currentAvgSeeders / maxAvgSeeders; // 0-1, higher is better
-                //console.log(`[DEBUG] Seeder factor: ${currentAvgSeeders} / ${maxAvgSeeders} = ${seederFactor}`);
+                const seederFactor = Math.log10(currentAvgSeeders + 1) / Math.log10(maxAvgSeeders + 1);
 
-                // Quality torrent adjustment - reduce bonus for editions with high percentage of quality torrents
-                const qualityPercentage = qualityCount / count; // 0-1, higher = more quality torrents
-                //console.log(`[DEBUG] Quality percentage: ${qualityPercentage}`);
-
-                let qualityAdjustment;
-
-                if (qualityPercentage > 0.75) {
-                    // Very high quality percentage (>75%) gets minimal bonus
-                    qualityAdjustment = 0.25; // Only 25% of normal bonus
-                    //console.log(`[DEBUG] Very high quality percentage (>75%), adjustment: ${qualityAdjustment}`);
-                } else if (qualityPercentage > 0.5) {
-                    // High quality percentage (50-75%) gets reduced bonus
-                    qualityAdjustment = 0.5; // Only 50% of normal bonus
-                    //console.log(`[DEBUG] High quality percentage (50-75%), adjustment: ${qualityAdjustment}`);
-                } else if (qualityPercentage > 0.25) {
-                    // Moderate quality percentage (25-50%) gets slightly reduced bonus
-                    qualityAdjustment = 0.75; // 75% of normal bonus
-                    //console.log(`[DEBUG] Moderate quality percentage (25-50%), adjustment: ${qualityAdjustment}`);
-                } else {
-                    // Low quality percentage (<25%) gets full bonus
-                    qualityAdjustment = 1.0; // Full bonus
-                    //console.log(`[DEBUG] Low quality percentage (<25%), adjustment: ${qualityAdjustment}`);
+                // GP/Quality penalty adjustment (user-adjustable, per-torrent)
+                let gpAdjustment = 1;
+                if (WEIGHTS.QUALITY_TORRENT > 0 && count > 0) {
+                    const gpCount = editionData.torrents.filter(t => t.isQuality).length;
+                    gpAdjustment = 1 - Math.min(1, (gpCount / count) * WEIGHTS.QUALITY_TORRENT * 5);
                 }
 
-                const seederBonus = seederFactor * 25 * qualityAdjustment * WEIGHTS.SEEDER_COUNT;
-                //console.log(`[DEBUG] Seeder bonus calculation: ${seederFactor} * 25 * ${qualityAdjustment} * ${WEIGHTS.SEEDER_COUNT} = ${seederBonus}`);
+                // Age penalty adjustment (user-adjustable)
+                const ageThreshold = THRESHOLDS.AGE_THRESHOLD;
+                const ageFactor = Math.min(averageAge / ageThreshold, 1);
+                const scaledAgePenalty = Math.pow(ageFactor, 0.5) * WEIGHTS.AGE_FACTOR;
+                const ageAdjustment = 1 - scaledAgePenalty;
 
+                // Clamp adjustments to [0,1]
+                const adj = Math.max(0, gpAdjustment * ageAdjustment);
+
+                const seederBonus = seederFactor * 25 * adj * (WEIGHTS.SEEDER_COUNT * 10);
                 finalScore += seederBonus;
-                //console.log(`[DEBUG] Score after seeder bonus: ${finalScore}`);
-            } else {
-                //console.log(`[DEBUG] Max average seeders is 0, skipping seeder bonus`);
             }
-        } else {
-            console.log(`[DEBUG] Seeder count weight is 0 or no allEditions data, skipping seeder bonus`);
         }
 
-        const result = Math.max(0, Math.round(finalScore));
-        //console.log(`[DEBUG] Final result for ${editionData.name}: ${result}`);
-        //console.log(`[DEBUG] =====================================`);
+        // --- Edition count penalty (relative to max count) ---
+        if (WEIGHTS.EDITION_COUNT > 0 && totalEditions > 1) {
+            const maxCount = Math.max(...allEditions.map(e => e.count));
+            // Nonlinear scaling: use a power to make penalty more forceful for low counts, gentler as count increases
+            const editionCountFactor = count / maxCount;
+            // Use a higher exponent for a steeper curve at low counts (e.g., 2.5)
+            const penalty = Math.max(0, 1 - Math.pow(editionCountFactor, 1.0));
+            // Add a small extra penalty for single-torrent editions
+            const singleTorrentPenalty = (count === 1) ? 1.5 : 0;
+            const editionCountPenalty = (penalty + singleTorrentPenalty) * 25 * WEIGHTS.EDITION_COUNT;
+            finalScore -= editionCountPenalty;
+        }
 
-        return result;
+        return Math.max(0, Math.round(finalScore));
     }
 
     function sortEditions(editions) {
@@ -561,21 +570,27 @@
             const rowEdition = extractEdition(row);
 
             if (filterMode === 'exclusive') {
-                // Exclusive mode: hide everything except selected edition (including Other/Extras)
-                if (rowEdition !== editionName) {
+                // Skip "Other" or "3D" sub-editions entirely
+                if (isOtherSubEdition(row)) {
+                    const detailRow = getCorrespondingDetailRow(row);
+                    if (detailRow) detailRow.classList.add('hidden');
                     row.classList.add('hidden');
-                    // Also hide the corresponding detail row
-                    const detailRow = getCorrespondingDetailRow(row);
-                    if (detailRow) {
-                        detailRow.classList.add('hidden');
-                    }
-                } else {
-                    // Even for visible rows, ensure detail rows are hidden by default
-                    const detailRow = getCorrespondingDetailRow(row);
-                    if (detailRow) {
-                        detailRow.classList.add('hidden');
-                    }
+                    return;
                 }
+
+                // Compare base names for merged editions
+                const selectedBase = getEditionBase(editionName);
+                const rowBase = rowEdition ? getEditionBase(rowEdition) : '';
+
+                if (rowBase === selectedBase) {
+                    row.classList.remove('hidden');
+                } else {
+                    row.classList.add('hidden');
+                }
+
+                // Always hide detail rows by default
+                const detailRow = getCorrespondingDetailRow(row);
+                if (detailRow) detailRow.classList.add('hidden');
             } else {
                 // Editions only mode: hide only other detected editions, skip Other/Extras
                 if (isOtherSubEdition(row)) {
@@ -639,10 +654,15 @@
 
     // Settings management functions
     async function saveSettings() {
+        const settings = {
+            USER_SETTINGS,
+            WEIGHTS,
+            THRESHOLDS
+        };
         if (typeof GM !== "undefined" && GM.setValue) {
-            await GM.setValue('ptp-alternate-versions-settings', JSON.stringify(USER_SETTINGS));
+            await GM.setValue('ptp-alternate-versions-settings', JSON.stringify(settings));
         } else {
-            localStorage.setItem('ptp-alternate-versions-settings', JSON.stringify(USER_SETTINGS));
+            localStorage.setItem('ptp-alternate-versions-settings', JSON.stringify(settings));
         }
     }
 
@@ -655,8 +675,10 @@
         }
         if (saved) {
             try {
-                const parsedSettings = JSON.parse(saved);
-                Object.assign(USER_SETTINGS, parsedSettings);
+                const parsed = JSON.parse(saved);
+                if (parsed.USER_SETTINGS) Object.assign(USER_SETTINGS, parsed.USER_SETTINGS);
+                if (parsed.WEIGHTS) Object.assign(WEIGHTS, parsed.WEIGHTS);
+                if (parsed.THRESHOLDS) Object.assign(THRESHOLDS, parsed.THRESHOLDS);
             } catch (e) {
                 console.log('[DEBUG] Failed to load settings:', e);
             }
@@ -686,7 +708,7 @@
         const existingSettings = document.getElementById('settings-panel');
         if (existingPanel) existingPanel.remove();
         if (existingSettings) existingSettings.remove();
-        
+
         // Re-run main function
         main();
     }
@@ -695,9 +717,9 @@
 
     function updateCustomTagsList() {
         if (!customTagsListElement) return;
-        
+
         customTagsListElement.innerHTML = '';
-        
+
         if (USER_SETTINGS.CUSTOM_IGNORE_TAGS.length === 0) {
             customTagsListElement.innerHTML = '<div style="color: #888; font-style: italic; padding: 10px;">No custom tags added</div>';
             return;
@@ -797,7 +819,9 @@
         // Filter Mode
         const filterModeLabel = document.createElement('label');
         filterModeLabel.textContent = 'Filter mode: ';
+        filterModeLabel.title = userSettingTooltips.filterMode;
         const filterModeSelect = document.createElement('select');
+        filterModeSelect.title = userSettingTooltips.filterMode;
         [['exclusive', 'Exclusive'], ['editions_only', 'Editions Only']].forEach(([val, txt]) => {
             const option = document.createElement('option');
             option.value = val;
@@ -814,7 +838,9 @@
         // Show Stats
         const showStatsLabel = document.createElement('label');
         showStatsLabel.textContent = 'Show stats: ';
+        showStatsLabel.title = userSettingTooltips.showStats;
         const showStatsSelect = document.createElement('select');
+        showStatsSelect.title = userSettingTooltips.showStats;
         [['all', 'All'], ['minimal', 'Minimal'], ['name', 'Name Only']].forEach(([val, txt]) => {
             const option = document.createElement('option');
             option.value = val;
@@ -829,9 +855,8 @@
         });
 
         // --- Weights Controls ---
-        body.appendChild(document.createElement('hr'));
         const weightsLabel = document.createElement('div');
-        weightsLabel.textContent = 'Scoring Penalty (0 = off, 1 = max):';
+        weightsLabel.textContent = 'Popularity Scoring Penalty (0 = off, 1 = max):';
         weightsLabel.style.margin = '10px 0 5px 0';
         body.appendChild(weightsLabel);
 
@@ -844,35 +869,107 @@
                 <th style="text-align:left;">Value</th>
             </tr>
         `;
+
+        // --- Age Based Controls ---
+        const thresholdsLabel = document.createElement('div');
+        thresholdsLabel.textContent = 'Thresholds (in days):';
+        thresholdsLabel.style.margin = '10px 0 5px 0';
+        body.appendChild(thresholdsLabel);
+
+        const thresholdsTable = document.createElement('table');
+        thresholdsTable.style.width = '100%';
+        thresholdsTable.style.marginBottom = '10px';
+        thresholdsTable.innerHTML = `
+            <tr>
+                <th style="text-align:left;">Threshold</th>
+                <th style="text-align:left;">Value</th>
+            </tr>
+        `;
+
         [
-            ['QUALITY_TORRENT', 'GP Torrents'],
-            ['AGE_FACTOR', 'Torrent Age'],
+            ['SEEDER_COUNT', 'Seeder Count Bonus'],
             ['SNATCH_RATIO', 'Snatch/Seeder Ratio'],
             ['EDITION_COUNT', 'Edition Count Bonus'],
-            ['SEEDER_COUNT', 'Seeder Count Bonus']
-        ].forEach(([key, label]) => {
-            const tr = document.createElement('tr');
-            const tdLabel = document.createElement('td');
-            tdLabel.textContent = label;
-            const tdInput = document.createElement('td');
-            const input = document.createElement('input');
-            input.type = 'number';
-            input.min = '0';
-            input.max = '1';
-            input.step = '0.01';
-            input.value = typeof WEIGHTS[key] === 'number' ? WEIGHTS[key] : 0;
-            input.style.width = '60px';
-            input.addEventListener('change', () => {
-                WEIGHTS[key] = Math.max(0, Math.min(1, parseFloat(input.value) || 0));
-                saveSettings();
-                refreshPanels();
+            ['THEATRICAL_PENALTY', 'Theatrical Penalty'],
+            ['_HR1', ''],
+            ['AGE_FACTOR', 'Torrent Age'],
+            ['QUALITY_TORRENT', 'GP Torrents'],
+            ['AGE_THRESHOLD', 'Age Penalty Threshold (days)'],
+            ['FRESH_THRESHOLD', 'Fresh/Maturity Threshold (days)'],
+            ['_HR2', '']
+            ].forEach(([key, label]) => {
+                if (key === '_HR1' || key === '_HR2') {
+                    const hr = document.createElement('tr');
+                    const td = document.createElement('td');
+                    td.colSpan = 2;
+                    td.style.padding = '0';
+                    td.appendChild(document.createElement('hr'));
+                    hr.appendChild(td);
+                    weightsTable.appendChild(hr);
+                    if (key === '_HR1') {
+                        const infoTr = document.createElement('tr');
+                        const infoTd = document.createElement('td');
+                        infoTd.colSpan = 2;
+                        infoTd.style.padding = '4px 0 8px 0';
+                        infoTd.style.color = '#aaa';
+                        infoTd.style.fontSize = '0.95em';
+                        infoTd.textContent = 'Additonal penalties applied to Seeder Count and Snatch Ratio calculations:';
+                        infoTr.appendChild(infoTd);
+                        weightsTable.appendChild(infoTr);
+                    }
+                    return;
+                }
+                // Thresholds get their own input type and tooltip
+                if (key === 'AGE_THRESHOLD' || key === 'FRESH_THRESHOLD') {
+                    const tr = document.createElement('tr');
+                    const tdLabel = document.createElement('td');
+                    tdLabel.textContent = label;
+                    tdLabel.title = thresholdTooltips[key] || "";
+                    const tdInput = document.createElement('td');
+                    const input = document.createElement('input');
+                    input.type = 'number';
+                    input.min = '1';
+                    input.max = '3650';
+                    input.step = '1';
+                    input.value = typeof THRESHOLDS[key] === 'number' ? THRESHOLDS[key] : 182;
+                    input.style.width = '60px';
+                    input.title = thresholdTooltips[key] || "";
+                    input.addEventListener('change', () => {
+                        THRESHOLDS[key] = Math.max(1, Math.min(3650, parseInt(input.value) || 182));
+                        saveSettings();
+                        refreshPanels();
+                    });
+                    tdInput.appendChild(input);
+                    tr.appendChild(tdLabel);
+                    tr.appendChild(tdInput);
+                    weightsTable.appendChild(tr);
+                    return;
+                }
+                // Normal weights
+                const tr = document.createElement('tr');
+                const tdLabel = document.createElement('td');
+                tdLabel.textContent = label;
+                tdLabel.title = weightTooltips[key] || "";
+                const tdInput = document.createElement('td');
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.min = '0';
+                input.max = '1';
+                input.step = '0.01';
+                input.value = typeof WEIGHTS[key] === 'number' ? WEIGHTS[key] : 0;
+                input.style.width = '60px';
+                input.title = weightTooltips[key] || "";
+                input.addEventListener('change', () => {
+                    WEIGHTS[key] = Math.max(0, Math.min(1, parseFloat(input.value) || 0));
+                    saveSettings();
+                    refreshPanels();
+                });
+                tdInput.appendChild(input);
+                tr.appendChild(tdLabel);
+                tr.appendChild(tdInput);
+                weightsTable.appendChild(tr);
             });
-            tdInput.appendChild(input);
-            tr.appendChild(tdLabel);
-            tr.appendChild(tdInput);
-            weightsTable.appendChild(tr);
-        });
-        body.appendChild(weightsTable);
+            body.appendChild(weightsTable);
 
         // --- Add all controls to body ---
         [sortByLabel, sortBySelect, sortOrderLabel, sortOrderSelect, filterModeLabel, filterModeSelect, showStatsLabel, showStatsSelect].forEach(el => {
@@ -1124,48 +1221,63 @@
         const torrentRows = torrentTable.querySelectorAll('tr.group_torrent.group_torrent_header');
         if (torrentRows.length === 0) return;
 
-        // Extract editions from each row
-        const editionData = {};
+        // --- Edition grouping with base normalization ---
+        // 1. Collect all edition names and their base names
+        const editionRows = [];
         torrentRows.forEach(row => {
-            // Skip if this is under an "Other" sub-edition
-            if (isOtherSubEdition(row)) {
-                return;
-            }
-
+            if (isOtherSubEdition(row)) return;
             const edition = extractEdition(row);
+            if (edition) {
+                editionRows.push({ row, edition });
+            }
+        });
+
+        // 2. Build a map: base name -> [all edition names with that base]
+        const baseToNames = {};
+        editionRows.forEach(({ edition }) => {
+            const base = getEditionBase(edition);
+            if (!baseToNames[base]) baseToNames[base] = [];
+            if (!baseToNames[base].includes(edition)) baseToNames[base].push(edition);
+        });
+
+        // 3. Group torrents by merged edition name
+        const editionData = {};
+        editionRows.forEach(({ row, edition }) => {
             const stats = extractTorrentStats(row);
             const age = extractTorrentAge(row);
             const isQuality = isQualityTorrent(row);
 
-            if (edition) {
-                if (!editionData[edition]) {
-                    editionData[edition] = {
-                        name: edition,
-                        count: 0,
-                        snatches: 0,
-                        seeders: 0,
-                        qualityCount: 0,
-                        totalAge: 0,
-                        averageAge: 0,
-                        torrents: []
-                    };
-                }
+            // If this base has >1 edition, merge them under the base name (capitalized)
+            const base = getEditionBase(edition);
+            const groupName = (baseToNames[base].length > 1)
+                ? base.replace(/\b\w/g, c => c.toUpperCase())
+                : edition.replace(/\b\w/g, c => c.toUpperCase());
 
-                // Store individual torrent data
-                editionData[edition].torrents.push({
-                    snatches: stats.snatches,
-                    seeders: stats.seeders,
-                    age: age,
-                    isQuality: isQuality
-                });
-
-                editionData[edition].count++;
-                editionData[edition].snatches += stats.snatches;
-                editionData[edition].seeders += stats.seeders;
-                editionData[edition].qualityCount += isQuality ? 1 : 0;
-                editionData[edition].totalAge += age;
-                editionData[edition].averageAge = editionData[edition].totalAge / editionData[edition].count;
+            if (!editionData[groupName]) {
+                editionData[groupName] = {
+                    name: groupName,
+                    count: 0,
+                    snatches: 0,
+                    seeders: 0,
+                    qualityCount: 0,
+                    totalAge: 0,
+                    averageAge: 0,
+                    torrents: []
+                };
             }
+            editionData[groupName].torrents.push({
+                snatches: stats.snatches,
+                seeders: stats.seeders,
+                age: age,
+                isQuality: isQuality
+            });
+
+            editionData[groupName].count++;
+            editionData[groupName].snatches += stats.snatches;
+            editionData[groupName].seeders += stats.seeders;
+            editionData[groupName].qualityCount += isQuality ? 1 : 0;
+            editionData[groupName].totalAge += age;
+            editionData[groupName].averageAge = editionData[groupName].totalAge / editionData[groupName].count;
         });
 
         // Calculate popularity scores
