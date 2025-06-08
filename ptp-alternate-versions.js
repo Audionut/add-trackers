@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP - Alternate Versions Sidebar
-// @version      1.4.0
+// @version      1.4.1
 // @description  Add alternate versions tracking to the sidebar
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -26,11 +26,11 @@
     // POPULARITY SCORE WEIGHTING CONSTANTS (adjust these to fine-tune scoring)
     // Set to 0 to disable a factor, 1 for full weight, values between 0-1 for partial weight
     const WEIGHTS = {
-        QUALITY_TORRENT: 0.2,    // Weight for high quality torrents (0 = no effect, 1 = full penalty for GP torrents (which naturally have higher seeds regardless of edition))
+        QUALITY_TORRENT: 0.3,    // Weight for high quality torrents (0 = no effect, 1 = full penalty for GP torrents (which naturally have higher seeds regardless of edition))
         AGE_FACTOR: 0.2,         // Weight for torrent age (0 = no effect, 1 = full penalty for older torrents)
-        SNATCH_RATIO: 0.5,      // Weight for snatch/seeder ratio (0 = no effect, 1 = full penalty for poor ratio)
-        EDITION_COUNT: 0.8,     // Weight for number of torrents in edition (0 = no effect, 1 = full penalty for lesser torrents)
-        SEEDER_COUNT: 0.8,        // Weight for high seeder count (0 = no effect, 1 = full bonus for highest seeders)
+        SNATCH_RATIO: 0.3,      // Weight for snatch/seeder ratio (0 = no effect, 1 = full penalty for poor ratio)
+        EDITION_COUNT: 0.6,     // Weight for number of torrents in edition (0 = no effect, 1 = full penalty for lesser torrents)
+        SEEDER_COUNT: 0.4,        // Weight for high seeder count (0 = no effect, 1 = full bonus for highest seeders)
         THEATRICAL_PENALTY: 0.0 // Weight for Theatrical editions (0 = no effect, 1 = full penalty for Theatrical editions)
     };
 
