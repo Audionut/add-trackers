@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP - Alternate Versions Sidebar
-// @version      1.4.1
+// @version      1.4.2
 // @description  Add alternate versions tracking to the sidebar
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -286,9 +286,22 @@
     }
 
     function extractTorrentAge(torrentRow) {
-        const timeCell = torrentRow.querySelector('.time-cell .time');
+        // Find the corresponding detail row
+        const headerId = torrentRow.id;
+        if (!headerId || !headerId.startsWith('group_torrent_header_')) {
+            return 0;
+        }
+        const torrentId = headerId.replace('group_torrent_header_', '');
+        const detailRow = document.getElementById(`torrent_${torrentId}`);
+        if (!detailRow) {
+            console.log('[DEBUG] No detail row found');
+            return 0;
+        }
+
+        // Find the .time element inside the detail row
+        const timeCell = detailRow.querySelector('.time');
         if (!timeCell) {
-            console.log('[DEBUG] No time cell found');
+            console.log('[DEBUG] No .time element found in detail row');
             return 0;
         }
 
@@ -306,8 +319,6 @@
         }
 
         const [, month, day, year] = dateMatch;
-        //console.log(`[DEBUG] Parsed date parts: month=${month}, day=${day}, year=${year}`);
-
         const months = {
             'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
             'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
@@ -316,11 +327,7 @@
         const torrentDate = new Date(parseInt(year), months[month], parseInt(day));
         const ageInDays = (new Date() - torrentDate) / (1000 * 60 * 60 * 24);
 
-        //console.log(`[DEBUG] Torrent date: ${torrentDate}, Age in days: ${ageInDays}`);
-
-        // Return 0 for invalid dates instead of NaN
         const result = isNaN(ageInDays) ? 0 : Math.max(0, ageInDays);
-        //console.log(`[DEBUG] Final age result: ${result}`);
         return result;
     }
 
