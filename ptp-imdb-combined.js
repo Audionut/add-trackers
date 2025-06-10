@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.1.3
+// @version      1.1.4
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -267,7 +267,7 @@
                                 }
                             }
                         }
-                        runtimes(first: 10) {
+                        runtimes(first: 15) {
                             edges {
                                 node {
                                     id
@@ -278,6 +278,9 @@
                                         }
                                     }
                                     attributes {
+                                        text
+                                    }
+                                    country {
                                         text
                                     }
                                 }
@@ -897,8 +900,13 @@
             if (runtimes && runtimes.length > 0) {
                 let values = runtimes.map(runtime => {
                     let value = `${runtime.node.displayableProperty.value.plainText}`;
+                    // Add attributes if present
                     if (runtime.node.attributes && runtime.node.attributes.length > 0) {
                         value += ` (${runtime.node.attributes.map(attr => attr.text).join(", ")})`;
+                    }
+                    // Add country if present
+                    if (runtime.node.country && runtime.node.country.text) {
+                        value += ` [${runtime.node.country.text}]`;
                     }
                     return value;
                 }).join(", ");
