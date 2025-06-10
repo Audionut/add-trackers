@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP - Alternate Versions Sidebar
-// @version      1.4.2
+// @version      1.4.3
 // @description  Add alternate versions tracking to the sidebar
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -140,7 +140,7 @@
     }
 
     function getEditionBase(name) {
-        return name.trim().toLowerCase().replace(/\b(cut|version)\b$/, '').replace(/\s+/g, ' ').trim();
+        return name.trim();
     }
 
     function isOtherSubEdition(torrentRow) {
@@ -180,7 +180,7 @@
             tags = text.split('/').map(tag => tag.trim());
         }
 
-        console.log('[DEBUG] All tags:', tags);
+        //console.log('[DEBUG] All tags:', tags);
 
         // Remove ignored tags and find potential editions
         const relevantTags = tags.filter(tag => !isIgnoredTag(tag));
@@ -213,10 +213,10 @@
             const nonBoxset = relevantTags.find(tag => !isBoxsetEdition(tag));
             if (nonBoxset) {
                 // Normalize "Theatrical Cut" variations to just "Theatrical"
-                if (nonBoxset.toLowerCase().includes('theatrical')) {
+                //if (nonBoxset.toLowerCase().includes('theatrical')) {
                     // console.log('[DEBUG] Returning Theatrical for:', nonBoxset);
-                    return 'Theatrical';
-                }
+                //    return 'Theatrical';
+                //}
                 // console.log('[DEBUG] Returning non-boxset edition:', nonBoxset);
                 return nonBoxset;
             }
@@ -229,10 +229,10 @@
         if (relevantTags.length === 1) {
             const tag = relevantTags[0];
             // Normalize "Theatrical Cut" variations to just "Theatrical"
-            if (tag.toLowerCase().includes('theatrical')) {
+            //if (tag.toLowerCase().includes('theatrical')) {
                 // console.log('[DEBUG] Returning Theatrical for:', tag);
-                return 'Theatrical';
-            }
+            //    return 'Theatrical';
+            //}
             // console.log('[DEBUG] Returning single relevant tag as edition:', tag);
             return tag;
         }
