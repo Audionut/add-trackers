@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP - Alternate Versions Sidebar
-// @version      1.4.4
+// @version      1.4.5
 // @description  Add alternate versions tracking to the sidebar
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -122,7 +122,27 @@
             if (ignored instanceof RegExp) {
                 return ignored.test(tag);
             }
-            return tag.toLowerCase() === ignored.toLowerCase();
+            
+            // Exact match first
+            if (tag.toLowerCase() === ignored.toLowerCase()) {
+                return true;
+            }
+            
+            // Check if tag matches ignored pattern with year in brackets
+            // e.g. "with commentary" matches "with commentary (2012)"
+            const tagLower = tag.toLowerCase();
+            const ignoredLower = ignored.toLowerCase();
+            
+            // Check if tag starts with ignored text followed by year in brackets
+            const yearPattern = /\s*\(\d{4}\)$/;
+            if (tagLower.startsWith(ignoredLower) && yearPattern.test(tagLower)) {
+                const tagWithoutYear = tagLower.replace(yearPattern, '').trim();
+                if (tagWithoutYear === ignoredLower) {
+                    return true;
+                }
+            }
+            
+            return false;
         });
     }
 
