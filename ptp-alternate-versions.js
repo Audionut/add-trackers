@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP - Alternate Versions Sidebar
-// @version      1.4.3
+// @version      1.4.4
 // @description  Add alternate versions tracking to the sidebar
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -8,6 +8,7 @@
 // @updateURL    https://raw.githubusercontent.com/Audionut/add-trackers/refs/heads/main/ptp-alternate-versions.js
 // @grant        GM.getValue
 // @grant        GM.setValue
+// @require      https://raw.githubusercontent.com/Audionut/add-trackers/refs/heads/main/distributors.js
 // ==/UserScript==
 
 (function () {
@@ -57,11 +58,11 @@
         // Sources
         'Blu-ray', 'BluRay', 'BD', 'DVD', 'DVD5', 'DVD9', 'WEB-DL', 'WEBDL', 'WEBRip', 'HDTV', 'TV', 'PAL', 'NTSC',
         // Blu-ray disc types
-        'BD25', 'BD33', 'BD50', 'BD66', 'BD100',
+        'BD25', 'BD33', 'BD50', 'BD66', 'BD100', '4K Remaster', '4K Restoration',
         // Audio
-        'DTS', 'AC3', 'AAC', 'MP3', 'FLAC', 'TrueHD', 'Atmos', 'DDP', 'OPUS', 'DTS-X', 'DTS-HD', 'Dual Audio',
+        'DTS', 'AC3', 'AAC', 'MP3', 'FLAC', 'TrueHD', 'Atmos', 'Dolby Atmos', 'DDP', 'OPUS', 'DTS-X', 'DTS-HD', 'Dual Audio',
         // HDR
-        'HDR', 'HDR10', 'HDR10+', 'Dolby Vision', 'DoVi', '10-bit', 'DV', 'DV HDR', 'DV HDR10', 'DV HDR10+',
+        'HDR', 'HDR10', 'HDR10+', 'Dolby Vision', 'DoVi', '10-bit', 'DV', 'DV HDR', 'DV HDR10', 'DV HDR10+', 'Dolby Vision HDR10', 'Dolby Vision HDR10+',
         // Commentary
         'With Commentary', 'Commentary',
         // Groups (last tag pattern)
@@ -81,16 +82,19 @@
         'Disc Set',
         'Collection',
         'Anthology',
-        '2in1',
-        '3in1',
-        '4in1',
-        '5in1',
         '2D/3D',
         '2-Disc',
         '3-Disc',
         '4-Disc',
         '5-Disc',
         '6-Disc'
+    ];
+
+    const COMBINED_EDITIONS = [
+        '2in1',
+        '3in1',
+        '4in1',
+        '5in1'
     ];
 
     const userSettingTooltips = {
@@ -118,7 +122,7 @@
             if (ignored instanceof RegExp) {
                 return ignored.test(tag);
             }
-            return tag.toLowerCase().includes(ignored.toLowerCase());
+            return tag.toLowerCase() === ignored.toLowerCase();
         });
     }
 
@@ -135,6 +139,19 @@
             if (lowerTag.includes(lowerKeyword)) return true;
             // Fuzzy: keyword appears as a separate word (e.g. "4K Restoration" matches "Restoration")
             if (lowerTag.split(/[\s/-]+/).some(word => lowerKeyword.includes(word) || word.includes(lowerKeyword))) return true;
+            return false;
+        });
+    }
+
+    function isCombinedEdition(tag) {
+        const lowerTag = tag.toLowerCase().trim();
+        return COMBINED_EDITIONS.some(combined => {
+            const lowerCombined = combined.toLowerCase();
+
+            if (lowerTag === lowerCombined) return true;
+            if (lowerTag.replace(/\s+/g, ' ') === lowerCombined) return true;
+            if (lowerTag.includes(lowerCombined)) return true;
+
             return false;
         });
     }
@@ -164,6 +181,15 @@
         return false;
     }
 
+    function isPotentialCombinedEditionComponent(tag) {
+        // Extract all individual components from combined editions
+        const combinedComponents = COMBINED_EDITIONS.flatMap(combined =>
+            combined.split(/\s*\/\s*/).map(part => part.trim().toLowerCase())
+        );
+
+        return combinedComponents.includes(tag.toLowerCase().trim());
+    }
+
     function extractEdition(torrentRow) {
         const torrentLink = torrentRow.querySelector('.torrent-info-link');
         if (!torrentLink) return null;
@@ -180,10 +206,16 @@
             tags = text.split('/').map(tag => tag.trim());
         }
 
-        //console.log('[DEBUG] All tags:', tags);
+        // console.log('[DEBUG] All tags:', tags);
 
         // Remove ignored tags and find potential editions
-        const relevantTags = tags.filter(tag => !isIgnoredTag(tag));
+        const relevantTags = tags.filter(tag => {
+            // Don't filter out potential combined edition components yet
+            if (isPotentialCombinedEditionComponent(tag)) {
+                return true; // Keep it for now
+            }
+            return !isIgnoredTag(tag);
+        });
 
         // console.log('[DEBUG] Relevant tags:', relevantTags);
 
@@ -209,14 +241,20 @@
         // If multiple relevant tags found, prefer the first non-boxset tag as edition
         if (relevantTags.length > 1) {
             // console.log('[DEBUG] Multiple relevant tags:', relevantTags);
+
+            // Check if ANY of the relevant tags is a combined edition
+            if (relevantTags.some(tag => isCombinedEdition(tag))) {
+                // console.log('[DEBUG] Found combined edition in tags, skipping all:', relevantTags);
+                return null; // Skip all tags if any match combined editions
+            }
+
             // Pick the first tag that is NOT a boxset keyword
-            const nonBoxset = relevantTags.find(tag => !isBoxsetEdition(tag));
+            const nonBoxset = relevantTags.find(tag => {
+                const isBoxset = isBoxsetEdition(tag);
+                // console.log(`[DEBUG] Tag "${tag}" is boxset:`, isBoxset);
+                return !isBoxset;
+            });
             if (nonBoxset) {
-                // Normalize "Theatrical Cut" variations to just "Theatrical"
-                //if (nonBoxset.toLowerCase().includes('theatrical')) {
-                    // console.log('[DEBUG] Returning Theatrical for:', nonBoxset);
-                //    return 'Theatrical';
-                //}
                 // console.log('[DEBUG] Returning non-boxset edition:', nonBoxset);
                 return nonBoxset;
             }
@@ -228,6 +266,11 @@
         // If we have exactly one relevant tag, use it as the edition
         if (relevantTags.length === 1) {
             const tag = relevantTags[0];
+            // Check if the single tag is a combined edition
+            if (isCombinedEdition(tag)) {
+                // console.log('[DEBUG] Single tag is combined edition, skipping:', tag);
+                return null;
+            }
             // Normalize "Theatrical Cut" variations to just "Theatrical"
             //if (tag.toLowerCase().includes('theatrical')) {
                 // console.log('[DEBUG] Returning Theatrical for:', tag);
@@ -656,7 +699,14 @@
 
     // Combine default and custom ignore tags
     function getAllIgnoreTags() {
-        return [...IGNORE_TAGS, ...USER_SETTINGS.CUSTOM_IGNORE_TAGS];
+        // Get all distributor names as an array
+        const distributorTags = distributor_ids ? Object.keys(distributor_ids) : [];
+
+        return [
+            ...IGNORE_TAGS,
+            ...(USER_SETTINGS.CUSTOM_IGNORE_TAGS || []),
+            ...distributorTags  // Add all distributor names to the ignore list
+        ];
     }
 
     // Settings management functions
