@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP - Alternate Versions Sidebar
-// @version      1.4.5
+// @version      1.5.0
 // @description  Add alternate versions tracking to the sidebar
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -14,6 +14,12 @@
 (function () {
     "use strict";
 
+    // Manual settings
+    // how long to wait (ms) after adjusting slider before refreshing popularity score
+    const REFRESH_DELAY = 500;
+    // Shot link in link box to add unignore tags when only one edition and no side bar
+    const add_unignore_link = true;
+
     // USER SETTINGS - Adjust these to customize behavior
     const USER_SETTINGS = {
         SORT_BY: 'popularity',       // Options: 'name', 'popularity', 'count', 'seeders', 'snatches'
@@ -21,17 +27,20 @@
         FILTER_MODE: 'exclusive',    // Options: 'editions_only' (hide other editions), 'exclusive' (show only selected edition)
         SHOW_STATS: 'all',            // Options: 'name' (name only), 'minimal' (name + seeders), 'all' (all stats)
         SHOW_SETTINGS: true,           // New: toggle for settings panel
-        CUSTOM_IGNORE_TAGS: []          // New: user-defined ignore tags
+        CUSTOM_IGNORE_TAGS: [],          // New: user-defined ignore tags
+        CUSTOM_UNIGNORE_TAGS: [],         // New: user-defined unignore tags
+        SEEDER_AVG_WEIGHT: 0.5,         // New: weight for average seeders (0-1)
+        SEEDER_TOTAL_WEIGHT: 0.5        // New: weight for total seeders (0-1)
     };
 
     // POPULARITY SCORE WEIGHTING CONSTANTS (adjust these to fine-tune scoring)
     // Set to 0 to disable a factor, 1 for full weight, values between 0-1 for partial weight
     const WEIGHTS = {
-        QUALITY_TORRENT: 0.3,    // Weight for high quality torrents (0 = no effect, 1 = full penalty for GP torrents (which naturally have higher seeds regardless of edition))
-        AGE_FACTOR: 0.2,         // Weight for torrent age (0 = no effect, 1 = full penalty for older torrents)
-        SNATCH_RATIO: 0.3,      // Weight for snatch/seeder ratio (0 = no effect, 1 = full penalty for poor ratio)
-        EDITION_COUNT: 0.6,     // Weight for number of torrents in edition (0 = no effect, 1 = full penalty for lesser torrents)
-        SEEDER_COUNT: 0.4,        // Weight for high seeder count (0 = no effect, 1 = full bonus for highest seeders)
+        QUALITY_TORRENT: 0.2,    // Weight for high quality torrents (0 = no effect, 1 = full penalty for GP torrents (which naturally have higher seeds regardless of edition))
+        AGE_FACTOR: 0.0,         // Weight for torrent age (0 = no effect, 1 = full penalty for older torrents)
+        SNATCH_RATIO: 0.4,      // Weight for snatch/seeder ratio (0 = no effect, 1 = full penalty for poor ratio)
+        EDITION_COUNT: 0.5,     // Weight for number of torrents in edition (0 = no effect, 1 = full penalty for lesser torrents)
+        SEEDER_COUNT: 0.6,        // Weight for high seeder count (0 = no effect, 1 = full bonus for highest seeders)
         THEATRICAL_PENALTY: 0.0 // Weight for Theatrical editions (0 = no effect, 1 = full penalty for Theatrical editions)
     };
 
@@ -43,9 +52,11 @@
     };
 
     const THRESHOLDS = {
-        AGE_THRESHOLD: 182,      // Default: 182 days (~6 months)
-        FRESH_THRESHOLD: 182     // Default: 182 days (~6 months)
+        AGE_THRESHOLD: 712,      // Default: 182 days (~6 months)
+        FRESH_THRESHOLD: 356     // Default: 182 days (~6 months)
     };
+
+    let refreshTimer = null;
 
     // Define video/audio attributes and other tags to ignore
     const IGNORE_TAGS = [
@@ -56,11 +67,11 @@
         // Containers
         'MKV', 'MP4', 'AVI', 'WMV', 'M2TS', 'VOB', 'IFO', 'VOB IFO', 'ISO', 'Remux', 'm2ts',
         // Sources
-        'Blu-ray', 'BluRay', 'BD', 'DVD', 'DVD5', 'DVD9', 'WEB-DL', 'WEBDL', 'WEBRip', 'HDTV', 'TV', 'PAL', 'NTSC',
+        'Blu-ray', 'BluRay', 'BD', 'DVD', 'DVD5', 'DVD9', 'WEB-DL', 'WEBDL', 'WEBRip', 'HDTV', 'TV', 'PAL', 'NTSC', 'HD-DVD',
         // Blu-ray disc types
         'BD25', 'BD33', 'BD50', 'BD66', 'BD100', '4K Remaster', '4K Restoration',
         // Audio
-        'DTS', 'AC3', 'AAC', 'MP3', 'FLAC', 'TrueHD', 'Atmos', 'Dolby Atmos', 'DDP', 'OPUS', 'DTS-X', 'DTS-HD', 'Dual Audio',
+        'DTS', 'AC3', 'AAC', 'MP3', 'FLAC', 'TrueHD', 'Atmos', 'Dolby Atmos', 'DDP', 'OPUS', 'DTS-X', 'DTS-HD', 'DTS:X', 'Dual Audio',
         // HDR
         'HDR', 'HDR10', 'HDR10+', 'Dolby Vision', 'DoVi', '10-bit', 'DV', 'DV HDR', 'DV HDR10', 'DV HDR10+', 'Dolby Vision HDR10', 'Dolby Vision HDR10+',
         // Commentary
@@ -68,9 +79,9 @@
         // Groups (last tag pattern)
         /^[A-Z0-9]{2,10}$/i,
         // Site tags
-        'Downloaded', 'Snatched', 'Seeding', 'Trumpable', 'Release Group', 'Scene', 'Freeleech', 'Half Leech', 'Neutral Leech', 'Half-Leech',
+        'Downloaded', 'Snatched', 'Seeding', 'Trumpable', 'Release Group', 'Scene', 'Freeleech!', 'Half Leech!', 'Neutral Leech!', 'Half-Leech!',
         // Legitimate edition tags that are not Alternate Versions
-        'Masters of Cinema', 'Collection', 'StudioCanal', 'Kino Lorber'
+        'Masters of Cinema', 'Collection', 'StudioCanal', 'Kino Lorber', 'Anniversary', 'Lionsgate', 'Medusa', 'English Dub'
     ];
 
     // Boxset/Collection editions to ignore
@@ -97,6 +108,12 @@
         '5in1'
     ];
 
+    const singleEditionExceptions = [
+        'black & chrome',
+        'black & white',
+        'source'
+    ];
+
     const userSettingTooltips = {
         filterMode: "Exclusive: Show only selected edition and hide everything else. Editions Only: Hide only the other detected editions.",
         showStats: "Name: Name only. Minimal: Name + seeder count. All: Name, Torrent count, Popularity core, Snatched count, Seeder count."
@@ -117,23 +134,35 @@
     };
 
     function isIgnoredTag(tag) {
+        if (tag.toLowerCase().includes('final cut') || tag.toLowerCase().includes('redux') || (tag.toLowerCase().includes('uncut')) || (tag.toLowerCase().includes('unrated')) || (tag.toLowerCase().includes('source'))) {
+            return false;
+        }
+        // Check custom unignore list first - these tags are never ignored
+        if (USER_SETTINGS.CUSTOM_UNIGNORE_TAGS.some(unignored => {
+            const tagLower = tag.toLowerCase();
+            const unignoredLower = unignored.toLowerCase();
+
+            // Exact match or contains match
+            return tagLower === unignoredLower || tagLower.includes(unignoredLower);
+        })) {
+            return false; // Never ignore if in unignore list
+        }
+
         const allIgnoreTags = getAllIgnoreTags();
         return allIgnoreTags.some(ignored => {
             if (ignored instanceof RegExp) {
                 return ignored.test(tag);
             }
-            
+
             // Exact match first
             if (tag.toLowerCase() === ignored.toLowerCase()) {
                 return true;
             }
-            
+
             // Check if tag matches ignored pattern with year in brackets
-            // e.g. "with commentary" matches "with commentary (2012)"
             const tagLower = tag.toLowerCase();
             const ignoredLower = ignored.toLowerCase();
-            
-            // Check if tag starts with ignored text followed by year in brackets
+
             const yearPattern = /\s*\(\d{4}\)$/;
             if (tagLower.startsWith(ignoredLower) && yearPattern.test(tagLower)) {
                 const tagWithoutYear = tagLower.replace(yearPattern, '').trim();
@@ -141,7 +170,7 @@
                     return true;
                 }
             }
-            
+
             return false;
         });
     }
@@ -226,7 +255,7 @@
             tags = text.split('/').map(tag => tag.trim());
         }
 
-        // console.log('[DEBUG] All tags:', tags);
+        //console.log('[DEBUG] All tags:', tags);
 
         // Remove ignored tags and find potential editions
         const relevantTags = tags.filter(tag => {
@@ -237,34 +266,41 @@
             return !isIgnoredTag(tag);
         });
 
-        // console.log('[DEBUG] Relevant tags:', relevantTags);
+        //console.log('[DEBUG] Relevant tags:', relevantTags);
 
         // If any relevant tag is *exactly* a boxset keyword, ignore this torrent
         if (relevantTags.some(tag => isBoxsetEdition(tag))) {
             // But only if ALL relevant tags are boxset keywords, otherwise keep the edition
             const allBoxset = relevantTags.every(tag => isBoxsetEdition(tag));
-            // console.log('[DEBUG] All relevant tags are boxset:', allBoxset, relevantTags);
+            //console.log('[DEBUG] All relevant tags are boxset:', allBoxset, relevantTags);
             if (allBoxset) {
-                // console.log('[DEBUG] Ignoring row because all relevant tags are boxset:', tags);
+                //console.log('[DEBUG] Ignoring row because all relevant tags are boxset:', tags);
                 return null; // Ignore boxset-only editions completely
             }
         }
 
         // Check for multiple editions in a single tag (e.g., "Theatrical Cut & Special Edition")
         const multiEditionPattern = /(&|and|\+)/i;
-        const hasMultipleEditions = relevantTags.some(tag => multiEditionPattern.test(tag));
+        const hasMultipleEditions = relevantTags.some(tag => {
+            // Skip known single editions that contain &
+            const tagLower = tag.toLowerCase();
+            if (singleEditionExceptions.some(exception => tagLower.includes(exception))) {
+                return false;
+            }
+            return multiEditionPattern.test(tag);
+        });
         if (hasMultipleEditions) {
-            // console.log('[DEBUG] Ignoring row because of multiple editions in a tag:', relevantTags);
+            //console.log('[DEBUG] Ignoring row because of multiple editions in a tag:', relevantTags);
             return null; // Ignore torrents with multiple editions
         }
 
         // If multiple relevant tags found, prefer the first non-boxset tag as edition
         if (relevantTags.length > 1) {
-            // console.log('[DEBUG] Multiple relevant tags:', relevantTags);
+            //console.log('[DEBUG] Multiple relevant tags:', relevantTags);
 
             // Check if ANY of the relevant tags is a combined edition
             if (relevantTags.some(tag => isCombinedEdition(tag))) {
-                // console.log('[DEBUG] Found combined edition in tags, skipping all:', relevantTags);
+                //console.log('[DEBUG] Found combined edition in tags, skipping all:', relevantTags);
                 return null; // Skip all tags if any match combined editions
             }
 
@@ -275,7 +311,7 @@
                 return !isBoxset;
             });
             if (nonBoxset) {
-                // console.log('[DEBUG] Returning non-boxset edition:', nonBoxset);
+                //console.log('[DEBUG] Returning non-boxset edition:', nonBoxset);
                 return nonBoxset;
             }
             // If all are boxset, ignore
@@ -288,7 +324,7 @@
             const tag = relevantTags[0];
             // Check if the single tag is a combined edition
             if (isCombinedEdition(tag)) {
-                // console.log('[DEBUG] Single tag is combined edition, skipping:', tag);
+                //console.log('[DEBUG] Single tag is combined edition, skipping:', tag);
                 return null;
             }
             // Normalize "Theatrical Cut" variations to just "Theatrical"
@@ -441,76 +477,161 @@
 
         // Snatch to seeder ratio
         if (WEIGHTS.SNATCH_RATIO > 0) {
-            const effectiveSeeders = Math.max(seeders, SCORING.MIN_SEEDERS);
-            const snatchRatio = snatches / effectiveSeeders;
-            const idealRatio = 1.0;
-            if (snatchRatio > idealRatio) {
-                const excessRatio = snatchRatio - idealRatio;
-                const maxSnatches = Math.max(...allEditions.map(e => e.snatches));
-                const snatchVolumeFactor = maxSnatches > 0 ? snatches / maxSnatches : 0;
-                const volumeMultiplier = 1 + (1 - snatchVolumeFactor) * 2.5;
+          //console.log(`[DEBUG] === SNATCH RATIO SCORING for ${editionData.name} ===`);
+          //console.log(`[DEBUG] Raw stats - Snatches: ${snatches}, Seeders: ${seeders}, Count: ${count}`);
 
-                // Age penalty adjustment (user-adjustable)
-                const ageThreshold = THRESHOLDS.AGE_THRESHOLD;
-                const ageFactor = Math.min(averageAge / ageThreshold, 1);
-                const scaledAgePenalty = Math.pow(ageFactor, 0.5) * WEIGHTS.AGE_FACTOR;
-                const ageMultiplier = 1 + scaledAgePenalty;
+          const effectiveSeeders = Math.max(seeders, SCORING.MIN_SEEDERS);
+          //console.log(`[DEBUG] Effective seeders: ${effectiveSeeders} (MIN_SEEDERS: ${SCORING.MIN_SEEDERS})`);
 
-                // GP/Quality penalty adjustment (user-adjustable, per-torrent)
-                let gpMultiplier = 1;
-                if (WEIGHTS.QUALITY_TORRENT > 0 && count > 0) {
-                    // Calculate the fraction of GP torrents
-                    const gpCount = editionData.torrents.filter(t => t.isQuality).length;
-                    gpMultiplier = 1 + (gpCount / count) * WEIGHTS.QUALITY_TORRENT * 3;
-                }
+          const snatchRatio = snatches / effectiveSeeders;
+          //console.log(`[DEBUG] Snatch ratio: ${snatchRatio.toFixed(2)} (${snatches}/${effectiveSeeders})`);
 
-                // ...Fresh/maturity penalty...
-                const freshThreshold = THRESHOLDS.FRESH_THRESHOLD;
-                const matureTorrents = torrents.filter(t => t.age >= freshThreshold).length;
-                const maturityPercentage = matureTorrents / torrents.length;
-                const freshPercentage = 1 - maturityPercentage;
-                let maturityMultiplier;
-                if (freshPercentage > 0.75) {
-                    maturityMultiplier = 1.0 + freshPercentage * 4.0;
-                } else if (freshPercentage > 0.5) {
-                    maturityMultiplier = 1.0 + freshPercentage * 2.5;
-                } else {
-                    maturityMultiplier = 1.0 + freshPercentage * 1.0;
-                }
+          const idealRatio = 1.0;
+          //console.log(`[DEBUG] Ideal ratio: ${idealRatio}, Excess: ${(snatchRatio - idealRatio).toFixed(2)}`);
 
-                const basePenalty = Math.min(excessRatio * 15, 50);
-                // Apply age and GP multipliers only here:
-                const ratioPenalty = basePenalty * volumeMultiplier * ageMultiplier * gpMultiplier * maturityMultiplier * WEIGHTS.SNATCH_RATIO;
-                finalScore -= ratioPenalty;
-            }
-        }
+          const maxSnatches = Math.max(...allEditions.map(e => e.snatches));
+          const snatchVolumeFactor = maxSnatches > 0 ? snatches / maxSnatches : 0;
+
+          // Logarithmic volume penalty with knee at 5%
+          const volumeRatio = Math.max(0.001, snatchVolumeFactor);
+          const kneeThreshold = 0.05; // 5% threshold
+
+          let volumeMultiplier;
+          if (volumeRatio <= kneeThreshold) {
+              // Below 5%: Apply steeper penalty
+              const normalPenalty = Math.log10(1 / volumeRatio) * 1.5;
+              const kneeBonus = Math.log10(1 / kneeThreshold) * 1.5; // What penalty would be at 5%
+              const extraPenalty = (normalPenalty - kneeBonus) * 2.0; // Additional penalty factor
+              volumeMultiplier = 1 + kneeBonus + Math.abs(extraPenalty); // Ensure it's always > 1
+          } else {
+              // Above 5%: Normal log curve
+              volumeMultiplier = 1 + Math.log10(1 / volumeRatio) * 1.5;
+          }
+
+          //console.log(`[DEBUG] Volume ratio: ${volumeRatio.toFixed(6)}`);
+          //console.log(`[DEBUG] Volume multiplier: ${volumeMultiplier.toFixed(3)} (knee at ${(kneeThreshold*100)}%)`);
+          if (volumeRatio <= kneeThreshold) {
+              //console.log(`[DEBUG] Below knee threshold - applying enhanced penalty`);
+          }
+
+          if (snatchRatio > idealRatio) {
+              //console.log(`[DEBUG] Snatch ratio exceeds ideal - applying penalty`);
+
+              const excessRatio = snatchRatio - idealRatio;
+              //console.log(`[DEBUG] Excess ratio: ${excessRatio.toFixed(2)}`);
+
+              // Calculate per-torrent age and fresh penalties, then average them
+              let totalAgeMultiplier = 0;
+              let totalMaturityMultiplier = 0;
+
+              //console.log(`[DEBUG] Calculating per-torrent penalties for ${torrents.length} torrents:`);
+
+              torrents.forEach((torrent, index) => {
+                  // Per-torrent age penalty - penalizes OLDER torrents more
+                  const ageThreshold = THRESHOLDS.AGE_THRESHOLD;
+                  const ageFactor = ageThreshold / Math.max(torrent.age, 1);
+                  const agePenalty = Math.pow(ageFactor, 0.5) * WEIGHTS.AGE_FACTOR;
+                  const torrentAgeMultiplier = 1 + agePenalty;
+                  totalAgeMultiplier += torrentAgeMultiplier;
+
+                  // Per-torrent fresh penalty - penalizes YOUNGER torrents with high snatch ratios more
+                  const freshThreshold = THRESHOLDS.FRESH_THRESHOLD;
+                  let torrentMaturityMultiplier = 1.0;
+
+                  if (torrent.age < freshThreshold) {
+                      const freshnessFactor = Math.max(0, (freshThreshold - torrent.age) / freshThreshold);
+                      if (freshnessFactor > 0.75) {
+                          torrentMaturityMultiplier = 1.0 + freshnessFactor * 2.0;
+                      } else if (freshnessFactor > 0.5) {
+                          torrentMaturityMultiplier = 1.0 + freshnessFactor * 1.5;
+                      } else {
+                          torrentMaturityMultiplier = 1.0 + freshnessFactor * 1.0;
+                      }
+                      //console.log(`[DEBUG] Torrent ${index}: age=${torrent.age}, freshness=${freshnessFactor.toFixed(3)}, maturityMult=${torrentMaturityMultiplier.toFixed(3)}`);
+                  }
+                  totalMaturityMultiplier += torrentMaturityMultiplier;
+
+                  //console.log(`[DEBUG] Torrent ${index}: age=${torrent.age}, ageMult=${torrentAgeMultiplier.toFixed(3)}, maturityMult=${torrentMaturityMultiplier.toFixed(3)}`);
+              });
+
+              // Average the per-torrent multipliers
+              const avgAgeMultiplier = totalAgeMultiplier / torrents.length;
+              const avgMaturityMultiplier = totalMaturityMultiplier / torrents.length;
+              //console.log(`[DEBUG] Average age multiplier: ${avgAgeMultiplier.toFixed(3)}`);
+              //console.log(`[DEBUG] Average maturity multiplier: ${avgMaturityMultiplier.toFixed(3)}`);
+
+              const basePenalty = Math.log10(excessRatio + 1) * 50;
+              //console.log(`[DEBUG] Base penalty: ${basePenalty.toFixed(2)} (min of ${(excessRatio * 15).toFixed(2)} and 50)`);
+
+              const ratioPenalty = basePenalty * volumeMultiplier * avgAgeMultiplier * avgMaturityMultiplier * WEIGHTS.SNATCH_RATIO;
+              //console.log(`[DEBUG] Final penalty calculation:`);
+              //console.log(`[DEBUG] ${basePenalty.toFixed(2)} * ${volumeMultiplier.toFixed(3)} * ${avgAgeMultiplier.toFixed(3)} * ${avgMaturityMultiplier.toFixed(3)} * ${WEIGHTS.SNATCH_RATIO}`);
+              //console.log(`[DEBUG] = ${ratioPenalty.toFixed(2)}`);
+
+              //console.log(`[DEBUG] Final score before penalty: ${finalScore}`);
+              finalScore -= ratioPenalty;
+              //console.log(`[DEBUG] Final score after penalty: ${finalScore}`);
+          } else {
+              //console.log(`[DEBUG] Snatch ratio (${snatchRatio.toFixed(2)}) <= ideal ratio (${idealRatio}) - no penalty applied`);
+          }
+          //console.log(`[DEBUG] === END SNATCH RATIO SCORING ===`);
+      }
 
         // --- Seeder count bonus (with age/gp penalty adjustment) ---
         if (WEIGHTS.SEEDER_COUNT > 0 && allEditions) {
+            //console.log(`[DEBUG] === SEEDER COUNT BONUS SCORING ===`);
+            //console.log(`[DEBUG] WEIGHTS.SEEDER_COUNT: ${WEIGHTS.SEEDER_COUNT}`);
+            //console.log(`[DEBUG] Raw seeders: ${seeders}, count: ${count}`);
+
             const currentAvgSeeders = seeders / count;
+            //console.log(`[DEBUG] Current avg seeders: ${currentAvgSeeders.toFixed(2)} (${seeders}/${count})`);
+
             const maxAvgSeeders = Math.max(...allEditions.map(e => e.seeders / e.count));
-            if (maxAvgSeeders > 0) {
-                const seederFactor = Math.log10(currentAvgSeeders + 1) / Math.log10(maxAvgSeeders + 1);
+            const maxTotalSeeders = Math.max(...allEditions.map(e => e.seeders));
+            //console.log(`[DEBUG] Max avg seeders: ${maxAvgSeeders.toFixed(2)}, Max total seeders: ${maxTotalSeeders}`);
+
+            if (maxAvgSeeders > 0 && maxTotalSeeders > 0) {
+                // Calculate both factors
+                const avgSeederFactor = Math.log10(currentAvgSeeders + 1) / Math.log10(maxAvgSeeders + 1);
+                const totalSeederFactor = Math.log10(seeders + 1) / Math.log10(maxTotalSeeders + 1);
+
+                // Combine factors using user-adjustable weights
+                const avgWeight = USER_SETTINGS.SEEDER_AVG_WEIGHT;
+                const totalWeight = USER_SETTINGS.SEEDER_TOTAL_WEIGHT;
+                const combinedSeederFactor = (avgSeederFactor * avgWeight) + (totalSeederFactor * totalWeight);
+
+                //console.log(`[DEBUG] Avg seeder factor: ${avgSeederFactor.toFixed(3)}`);
+                //console.log(`[DEBUG] Total seeder factor: ${totalSeederFactor.toFixed(3)}`);
+                //console.log(`[DEBUG] Combined seeder factor: ${combinedSeederFactor.toFixed(3)} (${(avgWeight*100)}% avg + ${(totalWeight*100)}% total)`);
 
                 // GP/Quality penalty adjustment (user-adjustable, per-torrent)
                 let gpAdjustment = 1;
                 if (WEIGHTS.QUALITY_TORRENT > 0 && count > 0) {
                     const gpCount = editionData.torrents.filter(t => t.isQuality).length;
-                    gpAdjustment = 1 - Math.min(1, (gpCount / count) * WEIGHTS.QUALITY_TORRENT * 5);
-                }
-
-                // Age penalty adjustment (user-adjustable)
-                const ageThreshold = THRESHOLDS.AGE_THRESHOLD;
-                const ageFactor = Math.min(averageAge / ageThreshold, 1);
-                const scaledAgePenalty = Math.pow(ageFactor, 0.5) * WEIGHTS.AGE_FACTOR;
-                const ageAdjustment = 1 - scaledAgePenalty;
+                    //console.log(`[DEBUG] GP torrents: ${gpCount}/${count} torrents`);
+                    const gpPenalty = Math.min(1, (gpCount / count) * WEIGHTS.QUALITY_TORRENT * 5);
+                    gpAdjustment = 1 - gpPenalty;
+                    //console.log(`[DEBUG] GP penalty: ${gpPenalty.toFixed(3)}, GP adjustment: ${gpAdjustment.toFixed(3)}`);
+                } //else {
+                    //console.log(`[DEBUG] GP adjustment disabled (WEIGHTS.QUALITY_TORRENT: ${WEIGHTS.QUALITY_TORRENT})`);
+                //}
 
                 // Clamp adjustments to [0,1]
-                const adj = Math.max(0, gpAdjustment * ageAdjustment);
+                const adj = Math.max(0, gpAdjustment);
+                //console.log(`[DEBUG] clamped GP adjustment: ${adj.toFixed(3)}`);
 
-                const seederBonus = seederFactor * 25 * adj * (WEIGHTS.SEEDER_COUNT * 10);
+                const seederBonus = combinedSeederFactor * 25 * adj * (WEIGHTS.SEEDER_COUNT * 10);
+                //console.log(`[DEBUG] Seeder bonus calculation:`);
+                //console.log(`[DEBUG] ${combinedSeederFactor.toFixed(3)} * 25 * ${adj.toFixed(3)} * (${WEIGHTS.SEEDER_COUNT} * 10)`);
+                //console.log(`[DEBUG] = ${seederBonus.toFixed(2)}`);
+
+                //console.log(`[DEBUG] Final score before seeder bonus: ${finalScore}`);
                 finalScore += seederBonus;
-            }
+                //console.log(`[DEBUG] Final score after seeder bonus: ${finalScore}`);
+            } //else {
+                //console.log(`[DEBUG] maxAvgSeeders is 0, no seeder bonus applied`);
+            //}
+            //console.log(`[DEBUG] === END SEEDER COUNT BONUS SCORING ===`);
         }
 
         // --- Edition count penalty (relative to max count) ---
@@ -521,7 +642,7 @@
             // Use a higher exponent for a steeper curve at low counts (e.g., 2.5)
             const penalty = Math.max(0, 1 - Math.pow(editionCountFactor, 1.0));
             // Add a small extra penalty for single-torrent editions
-            const singleTorrentPenalty = (count === 1) ? 1.5 : 0;
+            const singleTorrentPenalty = (count === 1) ? 2.0 : 0;
             const editionCountPenalty = (penalty + singleTorrentPenalty) * 25 * WEIGHTS.EDITION_COUNT;
             finalScore -= editionCountPenalty;
         }
@@ -649,8 +770,8 @@
                 }
 
                 // Compare base names for merged editions
-                const selectedBase = getEditionBase(editionName);
-                const rowBase = rowEdition ? getEditionBase(rowEdition) : '';
+                const selectedBase = getEditionBase(editionName).toLowerCase();
+                const rowBase = rowEdition ? getEditionBase(rowEdition).toLowerCase() : '';
 
                 if (rowBase === selectedBase) {
                     row.classList.remove('hidden');
@@ -790,6 +911,36 @@
         main();
     }
 
+    function addCustomUnignoreTag(tag) {
+        if (tag && !USER_SETTINGS.CUSTOM_UNIGNORE_TAGS.includes(tag)) {
+            USER_SETTINGS.CUSTOM_UNIGNORE_TAGS.push(tag);
+            saveSettings();
+            refreshPanels();
+        }
+    }
+
+    function removeCustomUnignoreTag(tag) {
+        const index = USER_SETTINGS.CUSTOM_UNIGNORE_TAGS.indexOf(tag);
+        if (index > -1) {
+            USER_SETTINGS.CUSTOM_UNIGNORE_TAGS.splice(index, 1);
+            saveSettings();
+            refreshPanels();
+        }
+    }
+
+    function debouncedRefresh() {
+        // Clear any existing timer
+        if (refreshTimer) {
+            clearTimeout(refreshTimer);
+        }
+
+        // Set a new timer
+        refreshTimer = setTimeout(() => {
+            refreshPanels();
+            refreshTimer = null;
+        }, REFRESH_DELAY);
+    }
+
     let customTagsListElement = null;
 
     function updateCustomTagsList() {
@@ -840,6 +991,59 @@
             tagItem.appendChild(tagText);
             tagItem.appendChild(removeButton);
             customTagsListElement.appendChild(tagItem);
+        });
+    }
+
+    let customUnignoreTagsListElement = null;
+
+    function updateCustomUnignoreTagsList() {
+        if (!customUnignoreTagsListElement) return;
+
+        customUnignoreTagsListElement.innerHTML = '';
+
+        if (USER_SETTINGS.CUSTOM_UNIGNORE_TAGS.length === 0) {
+            customUnignoreTagsListElement.innerHTML = '<div style="color: #888; font-style: italic; padding: 10px;">No custom unignore tags added</div>';
+            return;
+        }
+
+        USER_SETTINGS.CUSTOM_UNIGNORE_TAGS.forEach(tag => {
+            const tagItem = document.createElement('div');
+            tagItem.style.cssText = `
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 3px 5px;
+                margin: 2px 0;
+                background: #3a3a3a;
+                border-radius: 3px;
+            `;
+
+            const tagText = document.createElement('span');
+            tagText.textContent = tag;
+            tagText.style.fontSize = '0.9em';
+
+            const removeButton = document.createElement('button');
+            removeButton.textContent = '×';
+            removeButton.style.cssText = `
+                background: #d32f2f;
+                color: white;
+                border: none;
+                border-radius: 3px;
+                width: 20px;
+                height: 20px;
+                cursor: pointer;
+                font-size: 12px;
+                line-height: 1;
+            `;
+
+            removeButton.addEventListener('click', () => {
+                removeCustomUnignoreTag(tag);
+                updateCustomUnignoreTagsList();
+            });
+
+            tagItem.appendChild(tagText);
+            tagItem.appendChild(removeButton);
+            customUnignoreTagsListElement.appendChild(tagItem);
         });
     }
 
@@ -947,12 +1151,6 @@
             </tr>
         `;
 
-        // --- Age Based Controls ---
-        const thresholdsLabel = document.createElement('div');
-        thresholdsLabel.textContent = 'Thresholds (in days):';
-        thresholdsLabel.style.margin = '10px 0 5px 0';
-        body.appendChild(thresholdsLabel);
-
         const thresholdsTable = document.createElement('table');
         thresholdsTable.style.width = '100%';
         thresholdsTable.style.marginBottom = '10px';
@@ -972,10 +1170,9 @@
             ['AGE_FACTOR', 'Torrent Age'],
             ['QUALITY_TORRENT', 'GP Torrents'],
             ['AGE_THRESHOLD', 'Age Penalty Threshold (days)'],
-            ['FRESH_THRESHOLD', 'Fresh/Maturity Threshold (days)'],
-            ['_HR2', '']
+            ['FRESH_THRESHOLD', 'Fresh/Maturity Threshold (days)']
             ].forEach(([key, label]) => {
-                if (key === '_HR1' || key === '_HR2') {
+                if (key === '_HR1') {
                     const hr = document.createElement('tr');
                     const td = document.createElement('td');
                     td.colSpan = 2;
@@ -1048,11 +1245,121 @@
             });
             body.appendChild(weightsTable);
 
-        // --- Add all controls to body ---
-        [sortByLabel, sortBySelect, sortOrderLabel, sortOrderSelect, filterModeLabel, filterModeSelect, showStatsLabel, showStatsSelect].forEach(el => {
-            el.style.marginRight = '10px';
-            body.appendChild(el);
+        // --- Add Seeder Factor Weighting Controls ---
+        // --- Seeder Factor Weighting ---
+        const seederWeightLabel = document.createElement('div');
+        seederWeightLabel.textContent = 'Seeder Factor Weighting:';
+        seederWeightLabel.style.margin = '10px 0 5px 0';
+        body.appendChild(seederWeightLabel);
+
+        const seederWeightTable = document.createElement('table');
+        seederWeightTable.style.width = '100%';
+        seederWeightTable.style.marginBottom = '10px';
+
+        // Average seeders weight
+        const avgRow = document.createElement('tr');
+        const avgLabel = document.createElement('td');
+        avgLabel.textContent = 'Average Seeders Weight:';
+        avgLabel.title = 'Weight for average seeders per torrent (higher = favors editions with higher average seeders per torrent)';
+        const avgInput = document.createElement('td');
+        const avgSlider = document.createElement('input');
+        avgSlider.type = 'range';
+        avgSlider.min = '0';
+        avgSlider.max = '1';
+        avgSlider.step = '0.1';
+        avgSlider.value = USER_SETTINGS.SEEDER_AVG_WEIGHT;
+        avgSlider.style.width = '100px';
+        avgSlider.title = 'Weight for average seeders per torrent';
+
+        const avgValue = document.createElement('span');
+        avgValue.textContent = ` ${(USER_SETTINGS.SEEDER_AVG_WEIGHT * 100).toFixed(0)}%`;
+        avgValue.style.marginLeft = '10px';
+
+        avgSlider.addEventListener('input', () => {
+            const newValue = parseFloat(avgSlider.value);
+            USER_SETTINGS.SEEDER_AVG_WEIGHT = newValue;
+            USER_SETTINGS.SEEDER_TOTAL_WEIGHT = 1 - newValue;
+            totalSlider.value = USER_SETTINGS.SEEDER_TOTAL_WEIGHT;
+            avgValue.textContent = ` ${(newValue * 100).toFixed(0)}%`;
+            totalValue.textContent = ` ${((1 - newValue) * 100).toFixed(0)}%`;
+            saveSettings();
+            debouncedRefresh();
         });
+
+        avgInput.appendChild(avgSlider);
+        avgInput.appendChild(avgValue);
+        avgRow.appendChild(avgLabel);
+        avgRow.appendChild(avgInput);
+        seederWeightTable.appendChild(avgRow);
+
+        // Total seeders weight
+        const totalRow = document.createElement('tr');
+        const totalLabel = document.createElement('td');
+        totalLabel.textContent = 'Total Seeders Weight:';
+        totalLabel.title = 'Weight for total seeders (higher = favors editions with more total seeders)';
+        const totalInput = document.createElement('td');
+        const totalSlider = document.createElement('input');
+        totalSlider.type = 'range';
+        totalSlider.min = '0';
+        totalSlider.max = '1';
+        totalSlider.step = '0.1';
+        totalSlider.value = USER_SETTINGS.SEEDER_TOTAL_WEIGHT;
+        totalSlider.style.width = '100px';
+        totalSlider.title = 'Weight for total seeders';
+
+        const totalValue = document.createElement('span');
+        totalValue.textContent = ` ${(USER_SETTINGS.SEEDER_TOTAL_WEIGHT * 100).toFixed(0)}%`;
+        totalValue.style.marginLeft = '10px';
+
+        totalSlider.addEventListener('input', () => {
+            const newValue = parseFloat(totalSlider.value);
+            USER_SETTINGS.SEEDER_TOTAL_WEIGHT = newValue;
+            USER_SETTINGS.SEEDER_AVG_WEIGHT = 1 - newValue;
+            avgSlider.value = USER_SETTINGS.SEEDER_AVG_WEIGHT;
+            totalValue.textContent = ` ${(newValue * 100).toFixed(0)}%`;
+            avgValue.textContent = ` ${((1 - newValue) * 100).toFixed(0)}%`;
+            saveSettings();
+            debouncedRefresh();
+        });
+
+        totalInput.appendChild(totalSlider);
+        totalInput.appendChild(totalValue);
+        totalRow.appendChild(totalLabel);
+        totalRow.appendChild(totalInput);
+        seederWeightTable.appendChild(totalRow);
+        body.appendChild(seederWeightTable);
+        body.appendChild(document.createElement('hr'));
+
+        // --- User Settings Controls ---
+        // First row: Sort By and Sort Order
+        const sortRowDiv = document.createElement('div');
+        sortRowDiv.style.cssText = 'display: flex; gap: 15px; margin-bottom: 10px; align-items: center;';
+
+        [sortByLabel, sortBySelect, sortOrderLabel, sortOrderSelect].forEach(el => {
+            el.style.marginRight = '0'; // Remove individual margins
+            sortRowDiv.appendChild(el);
+        });
+        body.appendChild(sortRowDiv);
+
+        // Second row: Filter Mode
+        const filterRowDiv = document.createElement('div');
+        filterRowDiv.style.cssText = 'display: flex; gap: 15px; margin-bottom: 10px; align-items: center;';
+
+        [filterModeLabel, filterModeSelect].forEach(el => {
+            el.style.marginRight = '0';
+            filterRowDiv.appendChild(el);
+        });
+        body.appendChild(filterRowDiv);
+
+        // Third row: Show Stats
+        const statsRowDiv = document.createElement('div');
+        statsRowDiv.style.cssText = 'display: flex; gap: 15px; margin-bottom: 10px; align-items: center;';
+
+        [showStatsLabel, showStatsSelect].forEach(el => {
+            el.style.marginRight = '0';
+            statsRowDiv.appendChild(el);
+        });
+        body.appendChild(statsRowDiv);
 
         body.appendChild(document.createElement('hr'));
 
@@ -1161,11 +1468,75 @@
         addSection.appendChild(addButton);
         body.appendChild(addSection);
 
+        // --- Custom unignore tags management ---
+        body.appendChild(document.createElement('hr'));
+        const customUnignoreLabel = document.createElement('div');
+        customUnignoreLabel.textContent = 'Custom unignore tags (never ignore these):';
+        customUnignoreLabel.style.margin = '10px 0 5px 0';
+        body.appendChild(customUnignoreLabel);
+
+        const unignoreTagsList = document.createElement('div');
+        unignoreTagsList.id = 'custom-unignore-tags-list';
+        unignoreTagsList.style.cssText = `
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #444;
+            background: #2a2a2a;
+            border-radius: 3px;
+            padding: 5px;
+        `;
+        customUnignoreTagsListElement = unignoreTagsList;
+        body.appendChild(unignoreTagsList);
+
+        // Add new unignore tag input
+        const addUnignoreSection = document.createElement('div');
+        addUnignoreSection.style.marginTop = '10px';
+        const addUnignoreInput = document.createElement('input');
+        addUnignoreInput.type = 'text';
+        addUnignoreInput.placeholder = 'Enter tag to never ignore...';
+        addUnignoreInput.style.cssText = `
+            width: 60%;
+            padding: 5px;
+            border: 1px solid #444;
+            background: #2a2a2a;
+            color: white;
+            border-radius: 3px;
+            margin-right: 5px;
+        `;
+        const addUnignoreButton = document.createElement('button');
+        addUnignoreButton.textContent = 'Add Unignore Tag';
+        addUnignoreButton.style.cssText = `
+            padding: 5px 10px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.9em;
+        `;
+        addUnignoreButton.addEventListener('click', () => {
+            const tag = addUnignoreInput.value.trim();
+            if (tag) {
+                addCustomUnignoreTag(tag);
+                addUnignoreInput.value = '';
+                updateCustomUnignoreTagsList();
+            }
+        });
+        addUnignoreInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') addUnignoreButton.click();
+        });
+        addUnignoreSection.appendChild(addUnignoreInput);
+        addUnignoreSection.appendChild(addUnignoreButton);
+        body.appendChild(addUnignoreSection);
+
         panel.appendChild(heading);
         panel.appendChild(body);
 
         // Initialize the custom tags list
+        customTagsListElement = tagsList;
         updateCustomTagsList();
+        customUnignoreTagsListElement = unignoreTagsList;
+        updateCustomUnignoreTagsList();
 
         return panel;
     }
@@ -1287,8 +1658,58 @@
         return panel;
     }
 
+    function addUnignoreTagLink() {
+        // Only add if there are no editions or only theatrical
+        const editionList = document.querySelector('#edition-list');
+        if (!editionList || editionList.children.length <= 1) {
+            const linkbox = document.querySelector('.linkbox');
+            if (linkbox && !document.querySelector('#unignore-tag-link')) {
+                // Create the unignore tag link
+                const unignoreLink = document.createElement('a');
+                unignoreLink.id = 'unignore-tag-link';
+                unignoreLink.className = 'linkbox__link';
+                unignoreLink.href = '#';
+                unignoreLink.textContent = ' [Add Edition Unignore Tag]';
+                unignoreLink.title = 'Add a tag to never ignore for edition detection';
+
+                unignoreLink.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    showUnignoreTagDialog();
+                });
+
+                // Add to linkbox
+                linkbox.appendChild(unignoreLink);
+            }
+        }
+    }
+
+    function showUnignoreTagDialog() {
+        const tag = prompt('Enter a tag to never ignore for edition detection:\n\nThis will help if valid edition tags are being ignored.');
+
+        if (tag && tag.trim()) {
+            const trimmedTag = tag.trim();
+
+            // Add to unignore list
+            if (!USER_SETTINGS.CUSTOM_UNIGNORE_TAGS.includes(trimmedTag)) {
+                USER_SETTINGS.CUSTOM_UNIGNORE_TAGS.push(trimmedTag);
+                saveSettings();
+
+                // Show confirmation
+                alert(`"${trimmedTag}" added to unignore list.\n\nRefreshing page to apply changes...`);
+
+                // Refresh page to reprocess with new unignore tag
+                window.location.reload();
+            } else {
+                alert(`"${trimmedTag}" is already in the unignore list.`);
+            }
+        }
+    }
+
     async function main() {
         await loadSettings();
+        if (add_unignore_link) {
+            addUnignoreTagLink();
+        }
 
         // Find the torrent table
         const torrentTable = document.querySelector('#torrent-table');
@@ -1327,8 +1748,8 @@
             // If this base has >1 edition, merge them under the base name (capitalized)
             const base = getEditionBase(edition);
             const groupName = (baseToNames[base].length > 1)
-                ? base.replace(/\b\w/g, c => c.toUpperCase())
-                : edition.replace(/\b\w/g, c => c.toUpperCase());
+                ? baseToNames[base][0] // Use first edition name found for this base
+                : edition;
 
             if (!editionData[groupName]) {
                 editionData[groupName] = {
