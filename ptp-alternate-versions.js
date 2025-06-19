@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP - Alternate Versions Sidebar
-// @version      1.5.1
+// @version      1.5.2
 // @description  Add alternate versions tracking to the sidebar
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -277,7 +277,7 @@
             //console.log('[DEBUG] All relevant tags are boxset:', allBoxset, relevantTags);
             if (allBoxset) {
                 //console.log('[DEBUG] Ignoring row because all relevant tags are boxset:', tags);
-                return null; // Ignore boxset-only editions completely
+                return 'Theatrical'; // Ignore boxset-only editions completely
             }
         }
 
@@ -316,9 +316,9 @@
                 //console.log('[DEBUG] Returning non-boxset edition:', nonBoxset);
                 return nonBoxset;
             }
-            // If all are boxset, ignore
+            // If all are boxset
             // console.log('[DEBUG] All relevant tags are boxset (should not reach here):', relevantTags);
-            return null;
+            return 'Theatrical'; // Default to Theatrical if all are boxset
         }
 
         // If we have exactly one relevant tag, use it as the edition
