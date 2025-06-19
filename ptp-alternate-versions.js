@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP - Alternate Versions Sidebar
-// @version      1.5.0
+// @version      1.5.1
 // @description  Add alternate versions tracking to the sidebar
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -29,8 +29,7 @@
         SHOW_SETTINGS: true,           // New: toggle for settings panel
         CUSTOM_IGNORE_TAGS: [],          // New: user-defined ignore tags
         CUSTOM_UNIGNORE_TAGS: [],         // New: user-defined unignore tags
-        SEEDER_AVG_WEIGHT: 0.5,         // New: weight for average seeders (0-1)
-        SEEDER_TOTAL_WEIGHT: 0.5        // New: weight for total seeders (0-1)
+        INCLUDE_DVD_FORMATS: false      // New: include DVD5/DVD9 in disc penalty
     };
 
     // POPULARITY SCORE WEIGHTING CONSTANTS (adjust these to fine-tune scoring)
@@ -41,7 +40,10 @@
         SNATCH_RATIO: 0.4,      // Weight for snatch/seeder ratio (0 = no effect, 1 = full penalty for poor ratio)
         EDITION_COUNT: 0.5,     // Weight for number of torrents in edition (0 = no effect, 1 = full penalty for lesser torrents)
         SEEDER_COUNT: 0.6,        // Weight for high seeder count (0 = no effect, 1 = full bonus for highest seeders)
-        THEATRICAL_PENALTY: 0.0 // Weight for Theatrical editions (0 = no effect, 1 = full penalty for Theatrical editions)
+        SEEDER_AVG_WEIGHT: 0.5,         // Weight for average seeders (0-1)
+        SEEDER_TOTAL_WEIGHT: 0.5,        // Weight for total seeders (0-1)
+        THEATRICAL_PENALTY: 0.0, // Weight for Theatrical editions (0 = no effect, 1 = full penalty for Theatrical editions)
+        DISC_PENALTY: 0.0       // Weight for disc-based content
     };
 
     // Additional scoring constants
@@ -596,8 +598,8 @@
                 const totalSeederFactor = Math.log10(seeders + 1) / Math.log10(maxTotalSeeders + 1);
 
                 // Combine factors using user-adjustable weights
-                const avgWeight = USER_SETTINGS.SEEDER_AVG_WEIGHT;
-                const totalWeight = USER_SETTINGS.SEEDER_TOTAL_WEIGHT;
+                const avgWeight = WEIGHTS.SEEDER_AVG_WEIGHT;
+                const totalWeight = WEIGHTS.SEEDER_TOTAL_WEIGHT;
                 const combinedSeederFactor = (avgSeederFactor * avgWeight) + (totalSeederFactor * totalWeight);
 
                 //console.log(`[DEBUG] Avg seeder factor: ${avgSeederFactor.toFixed(3)}`);
@@ -645,6 +647,61 @@
             const singleTorrentPenalty = (count === 1) ? 2.0 : 0;
             const editionCountPenalty = (penalty + singleTorrentPenalty) * 25 * WEIGHTS.EDITION_COUNT;
             finalScore -= editionCountPenalty;
+        }
+
+        // --- Disc format penalty ---
+        if (WEIGHTS.DISC_PENALTY > 0) {
+            //console.log(`[DEBUG] === DISC FORMAT PENALTY SCORING ===`);
+            //console.log(`[DEBUG] WEIGHTS.DISC_PENALTY: ${WEIGHTS.DISC_PENALTY}`);
+
+            const discFormats = ['BD25', 'BD33', 'BD50', 'BD66', 'BD100'];
+            const dvdFormats = ['DVD5', 'DVD9'];
+            const formatsToCheck = USER_SETTINGS.INCLUDE_DVD_FORMATS
+                ? [...discFormats, ...dvdFormats]
+                : discFormats;
+
+            let discFormatCount = 0;
+            let totalTorrentsChecked = 0;
+
+            // Get all torrent rows from the page
+            const allTorrentRows = document.querySelectorAll('.torrent-info-link');
+            //console.log(`[DEBUG] Found ${allTorrentRows.length} total torrent rows on page`);
+
+            // We need to match torrents to this edition somehow
+            // Let's check all rows for now and see what we find
+            allTorrentRows.forEach((row, index) => {
+                totalTorrentsChecked++;
+
+                // Get all text from the row
+                const rowText = row.textContent || row.innerText || '';
+
+                // Check for disc formats in the row text
+                const foundFormats = formatsToCheck.filter(format =>
+                    rowText.toUpperCase().includes(format.toUpperCase())
+                );
+
+                if (foundFormats.length > 0) {
+                    discFormatCount++;
+                    //console.log(`[DEBUG] Row ${index}: Found disc formats: ${foundFormats.join(', ')}`);
+                    //console.log(`[DEBUG] - Row text (first 200 chars): ${rowText.substring(0, 200)}`);
+                }
+            });
+
+            const discFormatRatio = totalTorrentsChecked > 0 ? discFormatCount / totalTorrentsChecked : 0;
+            const discFormatPenalty = discFormatRatio * 25 * (WEIGHTS.DISC_PENALTY * 10);
+
+            //console.log(`[DEBUG] Disc format torrents: ${discFormatCount}/${totalTorrentsChecked}`);
+            //console.log(`[DEBUG] Disc format ratio: ${discFormatRatio.toFixed(3)}`);
+            //console.log(`[DEBUG] Formats checked: ${formatsToCheck.join(', ')}`);
+            //console.log(`[DEBUG] Disc format penalty: ${discFormatPenalty.toFixed(2)}`);
+
+            if (discFormatCount > 0) {
+                finalScore -= discFormatPenalty;
+                //console.log(`[DEBUG] Applied disc format penalty: -${discFormatPenalty.toFixed(2)}`);
+            }
+
+            //console.log(`[DEBUG] Final score after disc format penalty: ${finalScore}`);
+            //console.log(`[DEBUG] === END DISC FORMAT PENALTY SCORING ===`);
         }
 
         return Math.max(0, Math.round(finalScore));
@@ -1166,6 +1223,7 @@
             ['SNATCH_RATIO', 'Snatch/Seeder Ratio'],
             ['EDITION_COUNT', 'Edition Count Bonus'],
             ['THEATRICAL_PENALTY', 'Theatrical Penalty'],
+            ['DISC_PENALTY', 'Disc Format Penalty'],
             ['_HR1', ''],
             ['AGE_FACTOR', 'Torrent Age'],
             ['QUALITY_TORRENT', 'GP Torrents'],
@@ -1267,19 +1325,19 @@
         avgSlider.min = '0';
         avgSlider.max = '1';
         avgSlider.step = '0.1';
-        avgSlider.value = USER_SETTINGS.SEEDER_AVG_WEIGHT;
+        avgSlider.value = WEIGHTS.SEEDER_AVG_WEIGHT;
         avgSlider.style.width = '100px';
         avgSlider.title = 'Weight for average seeders per torrent';
 
         const avgValue = document.createElement('span');
-        avgValue.textContent = ` ${(USER_SETTINGS.SEEDER_AVG_WEIGHT * 100).toFixed(0)}%`;
+        avgValue.textContent = ` ${(WEIGHTS.SEEDER_AVG_WEIGHT * 100).toFixed(0)}%`;
         avgValue.style.marginLeft = '10px';
 
         avgSlider.addEventListener('input', () => {
             const newValue = parseFloat(avgSlider.value);
-            USER_SETTINGS.SEEDER_AVG_WEIGHT = newValue;
-            USER_SETTINGS.SEEDER_TOTAL_WEIGHT = 1 - newValue;
-            totalSlider.value = USER_SETTINGS.SEEDER_TOTAL_WEIGHT;
+            WEIGHTS.SEEDER_AVG_WEIGHT = newValue;
+            WEIGHTS.SEEDER_TOTAL_WEIGHT = 1 - newValue;
+            totalSlider.value = WEIGHTS.SEEDER_TOTAL_WEIGHT;
             avgValue.textContent = ` ${(newValue * 100).toFixed(0)}%`;
             totalValue.textContent = ` ${((1 - newValue) * 100).toFixed(0)}%`;
             saveSettings();
@@ -1303,19 +1361,19 @@
         totalSlider.min = '0';
         totalSlider.max = '1';
         totalSlider.step = '0.1';
-        totalSlider.value = USER_SETTINGS.SEEDER_TOTAL_WEIGHT;
+        totalSlider.value = WEIGHTS.SEEDER_TOTAL_WEIGHT;
         totalSlider.style.width = '100px';
         totalSlider.title = 'Weight for total seeders';
 
         const totalValue = document.createElement('span');
-        totalValue.textContent = ` ${(USER_SETTINGS.SEEDER_TOTAL_WEIGHT * 100).toFixed(0)}%`;
+        totalValue.textContent = ` ${(WEIGHTS.SEEDER_TOTAL_WEIGHT * 100).toFixed(0)}%`;
         totalValue.style.marginLeft = '10px';
 
         totalSlider.addEventListener('input', () => {
             const newValue = parseFloat(totalSlider.value);
-            USER_SETTINGS.SEEDER_TOTAL_WEIGHT = newValue;
-            USER_SETTINGS.SEEDER_AVG_WEIGHT = 1 - newValue;
-            avgSlider.value = USER_SETTINGS.SEEDER_AVG_WEIGHT;
+            WEIGHTS.SEEDER_TOTAL_WEIGHT = newValue;
+            WEIGHTS.SEEDER_AVG_WEIGHT = 1 - newValue;
+            avgSlider.value = WEIGHTS.SEEDER_AVG_WEIGHT;
             totalValue.textContent = ` ${(newValue * 100).toFixed(0)}%`;
             avgValue.textContent = ` ${((1 - newValue) * 100).toFixed(0)}%`;
             saveSettings();
@@ -1360,6 +1418,62 @@
             statsRowDiv.appendChild(el);
         });
         body.appendChild(statsRowDiv);
+
+        // DVD inclusion checkbox
+        const dvdCheckboxDiv = document.createElement('div');
+        dvdCheckboxDiv.style.marginBottom = '10px';
+
+        const dvdCheckbox = document.createElement('input');
+        dvdCheckbox.type = 'checkbox';
+        dvdCheckbox.checked = USER_SETTINGS.INCLUDE_DVD_FORMATS;
+        dvdCheckbox.style.marginRight = '8px';
+
+        const dvdLabel = document.createElement('label');
+        dvdLabel.textContent = 'Include DVD formats in disc penalty';
+        dvdLabel.style.cursor = 'pointer';
+        dvdLabel.title = 'Also penalize DVD5 and DVD9 torrents';
+
+        dvdCheckbox.addEventListener('change', () => {
+            USER_SETTINGS.INCLUDE_DVD_FORMATS = dvdCheckbox.checked;
+            saveSettings();
+            debouncedRefresh();
+        });
+
+        dvdLabel.addEventListener('click', () => dvdCheckbox.click());
+
+        dvdCheckboxDiv.appendChild(dvdCheckbox);
+        dvdCheckboxDiv.appendChild(dvdLabel);
+        body.appendChild(dvdCheckboxDiv);
+
+        // --- Reset Button ---
+        const resetButtonDiv = document.createElement('div');
+        resetButtonDiv.style.cssText = 'text-align: center; margin: 15px 0;';
+
+        const resetButton = document.createElement('button');
+        resetButton.textContent = 'Reset Weights to Script Defaults';
+        resetButton.style.cssText = `
+            padding: 6px 10px;
+            background: #d32f2f;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8em;
+            font-weight: bold;
+        `;
+
+        resetButton.addEventListener('click', resetWeightsToDefaults);
+
+        resetButton.addEventListener('mouseenter', () => {
+            resetButton.style.background = '#b71c1c';
+        });
+
+        resetButton.addEventListener('mouseleave', () => {
+            resetButton.style.background = '#d32f2f';
+        });
+
+        resetButtonDiv.appendChild(resetButton);
+        body.appendChild(resetButtonDiv);
 
         body.appendChild(document.createElement('hr'));
 
@@ -1701,6 +1815,71 @@
                 window.location.reload();
             } else {
                 alert(`"${trimmedTag}" is already in the unignore list.`);
+            }
+        }
+    }
+
+    async function resetWeightsToDefaults() {
+        if (confirm('Reset all weights to script defaults?')) {
+            console.log('[DEBUG] Resetting weights to script defaults...');
+
+            try {
+                // Get the current settings
+                const settingsJson = await GM.getValue('ptp-alternate-versions-settings', '{}');
+                const settings = JSON.parse(settingsJson);
+
+                //console.log('[DEBUG] Current settings:', settings);
+
+                // Reset the WEIGHTS section to script defaults
+                settings.WEIGHTS = {
+                    SNATCH_RATIO: 0.4,
+                    SEEDER_COUNT: 0.6,
+                    AGE_FACTOR: 0.0,
+                    EDITION_COUNT: 0.5,
+                    QUALITY_TORRENT: 0.2,
+                    THEATRICAL_PENALTY: 0.0,
+                    DISC_PENALTY: 0.0,
+                    SEEDER_AVG_WEIGHT: 0.5,
+                    SEEDER_TOTAL_WEIGHT: 0.5
+                };
+
+                // Reset THRESHOLDS section to script defaults
+                settings.THRESHOLDS = {
+                    AGE_THRESHOLD: 712,
+                    FRESH_THRESHOLD: 356
+                };
+
+                // Save the updated settings
+                await GM.setValue('ptp-alternate-versions-settings', JSON.stringify(settings));
+
+                // Update the in-memory WEIGHTS object
+                WEIGHTS.SNATCH_RATIO = 0.4;
+                WEIGHTS.SEEDER_COUNT = 0.6;
+                WEIGHTS.AGE_FACTOR = 0.0;
+                WEIGHTS.EDITION_COUNT = 0.5;
+                WEIGHTS.QUALITY_TORRENT = 0.2;
+                WEIGHTS.THEATRICAL_PENALTY = 0.0;
+                WEIGHTS.DISC_PENALTY = 0.0;
+                WEIGHTS.SEEDER_AVG_WEIGHT = 0.5;
+                WEIGHTS.SEEDER_TOTAL_WEIGHT = 0.5;
+                THRESHOLDS.AGE_THRESHOLD = 712;
+                THRESHOLDS.FRESH_THRESHOLD = 356;
+
+                //console.log('[DEBUG] Updated settings:', settings);
+                //console.log('[DEBUG] Updated WEIGHTS:', WEIGHTS);
+
+                // Update UI sliders
+                //updateWeightSliders();
+
+                // Refresh panels
+                refreshPanels();
+
+                //console.log('[DEBUG] Weights reset to script defaults');
+
+            } catch (error) {
+                console.error('[DEBUG] Error resetting weights:', error);
+                alert('Error resetting weights. The page will reload.');
+                window.location.reload();
             }
         }
     }
