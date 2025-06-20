@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.1.4
+// @version      1.1.5
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -30,15 +30,22 @@
     const ALTERNATE_VERSIONS_PANEL_OPEN = false; // Set to true to open the alternate versions panel by default
     const SHOW_KEYWORDS = true; // Show or don't show keywords
     const KEYWORDS_PANEL_OPEN = false; // Set to true to open the keywords panel by default
+    const SHOW_PARENTS_GUIDE = true; // Show or don't show parental guide
+    const isPanelVisible = true; // Show or don't show parental guide toggleable sections
+    const isToggleableSections = true; // Set to true
+    const hideSpoilers = true; // Hide parental guide spoilers by default
+    const hidetext = false; // Hide parental guide text by default
 
     // order of the panels in the sidebar
     const techspecsLocation = 1;
     const boxofficeLocation = 2;
-    const awardsLocation = 3;
+    const awardsLocation = 4;
     // move the existing tags html element
-    const existingIMDBtags = 5;
+    const existingIMDBtags = 6;
     // only if displaying in sidebar
-    const similarmoviesLocation = 4;
+    const similarmoviesLocation = 5;
+    // only if displaying parental guide
+    const parentsLocation = 3
 
     // Function to format and move the IMDb panel
     function formatIMDbText() {
@@ -475,6 +482,28 @@
                                 hasNextPage
                             }
                         }
+                        parentsGuide {
+                            categories {
+                                category {
+                                    text
+                                }
+                                guideItems(first: 100) {
+                                    edges {
+                                        node {
+                                            ... on ParentsGuideItem {
+                                                isSpoiler
+                                                text {
+                                                    plainText
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                severity {
+                                    text
+                                }
+                            }
+                        }
                     }
                 }
             `,
@@ -496,6 +525,7 @@
                 onload: async function (response) {
                     if (response.status >= 200 && response.status < 300) {
                         const data = JSON.parse(response.responseText);
+                        //console.log("IMDb data fetched successfully:", data); // Log the fetched data
                         if (data && data.data && data.data.title) {
                             const titleData = data.data.title;
                             const soundtracks = titleData.soundtrack.edges;
@@ -745,7 +775,7 @@
             }
 
             let title = movie.titleText.text;
-            let searchLink = `https://passthepopcorn.me/torrents.php?action=advanced&searchstr=${movie.id}`;
+            let searchLink = `https://passthepopcorn.me/torrents.php?imdb=${movie.id}`;
             let image = movie.primaryImage.url;
 
             var movieDiv = document.createElement('div');
@@ -1396,6 +1426,171 @@
         }
     }
 
+    function addParentalGuidePanel(imdbData) {
+        // Add CSS if not already present
+        if (!document.getElementById('parental-guide-style')) {
+            const style = document.createElement('style');
+            style.id = 'parental-guide-style';
+            style.type = 'text/css';
+            style.innerHTML = `
+                .parentalspoiler { color: transparent; }
+                .parentalspoiler:hover { color: inherit; }
+                .parentalHeader { color: #F2DB83; margin-top: 12px; margin-bottom: 5px; }
+                .parentalHeader:hover { cursor: pointer; }
+                .hide { display: none; }
+            `;
+            document.head.appendChild(style);
+        }
+
+        // Build panel structure
+        const advisoryDiv = document.createElement('div');
+        const newPanel = document.createElement('div');
+        newPanel.className = 'panel';
+        newPanel.id = 'parents_guide';
+
+        const panelHeading = document.createElement('div');
+        panelHeading.className = 'panel__heading';
+
+        const title = document.createElement('span');
+        title.className = 'panel__heading__title';
+        const imdb = document.createElement('span');
+        imdb.style.color = '#F2DB83';
+        imdb.textContent = 'iMDB';
+        title.appendChild(imdb);
+        title.appendChild(document.createTextNode(' Parental Notes'));
+
+        const toggle = document.createElement('a');
+        toggle.className = 'panel__heading__toggler';
+        toggle.title = 'Toggle';
+        toggle.href = '#';
+        toggle.textContent = 'Toggle';
+
+        // Try to get imdbId for the link (optional)
+        let imdbId = null;
+        if (Array.isArray(imdbData)) {
+            // If only categories array is passed, skip imdbId
+        } else if (imdbData?.parentsGuide?.title?.id) {
+            imdbId = imdbData.parentsGuide.title.id;
+        } else if (imdbData?.title?.id) {
+            imdbId = imdbData.title.id;
+        }
+
+        const imdbDisplay = document.createElement('a');
+        imdbDisplay.title = 'IMDB Url';
+        imdbDisplay.href = imdbId ? `https://www.imdb.com/title/${imdbId}/parentalguide` : "#";
+        imdbDisplay.target = "_blank";
+        imdbDisplay.textContent = 'IMDB Url';
+        imdbDisplay.style.cssText = "margin-left: 5px;";
+
+        toggle.onclick = function () {
+            const panelBody = document.querySelector('#parents_guide .panel__body');
+            panelBody.style.display = (panelBody.style.display === 'none') ? 'block' : 'none';
+            return false;
+        };
+
+        panelHeading.appendChild(title);
+        panelHeading.appendChild(imdbDisplay);
+        panelHeading.appendChild(toggle);
+        newPanel.appendChild(panelHeading);
+
+        const panelBody = document.createElement('div');
+        panelBody.className = 'panel__body';
+        panelBody.style.position = 'relative';
+        panelBody.style.display = isPanelVisible ? 'block' : 'none';
+        panelBody.style.paddingTop = "0px";
+        panelBody.appendChild(advisoryDiv);
+        newPanel.appendChild(panelBody);
+
+        // Insert panel into sidebar
+        const sidebar = document.querySelector('div.sidebar');
+        if (sidebar) sidebar.insertBefore(newPanel, sidebar.childNodes[3 + parentsLocation]);
+
+        // --- Extract categories robustly ---
+        let categories;
+        if (Array.isArray(imdbData)) {
+            categories = imdbData;
+        } else {
+            categories =
+                imdbData?.parentsGuide?.title?.parentsGuide?.categories ||
+                imdbData?.title?.parentsGuide?.categories ||
+                imdbData?.parentsGuide?.categories;
+        }
+
+        if (!categories || !Array.isArray(categories) || categories.length === 0) {
+            advisoryDiv.textContent = "No parental guide data found.";
+            return;
+        }
+        renderParentalGuideCategories(categories, advisoryDiv, { hidetext, isToggleableSections, hideSpoilers });
+    }
+
+    // Helper function to render categories
+    function renderParentalGuideCategories(categories, advisoryDiv, opts) {
+        const { hidetext, isToggleableSections, hideSpoilers } = opts;
+        for (let i = 0; i < categories.length; i++) {
+            const container = document.createElement("div");
+            const itemHeader = document.createElement("h4");
+            itemHeader.className = "parentalHeader";
+
+            const severity = document.createElement("span");
+            if (categories[i].severity != null) {
+                const sev = categories[i].severity.text;
+                severity.style.color =
+                    sev === "None" ? "#F2DB83" :
+                    sev === "Mild" ? "#c5e197" :
+                    sev === "Moderate" ? "#fbca8c" :
+                    sev === "Severe" ? "#ffb3ad" : "#F2DB83";
+                severity.innerHTML = sev;
+            } else {
+                severity.innerHTML = "Unknown";
+            }
+
+            itemHeader.innerHTML = categories[i].category.text + " - ";
+            itemHeader.appendChild(severity);
+            itemHeader.innerHTML += ` - (${categories[i].guideItems.edges.length})`;
+            container.appendChild(itemHeader);
+
+            const listItems = document.createElement("ul");
+            listItems.style.paddingLeft = "0px";
+            listItems.style.margin = "0px 15px";
+            listItems.style.marginLeft = "10px";
+
+            if (isToggleableSections) listItems.classList.add("hide");
+
+            for (let j = 0; j < categories[i].guideItems.edges.length; j++) {
+                const currentItem = categories[i].guideItems.edges[j];
+                const item = document.createElement("li");
+                item.style.padding = "3px 0px";
+                const text = document.createElement('a');
+                text.style.color = "#FFF";
+                text.textContent = currentItem.node.text.plainText;
+                if (hidetext) text.classList.add('parentalspoiler');
+                if (currentItem.node.isSpoiler && hideSpoilers) {
+                    text.textContent = "Potential Spoilers";
+                    text.style.textDecoration = "underline";
+                    text.onclick = (e) => {
+                        if (e.target.textContent == currentItem.node.text.plainText) {
+                            e.target.textContent = "Potential Spoilers";
+                            e.target.style.textDecoration = "underline";
+                        } else {
+                            e.target.textContent = currentItem.node.text.plainText;
+                            e.target.style.textDecoration = "none";
+                        }
+                    };
+                }
+                item.appendChild(text);
+                listItems.appendChild(item);
+            }
+            container.appendChild(listItems);
+            advisoryDiv.appendChild(container);
+            if (isToggleableSections) {
+                itemHeader.onclick = () => {
+                    let list = itemHeader.parentElement.querySelector("ul");
+                    list.classList.toggle("hide");
+                };
+            }
+        }
+    }
+
     // Initialize panels
     fetchIMDBData(imdbId).then(data => {
         // The data returned now contains titleData, processedSoundtracks, and idToNameMap
@@ -1436,6 +1631,9 @@
                 displayKeywordsPanel(titleData.keywords.edges);
             } else {
                 console.warn("No keywords found");
+            }
+            if (SHOW_PARENTS_GUIDE) {
+                addParentalGuidePanel(titleData.parentsGuide.categories);
             }
         } else {
             console.error("Failed to retrieve valid title data");
