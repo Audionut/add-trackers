@@ -1455,7 +1455,7 @@
         title.className = 'panel__heading__title';
         const imdb = document.createElement('span');
         imdb.style.color = '#F2DB83';
-        imdb.textContent = 'iMDB';
+        imdb.textContent = 'IMDb';
         title.appendChild(imdb);
         title.appendChild(document.createTextNode(' Parental Notes'));
 
