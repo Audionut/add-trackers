@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP - Alternate Versions Sidebar
-// @version      1.5.2
+// @version      1.5.3
 // @description  Add alternate versions tracking to the sidebar
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -81,7 +81,7 @@
         // Groups (last tag pattern)
         /^[A-Z0-9]{2,10}$/i,
         // Site tags
-        'Downloaded', 'Snatched', 'Seeding', 'Trumpable', 'Release Group', 'Scene', 'Freeleech!', 'Half Leech!', 'Neutral Leech!', 'Half-Leech!',
+        'Downloaded', 'Snatched', 'Seeding', 'Trumpable', 'Release Group', 'Scene', 'Freeleech!', 'Half Leech!', 'Neutral Leech!', 'Half-Leech!', 'Freeleech', 'Half Leech', 'Neutral Leech', 'Half-Leech',
         // Legitimate edition tags that are not Alternate Versions
         'Masters of Cinema', 'Collection', 'StudioCanal', 'Kino Lorber', 'Anniversary', 'Lionsgate', 'Medusa', 'English Dub'
     ];
@@ -158,6 +158,11 @@
 
             // Exact match first
             if (tag.toLowerCase() === ignored.toLowerCase()) {
+                return true;
+            }
+
+            const strippedTag = tag.replace(/\s*\([^)]*\)/g, '').trim();
+            if (strippedTag.toLowerCase() === ignored.toLowerCase()) {
                 return true;
             }
 
