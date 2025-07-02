@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.1.5
+// @version      1.1.5.1
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -1321,7 +1321,7 @@
                 const headerDiv = document.createElement('div');
                 headerDiv.innerHTML = headerHtml;
                 headerDiv.style.cursor = 'pointer';
-                headerDiv.style.userSelect = 'none';
+                headerDiv.style.userSelect = 'text';
                 headerDiv.style.padding = '2px 0';
 
                 // Create details div, hidden by default
