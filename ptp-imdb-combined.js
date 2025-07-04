@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.1.5.1
+// @version      1.1.5.2
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -1320,7 +1320,7 @@
                 // Create clickable header
                 const headerDiv = document.createElement('div');
                 headerDiv.innerHTML = headerHtml;
-                headerDiv.style.cursor = 'pointer';
+                headerDiv.style.cursor = 'auto';
                 headerDiv.style.userSelect = 'text';
                 headerDiv.style.padding = '2px 0';
 
@@ -1330,6 +1330,7 @@
                 detailsDiv.style.whiteSpace = 'pre-line';
                 detailsDiv.style.marginTop = '4px';
                 detailsDiv.textContent = details;
+                detailsDiv.style.userSelect = 'text';
 
                 // Toggle details on header click
                 headerDiv.addEventListener('click', () => {
