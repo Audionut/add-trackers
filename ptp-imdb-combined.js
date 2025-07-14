@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.1.5.2
+// @version      1.1.5.3
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -49,32 +49,39 @@
 
     // Function to format and move the IMDb panel
     function formatIMDbText() {
-        // Find the entire IMDb panel container
-        var imdbPanel = document.querySelector('div.box_tags.panel');
         var sidebar = document.querySelector('div.sidebar');
-
         if (!sidebar) {
             console.error("Sidebar not found");
             return;
         }
 
-        if (imdbPanel) {
-            // Find the panel heading inside the IMDb panel
+        // Find all panels with heading "IMDb tags"
+        var imdbPanels = Array.from(document.querySelectorAll('div.box_tags.panel')).filter(panel => {
+            var heading = panel.querySelector('.panel__heading__title');
+            return heading && heading.textContent.trim() === 'IMDb tags';
+        });
+
+        // Find the User tags panel
+        var userTagsPanel = Array.from(document.querySelectorAll('div.box_tags.panel')).find(panel => {
+            var heading = panel.querySelector('.panel__heading__title');
+            return heading && heading.textContent.trim() === 'User tags';
+        });
+
+        imdbPanels.forEach(imdbPanel => {
+            // Format the heading
             var imdbElement = imdbPanel.querySelector('.panel__heading__title');
-
-            // Create the new formatted HTML for the heading
-            var formattedHTML = '<span class="panel__heading__title"><span style="color: rgb(242, 219, 131);">IMDb</span> tags</span>';
-            // Set the inner HTML of the element to the formatted HTML
             if (imdbElement) {
-                imdbElement.innerHTML = formattedHTML;
+                imdbElement.innerHTML = '<span class="panel__heading__title"><span style="color: rgb(242, 219, 131);">IMDb</span> tags</span>';
             }
-
-            // Move the entire IMDb panel to the new location within the sidebar
+            // Move the IMDb panel to the desired location
             sidebar.insertBefore(imdbPanel, sidebar.childNodes[3 + existingIMDBtags]);
-        }
+
+            // If User tags panel exists, append it directly after IMDb tags panel
+            if (userTagsPanel) {
+                sidebar.insertBefore(userTagsPanel, imdbPanel.nextSibling);
+            }
+        });
     }
-    // Run the function when the DOM is fully loaded
-    window.addEventListener('load', formatIMDbText);
 
     var link = document.querySelector("a#imdb-title-link.rating");
     if (!link) {
@@ -1636,6 +1643,7 @@
             if (SHOW_PARENTS_GUIDE) {
                 addParentalGuidePanel(titleData.parentsGuide.categories);
             }
+            formatIMDbText()
         } else {
             console.error("Failed to retrieve valid title data");
         }
