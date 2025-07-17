@@ -38,6 +38,7 @@ class Wait:
 
     def __init__(self):
         self.qbt_client = None
+        self.hash_to_filename = {}
 
     async def connect_qbittorrent(self):
         if self.qbt_client:
@@ -92,6 +93,8 @@ class Wait:
         for torrent_file in torrent_files:
             v1_hash = await self.get_v1_hash_from_torrent_file(torrent_file)
             if v1_hash:
+                self.hash_to_filename[v1_hash] = torrent_file.name
+
                 torrent_hashes.append({
                     'file': torrent_file.name,
                     'hash': v1_hash
@@ -224,13 +227,18 @@ class Wait:
                                     except Exception as e:
                                         print(f"[bold red]Failed to delete files: {str(e)}")
 
-                            torrent_file_path = os.path.join(config["file_path"], f"{torrent.name}.torrent")
-                            if os.path.exists(torrent_file_path):
-                                try:
-                                    os.remove(torrent_file_path)
-                                    print(f"[green]Deleted .torrent file: {torrent_file_path}")
-                                except Exception as e:
-                                    print(f"[bold red]Failed to delete .torrent file: {e}")
+                            if torrent.hash in self.hash_to_filename:
+                                torrent_file_path = os.path.join(config["file_path"], self.hash_to_filename[torrent.hash])
+                                if os.path.exists(torrent_file_path):
+                                    try:
+                                        os.remove(torrent_file_path)
+                                        print(f"[green]Deleted .torrent file: {torrent_file_path}")
+                                    except Exception as e:
+                                        print(f"[bold red]Failed to delete .torrent file: {e}")
+                                else:
+                                    print(f"[yellow]Torrent file not found: {torrent_file_path}")
+                            else:
+                                print(f"[yellow]No filename mapping found for hash: {torrent.hash}")
 
                             try:
                                 with open(config["hashes_path"], "a", encoding="utf-8") as hashfile:
