@@ -17,5 +17,6 @@ config = {
     },
     "file_path": "/path/to/torrent/files",  # Change this to your cross-seed "outputDir" files directory
     "hashes_path": "X:\\path\\to\\hashes.txt",  # Change this to your desired hashes file path
+    # Leave this as default to skip updating the cross-seed config file
     "cross_seed_config_path": "C:\\Users\\USERNAME\\AppData\\Local\\cross-seed\\config.js"  # Change this to your desired cross-seed config file path
 }
