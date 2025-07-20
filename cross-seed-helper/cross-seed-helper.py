@@ -12,7 +12,7 @@ from config import config
 
 
 # Look for torrent files in the file_path directory
-# and match them against the hashes in the qBittorrent client.
+# and match them against the hashes in the qBittorrent client that have not completed.
 # If a match is found, prompt to delete the torrent from client, and optionally its files.
 # Will also remove the .torent files from the file_path directory.
 # Adds any deleted torrent's hash to a hashes.txt file in cross-seed blockList format.
