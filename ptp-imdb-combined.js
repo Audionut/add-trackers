@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.1.6
+// @version      1.1.6.1
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -41,6 +41,9 @@ let AWARDS_LOCATION = 4;
 let EXISTING_IMDB_TAGS = 6;
 let SIMILAR_MOVIES_LOCATION = 5;
 let PARENTS_LOCATION = 3;
+let CAST_FILTER_TYPE = 'actors'; // 'actors' or 'all'
+let CAST_MAX_DISPLAY = 128;
+let CONST_PIXEL_HEIGHT = 300;
 
 const saveSettings = () => {
     GM.setValue('SHOW_SIMILAR_MOVIES', SHOW_SIMILAR_MOVIES);
@@ -60,6 +63,9 @@ const saveSettings = () => {
     GM.setValue('hideSpoilers', hideSpoilers);
     GM.setValue('hidetext', hidetext);
     GM.setValue('SHOW_CAST_PHOTOS', SHOW_CAST_PHOTOS);
+    GM.setValue('CAST_FILTER_TYPE', CAST_FILTER_TYPE);
+    GM.setValue('CAST_MAX_DISPLAY', CAST_MAX_DISPLAY);
+    GM.setValue('CONST_PIXEL_HEIGHT', CONST_PIXEL_HEIGHT);
     GM.setValue('TECHSPECS_LOCATION', TECHSPECS_LOCATION);
     GM.setValue('BOXOFFICE_LOCATION', BOXOFFICE_LOCATION);
     GM.setValue('AWARDS_LOCATION', AWARDS_LOCATION);
@@ -68,7 +74,6 @@ const saveSettings = () => {
     GM.setValue('PARENTS_LOCATION', PARENTS_LOCATION);
 };
 
-// Update loadSettings function:
 const loadSettings = async () => {
     SHOW_SIMILAR_MOVIES = await GM.getValue('SHOW_SIMILAR_MOVIES', true);
     PLACE_UNDER_CAST = await GM.getValue('PLACE_UNDER_CAST', false);
@@ -87,6 +92,9 @@ const loadSettings = async () => {
     hideSpoilers = await GM.getValue('hideSpoilers', true);
     hidetext = await GM.getValue('hidetext', false);
     SHOW_CAST_PHOTOS = await GM.getValue('SHOW_CAST_PHOTOS', true);
+    CAST_FILTER_TYPE = await GM.getValue('CAST_FILTER_TYPE', 'actors');
+    CAST_MAX_DISPLAY = await GM.getValue('CAST_MAX_DISPLAY', 128);
+    CONST_PIXEL_HEIGHT = await GM.getValue('CONST_PIXEL_HEIGHT', 300);
     TECHSPECS_LOCATION = await GM.getValue('TECHSPECS_LOCATION', 1);
     BOXOFFICE_LOCATION = await GM.getValue('BOXOFFICE_LOCATION', 2);
     AWARDS_LOCATION = await GM.getValue('AWARDS_LOCATION', 4);
@@ -101,7 +109,7 @@ const flushCache = async () => {
         const keys = await GM.listValues();
         let deletedCount = 0;
 
-        // Delete all cache keys (they typically contain 'data' in the name)
+        // Delete all cache keys
         for (const key of keys) {
             if (key.includes('_data_') || key.includes('iMDB_') || key.includes('names_')) {
                 await GM.deleteValue(key);
@@ -119,7 +127,6 @@ const flushCache = async () => {
 
 GM_registerMenuCommand('⚙️ IMDB Script Settings', showSettingsPanel);
 
-// Add this function to create and show the settings panel:
 function showSettingsPanel() {
     // Remove existing panel if it exists
     const existingPanel = document.getElementById('imdb-settings-panel');
@@ -211,8 +218,49 @@ function showSettingsPanel() {
                         
                         <label style="display: block; margin-bottom: 10px; cursor: pointer;">
                             <input type="checkbox" id="show-cast-photos" style="margin-right: 8px;">
-                            <span>Cast Photos</span>
+                            <span>Credit Photos</span>
                         </label>
+                        
+                        <div style="margin-left: 20px; margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 8px;">
+                                <span style="display: block; margin-bottom: 3px; font-size: 0.9em;">Credit Types:</span>
+                                <select id="cast-filter-type" style="
+                                    padding: 4px;
+                                    background: #444;
+                                    color: #fff;
+                                    border: 1px solid #666;
+                                    border-radius: 3px;
+                                    width: 120px;
+                                ">
+                                    <option value="actors">Actors/Actresses Only</option>
+                                    <option value="all">All Credits</option>
+                                </select>
+                            </label>
+                            
+                            <label style="display: block; margin-bottom: 8px;">
+                                <span style="display: block; margin-bottom: 3px; font-size: 0.9em;">Max Credits:</span>
+                                <input type="number" id="cast-max-display" min="12" max="500" step="12" style="
+                                    width: 80px;
+                                    padding: 4px;
+                                    background: #444;
+                                    color: #fff;
+                                    border: 1px solid #666;
+                                    border-radius: 3px;
+                                ">
+                            </label>
+
+                            <label style="display: block; margin-bottom: 8px;">
+                                <span style="display: block; margin-bottom: 3px; font-size: 0.9em;">Credit Image Height:</span>
+                                <input type="number" id="panel-height" min="100" max="800" step="10" value="${CONST_PIXEL_HEIGHT}" style="
+                                    width: 80px;
+                                    padding: 4px;
+                                    background: #444;
+                                    color: #fff;
+                                    border: 1px solid #666;
+                                    border-radius: 3px;
+                                ">
+                            </label>
+                        </div>
                         
                         <label style="display: block; margin-bottom: 10px; cursor: pointer;">
                             <input type="checkbox" id="show-alternate-versions" style="margin-right: 8px;">
@@ -439,6 +487,9 @@ function loadSettingsIntoForm() {
     document.getElementById('show-awards').checked = SHOW_AWARDS;
     document.getElementById('show-soundtracks').checked = SHOW_SOUNDTRACKS;
     document.getElementById('show-cast-photos').checked = SHOW_CAST_PHOTOS;
+    document.getElementById('cast-filter-type').value = CAST_FILTER_TYPE;
+    document.getElementById('cast-max-display').value = CAST_MAX_DISPLAY;
+    document.getElementById('panel-height').value = CONST_PIXEL_HEIGHT;
     document.getElementById('show-alternate-versions').checked = SHOW_ALTERNATE_VERSIONS;
     document.getElementById('alternate-versions-open').checked = ALTERNATE_VERSIONS_PANEL_OPEN;
     document.getElementById('show-keywords').checked = SHOW_KEYWORDS;
@@ -465,6 +516,9 @@ function saveSettingsFromForm() {
     SHOW_AWARDS = document.getElementById('show-awards').checked;
     SHOW_SOUNDTRACKS = document.getElementById('show-soundtracks').checked;
     SHOW_CAST_PHOTOS = document.getElementById('show-cast-photos').checked;
+    CAST_FILTER_TYPE = document.getElementById('cast-filter-type').value;
+    CAST_MAX_DISPLAY = parseInt(document.getElementById('cast-max-display').value) || 128;
+    CONST_PIXEL_HEIGHT = parseInt(document.getElementById('panel-height').value) || 300;
     SHOW_ALTERNATE_VERSIONS = document.getElementById('show-alternate-versions').checked;
     ALTERNATE_VERSIONS_PANEL_OPEN = document.getElementById('alternate-versions-open').checked;
     SHOW_KEYWORDS = document.getElementById('show-keywords').checked;
@@ -485,7 +539,6 @@ function saveSettingsFromForm() {
     saveSettings();
     closeSettingsPanel();
     
-    // Show confirmation and reload
     alert('Settings saved successfully!\nReloading page to apply changes...');
     window.location.reload();
 }
@@ -505,7 +558,6 @@ function handleFlushCache() {
 
 function handleResetAll() {
     if (confirm('Reset all settings to defaults AND flush all cached data?\n\nThis will:\n- Reset all toggles to default\n- Delete all cached IMDB data\n- Require page reload')) {
-        // Reset all settings to defaults
         SHOW_SIMILAR_MOVIES = true;
         PLACE_UNDER_CAST = false;
         SHOW_TECHNICAL_SPECIFICATIONS = true;
@@ -523,6 +575,9 @@ function handleResetAll() {
         hideSpoilers = true;
         hidetext = false;
         SHOW_CAST_PHOTOS = true;
+        CAST_FILTER_TYPE = 'actors';
+        CAST_MAX_DISPLAY = 128;
+        CONST_PIXEL_HEIGHT = 300;
         TECHSPECS_LOCATION = 1;
         BOXOFFICE_LOCATION = 2;
         PARENTS_LOCATION = 3;
@@ -563,7 +618,6 @@ function handleResetAll() {
         });
 
         imdbPanels.forEach(imdbPanel => {
-            // Format the heading
             var imdbElement = imdbPanel.querySelector('.panel__heading__title');
             if (imdbElement) {
                 imdbElement.innerHTML = '<span class="panel__heading__title"><span style="color: rgb(242, 219, 131);">IMDb</span> tags</span>';
@@ -596,14 +650,14 @@ function handleResetAll() {
         return;
     }
 
-    // Cache duration (1 week in milliseconds)
-    const CACHE_DURATION = CACHE_EXPIRY_DAYS * 24 * 60 * 60 * 1000; // 1 week
+    // Cache duration (1 week (by default) in milliseconds)
+    const CACHE_DURATION = CACHE_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
 
     // Compress and set cache with expiration
     const setCache = async (key, data) => {
         const cacheData = {
             timestamp: Date.now(),
-            data: LZString.compress(JSON.stringify(data)) // Compress the data before storing
+            data: LZString.compress(JSON.stringify(data))
         };
         await GM.setValue(key, JSON.stringify(cacheData));
     };
@@ -633,7 +687,7 @@ function handleResetAll() {
                 console.error("Error parsing cache for key:", key, error);
             }
         }
-        return null; // No cache found or cache was invalid/expired
+        return null;
     };
 
     // Function to fetch names from IMDb API with caching
@@ -677,7 +731,6 @@ function handleResetAll() {
                         const data = JSON.parse(response.responseText);
                         //console.log("Name ID query output:", data.data.names); // Log the output
 
-                        // Cache the names
                         setCache(cacheKey, data.data.names);
 
                         resolve(data.data.names);
@@ -692,24 +745,16 @@ function handleResetAll() {
         });
     };
 
-    let processedSoundtracks = [];
-    let idToNameMap = {};
-
     // Function to fetch data from IMDb API with caching and expiration
     const fetchIMDBData = async (imdbId, afterCursor = null, allAwards = []) => {
         const cacheKey = `iMDB_data_${imdbId}`;
 
-        // Try to get cached IMDb data with compression and expiration
         const cachedData = await getCache(cacheKey);
         if (cachedData) {
             console.log("Using cached compressed IMDb data");
-            // Check if cached data has the expected structure
             if (cachedData.data && cachedData.data.title) {
-                // Convert cached data to the expected return format
                 const titleData = cachedData.data.title;
                 const soundtracks = titleData.soundtrack.edges;
-
-                // Extract unique IDs and process soundtracks (same logic as fresh fetch)
                 const uniqueIds = [];
                 soundtracks.forEach(edge => {
                     edge.node.comments.forEach(comment => {
@@ -720,7 +765,6 @@ function handleResetAll() {
                     });
                 });
 
-                // Add unique IDs from credits
                 const credits = titleData.credits.edges;
                 credits.forEach(edge => {
                     const creditNode = edge.node;
@@ -729,23 +773,19 @@ function handleResetAll() {
                     }
                 });
 
-                // Fetch names and process soundtracks
                 const uniqueIdSet = [...new Set(uniqueIds)];
                 const names = await fetchNames(uniqueIdSet);
-
                 const idToNameMap = {};
                 names.forEach(name => {
                     idToNameMap[name.id] = name.nameText.text;
                 });
 
-                // Process soundtracks (same logic as fresh fetch)
                 const processedSoundtracks = soundtracks.map(edge => {
                     const soundtrack = edge.node;
                     let artistName = null;
                     let artistLink = null;
                     let artistId = null;
 
-                    // Same soundtrack processing logic...
                     soundtrack.comments.forEach(comment => {
                         const performedByMatch = comment.markdown.match(/Performed by \[link=nm(\d+)\]/);
                         if (performedByMatch && !artistName) {
@@ -1101,7 +1141,7 @@ function handleResetAll() {
                                 }
                             }
                         }
-                        credits(first: 150) {
+                        credits(first: 130) {
                             edges {
                             node {
                                 name {
@@ -1255,10 +1295,7 @@ function handleResetAll() {
                                     };
                                 });
 
-                                // Cache the data with compression
                                 setCache(cacheKey, data);
-
-                                // Resolve after processing soundtracks and other data
                                 resolve({ titleData, processedSoundtracks, idToNameMap, namesData: names });
                             }
                         } else {
@@ -1803,7 +1840,7 @@ function handleResetAll() {
         new_panel.style.padding = 0;
         new_panel.style.margin = "18px 0";
 
-        new_panel.innerHTML = '<div class="panel__heading"><span class="panel__heading__title"><a href="https://www.imdb.com/title/' + imdbId + '/soundtrack"><span style="color: rgb(242, 219, 131);">IMDb</span> Soundtrack</a></span></div>';
+        new_panel.innerHTML = '<div class="panel__heading"><span class="panel__heading__title"><a href="https://www.imdb.com/title/' + imdbId + '/soundtrack" target="_blank" rel="noopener noreferrer"><span style="color: rgb(242, 219, 131);">IMDb</span> Soundtrack</a></span></div>';
 
         new_panel.querySelector(".panel__heading").style.display = "flex";
         new_panel.querySelector(".panel__heading").style.justifyContent = "space-between";
@@ -1992,23 +2029,19 @@ function handleResetAll() {
     function displayKeywordsPanel(keywordsEdges) {
         if (!keywordsEdges || !keywordsEdges.length) return;
 
-        // Create the panel container
         const panel = document.createElement('div');
         panel.className = 'panel';
         panel.id = 'imdb_keywords_panel';
 
-        // Panel heading
         const heading = document.createElement('div');
         heading.className = 'panel__heading';
         heading.innerHTML = `<span class="panel__heading__title"><span style="color: rgb(242, 219, 131);">IMDb</span> Keywords</span>`;
         panel.appendChild(heading);
 
-        // Panel body
         const body = document.createElement('div');
         body.className = 'panel__body';
         body.style.display = KEYWORDS_PANEL_OPEN ? 'block' : 'none';
 
-        // Collect and format keywords
         const keywordList = document.createElement('div');
         keywordList.style.display = 'flex';
         keywordList.style.flexWrap = 'wrap';
@@ -2041,12 +2074,10 @@ function handleResetAll() {
         body.appendChild(keywordList);
         panel.appendChild(body);
 
-        // Toggle panel body on heading click
         heading.addEventListener('click', () => {
             body.style.display = body.style.display === 'none' ? 'block' : 'none';
         });
 
-        // Insert at the very bottom of the sidebar
         const sidebar = document.querySelector('div.sidebar');
         if (sidebar) {
             sidebar.appendChild(panel);
@@ -2056,7 +2087,6 @@ function handleResetAll() {
     }
 
     function addParentalGuidePanel(imdbData) {
-        // Add CSS if not already present
         if (!document.getElementById('parental-guide-style')) {
             const style = document.createElement('style');
             style.id = 'parental-guide-style';
@@ -2071,7 +2101,6 @@ function handleResetAll() {
             document.head.appendChild(style);
         }
 
-        // Build panel structure
         const advisoryDiv = document.createElement('div');
         const newPanel = document.createElement('div');
         newPanel.className = 'panel';
@@ -2094,10 +2123,8 @@ function handleResetAll() {
         toggle.href = '#';
         toggle.textContent = 'Toggle';
 
-        // Try to get imdbId for the link (optional)
         let imdbId = null;
         if (Array.isArray(imdbData)) {
-            // If only categories array is passed, skip imdbId
         } else if (imdbData?.parentsGuide?.title?.id) {
             imdbId = imdbData.parentsGuide.title.id;
         } else if (imdbData?.title?.id) {
@@ -2130,11 +2157,9 @@ function handleResetAll() {
         panelBody.appendChild(advisoryDiv);
         newPanel.appendChild(panelBody);
 
-        // Insert panel into sidebar
         const sidebar = document.querySelector('div.sidebar');
         if (sidebar) sidebar.insertBefore(newPanel, sidebar.childNodes[3 + PARENTS_LOCATION]);
 
-        // --- Extract categories robustly ---
         let categories;
         if (Array.isArray(imdbData)) {
             categories = imdbData;
@@ -2152,7 +2177,6 @@ function handleResetAll() {
         renderParentalGuideCategories(categories, advisoryDiv, { hidetext, isToggleableSections, hideSpoilers });
     }
 
-    // Helper function to render categories
     function renderParentalGuideCategories(categories, advisoryDiv, opts) {
         const { hidetext, isToggleableSections, hideSpoilers } = opts;
         for (let i = 0; i < categories.length; i++) {
@@ -2241,26 +2265,31 @@ function handleResetAll() {
     };
 
     const displayCastPhotos = (titleData, idToNameMap, namePhotos) => {
-        // Get credits data
         const credits = titleData.credits.edges;
         if (!credits || credits.length === 0) {
             console.warn("No credits data found");
             return;
         }
 
+        // Filter credits based on type setting
+        let filteredCredits = credits;
+        if (CAST_FILTER_TYPE === 'actors') {
+            filteredCredits = credits.filter(edge => {
+                const category = edge.node.category.id.toLowerCase();
+                return category === 'actor' || category === 'actress';
+            });
+        }
+
         // Map credits to cast format with photos from fetchNames
-        let cast = credits.map(edge => {
+        let cast = filteredCredits.map(edge => {
             const creditNode = edge.node;
             const personId = creditNode.name.id;
             const personName = idToNameMap[personId] || creditNode.name.nameText.text;
 
-            // Find photo from the names data that was fetched
             let photoUrl = 'https://ptpimg.me/9wv452.png'; // Default
 
-            // Look for this person's photo in the fetched names data
             const nameData = Object.values(namePhotos || {}).find(name => name.id === personId);
             if (nameData && nameData.primaryImage && nameData.primaryImage.url) {
-                // Convert to higher resolution
                 photoUrl = nameData.primaryImage.url;
             }
 
@@ -2290,40 +2319,40 @@ function handleResetAll() {
             }
         });
 
-        // Filter to only show the first 128
-        const filteredCast = cast.filter(person => person.role && person.role.trim()).slice(0, 128);
+        // Filter and limit based on settings
+        const filteredCast = cast
+            .filter(person => person.role && person.role.trim())
+            .slice(0, CAST_MAX_DISPLAY);
 
-        // Create the cast panel
         const cDiv = document.createElement('div');
         cDiv.className = 'panel';
         cDiv.id = 'imdb_cast_photos';
-        cDiv.innerHTML = '<div class="panel__heading"><span class="panel__heading__title"><span style="color: rgb(242, 219, 131);">IMDb</span> Credits</span></div>';
+        
+        const titleText = CAST_FILTER_TYPE === 'actors' ? 'Cast' : 'Credits';
+        cDiv.innerHTML = `<div class="panel__heading"><span class="panel__heading__title"><a href="https://www.imdb.com/title/${imdbId}/fullcredits" target="_blank" rel="noopener noreferrer"><span style="color: rgb(242, 219, 131);">IMDb</span> ${titleText}</a></span></div>`;
 
         const castDiv = document.createElement('div');
         castDiv.style.cssText = 'display: flex; flex-wrap: wrap; justify-content: flex-start; margin: -4px;';
         cDiv.appendChild(castDiv);
 
-        // Add toggle button
         const toggleButton = document.createElement('a');
-        toggleButton.innerHTML = '(Show all credits)';
+        toggleButton.innerHTML = `(Show all ${titleText.toLowerCase()})`;
         toggleButton.href = 'javascript:void(0);';
         toggleButton.style.cssText = 'float:right; font-size:0.9em;';
 
         cDiv.firstElementChild.appendChild(toggleButton);
 
-        // Toggle functionality
         toggleButton.addEventListener('click', function() {
             const cells = castDiv.getElementsByClassName('cast-member-cell');
             const isHidden = cells[12] && cells[12].style.display === 'none';
 
-            toggleButton.innerHTML = isHidden ? '(Hide extra credits)' : '(Show all credits)';
+            toggleButton.innerHTML = isHidden ? `(Hide extra ${titleText.toLowerCase()})` : `(Show all ${titleText.toLowerCase()})`;
 
             for (let i = 12; i < cells.length; i++) {
-                cells[i].style.display = isHidden ? 'block' : 'none'; // Use 'block' for flex items
+                cells[i].style.display = isHidden ? 'block' : 'none';
             }
         });
 
-        // Find the cast table by looking for the Actor column header
         const castTable = Array.from(document.querySelectorAll('.table--panel-like')).find(table => {
             const actorHeader = table.querySelector('th.movie-page__actor-column');
             return actorHeader && actorHeader.textContent.trim() === 'Actor';
@@ -2334,20 +2363,17 @@ function handleResetAll() {
             castTable.parentNode.removeChild(castTable);
         }
 
-        // Get background color for styling
         const bg = getComputedStyle(document.querySelector('.panel') || document.body).backgroundColor || '#2c2c2c';
 
         filteredCast.forEach((person, index) => {
             const cellDiv = document.createElement('div');
-            // Add a class to each cell for the toggle functionality
             cellDiv.className = 'cast-member-cell';
             castDiv.appendChild(cellDiv);
 
-            // New CSS for a flex item. This is the key to fixing the layout.
             cellDiv.style.cssText = `
-                box-sizing: border-box; /* Ensures padding is included in the width */
-                width: calc(25% - 8px); /* 25% width minus margin */
-                margin: 4px; /* Creates space around each cell */
+                box-sizing: border-box;
+                width: calc(25% - 8px);
+                margin: 4px;
                 text-align: center;
                 background-color: ${bg};
                 border-radius: 10px;
@@ -2356,19 +2382,17 @@ function handleResetAll() {
                 vertical-align: top;
             `;
 
-            // Hide cells after the first 3 rows (12 cast members)
             if (index >= 12) {
                 cellDiv.style.display = 'none';
             }
 
-            // This innerHTML is correct for scaling the image within the cell.
             cellDiv.innerHTML = `
                 <a href="${person.link}" target="_blank">
-                    <div style="width: 100%; height: 300px; overflow: hidden; background: #333; border-radius: 8px 8px 0 0; position: relative;">
+                    <div style="width: 100%; height: ${CONST_PIXEL_HEIGHT}px; overflow: hidden; background: #333; border-radius: 8px 8px 0 0; position: relative;">
                         <img style="width: 100%; height: 100%; object-fit: cover; object-position: center top; display: block;"
-                             src="${person.photo}"
-                             alt="${person.name}"
-                             onerror="this.onerror=null; this.src='https://ptpimg.me/9wv452.png'; this.style.objectFit='contain'; this.style.objectPosition='center';" />
+                            src="${person.photo}"
+                            alt="${person.name}"
+                            onerror="this.onerror=null; this.src='https://ptpimg.me/9wv452.png'; this.style.objectFit='contain'; this.style.objectPosition='center';" />
                     </div>
                 </a>
                 <div style="padding: 8px;">
@@ -2378,18 +2402,16 @@ function handleResetAll() {
             `;
         });
 
-        // If no filtered cast found, show message
         if (filteredCast.length === 0) {
             const messageDiv = document.createElement('div');
             messageDiv.style.cssText = 'padding: 20px; text-align: center; color: #ccc;';
-            messageDiv.textContent = 'No actor/actress data found in credits';
+            messageDiv.textContent = `No ${CAST_FILTER_TYPE === 'actors' ? 'actor/actress' : 'credit'} data found`;
             castDiv.appendChild(messageDiv);
         }
     };
 
     // Initialize panels
     fetchIMDBData(imdbId).then(data => {
-        // The data returned now contains titleData, processedSoundtracks, and idToNameMap
         const { titleData, processedSoundtracks, idToNameMap, namesData } = data;
 
         if (titleData) {
