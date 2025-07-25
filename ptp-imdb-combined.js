@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.1.5.3
+// @version      1.1.6
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -11,41 +11,536 @@
 // @grant        GM_xmlhttpRequest
 // @grant        GM.setValue
 // @grant        GM.getValue
+// @grant        GM_registerMenuCommand
+// @grant        GM.listValues
+// @grant        GM.deleteValue
 // @connect      api.graphql.imdb.com
 // @require      https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js
 // ==/UserScript==
 
-(function () {
+let SHOW_SIMILAR_MOVIES = true;
+let PLACE_UNDER_CAST = false;
+let SHOW_TECHNICAL_SPECIFICATIONS = true;
+let SHOW_BOX_OFFICE = true;
+let SHOW_AWARDS = true;
+let SHOW_SOUNDTRACKS = true;
+let CACHE_EXPIRY_DAYS = 7;
+let SHOW_ALTERNATE_VERSIONS = true;
+let ALTERNATE_VERSIONS_PANEL_OPEN = false;
+let SHOW_KEYWORDS = true;
+let KEYWORDS_PANEL_OPEN = false;
+let SHOW_PARENTS_GUIDE = true;
+let isPanelVisible = true;
+let isToggleableSections = true;
+let hideSpoilers = true;
+let hidetext = false;
+let SHOW_CAST_PHOTOS = true;
+let TECHSPECS_LOCATION = 1;
+let BOXOFFICE_LOCATION = 2;
+let AWARDS_LOCATION = 4;
+let EXISTING_IMDB_TAGS = 6;
+let SIMILAR_MOVIES_LOCATION = 5;
+let PARENTS_LOCATION = 3;
+
+const saveSettings = () => {
+    GM.setValue('SHOW_SIMILAR_MOVIES', SHOW_SIMILAR_MOVIES);
+    GM.setValue('PLACE_UNDER_CAST', PLACE_UNDER_CAST);
+    GM.setValue('SHOW_TECHNICAL_SPECIFICATIONS', SHOW_TECHNICAL_SPECIFICATIONS);
+    GM.setValue('SHOW_BOX_OFFICE', SHOW_BOX_OFFICE);
+    GM.setValue('SHOW_AWARDS', SHOW_AWARDS);
+    GM.setValue('SHOW_SOUNDTRACKS', SHOW_SOUNDTRACKS);
+    GM.setValue('CACHE_EXPIRY_DAYS', CACHE_EXPIRY_DAYS);
+    GM.setValue('SHOW_ALTERNATE_VERSIONS', SHOW_ALTERNATE_VERSIONS);
+    GM.setValue('ALTERNATE_VERSIONS_PANEL_OPEN', ALTERNATE_VERSIONS_PANEL_OPEN);
+    GM.setValue('SHOW_KEYWORDS', SHOW_KEYWORDS);
+    GM.setValue('KEYWORDS_PANEL_OPEN', KEYWORDS_PANEL_OPEN);
+    GM.setValue('SHOW_PARENTS_GUIDE', SHOW_PARENTS_GUIDE);
+    GM.setValue('isPanelVisible', isPanelVisible);
+    GM.setValue('isToggleableSections', isToggleableSections);
+    GM.setValue('hideSpoilers', hideSpoilers);
+    GM.setValue('hidetext', hidetext);
+    GM.setValue('SHOW_CAST_PHOTOS', SHOW_CAST_PHOTOS);
+    GM.setValue('TECHSPECS_LOCATION', TECHSPECS_LOCATION);
+    GM.setValue('BOXOFFICE_LOCATION', BOXOFFICE_LOCATION);
+    GM.setValue('AWARDS_LOCATION', AWARDS_LOCATION);
+    GM.setValue('EXISTING_IMDB_TAGS', EXISTING_IMDB_TAGS);
+    GM.setValue('SIMILAR_MOVIES_LOCATION', SIMILAR_MOVIES_LOCATION);
+    GM.setValue('PARENTS_LOCATION', PARENTS_LOCATION);
+};
+
+// Update loadSettings function:
+const loadSettings = async () => {
+    SHOW_SIMILAR_MOVIES = await GM.getValue('SHOW_SIMILAR_MOVIES', true);
+    PLACE_UNDER_CAST = await GM.getValue('PLACE_UNDER_CAST', false);
+    SHOW_TECHNICAL_SPECIFICATIONS = await GM.getValue('SHOW_TECHNICAL_SPECIFICATIONS', true);
+    SHOW_BOX_OFFICE = await GM.getValue('SHOW_BOX_OFFICE', true);
+    SHOW_AWARDS = await GM.getValue('SHOW_AWARDS', true);
+    SHOW_SOUNDTRACKS = await GM.getValue('SHOW_SOUNDTRACKS', true);
+    CACHE_EXPIRY_DAYS = await GM.getValue('CACHE_EXPIRY_DAYS', 7);
+    SHOW_ALTERNATE_VERSIONS = await GM.getValue('SHOW_ALTERNATE_VERSIONS', true);
+    ALTERNATE_VERSIONS_PANEL_OPEN = await GM.getValue('ALTERNATE_VERSIONS_PANEL_OPEN', false);
+    SHOW_KEYWORDS = await GM.getValue('SHOW_KEYWORDS', true);
+    KEYWORDS_PANEL_OPEN = await GM.getValue('KEYWORDS_PANEL_OPEN', false);
+    SHOW_PARENTS_GUIDE = await GM.getValue('SHOW_PARENTS_GUIDE', true);
+    isPanelVisible = await GM.getValue('isPanelVisible', true);
+    isToggleableSections = await GM.getValue('isToggleableSections', true);
+    hideSpoilers = await GM.getValue('hideSpoilers', true);
+    hidetext = await GM.getValue('hidetext', false);
+    SHOW_CAST_PHOTOS = await GM.getValue('SHOW_CAST_PHOTOS', true);
+    TECHSPECS_LOCATION = await GM.getValue('TECHSPECS_LOCATION', 1);
+    BOXOFFICE_LOCATION = await GM.getValue('BOXOFFICE_LOCATION', 2);
+    AWARDS_LOCATION = await GM.getValue('AWARDS_LOCATION', 4);
+    EXISTING_IMDB_TAGS = await GM.getValue('EXISTING_IMDB_TAGS', 6);
+    SIMILAR_MOVIES_LOCATION = await GM.getValue('SIMILAR_MOVIES_LOCATION', 5);
+    PARENTS_LOCATION = await GM.getValue('PARENTS_LOCATION', 3);
+};
+
+const flushCache = async () => {
+    try {
+        // Get all stored keys
+        const keys = await GM.listValues();
+        let deletedCount = 0;
+
+        // Delete all cache keys (they typically contain 'data' in the name)
+        for (const key of keys) {
+            if (key.includes('_data_') || key.includes('iMDB_') || key.includes('names_')) {
+                await GM.deleteValue(key);
+                deletedCount++;
+            }
+        }
+
+        alert(`Cache flushed successfully!\n${deletedCount} cache entries deleted.`);
+        console.log(`Cache flush completed. Deleted ${deletedCount} entries.`);
+    } catch (error) {
+        console.error('Error flushing cache:', error);
+        alert('Error flushing cache. Check console for details.');
+    }
+};
+
+GM_registerMenuCommand('⚙️ IMDB Script Settings', showSettingsPanel);
+
+// Add this function to create and show the settings panel:
+function showSettingsPanel() {
+    // Remove existing panel if it exists
+    const existingPanel = document.getElementById('imdb-settings-panel');
+    if (existingPanel) {
+        existingPanel.remove();
+    }
+
+    // Create the settings panel
+    const panel = document.createElement('div');
+    panel.id = 'imdb-settings-panel';
+    panel.innerHTML = `
+        <div id="imdb-settings-overlay" style="
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 10000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        ">
+            <div style="
+                background: #2c2c2c;
+                border: 2px solid #555;
+                border-radius: 10px;
+                padding: 20px;
+                max-width: 800px;
+                max-height: 80vh;
+                overflow-y: auto;
+                color: #fff;
+                font-family: Arial, sans-serif;
+            ">
+                <div style="
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: 20px;
+                    border-bottom: 1px solid #555;
+                    padding-bottom: 10px;
+                ">
+                    <h2 style="margin: 0; color: #F2DB83;">⚙️ IMDB Script Settings</h2>
+                    <button id="close-settings" style="
+                        background: #dc3545;
+                        color: white;
+                        border: none;
+                        border-radius: 5px;
+                        padding: 5px 10px;
+                        cursor: pointer;
+                        font-size: 16px;
+                    ">✕</button>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px;">
+                    <!-- Content Panels Column -->
+                    <div>
+                        <h3 style="color: #F2DB83; margin-top: 0;">Content Panels</h3>
+                        
+                        <label style="display: block; margin-bottom: 10px; cursor: pointer;">
+                            <input type="checkbox" id="show-similar-movies" style="margin-right: 8px;">
+                            <span>Similar Movies</span>
+                        </label>
+                        
+                        <label style="display: block; margin-bottom: 10px; cursor: pointer; margin-left: 20px;">
+                            <input type="checkbox" id="place-under-cast" style="margin-right: 8px;">
+                            <span>Place Similar Movies Under Cast</span>
+                        </label>
+                        
+                        <label style="display: block; margin-bottom: 10px; cursor: pointer;">
+                            <input type="checkbox" id="show-technical-specs" style="margin-right: 8px;">
+                            <span>Technical Specifications</span>
+                        </label>
+                        
+                        <label style="display: block; margin-bottom: 10px; cursor: pointer;">
+                            <input type="checkbox" id="show-box-office" style="margin-right: 8px;">
+                            <span>Box Office</span>
+                        </label>
+                        
+                        <label style="display: block; margin-bottom: 10px; cursor: pointer;">
+                            <input type="checkbox" id="show-awards" style="margin-right: 8px;">
+                            <span>Awards</span>
+                        </label>
+                        
+                        <label style="display: block; margin-bottom: 10px; cursor: pointer;">
+                            <input type="checkbox" id="show-soundtracks" style="margin-right: 8px;">
+                            <span>Soundtracks</span>
+                        </label>
+                        
+                        <label style="display: block; margin-bottom: 10px; cursor: pointer;">
+                            <input type="checkbox" id="show-cast-photos" style="margin-right: 8px;">
+                            <span>Cast Photos</span>
+                        </label>
+                        
+                        <label style="display: block; margin-bottom: 10px; cursor: pointer;">
+                            <input type="checkbox" id="show-alternate-versions" style="margin-right: 8px;">
+                            <span>Alternate Versions</span>
+                        </label>
+                        
+                        <label style="display: block; margin-bottom: 10px; cursor: pointer; margin-left: 20px;">
+                            <input type="checkbox" id="alternate-versions-open" style="margin-right: 8px;">
+                            <span>Open Alternate Versions by Default</span>
+                        </label>
+                        
+                        <label style="display: block; margin-bottom: 10px; cursor: pointer;">
+                            <input type="checkbox" id="show-keywords" style="margin-right: 8px;">
+                            <span>Keywords</span>
+                        </label>
+                        
+                        <label style="display: block; margin-bottom: 10px; cursor: pointer; margin-left: 20px;">
+                            <input type="checkbox" id="keywords-open" style="margin-right: 8px;">
+                            <span>Open Keywords by Default</span>
+                        </label>
+                    </div>
+
+                    <!-- Parents Guide Column -->
+                    <div>
+                        <h3 style="color: #F2DB83; margin-top: 0;">Parents Guide</h3>
+                        
+                        <label style="display: block; margin-bottom: 10px; cursor: pointer;">
+                            <input type="checkbox" id="show-parents-guide" style="margin-right: 8px;">
+                            <span>Show Parents Guide</span>
+                        </label>
+                        
+                        <label style="display: block; margin-bottom: 10px; cursor: pointer; margin-left: 20px;">
+                            <input type="checkbox" id="panel-visible" style="margin-right: 8px;">
+                            <span>Panel Visible by Default</span>
+                        </label>
+                        
+                        <label style="display: block; margin-bottom: 10px; cursor: pointer; margin-left: 20px;">
+                            <input type="checkbox" id="toggleable-sections" style="margin-right: 8px;">
+                            <span>Toggleable Sections</span>
+                        </label>
+                        
+                        <label style="display: block; margin-bottom: 10px; cursor: pointer; margin-left: 20px;">
+                            <input type="checkbox" id="hide-spoilers" style="margin-right: 8px;">
+                            <span>Hide Spoilers</span>
+                        </label>
+                        
+                        <label style="display: block; margin-bottom: 10px; cursor: pointer; margin-left: 20px;">
+                            <input type="checkbox" id="hide-text" style="margin-right: 8px;">
+                            <span>Hide Parental Guide Text</span>
+                        </label>
+
+                        <h3 style="color: #F2DB83; margin-top: 30px;">Cache Settings</h3>
+                        
+                        <label style="display: block; margin-bottom: 10px;">
+                            <span style="display: block; margin-bottom: 5px;">Cache Expiry (days):</span>
+                            <input type="number" id="cache-expiry" min="1" max="365" style="
+                                width: 80px;
+                                padding: 5px;
+                                background: #444;
+                                color: #fff;
+                                border: 1px solid #666;
+                                border-radius: 3px;
+                            ">
+                        </label>
+                        
+                        <button id="flush-cache-btn" style="
+                            background: #ffc107;
+                            color: #000;
+                            border: none;
+                            border-radius: 5px;
+                            padding: 8px 16px;
+                            cursor: pointer;
+                            margin-top: 10px;
+                            margin-right: 10px;
+                        ">🗑️ Flush Cache</button>
+                        
+                        <button id="reset-all-btn" style="
+                            background: #dc3545;
+                            color: white;
+                            border: none;
+                            border-radius: 5px;
+                            padding: 8px 16px;
+                            cursor: pointer;
+                            margin-top: 10px;
+                        ">🔄 Reset All</button>
+                    </div>
+
+                    <!-- Panel Locations Column -->
+                    <div>
+                        <h3 style="color: #F2DB83; margin-top: 0;">Panel Locations</h3>
+                        <p style="font-size: 0.9em; color: #ccc; margin-bottom: 15px;">Lower numbers appear higher in sidebar</p>
+                        
+                        <label style="display: block; margin-bottom: 10px;">
+                            <span style="display: block; margin-bottom: 5px;">Technical Specs:</span>
+                            <input type="number" id="techspecs-location" min="1" max="20" style="
+                                width: 60px;
+                                padding: 5px;
+                                background: #444;
+                                color: #fff;
+                                border: 1px solid #666;
+                                border-radius: 3px;
+                            ">
+                        </label>
+                        
+                        <label style="display: block; margin-bottom: 10px;">
+                            <span style="display: block; margin-bottom: 5px;">Box Office:</span>
+                            <input type="number" id="boxoffice-location" min="1" max="20" style="
+                                width: 60px;
+                                padding: 5px;
+                                background: #444;
+                                color: #fff;
+                                border: 1px solid #666;
+                                border-radius: 3px;
+                            ">
+                        </label>
+                        
+                        <label style="display: block; margin-bottom: 10px;">
+                            <span style="display: block; margin-bottom: 5px;">Parental Guide:</span>
+                            <input type="number" id="parents-location" min="1" max="20" style="
+                                width: 60px;
+                                padding: 5px;
+                                background: #444;
+                                color: #fff;
+                                border: 1px solid #666;
+                                border-radius: 3px;
+                            ">
+                        </label>
+                        
+                        <label style="display: block; margin-bottom: 10px;">
+                            <span style="display: block; margin-bottom: 5px;">Awards:</span>
+                            <input type="number" id="awards-location" min="1" max="20" style="
+                                width: 60px;
+                                padding: 5px;
+                                background: #444;
+                                color: #fff;
+                                border: 1px solid #666;
+                                border-radius: 3px;
+                            ">
+                        </label>
+                        
+                        <label style="display: block; margin-bottom: 10px;">
+                            <span style="display: block; margin-bottom: 5px;">Similar Movies:</span>
+                            <input type="number" id="similar-movies-location" min="1" max="20" style="
+                                width: 60px;
+                                padding: 5px;
+                                background: #444;
+                                color: #fff;
+                                border: 1px solid #666;
+                                border-radius: 3px;
+                            ">
+                        </label>
+                        
+                        <label style="display: block; margin-bottom: 10px;">
+                            <span style="display: block; margin-bottom: 5px;">Existing IMDb Tags:</span>
+                            <input type="number" id="existing-imdb-tags" min="1" max="20" style="
+                                width: 60px;
+                                padding: 5px;
+                                background: #444;
+                                color: #fff;
+                                border: 1px solid #666;
+                                border-radius: 3px;
+                            ">
+                        </label>
+                    </div>
+                </div>
+
+                <div style="
+                    margin-top: 30px;
+                    padding-top: 20px;
+                    border-top: 1px solid #555;
+                    text-align: center;
+                ">
+                    <button id="save-settings-btn" style="
+                        background: #28a745;
+                        color: white;
+                        border: none;
+                        border-radius: 5px;
+                        padding: 12px 30px;
+                        cursor: pointer;
+                        font-size: 16px;
+                        font-weight: bold;
+                        margin-right: 10px;
+                    ">💾 Save & Reload</button>
+                    
+                    <button id="cancel-settings-btn" style="
+                        background: #6c757d;
+                        color: white;
+                        border: none;
+                        border-radius: 5px;
+                        padding: 12px 30px;
+                        cursor: pointer;
+                        font-size: 16px;
+                    ">Cancel</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(panel);
+
+    // Load current settings into the form
+    loadSettingsIntoForm();
+
+    // Add event listeners
+    document.getElementById('close-settings').addEventListener('click', closeSettingsPanel);
+    document.getElementById('cancel-settings-btn').addEventListener('click', closeSettingsPanel);
+    document.getElementById('save-settings-btn').addEventListener('click', saveSettingsFromForm);
+    document.getElementById('flush-cache-btn').addEventListener('click', handleFlushCache);
+    document.getElementById('reset-all-btn').addEventListener('click', handleResetAll);
+    
+    // Close on overlay click
+    document.getElementById('imdb-settings-overlay').addEventListener('click', (e) => {
+        if (e.target.id === 'imdb-settings-overlay') {
+            closeSettingsPanel();
+        }
+    });
+}
+
+function loadSettingsIntoForm() {
+    document.getElementById('show-similar-movies').checked = SHOW_SIMILAR_MOVIES;
+    document.getElementById('place-under-cast').checked = PLACE_UNDER_CAST;
+    document.getElementById('show-technical-specs').checked = SHOW_TECHNICAL_SPECIFICATIONS;
+    document.getElementById('show-box-office').checked = SHOW_BOX_OFFICE;
+    document.getElementById('show-awards').checked = SHOW_AWARDS;
+    document.getElementById('show-soundtracks').checked = SHOW_SOUNDTRACKS;
+    document.getElementById('show-cast-photos').checked = SHOW_CAST_PHOTOS;
+    document.getElementById('show-alternate-versions').checked = SHOW_ALTERNATE_VERSIONS;
+    document.getElementById('alternate-versions-open').checked = ALTERNATE_VERSIONS_PANEL_OPEN;
+    document.getElementById('show-keywords').checked = SHOW_KEYWORDS;
+    document.getElementById('keywords-open').checked = KEYWORDS_PANEL_OPEN;
+    document.getElementById('show-parents-guide').checked = SHOW_PARENTS_GUIDE;
+    document.getElementById('panel-visible').checked = isPanelVisible;
+    document.getElementById('toggleable-sections').checked = isToggleableSections;
+    document.getElementById('hide-spoilers').checked = hideSpoilers;
+    document.getElementById('hide-text').checked = hidetext;
+    document.getElementById('cache-expiry').value = CACHE_EXPIRY_DAYS;
+    document.getElementById('techspecs-location').value = TECHSPECS_LOCATION;
+    document.getElementById('boxoffice-location').value = BOXOFFICE_LOCATION;
+    document.getElementById('parents-location').value = PARENTS_LOCATION;
+    document.getElementById('awards-location').value = AWARDS_LOCATION;
+    document.getElementById('similar-movies-location').value = SIMILAR_MOVIES_LOCATION;
+    document.getElementById('existing-imdb-tags').value = EXISTING_IMDB_TAGS;
+}
+
+function saveSettingsFromForm() {
+    SHOW_SIMILAR_MOVIES = document.getElementById('show-similar-movies').checked;
+    PLACE_UNDER_CAST = document.getElementById('place-under-cast').checked;
+    SHOW_TECHNICAL_SPECIFICATIONS = document.getElementById('show-technical-specs').checked;
+    SHOW_BOX_OFFICE = document.getElementById('show-box-office').checked;
+    SHOW_AWARDS = document.getElementById('show-awards').checked;
+    SHOW_SOUNDTRACKS = document.getElementById('show-soundtracks').checked;
+    SHOW_CAST_PHOTOS = document.getElementById('show-cast-photos').checked;
+    SHOW_ALTERNATE_VERSIONS = document.getElementById('show-alternate-versions').checked;
+    ALTERNATE_VERSIONS_PANEL_OPEN = document.getElementById('alternate-versions-open').checked;
+    SHOW_KEYWORDS = document.getElementById('show-keywords').checked;
+    KEYWORDS_PANEL_OPEN = document.getElementById('keywords-open').checked;
+    SHOW_PARENTS_GUIDE = document.getElementById('show-parents-guide').checked;
+    isPanelVisible = document.getElementById('panel-visible').checked;
+    isToggleableSections = document.getElementById('toggleable-sections').checked;
+    hideSpoilers = document.getElementById('hide-spoilers').checked;
+    hidetext = document.getElementById('hide-text').checked;
+    CACHE_EXPIRY_DAYS = parseInt(document.getElementById('cache-expiry').value) || 7;
+    TECHSPECS_LOCATION = parseInt(document.getElementById('techspecs-location').value) || 1;
+    BOXOFFICE_LOCATION = parseInt(document.getElementById('boxoffice-location').value) || 2;
+    PARENTS_LOCATION = parseInt(document.getElementById('parents-location').value) || 3;
+    AWARDS_LOCATION = parseInt(document.getElementById('awards-location').value) || 4;
+    SIMILAR_MOVIES_LOCATION = parseInt(document.getElementById('similar-movies-location').value) || 5;
+    EXISTING_IMDB_TAGS = parseInt(document.getElementById('existing-imdb-tags').value) || 6;
+
+    saveSettings();
+    closeSettingsPanel();
+    
+    // Show confirmation and reload
+    alert('Settings saved successfully!\nReloading page to apply changes...');
+    window.location.reload();
+}
+
+function closeSettingsPanel() {
+    const panel = document.getElementById('imdb-settings-panel');
+    if (panel) {
+        panel.remove();
+    }
+}
+
+function handleFlushCache() {
+    if (confirm('This will delete all cached IMDB data and force fresh fetches.\n\nAre you sure you want to flush the cache?')) {
+        flushCache();
+    }
+}
+
+function handleResetAll() {
+    if (confirm('Reset all settings to defaults AND flush all cached data?\n\nThis will:\n- Reset all toggles to default\n- Delete all cached IMDB data\n- Require page reload')) {
+        // Reset all settings to defaults
+        SHOW_SIMILAR_MOVIES = true;
+        PLACE_UNDER_CAST = false;
+        SHOW_TECHNICAL_SPECIFICATIONS = true;
+        SHOW_BOX_OFFICE = true;
+        SHOW_AWARDS = true;
+        SHOW_SOUNDTRACKS = true;
+        CACHE_EXPIRY_DAYS = 7;
+        SHOW_ALTERNATE_VERSIONS = true;
+        ALTERNATE_VERSIONS_PANEL_OPEN = false;
+        SHOW_KEYWORDS = true;
+        KEYWORDS_PANEL_OPEN = false;
+        SHOW_PARENTS_GUIDE = true;
+        isPanelVisible = true;
+        isToggleableSections = true;
+        hideSpoilers = true;
+        hidetext = false;
+        SHOW_CAST_PHOTOS = true;
+        TECHSPECS_LOCATION = 1;
+        BOXOFFICE_LOCATION = 2;
+        PARENTS_LOCATION = 3;
+        AWARDS_LOCATION = 4;
+        SIMILAR_MOVIES_LOCATION = 5;
+        EXISTING_IMDB_TAGS = 6;
+        
+        saveSettings();
+        flushCache();
+        closeSettingsPanel();
+        alert('All settings reset and cache flushed!\nReloading page to apply changes.');
+        window.location.reload();
+    }
+}
+
+(async function () {
     'use strict';
-
-    // Options to display each script type
-    const SHOW_SIMILAR_MOVIES = true; // Change to false to hide "Movies Like This"
-    const PLACE_UNDER_CAST = false; // Put more like this under the cast list, else in the side panel
-    const SHOW_TECHNICAL_SPECIFICATIONS = true; // Change to false to hide "Technical Specifications"
-    const SHOW_BOX_OFFICE = true; // Change to false to hide "Box Office" data
-    const SHOW_AWARDS = true; // Change to false to hide awards data
-    const SHOW_SOUNDTRACKS = true; // Change to false to hide soundtracks data
-    const CACHE_EXPIRY_DAYS = 7; // Default to 7 days of API cache
-    const SHOW_ALTERNATE_VERSIONS = true; // Show or don't show details about different versions of the movie
-    const ALTERNATE_VERSIONS_PANEL_OPEN = false; // Set to true to open the alternate versions panel by default
-    const SHOW_KEYWORDS = true; // Show or don't show keywords
-    const KEYWORDS_PANEL_OPEN = false; // Set to true to open the keywords panel by default
-    const SHOW_PARENTS_GUIDE = true; // Show or don't show parental guide
-    const isPanelVisible = true; // Show or don't show parental guide toggleable sections
-    const isToggleableSections = true; // Set to true
-    const hideSpoilers = true; // Hide parental guide spoilers by default
-    const hidetext = false; // Hide parental guide text by default
-
-    // order of the panels in the sidebar
-    const techspecsLocation = 1;
-    const boxofficeLocation = 2;
-    const awardsLocation = 4;
-    // move the existing tags html element
-    const existingIMDBtags = 6;
-    // only if displaying in sidebar
-    const similarmoviesLocation = 5;
-    // only if displaying parental guide
-    const parentsLocation = 3
+    await loadSettings();
 
     // Function to format and move the IMDb panel
     function formatIMDbText() {
@@ -74,7 +569,7 @@
                 imdbElement.innerHTML = '<span class="panel__heading__title"><span style="color: rgb(242, 219, 131);">IMDb</span> tags</span>';
             }
             // Move the IMDb panel to the desired location
-            sidebar.insertBefore(imdbPanel, sidebar.childNodes[3 + existingIMDBtags]);
+            sidebar.insertBefore(imdbPanel, sidebar.childNodes[3 + EXISTING_IMDB_TAGS]);
 
             // If User tags panel exists, append it directly after IMDb tags panel
             if (userTagsPanel) {
@@ -161,6 +656,9 @@
                         nameText {
                             text
                         }
+                        primaryImage {
+                            url
+                        }
                     }
                 }
             `
@@ -205,8 +703,100 @@
         const cachedData = await getCache(cacheKey);
         if (cachedData) {
             console.log("Using cached compressed IMDb data");
-            if (cachedData.titleData) {
-                return cachedData; // Return cached data if structure is valid
+            // Check if cached data has the expected structure
+            if (cachedData.data && cachedData.data.title) {
+                // Convert cached data to the expected return format
+                const titleData = cachedData.data.title;
+                const soundtracks = titleData.soundtrack.edges;
+
+                // Extract unique IDs and process soundtracks (same logic as fresh fetch)
+                const uniqueIds = [];
+                soundtracks.forEach(edge => {
+                    edge.node.comments.forEach(comment => {
+                        const match = comment.markdown.match(/\[link=nm(\d+)\]/);
+                        if (match) {
+                            uniqueIds.push(`nm${match[1]}`);
+                        }
+                    });
+                });
+
+                // Add unique IDs from credits
+                const credits = titleData.credits.edges;
+                credits.forEach(edge => {
+                    const creditNode = edge.node;
+                    if (creditNode.name && creditNode.name.id) {
+                        uniqueIds.push(creditNode.name.id);
+                    }
+                });
+
+                // Fetch names and process soundtracks
+                const uniqueIdSet = [...new Set(uniqueIds)];
+                const names = await fetchNames(uniqueIdSet);
+
+                const idToNameMap = {};
+                names.forEach(name => {
+                    idToNameMap[name.id] = name.nameText.text;
+                });
+
+                // Process soundtracks (same logic as fresh fetch)
+                const processedSoundtracks = soundtracks.map(edge => {
+                    const soundtrack = edge.node;
+                    let artistName = null;
+                    let artistLink = null;
+                    let artistId = null;
+
+                    // Same soundtrack processing logic...
+                    soundtrack.comments.forEach(comment => {
+                        const performedByMatch = comment.markdown.match(/Performed by \[link=nm(\d+)\]/);
+                        if (performedByMatch && !artistName) {
+                            artistId = `nm${performedByMatch[1]}`;
+                            artistName = idToNameMap[artistId];
+                            artistLink = `https://www.imdb.com/name/${artistId}/`;
+                        }
+                    });
+
+                    if (!artistName) {
+                        soundtrack.comments.forEach(comment => {
+                            const match = comment.markdown.match(/\[link=nm(\d+)\]/);
+                            if (match && !artistName) {
+                                artistId = `nm${match[1]}`;
+                                artistName = idToNameMap[artistId] || match[0];
+                                artistLink = `https://www.imdb.com/name/${artistId}/`;
+                            } else if (!match && !artistName) {
+                                const performedByMatch = comment.markdown.match(/Performed by (.*)/);
+                                if (performedByMatch) {
+                                    artistName = performedByMatch[1];
+                                    artistLink = `https://duckduckgo.com/?q=${encodeURIComponent(artistName)}`;
+                                }
+                            }
+                        });
+                    }
+
+                    if (!artistName && soundtrack.amazonMusicProducts.length > 0) {
+                        const product = soundtrack.amazonMusicProducts[0];
+                        if (product.artists && product.artists.length > 0) {
+                            artistName = product.artists[0].artistName.text;
+                            artistLink = `https://duckduckgo.com/?q=${encodeURIComponent(artistName)}`;
+                        } else {
+                            artistName = product.productTitle.text;
+                            artistLink = `https://duckduckgo.com/?q=${encodeURIComponent(artistName)}`;
+                        }
+                    }
+
+                    if (!artistName) {
+                        artistName = soundtrack.text;
+                        artistLink = `https://duckduckgo.com/?q=${encodeURIComponent(artistName)}`;
+                    }
+
+                    return {
+                        title: soundtrack.text,
+                        artist: artistName,
+                        link: artistLink,
+                        artistId: artistId
+                    };
+                });
+
+                return { titleData, processedSoundtracks, idToNameMap, namesData: names };
             } else {
                 console.error("Cached data structure invalid. Fetching fresh data...");
             }
@@ -217,7 +807,7 @@
             query: `
                 query getTitleDetails($id: ID!, $first: Int!, $after: ID) {
                     title(id: $id) {
-                        soundtrack(first: 30) {
+                        soundtrack(first: 40) {
                             edges {
                                 node {
                                     id
@@ -511,6 +1101,28 @@
                                 }
                             }
                         }
+                        credits(first: 150) {
+                            edges {
+                            node {
+                                name {
+                                id
+                                nameText {
+                                    text
+                                }
+                                }
+                                category {
+                                id
+                                text
+                                }
+                                title {
+                                id
+                                titleText {
+                                    text
+                                }
+                                }
+                            }
+                            }
+                        }
                     }
                 }
             `,
@@ -559,6 +1171,15 @@
                                             uniqueIds.push(`nm${match[1]}`);
                                         }
                                     });
+                                });
+
+                                // Add unique IDs from credits
+                                const credits = titleData.credits.edges;
+                                credits.forEach(edge => {
+                                    const creditNode = edge.node;
+                                    if (creditNode.name && creditNode.name.id) {
+                                        uniqueIds.push(creditNode.name.id);
+                                    }
                                 });
 
                                 // Fetch names for unique IDs
@@ -638,7 +1259,7 @@
                                 setCache(cacheKey, data);
 
                                 // Resolve after processing soundtracks and other data
-                                resolve({ titleData, processedSoundtracks, idToNameMap });
+                                resolve({ titleData, processedSoundtracks, idToNameMap, namesData: names });
                             }
                         } else {
                             console.error("Invalid data structure", data);
@@ -733,7 +1354,7 @@
                     console.error("Sidebar not found");
                     return;
                 }
-                sidebar.insertBefore(newPanel, sidebar.childNodes[3 + similarmoviesLocation]);
+                sidebar.insertBefore(newPanel, sidebar.childNodes[3 + SIMILAR_MOVIES_LOCATION]);
                 displayMethod = 'flex';
 
                 toggle.textContent = 'Toggle';
@@ -891,7 +1512,7 @@
             console.error("Sidebar not found");
             return;
         }
-        sidebar.insertBefore(newPanel, sidebar.childNodes[3 + techspecsLocation]);
+        sidebar.insertBefore(newPanel, sidebar.childNodes[3 + TECHSPECS_LOCATION]);
 
         const specs = data.data.title.technicalSpecifications || {};
         const runtimes = data.data.title.runtimes?.edges || [];
@@ -1008,7 +1629,7 @@
             console.error("Sidebar not found");
             return;
         }
-        sidebar.insertBefore(newPanel, sidebar.childNodes[3 + boxofficeLocation]);
+        sidebar.insertBefore(newPanel, sidebar.childNodes[3 + BOXOFFICE_LOCATION]);
 
         const titleData = data.data.title || {};
         const panelBodyElement = document.getElementById('box_office').querySelector('.panel__body');
@@ -1164,7 +1785,7 @@
             console.error("Sidebar not found");
             return;
         }
-        sidebar.insertBefore(aDiv, sidebar.childNodes[3 + awardsLocation]);
+        sidebar.insertBefore(aDiv, sidebar.childNodes[3 + AWARDS_LOCATION]);
     };
 
     const appendSongs = (songs, idToNameMap) => {
@@ -1511,7 +2132,7 @@
 
         // Insert panel into sidebar
         const sidebar = document.querySelector('div.sidebar');
-        if (sidebar) sidebar.insertBefore(newPanel, sidebar.childNodes[3 + parentsLocation]);
+        if (sidebar) sidebar.insertBefore(newPanel, sidebar.childNodes[3 + PARENTS_LOCATION]);
 
         // --- Extract categories robustly ---
         let categories;
@@ -1599,10 +2220,177 @@
         }
     }
 
+    const checkAwardsData = (titleData) => {
+        const wins = titleData.prestigiousAwardSummary?.wins ?? 0;
+        const nominations = titleData.prestigiousAwardSummary?.nominations ?? 0;
+        let totalWins = 0;
+        let totalNominations = 0;
+
+        if (titleData.awardNominationsCombined && titleData.awardNominationsCombined.length > 0) {
+            titleData.awardNominationsCombined.forEach(nomination => {
+                if (nomination.isWinner) {
+                    totalWins++;
+                } else {
+                    totalNominations++;
+                }
+            });
+        }
+
+        // Return true if any award data exists
+        return (wins > 0 || nominations > 0 || totalWins > 0 || totalNominations > 0);
+    };
+
+    const displayCastPhotos = (titleData, idToNameMap, namePhotos) => {
+        // Get credits data
+        const credits = titleData.credits.edges;
+        if (!credits || credits.length === 0) {
+            console.warn("No credits data found");
+            return;
+        }
+
+        // Map credits to cast format with photos from fetchNames
+        let cast = credits.map(edge => {
+            const creditNode = edge.node;
+            const personId = creditNode.name.id;
+            const personName = idToNameMap[personId] || creditNode.name.nameText.text;
+
+            // Find photo from the names data that was fetched
+            let photoUrl = 'https://ptpimg.me/9wv452.png'; // Default
+
+            // Look for this person's photo in the fetched names data
+            const nameData = Object.values(namePhotos || {}).find(name => name.id === personId);
+            if (nameData && nameData.primaryImage && nameData.primaryImage.url) {
+                // Convert to higher resolution
+                photoUrl = nameData.primaryImage.url;
+            }
+
+            return {
+                photo: photoUrl,
+                name: personName,
+                imdbId: personId,
+                role: creditNode.category.text || 'Unknown',
+                link: `https://www.imdb.com/name/${personId}/`
+            };
+        });
+
+        // Try to match with existing cast table on page
+        const actorRows = document.querySelectorAll('.table--panel-like tbody tr');
+        actorRows.forEach(row => {
+            const actorNameElement = row.querySelector('.movie-page__actor-column a');
+            const roleNameElement = row.querySelector('td:nth-child(2)');
+            if (actorNameElement && roleNameElement) {
+                const actorName = actorNameElement.textContent;
+                const roleName = roleNameElement.textContent;
+                const actorLink = actorNameElement.href;
+                const castMember = cast.find(member => member.name === actorName);
+                if (castMember) {
+                    castMember.role = roleName;
+                    castMember.link = actorLink;
+                }
+            }
+        });
+
+        // Filter to only show the first 128
+        const filteredCast = cast.filter(person => person.role && person.role.trim()).slice(0, 128);
+
+        // Create the cast panel
+        const cDiv = document.createElement('div');
+        cDiv.className = 'panel';
+        cDiv.id = 'imdb_cast_photos';
+        cDiv.innerHTML = '<div class="panel__heading"><span class="panel__heading__title"><span style="color: rgb(242, 219, 131);">IMDb</span> Credits</span></div>';
+
+        const castDiv = document.createElement('div');
+        castDiv.style.cssText = 'display: flex; flex-wrap: wrap; justify-content: flex-start; margin: -4px;';
+        cDiv.appendChild(castDiv);
+
+        // Add toggle button
+        const toggleButton = document.createElement('a');
+        toggleButton.innerHTML = '(Show all credits)';
+        toggleButton.href = 'javascript:void(0);';
+        toggleButton.style.cssText = 'float:right; font-size:0.9em;';
+
+        cDiv.firstElementChild.appendChild(toggleButton);
+
+        // Toggle functionality
+        toggleButton.addEventListener('click', function() {
+            const cells = castDiv.getElementsByClassName('cast-member-cell');
+            const isHidden = cells[12] && cells[12].style.display === 'none';
+
+            toggleButton.innerHTML = isHidden ? '(Hide extra credits)' : '(Show all credits)';
+
+            for (let i = 12; i < cells.length; i++) {
+                cells[i].style.display = isHidden ? 'block' : 'none'; // Use 'block' for flex items
+            }
+        });
+
+        // Find the cast table by looking for the Actor column header
+        const castTable = Array.from(document.querySelectorAll('.table--panel-like')).find(table => {
+            const actorHeader = table.querySelector('th.movie-page__actor-column');
+            return actorHeader && actorHeader.textContent.trim() === 'Actor';
+        });
+
+        if (castTable && castTable.parentNode) {
+            castTable.parentNode.insertBefore(cDiv, castTable);
+            castTable.parentNode.removeChild(castTable);
+        }
+
+        // Get background color for styling
+        const bg = getComputedStyle(document.querySelector('.panel') || document.body).backgroundColor || '#2c2c2c';
+
+        filteredCast.forEach((person, index) => {
+            const cellDiv = document.createElement('div');
+            // Add a class to each cell for the toggle functionality
+            cellDiv.className = 'cast-member-cell';
+            castDiv.appendChild(cellDiv);
+
+            // New CSS for a flex item. This is the key to fixing the layout.
+            cellDiv.style.cssText = `
+                box-sizing: border-box; /* Ensures padding is included in the width */
+                width: calc(25% - 8px); /* 25% width minus margin */
+                margin: 4px; /* Creates space around each cell */
+                text-align: center;
+                background-color: ${bg};
+                border-radius: 10px;
+                overflow: hidden;
+                font-size: 1em;
+                vertical-align: top;
+            `;
+
+            // Hide cells after the first 3 rows (12 cast members)
+            if (index >= 12) {
+                cellDiv.style.display = 'none';
+            }
+
+            // This innerHTML is correct for scaling the image within the cell.
+            cellDiv.innerHTML = `
+                <a href="${person.link}" target="_blank">
+                    <div style="width: 100%; height: 300px; overflow: hidden; background: #333; border-radius: 8px 8px 0 0; position: relative;">
+                        <img style="width: 100%; height: 100%; object-fit: cover; object-position: center top; display: block;"
+                             src="${person.photo}"
+                             alt="${person.name}"
+                             onerror="this.onerror=null; this.src='https://ptpimg.me/9wv452.png'; this.style.objectFit='contain'; this.style.objectPosition='center';" />
+                    </div>
+                </a>
+                <div style="padding: 8px;">
+                    <div><a href="https://www.imdb.com/name/${person.imdbId}" target="_blank" style="color: #F2DB83; text-decoration: none; font-size: 0.9em;">${person.name}</a></div>
+                    <div style="color: #ccc; font-size: 0.9em; margin-top: 2px;">${person.role}</div>
+                </div>
+            `;
+        });
+
+        // If no filtered cast found, show message
+        if (filteredCast.length === 0) {
+            const messageDiv = document.createElement('div');
+            messageDiv.style.cssText = 'padding: 20px; text-align: center; color: #ccc;';
+            messageDiv.textContent = 'No actor/actress data found in credits';
+            castDiv.appendChild(messageDiv);
+        }
+    };
+
     // Initialize panels
     fetchIMDBData(imdbId).then(data => {
         // The data returned now contains titleData, processedSoundtracks, and idToNameMap
-        const { titleData, processedSoundtracks, idToNameMap } = data;
+        const { titleData, processedSoundtracks, idToNameMap, namesData } = data;
 
         if (titleData) {
             if (SHOW_SIMILAR_MOVIES && titleData.moreLikeThisTitles) {
@@ -1624,7 +2412,13 @@
             }
 
             if (SHOW_AWARDS) {
-                displayAwardsData(titleData);
+                // Check if there's actual awards data before displaying
+                const hasAwardsData = checkAwardsData(titleData);
+                if (hasAwardsData) {
+                    displayAwardsData(titleData);
+                } else {
+                    console.warn("No awards data found - panel not displayed");
+                }
             }
 
             if (SHOW_SOUNDTRACKS && processedSoundtracks.length > 0) {
@@ -1643,6 +2437,11 @@
             if (SHOW_PARENTS_GUIDE) {
                 addParentalGuidePanel(titleData.parentsGuide.categories);
             }
+
+            if (SHOW_CAST_PHOTOS && titleData.credits && titleData.credits.edges && titleData.credits.edges.length > 0) {
+                displayCastPhotos(titleData, idToNameMap, namesData);
+            }
+
             formatIMDbText()
         } else {
             console.error("Failed to retrieve valid title data");
