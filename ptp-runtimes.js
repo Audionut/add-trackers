@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP Find All Runtimes
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.0
+// @version      1.1.0
 // @description  Find and print all runtimes from torrent descriptions on PTP
 // @match        https://passthepopcorn.me/torrents.php?id=*
 // @grant        GM_xmlhttpRequest
@@ -106,9 +106,10 @@
     function parseTimeToMinutes(timeStr) {
         if (!timeStr) return null;
 
-        // Match patterns like "1h 41mn", "1 h 41 min", "101 min", "1:41:30", "01:55:10.904", "2h 18m", etc.
+        // Match patterns like "1h 41mn", "1 h 41 min", "101 min", "1:41:30", "01:55:10.904", "2h 18m", "2h", etc.
         const patterns = [
             /(\d+)\s*h\s*(\d+)\s*m[in]*/i,          // 1h 41mn or 1 h 41 min or 2h 18m
+            /(\d+)\s*h$/i,                          // 2h (standalone hours)
             /(\d+)\s*m[in]*/i,                      // 41 min
             /(\d+):(\d+):(\d+)(?:\.\d+)?/,          // 1:41:30 or 01:55:10.904
             /(\d+):(\d+)/                           // 1:41
@@ -117,7 +118,10 @@
         for (const pattern of patterns) {
             const match = timeStr.match(pattern);
             if (match) {
-                if (pattern.source.includes('h')) {
+                if (pattern.source.includes('h') && pattern.source.includes('$')) {
+                    // Standalone hours like "2h"
+                    return parseInt(match[1]) * 60;
+                } else if (pattern.source.includes('h')) {
                     // Hours and minutes
                     return parseInt(match[1]) * 60 + parseInt(match[2]);
                 } else if (pattern.source === /(\d+)\s*m[in]*/i.source) {
@@ -197,6 +201,47 @@
         );
     }
 
+    // Filter torrent headers to exclude those after "Other" edition
+    function getValidTorrentHeaders() {
+        const allHeaders = Array.from(document.querySelectorAll('[id^="group_torrent_header_"]'));
+        const validHeaders = [];
+        
+        for (const header of allHeaders) {
+            // Check if there's an "Other" edition row before this torrent header
+            let currentElement = header;
+            let foundOtherEdition = false;
+            
+            // Walk backwards through DOM elements to find edition rows
+            while (currentElement && currentElement.previousElementSibling) {
+                currentElement = currentElement.previousElementSibling;
+                
+                // Check if this is an edition row with "Other"
+                if (currentElement.classList.contains('group_torrent') && 
+                    currentElement.querySelector('.basic-movie-list__torrent-edition__sub')) {
+                    
+                    const editionText = currentElement.querySelector('.basic-movie-list__torrent-edition__sub').textContent.trim();
+                    if (editionText === 'Other') {
+                        foundOtherEdition = true;
+                        break;
+                    } else {
+                        // Found a non-"Other" edition, so this torrent is valid
+                        break;
+                    }
+                }
+            }
+            
+            if (!foundOtherEdition) {
+                validHeaders.push(header);
+            } else {
+                const match = header.id.match(/group_torrent_header_(\d+)/);
+                const torrentId = match ? match[1] : 'unknown';
+                console.log(`Skipping torrent ${torrentId} - found after "Other" edition`);
+            }
+        }
+        
+        return validHeaders;
+    }
+
     function addButton() {
         const linkbox = document.querySelector('.linkbox');
         if (!linkbox) return;
@@ -241,6 +286,7 @@
             let generalDuration = null;
             let videoDuration = null;
             let frameRates = [];
+            let allDurations = []; // Store all durations found for DVDs
 
             // 1. HTML Table Extraction
             const tables = doc.querySelectorAll('.mediainfo__section');
@@ -259,11 +305,19 @@
                     const label = cells[0].textContent.trim().toLowerCase();
                     const value = cells[1].textContent.trim();
                     
-                    // Skip General duration for DVDs
-                    if ((label === 'runtime:' || label === 'duration:') && section === 'general' && !isDVD) {
-                        generalDuration = value;
+                    // Collect durations differently for DVDs
+                    if ((label === 'runtime:' || label === 'duration:') && section === 'general') {
+                        if (isDVD) {
+                            allDurations.push(value);
+                            if (!generalDuration) generalDuration = value;
+                        } else if (!generalDuration) {
+                            generalDuration = value;
+                        }
                     }
                     if ((label === 'runtime:' || label === 'duration:') && section === 'video') {
+                        if (isDVD) {
+                            allDurations.push(value);
+                        }
                         videoDuration = value;
                     }
                     if ((label === 'frame rate:') && section === 'video') {
@@ -287,7 +341,6 @@
                     } else if (/^video$/i.test(line)) {
                         currentSection = 'video';
                     } else if (/^audio\s*#?\d*$/i.test(line)) {
-                        // Match "Audio", "Audio #1", "Audio #2", etc.
                         currentSection = 'audio';
                     } else if (/^text$/i.test(line)) {
                         currentSection = 'text';
@@ -300,13 +353,29 @@
                         if (currentSection === 'audio' || currentSection === 'text' || currentSection === 'subtitle') continue;
                         
                         const duration = line.split(':').slice(1).join(':').trim();
-                        // Skip General duration for DVDs
-                        if (currentSection === 'general' && !generalDuration && !isDVD) generalDuration = duration;
-                        if (currentSection === 'video' && !videoDuration) videoDuration = duration;
+                        if (currentSection === 'general') {
+                            if (isDVD) {
+                                allDurations.push(duration);
+                                if (!generalDuration) generalDuration = duration;
+                            } else if (!generalDuration) {
+                                generalDuration = duration;
+                            }
+                        }
+                        if (currentSection === 'video') {
+                            if (isDVD) {
+                                allDurations.push(duration);
+                            }
+                            if (!videoDuration) videoDuration = duration;
+                        }
                     } else if (/^length\s*[:]/i.test(line)) {
                         // Handle Blu-ray "Length: 01:55:10.904" format
                         const duration = line.split(':').slice(1).join(':').trim();
-                        if (!generalDuration && !isDVD) generalDuration = duration;
+                        if (isDVD) {
+                            allDurations.push(duration);
+                            if (!generalDuration) generalDuration = duration;
+                        } else if (!generalDuration) {
+                            generalDuration = duration;
+                        }
                     } else if (/^frame rate\s*[:]/i.test(line)) {
                         // ONLY extract frame rate from video section
                         if (currentSection !== 'video') continue;
@@ -320,13 +389,30 @@
                 }
             }
 
-            // Store torrent data for later processing
-            const duration = generalDuration || videoDuration;
+            // For DVDs, find the longest duration from all collected durations
+            let finalDuration;
+            if (isDVD && allDurations.length > 0) {
+                let longestDuration = allDurations[0];
+                let longestMinutes = parseTimeToMinutes(longestDuration) || 0;
+                
+                for (const duration of allDurations) {
+                    const minutes = parseTimeToMinutes(duration);
+                    if (minutes && minutes > longestMinutes) {
+                        longestDuration = duration;
+                        longestMinutes = minutes;
+                    }
+                }
+                finalDuration = longestDuration;
+                console.log(`Torrent ${torrentId} - DVD detected, found ${allDurations.length} durations, longest: ${finalDuration}`);
+            } else {
+                finalDuration = generalDuration || videoDuration;
+            }
+
             const uniqueFrameRates = [...new Set(frameRates)];
-            
+
             const data = {
-                duration: duration,
-                formattedDuration: formatDurationForDisplay(duration),
+                duration: finalDuration,
+                formattedDuration: formatDurationForDisplay(finalDuration),
                 frameRates: uniqueFrameRates,
                 isDVD: isDVD,
                 generalDuration: generalDuration,
@@ -338,7 +424,7 @@
             // Save to cache
             saveTorrentData(groupId, torrentId, data);
 
-            console.log(`Torrent ${torrentId} - Runtime: ${duration}${isDVD ? ' (DVD - using video duration)' : ''}`);
+            console.log(`Torrent ${torrentId} - Runtime: ${finalDuration}${isDVD ? ' (DVD - longest duration)' : ''}`);
             if (uniqueFrameRates.length > 0) {
                 const displayFrameRates = uniqueFrameRates.map(fps => 
                     fps % 1 === 0 ? Math.round(fps) : fps
@@ -371,6 +457,32 @@
                 data.frameRates && data.frameRates.some(fps => Math.abs(fps - 23.976) < 0.1 || Math.abs(fps - 29.97) < 0.1)
             );
 
+            // Find reference runtime for telecine detection
+            let referenceRuntime = null;
+            let isReferenceProgressive = false;
+            
+            // First, look for NTSC DVD (assumes it's telecined) - PREFER DVD OVER 23.976fps
+            for (const [torrentId, data] of Object.entries(torrentData)) {
+                if (data.isDVD && data.frameRates && data.frameRates.some(fps => Math.abs(fps - 29.97) < 0.1) && data.duration) {
+                    referenceRuntime = parseTimeToMinutes(data.duration);
+                    isReferenceProgressive = false;
+                    console.log(`Using NTSC DVD ${torrentId} as telecined reference: ${data.formattedDuration}`);
+                    break;
+                }
+            }
+
+            // If no NTSC DVD found, then use 23.976fps progressive content as reference
+            if (!referenceRuntime) {
+                for (const [torrentId, data] of Object.entries(torrentData)) {
+                    if (data.frameRates && data.frameRates.some(fps => Math.abs(fps - 23.976) < 0.1) && data.duration) {
+                        referenceRuntime = parseTimeToMinutes(data.duration);
+                        isReferenceProgressive = true;
+                        console.log(`Using 23.976fps progressive ${torrentId} as reference: ${data.formattedDuration}`);
+                        break;
+                    }
+                }
+            }
+
             if (!hasOriginalRate) {
                 // No original rate found, just update all torrents normally
                 updateAllTorrentRows(imdbRuntimes);
@@ -381,9 +493,10 @@
             for (const [torrentId, data] of Object.entries(torrentData)) {
                 let runtimeInfo = '';
                 const has25fps = data.frameRates && data.frameRates.some(fps => Math.abs(fps - 25) < 0.1);
+                const has2997fps = data.frameRates && data.frameRates.some(fps => Math.abs(fps - 29.97) < 0.1);
                 
                 if (has25fps && hasOriginalRate && data.duration) {
-                    // This is likely PAL speedup - calculate original runtime
+                    // PAL speedup detected - calculate original runtime
                     const durationMinutes = parseTimeToMinutes(data.duration);
                     if (durationMinutes) {
                         const originalMinutes = Math.round(durationMinutes * 1.043);
@@ -401,34 +514,108 @@
                         const palStyle = palMatches ? '' : ' style="color: red;"';
                         const originalStyle = originalMatches ? '' : ' style="color: red;"';
                         
-                        runtimeInfo = ` / Runtime: <span${palStyle}>${data.formattedDuration} (PAL)</span>, <span${originalStyle}>${originalRuntime} (Original)</span>`;
+                        runtimeInfo = ` / <span${palStyle}>${data.formattedDuration} (PAL)</span>, <span${originalStyle}>${originalRuntime} (Original)</span>`;
                         console.log(`Torrent ${torrentId} - PAL speedup detected: ${data.formattedDuration} (PAL) vs ${originalRuntime} (Original)`);
                     } else {
                         const matches = matchesIMDbRuntime(parseTimeToMinutes(data.duration), imdbRuntimes);
                         const style = matches ? '' : ' style="color: red;"';
-                        runtimeInfo = ` / Runtime: <span${style}>${data.formattedDuration}</span>`;
+                        runtimeInfo = ` / <span${style}>${data.formattedDuration}</span>`;
+                    }
+                } else if (has2997fps && !data.isDVD && referenceRuntime && data.duration) {
+                    // Telecine detection - calculate original progressive runtime
+                    const currentMinutes = parseTimeToMinutes(data.duration);
+                    if (currentMinutes) {
+                        let originalMinutes;
+                        
+                        if (isReferenceProgressive) {
+                            // Reference is 23.976fps progressive, so check if this 29.97fps matches telecined version
+                            // When content is telecined, the runtime stays the same but framerate changes from 23.976 to 29.97
+                            // So a 29.97fps encode should have similar runtime to the 23.976fps reference if it's telecined
+                            const runtimeDifference = Math.abs(currentMinutes - referenceRuntime);
+                            
+                            if (runtimeDifference <= 1) { // Within 1 minute tolerance - much tighter!
+                                // This appears to be telecined content - show original progressive runtime
+                                originalMinutes = referenceRuntime;
+                                const originalHours = Math.floor(originalMinutes / 60);
+                                const remainingMinutes = originalMinutes % 60;
+                                
+                                const originalRuntime = originalHours > 0 ? 
+                                    `${originalHours}h ${remainingMinutes}mn` : 
+                                    `${remainingMinutes}mn`;
+
+                                // Check if telecined runtime matches IMDb
+                                const telecinedMatches = matchesIMDbRuntime(currentMinutes, imdbRuntimes);
+                                const originalMatches = matchesIMDbRuntime(originalMinutes, imdbRuntimes);
+                                
+                                const telecinedStyle = telecinedMatches ? '' : ' style="color: red;"';
+                                const originalStyle = originalMatches ? '' : ' style="color: red;"';
+                                
+                                runtimeInfo = ` / <span${telecinedStyle}>${data.formattedDuration} (Telecined)</span>, <span${originalStyle}>${originalRuntime} (Original)</span>`;
+                                console.log(`Torrent ${torrentId} - Telecine detected: ${data.formattedDuration} (Telecined) vs ${originalRuntime} (Original)`);
+                            } else {
+                                // Normal 29.97fps content
+                                const matches = matchesIMDbRuntime(currentMinutes, imdbRuntimes);
+                                const style = matches ? '' : ' style="color: red;"';
+                                runtimeInfo = ` / <span${style}>${data.formattedDuration}</span>`;
+                            }
+                        } else {
+                            // Reference is telecined DVD - ALL 29.97fps content should be treated as telecined
+                            // Calculate original progressive runtime from telecined runtime
+                            originalMinutes = Math.round(currentMinutes * (23.976 / 29.97));
+                            const originalHours = Math.floor(originalMinutes / 60);
+                            const remainingMinutes = originalMinutes % 60;
+                            
+                            const originalRuntime = originalHours > 0 ? 
+                                `${originalHours}h ${remainingMinutes}mn` : 
+                                `${remainingMinutes}mn`;
+
+                            // Check if telecined runtime matches IMDb
+                            const telecinedMatches = matchesIMDbRuntime(currentMinutes, imdbRuntimes);
+                            const originalMatches = matchesIMDbRuntime(originalMinutes, imdbRuntimes);
+                            
+                            const telecinedStyle = telecinedMatches ? '' : ' style="color: red;"';
+                            const originalStyle = originalMatches ? '' : ' style="color: red;"';
+                            
+                            runtimeInfo = ` / <span${telecinedStyle}>${data.formattedDuration} (Telecined)</span>, <span${originalStyle}>${originalRuntime} (Original)</span>`;
+                            console.log(`Torrent ${torrentId} - Telecine detected: ${data.formattedDuration} (Telecined) vs ${originalRuntime} (Original)`);
+                        }
+                    } else {
+                        const matches = matchesIMDbRuntime(parseTimeToMinutes(data.duration), imdbRuntimes);
+                        const style = matches ? '' : ' style="color: red;"';
+                        runtimeInfo = ` / <span${style}>${data.formattedDuration}</span>`;
                     }
                 } else {
                     // Normal runtime display
-                    const generalMinutes = parseTimeToMinutes(data.generalDuration);
-                    const videoMinutes = parseTimeToMinutes(data.videoDuration);
-                    
-                    if (generalMinutes && videoMinutes && Math.abs(generalMinutes - videoMinutes) > 1) {
-                        const formattedGeneral = formatDurationForDisplay(data.generalDuration);
-                        const formattedVideo = formatDurationForDisplay(data.videoDuration);
-                        
-                        const generalMatches = matchesIMDbRuntime(generalMinutes, imdbRuntimes);
-                        const videoMatches = matchesIMDbRuntime(videoMinutes, imdbRuntimes);
-                        
-                        const generalStyle = generalMatches ? '' : ' style="color: red;"';
-                        const videoStyle = videoMatches ? '' : ' style="color: red;"';
-                        
-                        runtimeInfo = ` / Runtime: <span${generalStyle}>${formattedGeneral} (General)</span>, <span${videoStyle}>${formattedVideo} (Video)</span>`;
-                    } else if (data.formattedDuration) {
+                    if (data.isDVD && data.formattedDuration) {
+                        // DVDs: Always show only the longest duration
                         const runtimeMinutes = parseTimeToMinutes(data.duration);
                         const matches = matchesIMDbRuntime(runtimeMinutes, imdbRuntimes);
                         const style = matches ? '' : ' style="color: red;"';
-                        runtimeInfo = ` / Runtime: <span${style}>${data.formattedDuration}</span>`;
+                        runtimeInfo = ` / <span${style}>${data.formattedDuration}</span>`;
+                    } else {
+                        // Non-DVDs: Show both if they differ at all, otherwise show single
+                        const generalMinutes = parseTimeToMinutes(data.generalDuration);
+                        const videoMinutes = parseTimeToMinutes(data.videoDuration);
+                        
+                        if (generalMinutes && videoMinutes && generalMinutes !== videoMinutes) {
+                            // Show both when they differ at all
+                            const formattedGeneral = formatDurationForDisplay(data.generalDuration);
+                            const formattedVideo = formatDurationForDisplay(data.videoDuration);
+                            
+                            const generalMatches = matchesIMDbRuntime(generalMinutes, imdbRuntimes);
+                            const videoMatches = matchesIMDbRuntime(videoMinutes, imdbRuntimes);
+                            
+                            const generalStyle = generalMatches ? '' : ' style="color: red;"';
+                            const videoStyle = videoMatches ? '' : ' style="color: red;"';
+                            
+                            runtimeInfo = ` / <span${generalStyle}>${formattedGeneral} (General)</span>, <span${videoStyle}>${formattedVideo} (Video)</span>`;
+                        } else if (data.formattedDuration) {
+                            // Show single runtime when they match or only one exists
+                            const runtimeMinutes = parseTimeToMinutes(data.duration);
+                            const matches = matchesIMDbRuntime(runtimeMinutes, imdbRuntimes);
+                            const style = matches ? '' : ' style="color: red;"';
+                            runtimeInfo = ` / <span${style}>${data.formattedDuration}</span>`;
+                        }
                     }
                 }
 
@@ -459,29 +646,40 @@
 
     function updateAllTorrentRows(imdbRuntimes = []) {
         try {
-            // Fallback for when no PAL speedup is detected
+            // Fallback for when no original rate is detected
             for (const [torrentId, data] of Object.entries(torrentData)) {
                 let runtimeInfo = '';
                 
-                const generalMinutes = parseTimeToMinutes(data.generalDuration);
-                const videoMinutes = parseTimeToMinutes(data.videoDuration);
-                
-                if (generalMinutes && videoMinutes && Math.abs(generalMinutes - videoMinutes) > 1) {
-                    const formattedGeneral = formatDurationForDisplay(data.generalDuration);
-                    const formattedVideo = formatDurationForDisplay(data.videoDuration);
-                    
-                    const generalMatches = matchesIMDbRuntime(generalMinutes, imdbRuntimes);
-                    const videoMatches = matchesIMDbRuntime(videoMinutes, imdbRuntimes);
-                    
-                    const generalStyle = generalMatches ? '' : ' style="color: red;"';
-                    const videoStyle = videoMatches ? '' : ' style="color: red;"';
-                    
-                    runtimeInfo = ` / Runtime: <span${generalStyle}>${formattedGeneral} (General)</span>, <span${videoStyle}>${formattedVideo} (Video)</span>`;
-                } else if (data.formattedDuration) {
+                if (data.isDVD && data.formattedDuration) {
+                    // DVDs: Always show only the longest duration
                     const runtimeMinutes = parseTimeToMinutes(data.duration);
                     const matches = matchesIMDbRuntime(runtimeMinutes, imdbRuntimes);
                     const style = matches ? '' : ' style="color: red;"';
-                    runtimeInfo = ` / Runtime: <span${style}>${data.formattedDuration}</span>`;
+                    runtimeInfo = ` / <span${style}>${data.formattedDuration}</span>`;
+                } else {
+                    // Non-DVDs: Show both if they differ at all, otherwise show single
+                    const generalMinutes = parseTimeToMinutes(data.generalDuration);
+                    const videoMinutes = parseTimeToMinutes(data.videoDuration);
+                    
+                    if (generalMinutes && videoMinutes && generalMinutes !== videoMinutes) {
+                        // Show both when they differ at all
+                        const formattedGeneral = formatDurationForDisplay(data.generalDuration);
+                        const formattedVideo = formatDurationForDisplay(data.videoDuration);
+                        
+                        const generalMatches = matchesIMDbRuntime(generalMinutes, imdbRuntimes);
+                        const videoMatches = matchesIMDbRuntime(videoMinutes, imdbRuntimes);
+                        
+                        const generalStyle = generalMatches ? '' : ' style="color: red;"';
+                        const videoStyle = videoMatches ? '' : ' style="color: red;"';
+                        
+                        runtimeInfo = ` / <span${generalStyle}>${formattedGeneral} (General)</span>, <span${videoStyle}>${formattedVideo} (Video)</span>`;
+                    } else if (data.formattedDuration) {
+                        // Show single runtime when they match or only one exists
+                        const runtimeMinutes = parseTimeToMinutes(data.duration);
+                        const matches = matchesIMDbRuntime(runtimeMinutes, imdbRuntimes);
+                        const style = matches ? '' : ' style="color: red;"';
+                        runtimeInfo = ` / <span${style}>${data.formattedDuration}</span>`;
+                    }
                 }
 
                 // Add frame rates
@@ -518,10 +716,11 @@
             return;
         }
 
-        const headers = Array.from(document.querySelectorAll('[id^="group_torrent_header_"]'));
+        // Use filtered headers instead of all headers
+        const headers = getValidTorrentHeaders();
         if (!headers.length) {
-            console.error('No torrent headers found');
-            displayAlert('No torrent headers found.', 'red');
+            console.error('No valid torrent headers found');
+            displayAlert('No valid torrent headers found.', 'red');
             return;
         }
 
