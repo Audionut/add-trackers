@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP Find All Runtimes
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.2.0
+// @version      1.2.1
 // @description  Find and print all runtimes from torrent descriptions on PTP
 // @match        https://passthepopcorn.me/torrents.php?id=*
 // @grant        GM_xmlhttpRequest
@@ -784,21 +784,6 @@ Enter new value (5-600):`, current);
                             
                             runtimeInfo = ` / <span${palStyle}>${data.formattedDuration} (PAL)</span>, <span${originalStyle}>${originalRuntime} (Original)</span>`;
                             console.log(`Torrent ${torrentId} - PAL speedup detected: ${data.formattedDuration} (PAL) vs ${originalRuntime} (Original)`);
-                        }
-                    } else if (expected.type === 'film' && has2997fps && !data.isDVD && data.duration) {
-                        // Film content with 29.97fps = telecined; invert math (original longer at 23.976)
-                        const currentMinutes = parseTimeToMinutes(data.duration);
-                        if (currentMinutes) {
-                            const originalMinutes = Math.round(currentMinutes * (29.97 / 23.976));
-                            const originalHours = Math.floor(originalMinutes / 60);
-                            const remainingMinutes = originalMinutes % 60;
-                            const originalRuntime = originalHours > 0 ? `${originalHours}h ${remainingMinutes}mn` : `${remainingMinutes}mn`;
-                            const telecinedMatches = matchesIMDbRuntime(currentMinutes, imdbRuntimes);
-                            const originalMatches = matchesIMDbRuntime(originalMinutes, imdbRuntimes);
-                            const telecinedStyle = getStyleForRuntime(telecinedMatches);
-                            const originalStyle = getStyleForRuntime(originalMatches);
-                            runtimeInfo = ` / <span${telecinedStyle}>${data.formattedDuration} (Telecined)</span>, <span${originalStyle}>${originalRuntime} (Original)</span>`;
-                            console.log(`Torrent ${torrentId} - Telecine detected: ${data.formattedDuration} (Telecined) vs ${originalRuntime} (Original)`);
                         }
                     } else if (expected.type === 'ntsc_video' && has23976fps && data.duration) {
                         // Expected NTSC video (29.97) but encode is film-speed 23.976 (slowed video or IVTC of video-sourced material)
