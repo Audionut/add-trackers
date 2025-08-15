@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.1.6.1
+// @version      1.1.7.0
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
+// @match        https://passthepopcorn.me/requests.php?*
 // @icon         https://passthepopcorn.me/favicon.ico
 // @downloadURL  https://github.com/Audionut/add-trackers/raw/main/ptp-imdb-combined.js
 // @updateURL    https://github.com/Audionut/add-trackers/raw/main/ptp-imdb-combined.js
@@ -44,6 +45,8 @@ let PARENTS_LOCATION = 3;
 let CAST_FILTER_TYPE = 'actors'; // 'actors' or 'all'
 let CAST_MAX_DISPLAY = 128;
 let CONST_PIXEL_HEIGHT = 300;
+let CAST_IMAGES_PER_ROW = 4;
+let CAST_DEFAULT_ROWS = 2;
 
 const saveSettings = () => {
     GM.setValue('SHOW_SIMILAR_MOVIES', SHOW_SIMILAR_MOVIES);
@@ -65,6 +68,8 @@ const saveSettings = () => {
     GM.setValue('SHOW_CAST_PHOTOS', SHOW_CAST_PHOTOS);
     GM.setValue('CAST_FILTER_TYPE', CAST_FILTER_TYPE);
     GM.setValue('CAST_MAX_DISPLAY', CAST_MAX_DISPLAY);
+    GM.setValue('CAST_IMAGES_PER_ROW', CAST_IMAGES_PER_ROW);
+    GM.setValue('CAST_DEFAULT_ROWS', CAST_DEFAULT_ROWS);
     GM.setValue('CONST_PIXEL_HEIGHT', CONST_PIXEL_HEIGHT);
     GM.setValue('TECHSPECS_LOCATION', TECHSPECS_LOCATION);
     GM.setValue('BOXOFFICE_LOCATION', BOXOFFICE_LOCATION);
@@ -94,6 +99,8 @@ const loadSettings = async () => {
     SHOW_CAST_PHOTOS = await GM.getValue('SHOW_CAST_PHOTOS', true);
     CAST_FILTER_TYPE = await GM.getValue('CAST_FILTER_TYPE', 'actors');
     CAST_MAX_DISPLAY = await GM.getValue('CAST_MAX_DISPLAY', 128);
+    CAST_IMAGES_PER_ROW = await GM.getValue('CAST_IMAGES_PER_ROW', 4);
+    CAST_DEFAULT_ROWS = await GM.getValue('CAST_DEFAULT_ROWS', 2);
     CONST_PIXEL_HEIGHT = await GM.getValue('CONST_PIXEL_HEIGHT', 300);
     TECHSPECS_LOCATION = await GM.getValue('TECHSPECS_LOCATION', 1);
     BOXOFFICE_LOCATION = await GM.getValue('BOXOFFICE_LOCATION', 2);
@@ -185,42 +192,42 @@ function showSettingsPanel() {
                     <!-- Content Panels Column -->
                     <div>
                         <h3 style="color: #F2DB83; margin-top: 0;">Content Panels</h3>
-                        
+
                         <label style="display: block; margin-bottom: 10px; cursor: pointer;">
                             <input type="checkbox" id="show-similar-movies" style="margin-right: 8px;">
                             <span>Similar Movies</span>
                         </label>
-                        
+
                         <label style="display: block; margin-bottom: 10px; cursor: pointer; margin-left: 20px;">
                             <input type="checkbox" id="place-under-cast" style="margin-right: 8px;">
                             <span>Place Similar Movies Under Cast</span>
                         </label>
-                        
+
                         <label style="display: block; margin-bottom: 10px; cursor: pointer;">
                             <input type="checkbox" id="show-technical-specs" style="margin-right: 8px;">
                             <span>Technical Specifications</span>
                         </label>
-                        
+
                         <label style="display: block; margin-bottom: 10px; cursor: pointer;">
                             <input type="checkbox" id="show-box-office" style="margin-right: 8px;">
                             <span>Box Office</span>
                         </label>
-                        
+
                         <label style="display: block; margin-bottom: 10px; cursor: pointer;">
                             <input type="checkbox" id="show-awards" style="margin-right: 8px;">
                             <span>Awards</span>
                         </label>
-                        
+
                         <label style="display: block; margin-bottom: 10px; cursor: pointer;">
                             <input type="checkbox" id="show-soundtracks" style="margin-right: 8px;">
                             <span>Soundtracks</span>
                         </label>
-                        
+
                         <label style="display: block; margin-bottom: 10px; cursor: pointer;">
                             <input type="checkbox" id="show-cast-photos" style="margin-right: 8px;">
                             <span>Credit Photos</span>
                         </label>
-                        
+
                         <div style="margin-left: 20px; margin-bottom: 15px;">
                             <label style="display: block; margin-bottom: 8px;">
                                 <span style="display: block; margin-bottom: 3px; font-size: 0.9em;">Credit Types:</span>
@@ -236,10 +243,34 @@ function showSettingsPanel() {
                                     <option value="all">All Credits</option>
                                 </select>
                             </label>
-                            
+
                             <label style="display: block; margin-bottom: 8px;">
                                 <span style="display: block; margin-bottom: 3px; font-size: 0.9em;">Max Credits:</span>
                                 <input type="number" id="cast-max-display" min="12" max="500" step="12" style="
+                                    width: 80px;
+                                    padding: 4px;
+                                    background: #444;
+                                    color: #fff;
+                                    border: 1px solid #666;
+                                    border-radius: 3px;
+                                ">
+                            </label>
+
+                            <label style="display: block; margin-bottom: 8px;">
+                                <span style="display: block; margin-bottom: 3px; font-size: 0.9em;">Cast Images Per Row:</span>
+                                <input type="number" id="cast-images-per-row" min="2" max="8" step="1" value="${CAST_IMAGES_PER_ROW}" style="
+                                    width: 80px;
+                                    padding: 4px;
+                                    background: #444;
+                                    color: #fff;
+                                    border: 1px solid #666;
+                                    border-radius: 3px;
+                                ">
+                            </label>
+
+                            <label style="display: block; margin-bottom: 8px;">
+                                <span style="display: block; margin-bottom: 3px; font-size: 0.9em;">Default Cast Rows:</span>
+                                <input type="number" id="cast-default-rows" min="1" max="8" value="${CAST_DEFAULT_ROWS}" style="
                                     width: 80px;
                                     padding: 4px;
                                     background: #444;
@@ -261,22 +292,22 @@ function showSettingsPanel() {
                                 ">
                             </label>
                         </div>
-                        
+
                         <label style="display: block; margin-bottom: 10px; cursor: pointer;">
                             <input type="checkbox" id="show-alternate-versions" style="margin-right: 8px;">
                             <span>Alternate Versions</span>
                         </label>
-                        
+
                         <label style="display: block; margin-bottom: 10px; cursor: pointer; margin-left: 20px;">
                             <input type="checkbox" id="alternate-versions-open" style="margin-right: 8px;">
                             <span>Open Alternate Versions by Default</span>
                         </label>
-                        
+
                         <label style="display: block; margin-bottom: 10px; cursor: pointer;">
                             <input type="checkbox" id="show-keywords" style="margin-right: 8px;">
                             <span>Keywords</span>
                         </label>
-                        
+
                         <label style="display: block; margin-bottom: 10px; cursor: pointer; margin-left: 20px;">
                             <input type="checkbox" id="keywords-open" style="margin-right: 8px;">
                             <span>Open Keywords by Default</span>
@@ -286,34 +317,34 @@ function showSettingsPanel() {
                     <!-- Parents Guide Column -->
                     <div>
                         <h3 style="color: #F2DB83; margin-top: 0;">Parents Guide</h3>
-                        
+
                         <label style="display: block; margin-bottom: 10px; cursor: pointer;">
                             <input type="checkbox" id="show-parents-guide" style="margin-right: 8px;">
                             <span>Show Parents Guide</span>
                         </label>
-                        
+
                         <label style="display: block; margin-bottom: 10px; cursor: pointer; margin-left: 20px;">
                             <input type="checkbox" id="panel-visible" style="margin-right: 8px;">
                             <span>Panel Visible by Default</span>
                         </label>
-                        
+
                         <label style="display: block; margin-bottom: 10px; cursor: pointer; margin-left: 20px;">
                             <input type="checkbox" id="toggleable-sections" style="margin-right: 8px;">
                             <span>Toggleable Sections</span>
                         </label>
-                        
+
                         <label style="display: block; margin-bottom: 10px; cursor: pointer; margin-left: 20px;">
                             <input type="checkbox" id="hide-spoilers" style="margin-right: 8px;">
                             <span>Hide Spoilers</span>
                         </label>
-                        
+
                         <label style="display: block; margin-bottom: 10px; cursor: pointer; margin-left: 20px;">
                             <input type="checkbox" id="hide-text" style="margin-right: 8px;">
                             <span>Hide Parental Guide Text</span>
                         </label>
 
                         <h3 style="color: #F2DB83; margin-top: 30px;">Cache Settings</h3>
-                        
+
                         <label style="display: block; margin-bottom: 10px;">
                             <span style="display: block; margin-bottom: 5px;">Cache Expiry (days):</span>
                             <input type="number" id="cache-expiry" min="1" max="365" style="
@@ -325,7 +356,7 @@ function showSettingsPanel() {
                                 border-radius: 3px;
                             ">
                         </label>
-                        
+
                         <button id="flush-cache-btn" style="
                             background: #ffc107;
                             color: #000;
@@ -336,7 +367,7 @@ function showSettingsPanel() {
                             margin-top: 10px;
                             margin-right: 10px;
                         ">🗑️ Flush Cache</button>
-                        
+
                         <button id="reset-all-btn" style="
                             background: #dc3545;
                             color: white;
@@ -352,7 +383,7 @@ function showSettingsPanel() {
                     <div>
                         <h3 style="color: #F2DB83; margin-top: 0;">Panel Locations</h3>
                         <p style="font-size: 0.9em; color: #ccc; margin-bottom: 15px;">Lower numbers appear higher in sidebar</p>
-                        
+
                         <label style="display: block; margin-bottom: 10px;">
                             <span style="display: block; margin-bottom: 5px;">Technical Specs:</span>
                             <input type="number" id="techspecs-location" min="1" max="20" style="
@@ -364,7 +395,7 @@ function showSettingsPanel() {
                                 border-radius: 3px;
                             ">
                         </label>
-                        
+
                         <label style="display: block; margin-bottom: 10px;">
                             <span style="display: block; margin-bottom: 5px;">Box Office:</span>
                             <input type="number" id="boxoffice-location" min="1" max="20" style="
@@ -376,7 +407,7 @@ function showSettingsPanel() {
                                 border-radius: 3px;
                             ">
                         </label>
-                        
+
                         <label style="display: block; margin-bottom: 10px;">
                             <span style="display: block; margin-bottom: 5px;">Parental Guide:</span>
                             <input type="number" id="parents-location" min="1" max="20" style="
@@ -388,7 +419,7 @@ function showSettingsPanel() {
                                 border-radius: 3px;
                             ">
                         </label>
-                        
+
                         <label style="display: block; margin-bottom: 10px;">
                             <span style="display: block; margin-bottom: 5px;">Awards:</span>
                             <input type="number" id="awards-location" min="1" max="20" style="
@@ -400,7 +431,7 @@ function showSettingsPanel() {
                                 border-radius: 3px;
                             ">
                         </label>
-                        
+
                         <label style="display: block; margin-bottom: 10px;">
                             <span style="display: block; margin-bottom: 5px;">Similar Movies:</span>
                             <input type="number" id="similar-movies-location" min="1" max="20" style="
@@ -412,7 +443,7 @@ function showSettingsPanel() {
                                 border-radius: 3px;
                             ">
                         </label>
-                        
+
                         <label style="display: block; margin-bottom: 10px;">
                             <span style="display: block; margin-bottom: 5px;">Existing IMDb Tags:</span>
                             <input type="number" id="existing-imdb-tags" min="1" max="20" style="
@@ -444,7 +475,7 @@ function showSettingsPanel() {
                         font-weight: bold;
                         margin-right: 10px;
                     ">💾 Save & Reload</button>
-                    
+
                     <button id="cancel-settings-btn" style="
                         background: #6c757d;
                         color: white;
@@ -470,7 +501,7 @@ function showSettingsPanel() {
     document.getElementById('save-settings-btn').addEventListener('click', saveSettingsFromForm);
     document.getElementById('flush-cache-btn').addEventListener('click', handleFlushCache);
     document.getElementById('reset-all-btn').addEventListener('click', handleResetAll);
-    
+
     // Close on overlay click
     document.getElementById('imdb-settings-overlay').addEventListener('click', (e) => {
         if (e.target.id === 'imdb-settings-overlay') {
@@ -489,6 +520,8 @@ function loadSettingsIntoForm() {
     document.getElementById('show-cast-photos').checked = SHOW_CAST_PHOTOS;
     document.getElementById('cast-filter-type').value = CAST_FILTER_TYPE;
     document.getElementById('cast-max-display').value = CAST_MAX_DISPLAY;
+    document.getElementById('cast-images-per-row').value = CAST_IMAGES_PER_ROW;
+    document.getElementById('cast-default-rows').value = CAST_DEFAULT_ROWS;
     document.getElementById('panel-height').value = CONST_PIXEL_HEIGHT;
     document.getElementById('show-alternate-versions').checked = SHOW_ALTERNATE_VERSIONS;
     document.getElementById('alternate-versions-open').checked = ALTERNATE_VERSIONS_PANEL_OPEN;
@@ -518,6 +551,8 @@ function saveSettingsFromForm() {
     SHOW_CAST_PHOTOS = document.getElementById('show-cast-photos').checked;
     CAST_FILTER_TYPE = document.getElementById('cast-filter-type').value;
     CAST_MAX_DISPLAY = parseInt(document.getElementById('cast-max-display').value) || 128;
+    CAST_IMAGES_PER_ROW = parseInt(document.getElementById('cast-images-per-row').value) || 4;
+    CAST_DEFAULT_ROWS = parseInt(document.getElementById('cast-default-rows').value) || 2;
     CONST_PIXEL_HEIGHT = parseInt(document.getElementById('panel-height').value) || 300;
     SHOW_ALTERNATE_VERSIONS = document.getElementById('show-alternate-versions').checked;
     ALTERNATE_VERSIONS_PANEL_OPEN = document.getElementById('alternate-versions-open').checked;
@@ -538,7 +573,7 @@ function saveSettingsFromForm() {
 
     saveSettings();
     closeSettingsPanel();
-    
+
     alert('Settings saved successfully!\nReloading page to apply changes...');
     window.location.reload();
 }
@@ -584,7 +619,7 @@ function handleResetAll() {
         AWARDS_LOCATION = 4;
         SIMILAR_MOVIES_LOCATION = 5;
         EXISTING_IMDB_TAGS = 6;
-        
+
         saveSettings();
         flushCache();
         closeSettingsPanel();
@@ -633,21 +668,39 @@ function handleResetAll() {
     }
 
     var link = document.querySelector("a#imdb-title-link.rating");
-    if (!link) {
-        console.error("IMDb link not found");
-        return;
-    }
+    let imdbUrl, imdbId;
 
-    var imdbUrl = link.getAttribute("href");
-    if (!imdbUrl) {
-        console.error("IMDb URL not found");
-        return;
-    }
-
-    let imdbId = imdbUrl.split("/")[4];
-    if (!imdbId) {
-        console.error("IMDb ID not found");
-        return;
+    if (link) {
+        imdbUrl = link.getAttribute("href");
+        if (!imdbUrl) {
+            console.error("IMDb URL not found");
+            return;
+        }
+        imdbId = imdbUrl.split("/")[4];
+        if (!imdbId) {
+            console.error("IMDb ID not found");
+            return;
+        }
+    } else {
+        // Fallback: check request table for IMDb link
+        const requestTable = document.querySelector('table#request-table');
+        if (requestTable) {
+            const imdbRow = Array.from(requestTable.querySelectorAll('tr')).find(tr =>
+                tr.querySelector('.label') && tr.querySelector('.label').textContent.trim().toLowerCase() === 'imdb link'
+            );
+            if (imdbRow) {
+                const imdbAnchor = imdbRow.querySelector('a[href*="imdb.com/title/tt"]');
+                if (imdbAnchor) {
+                    imdbUrl = imdbAnchor.getAttribute('href');
+                    const match = imdbUrl.match(/tt\d+/);
+                    imdbId = match ? match[0] : null;
+                }
+            }
+        }
+        if (!imdbId) {
+            console.error("IMDb link not found in request table");
+            return;
+        }
     }
 
     // Cache duration (1 week (by default) in milliseconds)
@@ -1830,9 +1883,14 @@ function handleResetAll() {
         if (movie_title.includes(" AKA ")) movie_title = movie_title.split(" AKA ")[1]; // 0 = title in foreign lang, 1 = title in eng lang
 
         let cast_container = [...document.querySelectorAll("table")].find(e => e.textContent.trim().startsWith("Actor\n"));
-        let bg_color_1 = window.getComputedStyle(cast_container.querySelector("tbody > tr > td"), null).getPropertyValue("background-color").split("none")[0];
-        let bg_color_2 = window.getComputedStyle(cast_container.querySelector("tbody > tr"), null).getPropertyValue("background-color").split("none")[0];
-        let border_color = window.getComputedStyle(cast_container.querySelector("tbody > tr > td"), null).getPropertyValue("border-color").split("none")[0];
+        let bg_color_1 = "#222";
+        let bg_color_2 = "#222";
+        let border_color = "#444";
+        if (cast_container) {
+            bg_color_1 = window.getComputedStyle(cast_container.querySelector("tbody > tr > td"), null).getPropertyValue("background-color").split("none")[0];
+            bg_color_2 = window.getComputedStyle(cast_container.querySelector("tbody > tr"), null).getPropertyValue("background-color").split("none")[0];
+            border_color = window.getComputedStyle(cast_container.querySelector("tbody > tr > td"), null).getPropertyValue("border-color").split("none")[0];
+        }
 
         let new_panel = document.createElement("div");
         new_panel.id = "imdb-soundtrack";
@@ -1900,7 +1958,17 @@ function handleResetAll() {
         songs_container.appendChild(songs_col_2);
         new_panel.appendChild(songs_container);
 
-        cast_container.parentNode.insertBefore(new_panel, cast_container);
+        if (cast_container && cast_container.parentNode) {
+            cast_container.parentNode.insertBefore(new_panel, cast_container);
+        } else {
+            // Fallback: insert after request table or at top of main content
+            const requestTable = document.getElementById('request-table');
+            if (requestTable && requestTable.parentNode) {
+                requestTable.parentNode.insertBefore(new_panel, requestTable.nextSibling);
+            } else {
+                document.body.insertBefore(new_panel, document.body.firstChild);
+            }
+        }
     };
 
     const createSongDiv = (song, movie_title, index, bg_color_1, bg_color_2, idToNameMap) => {
@@ -2327,7 +2395,7 @@ function handleResetAll() {
         const cDiv = document.createElement('div');
         cDiv.className = 'panel';
         cDiv.id = 'imdb_cast_photos';
-        
+
         const titleText = CAST_FILTER_TYPE === 'actors' ? 'Cast' : 'Credits';
         cDiv.innerHTML = `<div class="panel__heading"><span class="panel__heading__title"><a href="https://www.imdb.com/title/${imdbId}/fullcredits" target="_blank" rel="noopener noreferrer"><span style="color: rgb(242, 219, 131);">IMDb</span> ${titleText}</a></span></div>`;
 
@@ -2344,11 +2412,11 @@ function handleResetAll() {
 
         toggleButton.addEventListener('click', function() {
             const cells = castDiv.getElementsByClassName('cast-member-cell');
-            const isHidden = cells[12] && cells[12].style.display === 'none';
+            const cutoff = CAST_IMAGES_PER_ROW * CAST_DEFAULT_ROWS;
+            const isHidden = cells[cutoff] && cells[cutoff].style.display === 'none';
 
             toggleButton.innerHTML = isHidden ? `(Hide extra ${titleText.toLowerCase()})` : `(Show all ${titleText.toLowerCase()})`;
-
-            for (let i = 12; i < cells.length; i++) {
+            for (let i = cutoff; i < cells.length; i++) {
                 cells[i].style.display = isHidden ? 'block' : 'none';
             }
         });
@@ -2370,9 +2438,13 @@ function handleResetAll() {
             cellDiv.className = 'cast-member-cell';
             castDiv.appendChild(cellDiv);
 
+            const cellWidthPercent = 100 / CAST_IMAGES_PER_ROW;
+            const aspectRatio = 0.7; // portrait aspect ratio (width/height)
+            const cellHeightPx = Math.round(CONST_PIXEL_HEIGHT / aspectRatio);
+
             cellDiv.style.cssText = `
                 box-sizing: border-box;
-                width: calc(25% - 8px);
+                width: calc(${cellWidthPercent}% - 8px);
                 margin: 4px;
                 text-align: center;
                 background-color: ${bg};
@@ -2382,13 +2454,13 @@ function handleResetAll() {
                 vertical-align: top;
             `;
 
-            if (index >= 12) {
+            if (index >= CAST_IMAGES_PER_ROW * CAST_DEFAULT_ROWS) {
                 cellDiv.style.display = 'none';
             }
 
             cellDiv.innerHTML = `
                 <a href="${person.link}" target="_blank">
-                    <div style="width: 100%; height: ${CONST_PIXEL_HEIGHT}px; overflow: hidden; background: #333; border-radius: 8px 8px 0 0; position: relative;">
+                    <div style="width: 100%; height: ${cellHeightPx}px; overflow: hidden; background: #333; border-radius: 8px 8px 0 0; position: relative;">
                         <img style="width: 100%; height: 100%; object-fit: cover; object-position: center top; display: block;"
                             src="${person.photo}"
                             alt="${person.name}"
