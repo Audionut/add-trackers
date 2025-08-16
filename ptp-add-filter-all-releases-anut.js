@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.4.1-A
+// @version      4.5.0-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -58,6 +58,8 @@
         "ifl": {"label": "InfinityLibrary *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "ifl_api": {"label": "IFL_API_TOKEN", "type": "text", "default": ""},
         "kg": {"label": "KG", "type": "checkbox", "default": false},
+        "ldu": {"label": ":LDU *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
+        "ldu_api": {"label": "LDU_API_TOKEN", "type": "text", "default": ""},
         "lst": {"label": "LST *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "lst_api": {"label": "LST_API_TOKEN", "type": "text", "default": ""},
         "MTeam": {"label": "MTeam *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
@@ -94,6 +96,8 @@
         "easysearch": {"label": "TVV easy searching", "type": "checkbox", "default": true, "tooltip": "TVV has strict searching limits, especially for lower user groups. Disable this to search with more expensive options, better feedback including seeding status, but you're more likely to hit searching to soon error."},
         "ulcx": {"label": "ULCX *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "ulcx_api": {"label": "ULCX_API_TOKEN", "type": "text", "default": ""},
+        "yus": {"label": "YUS *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
+        "yus_api": {"label": "YUS_API_TOKEN", "type": "text", "default": ""},
         "media": {"label": "RED/OPS media filtering", "type": "text", "default": "", "tooltip": "Filter torrents from RED/OPS by media. CD, WEB, Vinyl"},
         "format": {"label": "RED/OPS format filtering", "type": "text", "default": "", "tooltip": "Filter torrents from RED/OPS by format. FLAC, MP3"},
         "show_icon": {"label": "Show Tracker Icon", "type": "checkbox", "default": true, "tooltip": "Display the tracker icon next to releases"},
@@ -231,6 +235,7 @@
                     "hdb": GM_config.fields.hdb.node,
                     "ifl": GM_config.fields.ifl.node,
                     "lst": GM_config.fields.lst.node,
+                    "ldu": GM_config.fields.ldu.node,
                     "MTeam": GM_config.fields.MTeam.node,
                     "mtv": GM_config.fields.mtv.node,
                     "nbl": GM_config.fields.nbl.node,
@@ -245,6 +250,7 @@
                     "tik": GM_config.fields.tik.node,
                     "tvv": GM_config.fields.tvv.node,
                     "ulcx": GM_config.fields.ulcx.node,
+                    "yus": GM_config.fields.yus.node,
                     "hidesamesize": GM_config.fields.hidesamesize.node,
                 };
 
@@ -322,6 +328,8 @@
             "AR": GM_config.get("ar"),
             "OTW": GM_config.get("otw"),
             "DP": GM_config.get("dp"),
+            "LDU": GM_config.get("ldu"),
+            "YUS": GM_config.get("yus"),
         };
 
         const movie_only_dict = {};
@@ -427,6 +435,8 @@
     const AR_PASS = GM_config.get("ar_pass");
     const OTW_API_TOKEN = GM_config.get("otw_api");
     const DP_API_TOKEN = GM_config.get("dp_api");
+    const YUS_API_TOKEN = GM_config.get("yus_api");
+    const LDU_API_TOKEN = GM_config.get("ldu_api");
 
     // We need to use XML response with TVV and have to define some parameters for it to work correctly.
     const TVV_AUTH_KEY = GM_config.get("tvv_auth"); // If you want to use TVV - find your authkey from a torrent download link
@@ -776,7 +786,9 @@ function toUnixTime(dateString) {
             "OPS": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAwAAAAMCAYAAABWdVznAAAACXBIWXMAABYlAAAWJQFJUiTwAAAA60lEQVQokY3Qu06bURCF0bXNb6xgJbiwokQJFZEoUuYteGBqHgCqVPQE5AKEAHGxSSbNGOhgyjlzvn3hnVNVgbxajLCFOb5hG39xhpMky6pK+niCr/iOn5hi2awxFjhIcpWq2sBOk3+gcIyrVpr3+xkOh15+auoDjpKctvJTA57wEXsDvrzKssD5OiBu29IK15gNHTS4a4XnIpr+AQNuYITLlpu09DRJJaku4nN/vMdiwEnb2sUGUlVjzPCrFa/b3vm61hn2m7ZqO5tt8zdOsUjymKpKkqqqTey1jVFT/+ACd0n+vSR7aeXN+Q8e8lc4WzpijAAAAABJRU5ErkJggg==",
             "AR": "data:image/x-icon;base64,AAABAAEAEBAAAAEAIABoBAAAFgAAACgAAAAQAAAAIAAAAAEAIAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wDGua9Vp2Mm3b1kJd29diTdu3Yk3aRqJd2bc0a8////AOTf2iakbCzXt3Ql3b52Jd25ViXdoVAq1+bj4B////8A9fX1CcXAwEHSSA/y/XQA//mHAP+ikH2G4ODhH////wD9/f0Bzs3NMrl0I97+dgD/zVsn3M3KyDj///8A////AP///wD///8AuIZ2jv5iAP/1hgD/tKmdZf///wD///8A////AN7Z1CvgeQH/+1cA/8GekXH///8A////AP///wD///8A////AODe4iLTXg7384UA/8/Fukj///8A////AP///wC+mW2T/nYA/89LFu7s6+oV////AP///wD///8A////AP///wD///8AwYE9xvOFAf/Sx7xG18i3ScCLSrm4gkS/43sF+v1YAP/FinWR////AP///wD///8A////AP///wD///8A////AMGHQsD0hgD/yb6zUO7r6BfNv65VrI1pm8ttBP/+egD/xayRdP///wD///8A////AP///wD///8A////AP///wDBh0LA8oUB/4dpaK7///8A////AMGTioG8PQT/5IAC/9t8DfLq6OYZ////AP///wD///8A////AP///wD///8AwYdDwPCEAf+YRBP25uTpHPPz9ArIVCjd5UcD/7lnBv/yhAH/urWwVP///wD///8A////AP///wD///8A////AMKJRMHyhQH/qT4K/8idkXfLt7JU8kgB/6U0Cv/IbwX/8IIB/8O/uUr///8A////AP///wD///8A////AP///wDHhzvJ94cA/1UnFf+/UCngt2RKwvpIAf9kLhH/84UB/9l9E+7v7ewT////AP///wD///8A////AOXh3SO0g0TCz3cM9uJ8A/+2Zgj/1WwF/9VtBf/jcQP/1HYE/8l7H+Pby7lI////AP///wD///8A////AP///wD7+/sD4NzYKuPg3CXk4d4j4+DcJrGMgo3GRgj/o3xwoOTh3ST29vUK////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wDm4+cd+7WZZevl5R7///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A//8AAP//AADAwQAA4eMAAOPnAADzxwAA8wcAAPOPAADxhwAA8YcAAPGHAADwBwAA4A8AAP4/AAD//wAA//8AAA==",
             "OTW": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAA7EAAAOxAGVKw4bAAACTUlEQVQ4jZ2Tz0tUURTHv+fe994wmqOlY2G2EUMmiUrGTEPKhUG1auOmNhmEi1b9A43bSAiCalO0ajEI0SJL+uEsWpSoBDUbQZRGpHJqbBpnnPfm3W+LGQcjDOm7OnDP+d7zuXwvsEWcmbGrNeMa/yOSVnaZjTvtt0iKiJALC/WoC/bmimir218Kk+k40DgPQESktJ2BqlaJcYPMyjXXR7SIbK0LXICLyOYl224gIqxs8YuZ9LiyMBBYLTVjOfVDupo+VbC2NagekJREAjp6An27xL+EwnqzaQi91SK3ygajglEANyqDEjN/OJEUkpL3eH3N5V3P8DtJFlxe/ucjVoaViBiX7BaiwwE+CjAP4LijESIgmH5xCKWkg40lg+AxLb3Dc4zHtdrqZgMpJUg5FoZ8gzQApbzsMwEIvhqG9/wOVPA1nMgIAKA7bKsyjxiSTQC+Ov7Px75BSoAakEkEQp85cTGEvT151LStAO4crNYHAIAllDYRIsbgnOehCFXveQbftCCojIxZlriMx32sJgvI5oIoJG7K6dvvGYOSgYHSJsIXrWUskMUjQ6wJ0eQbfNB69iWnpiwUr/TAXu9HS+dBbKSHOHmmDzGShFKVDGRI7kEYlqORI2DbCu9Eoh7qcg5q9lloHxnDgfMdqD8cxrpDTCU0RgEkmXRICn3/HskiyUVjOE5jZmnMG2YWGwCATyODnL76kJNd9/mk82gZHaqaMpK76TLKfL6VZC3JFpJHSNqMxRQn+k/xLAKcaA9w8uQgSeGWIO5Q/OuL/wY6nDtmJZCTKgAAAABJRU5ErkJggg==",
-            "DP": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABUAAAAVCAYAAACpF6WWAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAEzklEQVQ4jSXRS29cVwHA8f953HPvnbkezzghbghpQpSI1qVEUUElZGMJlAipbLpBfIGKTRdISGz7HVC7QIgNC4TyEUCqKioKQqZ5KA+nqeO4duz4Mc6MZ+4999zzYMHvK/zEX1L3E4+2MzpdIV8bwrJAFDPCZEhacXDSIl70EMsLyDc0SZ6QXhaIMxUMQQLIRPQR4SIk3ZLaDOKALCS8jYiTHPIcGT1iK0HMCMZAZSAKIgIlSkQlcSogEkgvETGSEohOJrLM05m6gwKdB8hrwrSFWkOm8cOMOAC8JGUJaTLkNzaIP+8c5HcIZqJIFaRMk7KCONSOLhVAkZE8wQvCrEAVmrggScsCOW8JFlAO4jyov96/w78+NYQfH/JocZneW1eyd09l3FQEE6CTfbJYktFCSqimRBmIo46gPHKWkFKi8gBxf6b+dOsT/maHlLeW6O+fZzc/y9E/7/PZ5jZ/tEHtBEKhpafXaqID2wOZwCSICUKC6CHvnH46fsHGfzdZ/81P6TfPibMBeTvAfHGX/V+v8quEvxTRrwRqSSuN9HiC0wmDcQRvUAc5DDx6d/KC8fgr9vI+5uKQK53nORWmcSzrTdKbb9P3dDc0YpDobACvwaNAdgYiQSRILX4kyJ9sfcmTMCa0I76bGt7UlokrGacCnec8v7/D9OZZbnTEDvR+JElJ6mkPRPAlJIESEHDkXz/8B+sjRXBDVLQcILnXWEpXkIzl8GBOWl0F8O9GpPXEmEAKVNQtxICuNciAn7czs7n7JcfnElpKcj9HzCLiKGN7r087KtC6RczvMF25zg1HGkhS3f3/IWWkTIO2DXiH8wuH5snhXeLiAn5LUR8fwyXg4RnyMKQ7rgiLY+RWj+5n73Pa0f4wIMYKjADRgZ1ALVtwAtrdXbP/2b+xn1c0245Ye9LaBt1t4O4PmD/bwY52UHVBuL2Off001yJCR0TtSfMIrSU5R7Ba4hqLadV/aAtg+gC+vkR3sAt8GyYXsT9/CnuGonLEP3xB88lNvuPozgnUHqAElAoaSaIDp7/Bhllt7AZw/jVM2cMfQNi+RmcLJCDXx8j5BeLtT2k/fo/lpTK805BeTfGzBMEgqiXoCaS0JK8n40Hz6Bn142/hNwvivSM8mnDxMjruIuQm6eg6CbAfXaM8U4arJwSnSM7hnQfZoU8qhDrBTccQ5fxzJtk+9vr12+7eVZq3LpB+u0q+uUbozQlvf4/sEqTfgXj9cnfZ4luBHEvUrCSvDcoOUMGR5pCfLJJb8dGDZB6sEDbWkL98g1Nn+vRbXOZqM/1wk8Pfr9hzAwrXQSOwK5KiLUBO6IIgi4JOZWQq0MUMOgFKfJBSxhrceGdnYMmGBicTCwGaYp98drYZhbx8dvolw+MRDCSqhMa2CJmTxROErslijxQExI5OiY/TfiXYyypSlrCh4thMEBoKloDA91PHOK85dln9I1/1nvZyJkicaNmm4YJsySkRoqUfJE7oAzYknAqPOApXifoY2gGTtiJ4xWHYZJr+vv1eKh4ilSF8sFq8kpCNeGw8aE+tBdJEnrWW3BtGUXyYvhqcQsstqnCFXf2KfvwFXYR1jnhMy54vWRRrXIgrPNc5pVihFNuclyW3qoDLAwfTwKJqmIQBL+3/ALtjmey2suzAAAAAAElFTkSuQmCC"
+            "DP": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABUAAAAVCAYAAACpF6WWAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAEzklEQVQ4jSXRS29cVwHA8f953HPvnbkezzghbghpQpSI1qVEUUElZGMJlAipbLpBfIGKTRdISGz7HVC7QIgNC4TyEUCqKioKQqZ5KA+nqeO4duz4Mc6MZ+4999zzYMHvK/zEX1L3E4+2MzpdIV8bwrJAFDPCZEhacXDSIl70EMsLyDc0SZ6QXhaIMxUMQQLIRPQR4SIk3ZLaDOKALCS8jYiTHPIcGT1iK0HMCMZAZSAKIgIlSkQlcSogEkgvETGSEohOJrLM05m6gwKdB8hrwrSFWkOm8cOMOAC8JGUJaTLkNzaIP+8c5HcIZqJIFaRMk7KCONSOLhVAkZE8wQvCrEAVmrggScsCOW8JFlAO4jyov96/w78+NYQfH/JocZneW1eyd09l3FQEE6CTfbJYktFCSqimRBmIo46gPHKWkFKi8gBxf6b+dOsT/maHlLeW6O+fZzc/y9E/7/PZ5jZ/tEHtBEKhpafXaqID2wOZwCSICUKC6CHvnH46fsHGfzdZ/81P6TfPibMBeTvAfHGX/V+v8quEvxTRrwRqSSuN9HiC0wmDcQRvUAc5DDx6d/KC8fgr9vI+5uKQK53nORWmcSzrTdKbb9P3dDc0YpDobACvwaNAdgYiQSRILX4kyJ9sfcmTMCa0I76bGt7UlokrGacCnec8v7/D9OZZbnTEDvR+JElJ6mkPRPAlJIESEHDkXz/8B+sjRXBDVLQcILnXWEpXkIzl8GBOWl0F8O9GpPXEmEAKVNQtxICuNciAn7czs7n7JcfnElpKcj9HzCLiKGN7r087KtC6RczvMF25zg1HGkhS3f3/IWWkTIO2DXiH8wuH5snhXeLiAn5LUR8fwyXg4RnyMKQ7rgiLY+RWj+5n73Pa0f4wIMYKjADRgZ1ALVtwAtrdXbP/2b+xn1c0245Ye9LaBt1t4O4PmD/bwY52UHVBuL2Off001yJCR0TtSfMIrSU5R7Ba4hqLadV/aAtg+gC+vkR3sAt8GyYXsT9/CnuGonLEP3xB88lNvuPozgnUHqAElAoaSaIDp7/Bhllt7AZw/jVM2cMfQNi+RmcLJCDXx8j5BeLtT2k/fo/lpTK805BeTfGzBMEgqiXoCaS0JK8n40Hz6Bn142/hNwvivSM8mnDxMjruIuQm6eg6CbAfXaM8U4arJwSnSM7hnQfZoU8qhDrBTccQ5fxzJtk+9vr12+7eVZq3LpB+u0q+uUbozQlvf4/sEqTfgXj9cnfZ4luBHEvUrCSvDcoOUMGR5pCfLJJb8dGDZB6sEDbWkL98g1Nn+vRbXOZqM/1wk8Pfr9hzAwrXQSOwK5KiLUBO6IIgi4JOZWQq0MUMOgFKfJBSxhrceGdnYMmGBicTCwGaYp98drYZhbx8dvolw+MRDCSqhMa2CJmTxROErslijxQExI5OiY/TfiXYyypSlrCh4thMEBoKloDA91PHOK85dln9I1/1nvZyJkicaNmm4YJsySkRoqUfJE7oAzYknAqPOApXifoY2gGTtiJ4xWHYZJr+vv1eKh4ilSF8sFq8kpCNeGw8aE+tBdJEnrWW3BtGUXyYvhqcQsstqnCFXf2KfvwFXYR1jnhMy54vWRRrXIgrPNc5pVihFNuclyW3qoDLAwfTwKJqmIQBL+3/ALtjmey2suzAAAAAAElFTkSuQmCC",
+            "YUS": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABABAMAAABYR2ztAAAAMFBMVEUAAAAKCxnyBwhxBhSwBxJd+PsWLUo/zuYIiN46obvq9PQHU5g2XnLtLETle4iRnaRqUG26AAAAAXRSTlMAQObYZgAAA0RJREFUSMfd1M1r1EAYBvABLVX08polohas0z15ELIJIohgk7lWvIxxqyDxY61WlD3UtSCeFEfw4Iq1rngR/IAB9SK2ZU+rtkqpCm1PYgpST4VWvHgo0vWdJNvOLvkH9DkNmd/O+2wSQv6RbKyo3InWJS2rF3kcbcn9xAxGIF9QGVfL44W1AKZCoqsmLs2zhwlpKwImgNV8TkC9Xv/VoUBtZ72+YsGFSpTf0JOAOSmfwQAhPkxKOQ9feJTeeXATkPsqX8E4rmBZvrAuyRicyCbAN0/SBRlsPdxWNKWcMXtl/C/uNQCvnaa7JZbACnjAefn0gVB53QBtZaB7VAkfzssf5rK8IqJcb4D2I+BSVUJVmNkmn4sWQPKQi0oUQb7sPoMH3GYq4SrgQSYqUe7ACkNcCJdmXUqpAkkJA0s8Btgun2ATcZ1mPQePWANYgr38CTC5NGPyo+JtFpIgSEo4bGEpgJUlrwPBdHcrGIAMO7RU61gMY2AZLmOebVsN0FYzWM/i953hLIIrYhpyZL1LVRqgCIwtfrsYASHuImjJcSwRzn0KWZfpi9I1MGxGD+rAB5wRhiH+9QeixGsAYLidGsAS3oEwnKZd0CeGeH5qIkChgzLYjgK7YJ+4xTH+BBjaEe2XwbZ7QkotsEV1iKvUmqrmsdcBBDi7r1qtVEqc5yGjHVEKDNvBCgj2VlXGOC8C1WbUcIaqgDNiMcLz+oyNZQQuVvBw1t5+JQZ4sEWbcRUMBJDJAkpbnXKDlw0NVGKQ67RQOMzbXx3xL0NWKxHEgKxXAjM6hoCmAOJZgHE+Cv8quPrNbgDC7BiUUoFnk3WMeZD5IIbv6aA9BoZtq8e8rtsYHhxVoLUDgOGod8kyS4Oj71PAhQlQyIJt/Fh1NgWc6/0TKGIO8fv9aaDv4dP8o6mpqWHuFwpdKfdhx02e5FjhdBd0ak8rASLZx09fbpeRAkbx4zWM39A3hQK1MmkAd+KczDa9cxti0F+Ngvun8O1x00Dye4dSfK1TwCl80g5TN7Mbci2AISiobcZw3wODkiaQwesAdhILwO1sBgZeBi04QM+mAJpiuJSkAYdh8ChsQZqz+V20Rz0sSTEHSWsUcGmW/J/5C0x5gAjJEKFdAAAAAElFTkSuQmCC",
+            "LDU": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAfAgMAAAD7OCcfAAAADFBMVEUOFQiu2Bk5SQx8nBS983KFAAAAT0lEQVQY02MgE2gxMK1qADGmNnCGHlgAY9yAMOIb7kAYEQzXMBjXqc0IAzJMEzgjuEEM1fif4V9jgAze0MrQ0AoggxnEeAB29KJVq4jzHgDikTAb4Q/EagAAAABJRU5ErkJggg=="
         };
 
         const get_tracker_icon = (tracker) => {
@@ -795,7 +807,9 @@ function toUnixTime(dateString) {
                 (tracker === "IFL") ||
                 (tracker === "ULCX") ||
                 (tracker === "OTW") ||
-                (tracker === "DP")
+                (tracker === "DP") ||
+                (tracker === "YUS") ||
+                (tracker === "LDU")
             )
                 return true;
             else return false;
@@ -2211,6 +2225,18 @@ function toUnixTime(dateString) {
                         imdb_id.split("tt")[1] +
                         "&categories[0]=1&categories[1]=2&categories[2]=6&categories[3]=8&perPage=100&api_token=" +
                         LST_API_TOKEN;
+                } else if (tracker === "YUS") {
+                    api_query_url =
+                        "https://yu-scene.net/api/torrents/filter?imdbId=" +
+                        imdb_id.split("tt")[1] +
+                        "&categories[0]=1&categories[1]=2&categories[2]=6&categories[3]=8&perPage=100&api_token=" +
+                        YUS_API_TOKEN;
+                } else if (tracker === "LDU") {
+                    api_query_url =
+                        "https://theldu.to/api/torrents/filter?imdbId=" +
+                        imdb_id.split("tt")[1] +
+                        "&categoryIds[0]=1&categoryIds[1]=33&categoryIds[2]=21&categoryIds[3]=25&categoryIds[4]=18&categoryIds[5]=24&categoryIds[6]=19&categoryIds[7]=42&categoryIds[8]=17&categoryIds[9]=12&categoryIds[10]=27&categoryIds[11]=22&categoryIds[12]=28&categoryIds[13]=8&categoryIds[14]=9&categoryIds[15]=2&categoryIds[16]=41&categoryIds[17]=31&categoryIds[18]=29&categoryIds[19]=32&categoryIds[20]=38&categoryIds[21]=40&categoryIds[22]=46&categoryIds[23]=20&categoryIds[24]=3&categoryIds[25]=16&categoryIds[26]=35&categoryIds[27]=37&categoryIds[28]=6&categoryIds[29]=45&categoryIds[30]=30&categoryIds[31]=15&categoryIds[32]=10&categoryIds[33]=14&categoryIds[34]=39&categoryIds[35]=11&categoryIds[36]=23&perPage=100&api_token=" +
+                        LDU_API_TOKEN;
                 } else if (tracker === "ULCX") {
                     api_query_url =
                         "https://upload.cx/api/torrents/filter?imdbId=" +
@@ -4175,7 +4201,9 @@ function toUnixTime(dateString) {
                 tracker === "IFL" ||
                 tracker === "ULCX" ||
                 tracker === "OTW" ||
-                tracker === "DP"
+                tracker === "DP" ||
+                tracker === "YUS" ||
+                tracker === "LDU"
             ) {
                 torrent_objs = json.data.map((element) => {
                     let originalInfoText;
@@ -4943,7 +4971,7 @@ function toUnixTime(dateString) {
                         if (torrent.site === "MTV") {
                             torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__tags torrent-info__tags--internal'>Internal</span>" : false;
                         }
-                        if (torrent.site === "BLU" || torrent.site === "Aither" || torrent.site === "RFX" || torrent.site === "OE" || torrent.site === "HUNO" || torrent.site === "LST" || torrent.site === "FL" || tracker === "IFL" || tracker === "ULCX" || tracker === "OTW" || tracker === "DP") {
+                        if (torrent.site === "BLU" || torrent.site === "Aither" || torrent.site === "RFX" || torrent.site === "OE" || torrent.site === "HUNO" || torrent.site === "LST" || torrent.site === "FL" || tracker === "IFL" || tracker === "ULCX" || tracker === "OTW" || tracker === "DP" || tracker === "YUS" || tracker === "LDU") {
                             get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__tags torrent-info__tags--internal'>Internal</span>") : false;
                             get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__download-modifier'>DU</span>") : false;
                             get_api_featured(torrent.featured) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__download-modifier'>Featured</span>") : false;
@@ -4971,7 +4999,7 @@ function toUnixTime(dateString) {
                         if (torrent.site === "MTV") {
                             torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
                         }
-                        if (torrent.site === "BLU" || torrent.site === "Aither" || torrent.site === "RFX" || torrent.site === "OE" || torrent.site === "HUNO" || torrent.site === "LST" || torrent.site === "FL" || tracker === "IFL" || tracker === "ULCX" || tracker === "OTW" || tracker === "DP") {
+                        if (torrent.site === "BLU" || torrent.site === "Aither" || torrent.site === "RFX" || torrent.site === "OE" || torrent.site === "HUNO" || torrent.site === "LST" || torrent.site === "FL" || tracker === "IFL" || tracker === "ULCX" || tracker === "OTW" || tracker === "DP" || tracker === "YUS" || tracker === "LDU") {
                             get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #baaf92'>Internal</span>") : false;
                             get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__DU' style='font-weight: bold; color: #279d29'>DU</span>") : false;
                             get_api_featured(torrent.featured) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__Featured' style='font-weight: bold; color: #997799'>Featured</span>") : false;
@@ -5147,7 +5175,7 @@ function toUnixTime(dateString) {
 
                 cln.querySelector(".size-span").textContent = ptp_format_size;
 
-                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV", "LST", "ANT", "RTF", "AvistaZ", "CinemaZ", "PHD", "TL", "FL", "MTeam", "IFL", "RED", "OPS", "ULCX", "AR", "OTW", "DP"];
+                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV", "LST", "ANT", "RTF", "AvistaZ", "CinemaZ", "PHD", "TL", "FL", "MTeam", "IFL", "RED", "OPS", "ULCX", "AR", "OTW", "DP", "YUS", "LDU"];
                 if (byteSizedTrackers.includes(torrent.site)) {
                     cln.querySelector(".size-span").setAttribute("title", api_sized);
                 } else {
@@ -6443,103 +6471,74 @@ function toUnixTime(dateString) {
             }, timerDuration);
         }
 
-        // Function to get TVDB ID from localStorage
-        function getTvdbIdFromStorage(ptpId) {
-            return localStorage.getItem(`tvdb_id_${ptpId}`);
-        }
+        async function waitForTvdbId(imdb_Id) {
+            let tvdbId = await GM.getValue(`tvdb_id_${imdb_Id}`);
+            if (tvdbId) {
+                return tvdbId;
+            } else {
+                const query = `
+                    SELECT ?item ?itemLabel ?tvdbID WHERE {
+                    ?item wdt:P345 "${imdb_Id}" .
+                    ?item wdt:P4835 ?tvdbID .
+                    SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],en". }
+                    }
+                `;
+                const url = `https://query.wikidata.org/sparql?query=${encodeURIComponent(query)}&format=json`;
 
-        // Function to get TVDB ID
-        function getTvdbId() {
-            const ptpId = new URL(window.location.href).searchParams.get("id");
-            let tvdbId = getTvdbIdFromStorage(ptpId);
-            return tvdbId;
-        }
-
-        // Function to wait for TVDB ID with a timeout
-        function waitForTvdbId(timeout = btnTimer) {
-            return new Promise((resolve, reject) => {
-                // Check if the TVDB ID is already in localStorage
-                let tvdbId = getTvdbId();
-                if (tvdbId) {
-                    resolve(tvdbId);
-                } else {
-                    // Add event listener for TVDB ID
-                    const onTvdbIdFetched = (event) => {
-                        const { tvdbId: fetchedTvdbId } = event.detail;
-                        resolve(fetchedTvdbId);
-                        cleanup();
-                    };
-
-                    // Add event listener for TVDB ID fetch errors
-                    const onTvdbIdFetchError = (event) => {
-                        const { message } = event.detail;
-                        reject(new Error(message));
-                        cleanup();
-                    };
-
-                    // Cleanup function to remove event listeners
-                    const cleanup = () => {
-                        clearTimeout(timeoutId);
-                        document.removeEventListener('tvdbIdFetched', onTvdbIdFetched);
-                        document.removeEventListener('tvdbIdFetchError', onTvdbIdFetchError);
-                    };
-
-                    document.addEventListener('tvdbIdFetched', onTvdbIdFetched);
-                    document.addEventListener('tvdbIdFetchError', onTvdbIdFetchError);
-
-                    // Set a timeout to reject the promise if neither event is triggered
-                    const timeoutId = setTimeout(() => {
-                        reject(new Error("TVDB ID fetch timed out."));
-                        cleanup();
-                    }, timeout);
-                }
-            });
+                return new Promise((resolve, reject) => {
+                    GM_xmlhttpRequest({
+                        method: "GET",
+                        url: url,
+                        onload: function(response) {
+                            const data = JSON.parse(response.responseText);
+                            console.log(data);
+                            if (data && data.results && data.results.bindings.length > 0) {
+                                const tvdbId = data.results.bindings[0].tvdbID.value;
+                                GM.setValue(`tvdb_id_${imdb_Id}`, tvdbId);
+                                resolve(tvdbId);
+                            } else {
+                                resolve(null);
+                            }
+                        },
+                        onerror: function() {
+                            console.log('Failed to fetch TVDB ID from Wikidata.');
+                            resolve(null);
+                        }
+                    });
+                });
+            }
         }
 
         // Function to get TVmaze ID
-        function getTvmazeId() {
-            return new Promise((resolve, reject) => {
-                // Add event listener for TVmaze ID
-                const onTvmazeIdFetched = (event) => {
-                    const { tvmazeId } = event.detail;
-                    resolve(tvmazeId);
-                    cleanup();
-                };
+        async function getTvmazeId(imdb_Id) {
+            let tvmazeId = await GM.getValue(`tvmaze_id_${imdb_Id}`);
+            if (tvmazeId) {
+                return tvmazeId
+            } else {
+              const tvmazeUrl = `https://api.tvmaze.com/lookup/shows?imdb=${imdb_Id}`;
 
-                // Add event listener for TVmaze ID fetch errors
-                const onTvmazeIdFetchError = (event) => {
-                    const { message } = event.detail;
-                    reject(new Error(message));
-                    cleanup();
-                };
+              // Parse TVmaze response
+              function parseTvmazeResponse(response) {
+                  const data = JSON.parse(response.responseText);
+                  if (data && data.id) {
+                      GM.setValue(`tvmaze_id_${imdb_Id}`, data.id);
+                      return tvmazeId
+                  } else {
+                      return
+                  }
+              }
 
-                // Cleanup function to remove event listeners
-                const cleanup = () => {
-                    clearTimeout(timeoutId);
-                    document.removeEventListener('tvmazeIdFetched', onTvmazeIdFetched);
-                    document.removeEventListener('tvmazeIdFetchError', onTvmazeIdFetchError);
-                };
-
-                document.addEventListener('tvmazeIdFetched', onTvmazeIdFetched);
-                document.addEventListener('tvmazeIdFetchError', onTvmazeIdFetchError);
-
-                // Set a timeout to reject the promise if neither event is triggered
-                const timeoutId = setTimeout(() => {
-                    reject(new Error("TVmaze ID fetch timed out."));
-                    cleanup();
-                }, 2000); // Adjusted timeout to 10 seconds for better reliability
-            });
-        }
-
-        // Function to wait for TVmaze ID with a timeout
-        async function waitForTvmazeId() {
-            try {
-                const tvmazeId = await getTvmazeId();
-                return tvmazeId;
-            } catch (error) {
-                console.log('TVmaze error:', error.message);
-                return null;
-            }
+              // Fetch TV show information from TVmaze
+              return new Promise((resolve, reject) => {
+                  GM_xmlhttpRequest({
+                      method: "GET",
+                      url: tvmazeUrl,
+                      timeout: 10000,
+                      onload: parseTvmazeResponse,
+                      onerror: () => console.error("Failed to fetch TVmaze data."),
+                  });
+              });
+          }
         }
 
         const mainFunc = async () => {
@@ -6568,32 +6567,21 @@ function toUnixTime(dateString) {
 
             let tvdbId;
             if (trackers.includes("BTN")) {
-                try {
-                    tvdbId = getTvdbId();
-                    if (!tvdbId) {
-                        tvdbId = await waitForTvdbId();
-                    }
-                    if (tvdbId) {
-                        console.log(`TVDB ID is ${tvdbId}`);
-                    } else {
-                        console.log('TVDB ID not found yet.');
-                    }
-                } catch (error) {
-                    console.log('TVDB error:', error.message);
+                tvdbId = await waitForTvdbId(imdb_id);
+                if (tvdbId) {
+                    console.log(`TVDB ID is ${tvdbId}`);
+                } else {
+                    console.log('TVDB ID not found.');
                 }
             }
 
             let tvmazeId;
             if (trackers.includes("NBL")) {
-                try {
-                    tvmazeId = await waitForTvmazeId();
-                    if (tvmazeId) {
-                        console.log(`TVmaze ID is ${tvmazeId}`);
-                    } else {
-                        console.log('TVmaze ID not found yet.');
-                    }
-                } catch (error) {
-                    console.log('TVmaze error:', error.message);
+                tvmazeId = await getTvmazeId(imdb_id);
+                if (tvmazeId) {
+                    console.log(`TVmaze ID is ${tvmazeId}`);
+                } else {
+                    console.log('TVmaze ID not found yet.');
                 }
             }
 
