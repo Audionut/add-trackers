@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP Find All Runtimes
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.2.1
+// @version      1.2.2
 // @description  Find and print all runtimes from torrent descriptions on PTP
 // @match        https://passthepopcorn.me/torrents.php?id=*
 // @grant        GM_xmlhttpRequest
@@ -20,6 +20,8 @@
     // Maximum allowed difference in seconds between torrent runtime and IMDb technical specs
     let MAX_RUNTIME_DIFFERENCE_SECONDS = GM_getValue('maxRuntimeDiffSeconds', 60); // 60 seconds = 1 minute tolerance
     // =================================
+
+    const originalTorrentInfoLinks = {};
 
     // Settings with defaults
     const SETTINGS = {
@@ -455,18 +457,49 @@ Enter new value (5-600):`, current);
     function addButton() {
         const linkbox = document.querySelector('.linkbox');
         if (!linkbox) return;
-        
+
+        // Prevent duplicate button
+        if (document.getElementById('find-all-runtimes-btn')) return;
+
         const btn = document.createElement('a');
+        btn.id = 'find-all-runtimes-btn';
         btn.href = '#';
         btn.className = 'linkbox__link';
         btn.textContent = ' [Find all runtimes]';
+
+        let runtimesVisible = false;
+
         btn.addEventListener('click', async function (e) {
             e.preventDefault();
-            try {
-                await findAllRuntimes();
-            } catch (error) {
-                console.error('Error finding runtimes:', error);
-                displayAlert('Error occurred while finding runtimes. Check console for details.', 'red');
+            const headers = getValidTorrentHeaders();
+            if (!runtimesVisible) {
+                try {
+                    await findAllRuntimes();
+                    btn.textContent = ' [Hide runtimes]';
+                    runtimesVisible = true;
+                } catch (error) {
+                    console.error('Error finding runtimes:', error);
+                    displayAlert('Error occurred while finding runtimes. Check console for details.', 'red');
+                }
+            } else {
+                // Remove only the runtime info from torrent rows
+                for (const header of headers) {
+                    const match = header.id.match(/group_torrent_header_(\d+)/);
+                    if (!match) continue;
+                    const torrentId = match[1];
+                    const torrentRow = document.querySelector(`#group_torrent_header_${torrentId}`);
+                    if (torrentRow) {
+                        const torrentInfoLink = torrentRow.querySelector('.torrent-info-link');
+                        if (torrentInfoLink) {
+                            // Restore original HTML if we have it
+                            if (originalTorrentInfoLinks[torrentId]) {
+                                torrentInfoLink.innerHTML = originalTorrentInfoLinks[torrentId];
+                            }
+                        }
+                    }
+                }
+                btn.textContent = ' [Find all runtimes]';
+                runtimesVisible = false;
             }
         });
         linkbox.appendChild(btn);
@@ -754,7 +787,7 @@ Enter new value (5-600):`, current);
             // Determine expected framerate from IMDb technical specs or manual override
             const expected = determineExpectedFramerate(groupId);
             console.log(`Expected framerate: ${expected.framerate}fps (${expected.type})`);
-            
+
             // Process each torrent
             for (const [torrentId, data] of Object.entries(torrentData)) {
                 let runtimeInfo = '';
@@ -889,6 +922,10 @@ Enter new value (5-600):`, current);
                     if (torrentRow) {
                         const torrentInfoLink = torrentRow.querySelector('.torrent-info-link');
                         if (torrentInfoLink) {
+                            // Save original HTML only once
+                            if (!(torrentId in originalTorrentInfoLinks)) {
+                                originalTorrentInfoLinks[torrentId] = torrentInfoLink.innerHTML;
+                            }
                             torrentInfoLink.innerHTML += runtimeInfo;
                         }
                     }
