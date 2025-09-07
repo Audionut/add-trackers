@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP Find All Runtimes
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.2.3
+// @version      1.2.4
 // @description  Find and print all runtimes from torrent descriptions on PTP
 // @match        https://passthepopcorn.me/torrents.php?id=*
 // @grant        GM_xmlhttpRequest
@@ -455,6 +455,10 @@ Enter new value (5-600):`, current);
                         if (skipWords.some(word => text.includes(word))) {
                             continue outerLoop;
                         }
+                    }
+                    const linkText = torrentInfoLink.textContent.toLowerCase();
+                    if (skipWords.some(word => linkText.includes(word))) {
+                        continue outerLoop;
                     }
                 }
 
