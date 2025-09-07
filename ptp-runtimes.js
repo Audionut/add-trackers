@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP Find All Runtimes
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.2.2
+// @version      1.2.3
 // @description  Find and print all runtimes from torrent descriptions on PTP
 // @match        https://passthepopcorn.me/torrents.php?id=*
 // @grant        GM_xmlhttpRequest
@@ -28,7 +28,8 @@
         showRuntimeColoring: GM_getValue('showRuntimeColoring', true),
         showFramerateInfo: GM_getValue('showFramerateInfo', true),
         manualFramerate: GM_getValue('manualFramerate', null), // null = auto-detect
-        manualFramerateType: GM_getValue('manualFramerateType', null) // 'film', 'ntsc_video', 'pal_video'
+        manualFramerateType: GM_getValue('manualFramerateType', null), // 'film', 'ntsc_video', 'pal_video'
+        skipWords: GM_getValue('skipWords', '')
     };
     // =================================
 
@@ -188,6 +189,21 @@ Enter new value (5-600):`, current);
                 }
             );
         }
+
+        GM_registerMenuCommand(
+            `Set Skip Words (current: ${SETTINGS.skipWords})`,
+            () => {
+                const input = prompt(
+                    "Enter comma-separated list of words to skip (in span elements (eg: m2ts)):",
+                    SETTINGS.skipWords
+                );
+                if (input !== null) {
+                    saveSetting('skipWords', input.trim());
+                    displayAlert('Skip words updated. Reloading...', 'blue', 2000);
+                    location.reload();
+                }
+            }
+        );
 
         // Global clear cache (all groups)
         GM_registerMenuCommand('Clear ALL Runtime Cache', () => {
@@ -417,16 +433,31 @@ Enter new value (5-600):`, current);
     function getValidTorrentHeaders() {
         const allHeaders = Array.from(document.querySelectorAll('[id^="group_torrent_header_"]'));
         const validHeaders = [];
-        
+        const skipWords = SETTINGS.skipWords
+            .split(',')
+            .map(w => w.trim().toLowerCase())
+            .filter(Boolean);
+        outerLoop:
         for (const header of allHeaders) {
             // Check if there's an "Other" edition row before this torrent header
             let currentElement = header;
             let foundOtherEdition = false;
-            
+
             // Walk backwards through DOM elements to find edition rows
             while (currentElement && currentElement.previousElementSibling) {
                 currentElement = currentElement.previousElementSibling;
-                
+
+                const torrentInfoLink = header.querySelector('.torrent-info-link');
+                if (torrentInfoLink) {
+                    const spans = torrentInfoLink.querySelectorAll('span');
+                    for (const span of spans) {
+                        const text = span.textContent.toLowerCase();
+                        if (skipWords.some(word => text.includes(word))) {
+                            continue outerLoop;
+                        }
+                    }
+                }
+
                 // Check if this is an edition row with "Other"
                 if (currentElement.classList.contains('group_torrent') && 
                     currentElement.querySelector('.basic-movie-list__torrent-edition__sub')) {
