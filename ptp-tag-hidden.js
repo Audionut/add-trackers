@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP content hider
-// @version      1.1
+// @version      1.2
 // @description  Hide html elements with specified tags
 // @match        https://passthepopcorn.me/index.php*
 // @match        https://passthepopcorn.me/top10.php*
@@ -10,25 +10,58 @@
 // @match        https://passthepopcorn.me/user.php*
 // @downloadURL  https://github.com/Audionut/add-trackers/raw/main/ptp-tag-hidden.js
 // @updateURL    https://github.com/Audionut/add-trackers/raw/main/ptp-tag-hidden.js
-// @grant        none
+// @grant        GM_setValue
+// @grant        GM_getValue
+// @grant        GM_registerMenuCommand
 // @run-at       document-start
 // ==/UserScript==
 
 (function() {
     'use strict';
 
-    // USER CONFIGURATION - Edit these lines to customize behavior
-    // Add or remove tags separated by commas (case-insensitive)
-    const TAGS_TO_HIDE = 'family, animation, comedy, romance';
-    
-    // Set to true to delay page rendering until hiding is complete
-    const DELAY_RENDER = true;
+    // Load user configuration from GM storage with defaults
+    let TAGS_TO_HIDE = GM_getValue('TAGS_TO_HIDE', 'family, animation, comedy, romance');
+    let DELAY_RENDER = GM_getValue('DELAY_RENDER', true);
     
     // Convert to array and clean up
-    const tagsArray = TAGS_TO_HIDE.split(',').map(tag => tag.trim().toLowerCase()).filter(tag => tag.length > 0);
+    let tagsArray = TAGS_TO_HIDE.split(',').map(tag => tag.trim().toLowerCase()).filter(tag => tag.length > 0);
     
     console.log('Tags to hide:', tagsArray);
     console.log('Delay render:', DELAY_RENDER);
+
+    // Register menu commands
+    GM_registerMenuCommand('Configure Tags to Hide', () => {
+        const newTags = prompt(
+            'Enter tags to hide (separated by commas):\n\nExample: family, animation, comedy, romance',
+            TAGS_TO_HIDE
+        );
+        
+        if (newTags !== null) {
+            TAGS_TO_HIDE = newTags.trim();
+            GM_setValue('TAGS_TO_HIDE', TAGS_TO_HIDE);
+            tagsArray = TAGS_TO_HIDE.split(',').map(tag => tag.trim().toLowerCase()).filter(tag => tag.length > 0);
+            
+            alert(`Tags updated to: ${TAGS_TO_HIDE}\n\nRefresh the page for changes to take effect.`);
+            console.log('Updated tags to hide:', tagsArray);
+        }
+    });
+
+    GM_registerMenuCommand('Toggle Delay Render', () => {
+        DELAY_RENDER = !DELAY_RENDER;
+        GM_setValue('DELAY_RENDER', DELAY_RENDER);
+        
+        alert(`Delay render is now: ${DELAY_RENDER ? 'ON' : 'OFF'}\n\nRefresh the page for changes to take effect.`);
+        console.log('Delay render toggled to:', DELAY_RENDER);
+    });
+
+    GM_registerMenuCommand('Reset to Defaults', () => {
+        if (confirm('Reset all settings to defaults?\n\nTags: family, animation, comedy, romance\nDelay Render: ON')) {
+            GM_setValue('TAGS_TO_HIDE', 'family, animation, comedy, romance');
+            GM_setValue('DELAY_RENDER', true);
+            
+            alert('Settings reset to defaults.\n\nRefresh the page for changes to take effect.');
+        }
+    });
 
     let pageProcessed = false;
     let originalDisplay = null;
@@ -37,16 +70,115 @@
     if (DELAY_RENDER) {
         const style = document.createElement('style');
         style.id = 'hide-page-style';
-        style.textContent = 'body { display: none !important; }';
+        style.textContent = `
+            body { display: none !important; }
+            
+            #ptp-loading-overlay {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
+                background-color: #0c0c0c;
+                background-image: url('static/styles/dark/bg.jpg');
+                background-size: cover;
+                background-position: center;
+                background-repeat: no-repeat;
+                z-index: 999999;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+            }
+            
+            #ptp-loading-content {
+                background: rgba(0, 0, 0, 0.8);
+                padding: 30px;
+                border-radius: 10px;
+                text-align: center;
+                backdrop-filter: blur(5px);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+            }
+            
+            #ptp-loading-logo {
+                width: 64px;
+                height: 64px;
+                background-image: url('static/common/favicon.png');
+                background-size: contain;
+                background-position: center;
+                background-repeat: no-repeat;
+                animation: pulse 1.5s ease-in-out infinite;
+                margin: 0 auto 20px;
+            }
+            
+            @keyframes pulse {
+                0%, 100% { opacity: 1; transform: scale(1); }
+                50% { opacity: 0.7; transform: scale(1.05); }
+            }
+            
+            #ptp-loading-text {
+                color: #fff;
+                font-size: 16px;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                margin-bottom: 15px;
+            }
+            
+            #ptp-loading-subtext {
+                color: #ccc;
+                font-size: 12px;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                opacity: 0.8;
+            }
+            
+            #ptp-loading-spinner {
+                width: 20px;
+                height: 20px;
+                border: 2px solid rgba(255, 255, 255, 0.3);
+                border-top: 2px solid #fff;
+                border-radius: 50%;
+                animation: spin 1s linear infinite;
+                margin: 15px auto 0;
+            }
+            
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+        `;
         (document.head || document.documentElement).appendChild(style);
+        
+        // Create the loading overlay
+        const loadingOverlay = document.createElement('div');
+        loadingOverlay.id = 'ptp-loading-overlay';
+        loadingOverlay.innerHTML = `
+            <div id="ptp-loading-content">
+                <div id="ptp-loading-logo"></div>
+                <div id="ptp-loading-text">Processing content...</div>
+                <div id="ptp-loading-subtext">Filtering movies by tags</div>
+                <div id="ptp-loading-spinner"></div>
+            </div>
+        `;
+        document.documentElement.appendChild(loadingOverlay);
     }
 
     function showPage() {
         if (DELAY_RENDER && !pageProcessed) {
+            // Remove loading overlay with fade effect
+            const loadingOverlay = document.getElementById('ptp-loading-overlay');
+            if (loadingOverlay) {
+                loadingOverlay.style.opacity = '0';
+                loadingOverlay.style.transition = 'opacity 0.3s ease-out';
+                setTimeout(() => {
+                    loadingOverlay.remove();
+                }, 300);
+            }
+            
+            // Remove hide style
             const hideStyle = document.getElementById('hide-page-style');
             if (hideStyle) {
                 hideStyle.remove();
             }
+            
             pageProcessed = true;
             console.log('Page rendering restored');
         }
