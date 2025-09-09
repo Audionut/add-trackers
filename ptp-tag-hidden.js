@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP content hider
-// @version      1.2
+// @version      1.3
 // @description  Hide html elements with specified tags
 // @match        https://passthepopcorn.me/index.php*
 // @match        https://passthepopcorn.me/top10.php*
@@ -22,12 +22,49 @@
     // Load user configuration from GM storage with defaults
     let TAGS_TO_HIDE = GM_getValue('TAGS_TO_HIDE', 'family, animation, comedy, romance');
     let DELAY_RENDER = GM_getValue('DELAY_RENDER', true);
+    let HIDDEN_CACHE = GM_getValue('HIDDEN_CACHE', '{}');
     
     // Convert to array and clean up
     let tagsArray = TAGS_TO_HIDE.split(',').map(tag => tag.trim().toLowerCase()).filter(tag => tag.length > 0);
+    let hiddenCache = {};
+    
+    try {
+        hiddenCache = JSON.parse(HIDDEN_CACHE);
+    } catch (e) {
+        console.warn('Failed to parse hidden cache, starting fresh:', e);
+        hiddenCache = {};
+    }
     
     console.log('Tags to hide:', tagsArray);
     console.log('Delay render:', DELAY_RENDER);
+    console.log('Cached hidden movies:', Object.keys(hiddenCache).length);
+
+    // Function to add GroupID to cache
+    function addToHiddenCache(groupId, title, year, matchedTags, imdbId = null) {
+        hiddenCache[groupId] = {
+            title: title,
+            year: year,
+            tags: matchedTags,
+            imdbId: imdbId,
+            hiddenAt: Date.now()
+        };
+        
+        // Save to GM storage
+        GM_setValue('HIDDEN_CACHE', JSON.stringify(hiddenCache));
+        console.log(`Added to cache: ${title} (${year}) - GroupID: ${groupId} - IMDB: ${imdbId || 'N/A'} - Tags: ${matchedTags.join(', ')}`);
+    }
+
+    // Function to check if GroupID is in cache
+    function isInHiddenCache(groupId) {
+        return hiddenCache.hasOwnProperty(groupId);
+    }
+
+    // Function to clear cache
+    function clearHiddenCache() {
+        hiddenCache = {};
+        GM_setValue('HIDDEN_CACHE', '{}');
+        console.log('Hidden cache cleared');
+    }
 
     // Register menu commands
     GM_registerMenuCommand('Configure Tags to Hide', () => {
@@ -54,10 +91,32 @@
         console.log('Delay render toggled to:', DELAY_RENDER);
     });
 
+    GM_registerMenuCommand('View Hidden Cache', () => {
+        const cacheEntries = Object.entries(hiddenCache);
+        if (cacheEntries.length === 0) {
+            alert('No movies currently in hidden cache.');
+            return;
+        }
+        
+        const cacheList = cacheEntries.map(([groupId, data]) => 
+            `${data.title} (${data.year}) - IMDB: ${data.imdbId || 'N/A'} - Tags: ${data.tags.join(', ')}`
+        ).join('\n');
+        
+        alert(`Hidden Movies Cache (${cacheEntries.length} entries):\n\n${cacheList}`);
+    });
+
+    GM_registerMenuCommand('Clear Hidden Cache', () => {
+        if (confirm(`Clear the hidden movies cache?\n\nThis will remove ${Object.keys(hiddenCache).length} cached entries.`)) {
+            clearHiddenCache();
+            alert('Hidden cache cleared.\n\nRefresh the page for changes to take effect.');
+        }
+    });
+
     GM_registerMenuCommand('Reset to Defaults', () => {
-        if (confirm('Reset all settings to defaults?\n\nTags: family, animation, comedy, romance\nDelay Render: ON')) {
+        if (confirm('Reset all settings to defaults?\n\nTags: family, animation, comedy, romance\nDelay Render: ON\nClear Cache: YES')) {
             GM_setValue('TAGS_TO_HIDE', 'family, animation, comedy, romance');
             GM_setValue('DELAY_RENDER', true);
+            clearHiddenCache();
             
             alert('Settings reset to defaults.\n\nRefresh the page for changes to take effect.');
         }
@@ -211,10 +270,18 @@
                         // Check if Movies array exists
                         if (data.Movies && Array.isArray(data.Movies)) {
                             data.Movies.forEach((movie, movieIndex) => {
-                                // Check if movie has any of the target tags
-                                if (movie.Tags && movie.Tags.some(tag => tagsArray.includes(tag.toLowerCase()))) {
+                                // First check if movie is already in cache
+                                if (isInHiddenCache(movie.GroupId)) {
+                                    console.log(`Found cached movie: ${movie.Title} (${movie.Year}) - GroupId: ${movie.GroupId}`);
+                                    hideSpecificMovieElement(arrayIndex, movieIndex, movie.GroupId, movie.Title, hiddenCache[movie.GroupId].tags);
+                                }
+                                // Then check if movie has any of the target tags
+                                else if (movie.Tags && movie.Tags.some(tag => tagsArray.includes(tag.toLowerCase()))) {
                                     const matchedTags = movie.Tags.filter(tag => tagsArray.includes(tag.toLowerCase()));
-                                    console.log(`Found movie with target tags (coverViewJsonData): ${movie.Title} (${movie.Year}) - GroupId: ${movie.GroupId} - Matched tags: ${matchedTags.join(', ')} - Array Index: ${arrayIndex}, Movie Index: ${movieIndex}`);
+                                    console.log(`Found movie with target tags (coverViewJsonData): ${movie.Title} (${movie.Year}) - GroupId: ${movie.GroupId} - IMDB: ${movie.ImdbId || 'N/A'} - Matched tags: ${matchedTags.join(', ')} - Array Index: ${arrayIndex}, Movie Index: ${movieIndex}`);
+                                    
+                                    // Add to cache with IMDB ID
+                                    addToHiddenCache(movie.GroupId, movie.Title, movie.Year, matchedTags, movie.ImdbId);
                                     
                                     // Hide corresponding HTML elements using both indices
                                     hideSpecificMovieElement(arrayIndex, movieIndex, movie.GroupId, movie.Title, matchedTags);
@@ -238,52 +305,35 @@
                         const pageDataString = pageDataMatch[1];
                         const pageData = JSON.parse(pageDataString);
                         
-                        // Check for Movies array
-                        if (pageData.Movies && Array.isArray(pageData.Movies)) {
-                            pageData.Movies.forEach((movie, movieIndex) => {
-                                // Check if movie has any of the target tags
-                                if (movie.Tags && movie.Tags.some(tag => tagsArray.includes(tag.toLowerCase()))) {
-                                    const matchedTags = movie.Tags.filter(tag => tagsArray.includes(tag.toLowerCase()));
-                                    console.log(`Found movie with target tags (PageData.Movies): ${movie.Title} (${movie.Year}) - GroupId: ${movie.GroupId} - Matched tags: ${matchedTags.join(', ')} - Movie Index: ${movieIndex}`);
-                                    
-                                    // Hide corresponding HTML elements
-                                    hideSpecificMovieElement(-1, movieIndex, movie.GroupId, movie.Title, matchedTags);
-                                }
-                            });
-                        }
+                        // Helper function to process movie arrays
+                        const processMovieArray = (movies, arrayName) => {
+                            if (movies && Array.isArray(movies)) {
+                                movies.forEach((movie, movieIndex) => {
+                                    // First check if movie is already in cache
+                                    if (isInHiddenCache(movie.GroupId)) {
+                                        console.log(`Found cached movie: ${movie.Title} (${movie.Year}) - GroupId: ${movie.GroupId}`);
+                                        hideSpecificMovieElement(-1, movieIndex, movie.GroupId, movie.Title, hiddenCache[movie.GroupId].tags);
+                                    }
+                                    // Then check if movie has any of the target tags
+                                    else if (movie.Tags && movie.Tags.some(tag => tagsArray.includes(tag.toLowerCase()))) {
+                                        const matchedTags = movie.Tags.filter(tag => tagsArray.includes(tag.toLowerCase()));
+                                        console.log(`Found movie with target tags (${arrayName}): ${movie.Title} (${movie.Year}) - GroupId: ${movie.GroupId} - IMDB: ${movie.ImdbId || 'N/A'} - Matched tags: ${matchedTags.join(', ')} - Movie Index: ${movieIndex}`);
+                                        
+                                        // Add to cache with IMDB ID
+                                        addToHiddenCache(movie.GroupId, movie.Title, movie.Year, matchedTags, movie.ImdbId);
+                                        
+                                        // Hide corresponding HTML elements
+                                        hideSpecificMovieElement(-1, movieIndex, movie.GroupId, movie.Title, matchedTags);
+                                    }
+                                });
+                            }
+                        };
                         
-                        // Check for RecentRatings array
-                        if (pageData.RecentRatings && Array.isArray(pageData.RecentRatings)) {
-                            pageData.RecentRatings.forEach((movie, movieIndex) => {
-                                if (movie.Tags && movie.Tags.some(tag => tagsArray.includes(tag.toLowerCase()))) {
-                                    const matchedTags = movie.Tags.filter(tag => tagsArray.includes(tag.toLowerCase()));
-                                    console.log(`Found movie with target tags (PageData.RecentRatings): ${movie.Title} (${movie.Year}) - GroupId: ${movie.GroupId} - Matched tags: ${matchedTags.join(', ')} - Movie Index: ${movieIndex}`);
-                                    hideSpecificMovieElement(-1, movieIndex, movie.GroupId, movie.Title, matchedTags);
-                                }
-                            });
-                        }
-                        
-                        // Check for RecentSnatches array
-                        if (pageData.RecentSnatches && Array.isArray(pageData.RecentSnatches)) {
-                            pageData.RecentSnatches.forEach((movie, movieIndex) => {
-                                if (movie.Tags && movie.Tags.some(tag => tagsArray.includes(tag.toLowerCase()))) {
-                                    const matchedTags = movie.Tags.filter(tag => tagsArray.includes(tag.toLowerCase()));
-                                    console.log(`Found movie with target tags (PageData.RecentSnatches): ${movie.Title} (${movie.Year}) - GroupId: ${movie.GroupId} - Matched tags: ${matchedTags.join(', ')} - Movie Index: ${movieIndex}`);
-                                    hideSpecificMovieElement(-1, movieIndex, movie.GroupId, movie.Title, matchedTags);
-                                }
-                            });
-                        }
-                        
-                        // Check for RecentUploads array
-                        if (pageData.RecentUploads && Array.isArray(pageData.RecentUploads)) {
-                            pageData.RecentUploads.forEach((movie, movieIndex) => {
-                                if (movie.Tags && movie.Tags.some(tag => tagsArray.includes(tag.toLowerCase()))) {
-                                    const matchedTags = movie.Tags.filter(tag => tagsArray.includes(tag.toLowerCase()));
-                                    console.log(`Found movie with target tags (PageData.RecentUploads): ${movie.Title} (${movie.Year}) - GroupId: ${movie.GroupId} - Matched tags: ${matchedTags.join(', ')} - Movie Index: ${movieIndex}`);
-                                    hideSpecificMovieElement(-1, movieIndex, movie.GroupId, movie.Title, matchedTags);
-                                }
-                            });
-                        }
+                        // Process all movie arrays
+                        processMovieArray(pageData.Movies, 'PageData.Movies');
+                        processMovieArray(pageData.RecentRatings, 'PageData.RecentRatings');
+                        processMovieArray(pageData.RecentSnatches, 'PageData.RecentSnatches');
+                        processMovieArray(pageData.RecentUploads, 'PageData.RecentUploads');
                     }
                 } catch (e) {
                     console.warn('Failed to parse PageData:', e);
