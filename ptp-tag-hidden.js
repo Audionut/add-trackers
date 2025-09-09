@@ -1,14 +1,13 @@
 // ==UserScript==
 // @name         PTP content hider
-// @version      1.0
+// @version      1.1
 // @description  Hide html elements with specified tags
-// @author       You
 // @match        https://passthepopcorn.me/index.php*
 // @match        https://passthepopcorn.me/top10.php*
 // @match        https://passthepopcorn.me/torrents.php*
+// @match        https://passthepopcorn.me/torrents.php?*page=*
+// @exclude      https://passthepopcorn.me/torrents.php?*id=*
 // @match        https://passthepopcorn.me/user.php*
-// @downloadURL  https://github.com/Audionut/add-trackers/raw/main/ptp-tag-hidden.js
-// @updateURL    https://github.com/Audionut/add-trackers/raw/main/ptp-tag-hidden.js
 // @grant        none
 // @run-at       document-start
 // ==/UserScript==
