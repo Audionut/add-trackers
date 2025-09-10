@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP content hider
-// @version      1.6
+// @version      1.7
 // @description  Hide html elements with specified tags
 // @match        https://passthepopcorn.me/index.php*
 // @match        https://passthepopcorn.me/top10.php*
@@ -40,15 +40,7 @@
     console.log('Delay render:', DELAY_RENDER);
     console.log('Show loading spinner:', SHOW_LOADING_SPINNER);
     console.log('Hide torrent pages:', HIDE_TORRENT_PAGES);
-    console.log('Cached hidden movies (before cleaning):', Object.keys(hiddenCache).length);
-
-    // Clean outdated cache entries
-    const cleanedOnStartup = cleanCache();
-    if (cleanedOnStartup > 0) {
-        console.log(`Cleaned ${cleanedOnStartup} outdated cache entries on startup`);
-    }
-
-    console.log('Cached hidden movies (after cleaning):', Object.keys(hiddenCache).length);
+    console.log('Cached hidden movies:', Object.keys(hiddenCache).length);
 
     // Function to add GroupID to cache
     function addToHiddenCache(groupId, title, year, matchedTags, imdbId = null) {
@@ -70,6 +62,10 @@
             return false;
         }
         
+        if (tagsArray.length === 0) {
+            return false;
+        }
+        
         // Check if the cached movie should still be hidden with current tags
         return shouldHideCachedMovie(hiddenCache[groupId]);
     }
@@ -83,12 +79,22 @@
 
     // Function to check if cached movie should still be hidden based on current tags
     function shouldHideCachedMovie(cachedMovie) {
+        if (tagsArray.length === 0) {
+            return false;
+        }
+        
         // Check if any of the cached movie's tags are still in the current hide list
         return cachedMovie.tags.some(tag => tagsArray.includes(tag.toLowerCase()));
     }
 
     // Function to clean cache of items that no longer match current tags
     function cleanCache() {
+        // Don't clean cache if no tags are configured
+        if (tagsArray.length === 0) {
+            console.log('No tags configured for hiding - cache cleaning skipped to preserve entries');
+            return 0;
+        }
+        
         let cleanedCount = 0;
         const originalCacheSize = Object.keys(hiddenCache).length;
         
@@ -193,8 +199,8 @@
         if (confirm('Reset all settings to defaults?\n\nTags: family, animation, comedy, romance\nDelay Render: ON\nClear Cache: YES')) {
             GM_setValue('TAGS_TO_HIDE', 'family, animation, comedy, romance');
             GM_setValue('DELAY_RENDER', true);
-            GM_setValue('SHOW_LOADING_SPINNER', true);
-            GM_setValue('HIDE_TORRENT_PAGES', false);
+            GM_setValue('SHOW_LOADING_SPINNER', false);
+            GM_setValue('HIDE_TORRENT_PAGES', true);
             clearHiddenCache();
             
             window.location.reload();
