@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP content hider
-// @version      1.5
+// @version      1.6
 // @description  Hide html elements with specified tags
 // @match        https://passthepopcorn.me/index.php*
 // @match        https://passthepopcorn.me/top10.php*
@@ -569,6 +569,48 @@
     }
 
     function hideMoviesWithTargetTags() {
+        // Check if this is a forum page - if so, only process torrent links
+        const isForumPage = window.location.pathname.includes('/forums.php');
+        
+        if (isForumPage) {
+            console.log('Forum page detected, processing torrent links only');
+
+            const hasAnchor = window.location.hash;
+            
+            if (hasAnchor) {
+                console.log('Forum anchor navigation detected:', window.location.hash);
+                
+                // Process torrent links quickly without delay
+                hideCachedTorrentLinks();
+                showPage();
+                setTimeout(() => {
+                    const targetElement = document.querySelector(window.location.hash);
+                    if (targetElement) {
+                        targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        console.log('Scrolled to anchor:', window.location.hash);
+                    }
+                    // Process torrent links again in case any loaded after initial processing
+                    hideCachedTorrentLinks();
+                }, 50);
+                
+                return;
+            }
+            
+            // For normal forum page loading (no anchor)
+            hideCachedTorrentLinks();
+            if (document.readyState === 'complete') {
+                console.log('Forum page complete, showing immediately');
+                showPage();
+            } else {
+                // Wait just a moment for DOM to complete
+                setTimeout(() => {
+                    hideCachedTorrentLinks(); // Check again in case new links loaded
+                    showPage();
+                }, 100);
+            }
+            return;
+        }
+        
         let foundData = false;
         let hiddenElements = false;
         
@@ -685,6 +727,7 @@
         const newLinksCount = document.querySelectorAll('a[href*="torrents.php?id="]').length;
         if (originalLinksCount > newLinksCount) {
             hiddenElements = true;
+            foundData = true;
         }
 
         // Show page based on different conditions
@@ -842,6 +885,8 @@
 
     // Monitor for dynamically loaded content
     const observer = new MutationObserver((mutations) => {
+        const isForumPage = window.location.pathname.includes('/forums.php');
+        const hasAnchor = window.location.hash;
         let shouldCheck = false;
         let shouldCheckLinks = false;
         
@@ -849,30 +894,40 @@
             if (mutation.type === 'childList') {
                 mutation.addedNodes.forEach(node => {
                     if (node.nodeType === Node.ELEMENT_NODE) {
-                        // Check if script tags were added
-                        if (node.tagName === 'SCRIPT' && node.textContent.includes('coverViewJsonData')) {
-                            shouldCheck = true;
-                        }
-                        // Check if script tags were added as children
-                        if (node.querySelectorAll && node.querySelectorAll('script').length > 0) {
-                            shouldCheck = true;
-                        }
-                        // Check if torrent links were added
-                        if (node.tagName === 'A' && node.href && node.href.includes('torrents.php?id=')) {
-                            shouldCheckLinks = true;
-                        }
-                        // Check if torrent links were added as children
-                        if (node.querySelectorAll && node.querySelectorAll('a[href*="torrents.php?id="]').length > 0) {
-                            shouldCheckLinks = true;
+                        if (isForumPage) {
+                            // On forum pages, only check for torrent links
+                            if (node.tagName === 'A' && node.href && node.href.includes('torrents.php?id=')) {
+                                shouldCheckLinks = true;
+                            }
+                            if (node.querySelectorAll && node.querySelectorAll('a[href*="torrents.php?id="]').length > 0) {
+                                shouldCheckLinks = true;
+                            }
+                        } else {
+                            // On non-forum pages, do full processing
+                            if (node.tagName === 'SCRIPT' && node.textContent.includes('coverViewJsonData')) {
+                                shouldCheck = true;
+                            }
+                            if (node.querySelectorAll && node.querySelectorAll('script').length > 0) {
+                                shouldCheck = true;
+                            }
+                            if (node.tagName === 'A' && node.href && node.href.includes('torrents.php?id=')) {
+                                shouldCheckLinks = true;
+                            }
+                            if (node.querySelectorAll && node.querySelectorAll('a[href*="torrents.php?id="]').length > 0) {
+                                shouldCheckLinks = true;
+                            }
                         }
                     }
                 });
             }
         });
         
-        if (shouldCheck) {
+        if (isForumPage && shouldCheckLinks) {
+            // Use shorter delay for forum pages, especially with anchors
+            setTimeout(hideCachedTorrentLinks, hasAnchor ? 10 : 50);
+        } else if (!isForumPage && shouldCheck) {
             setTimeout(hideMoviesWithTargetTags, 50);
-        } else if (shouldCheckLinks) {
+        } else if (!isForumPage && shouldCheckLinks) {
             setTimeout(hideCachedTorrentLinks, 50);
         }
     });
