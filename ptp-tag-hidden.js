@@ -1,13 +1,12 @@
 // ==UserScript==
 // @name         PTP content hider
-// @version      1.4
+// @version      1.5
 // @description  Hide html elements with specified tags
 // @match        https://passthepopcorn.me/index.php*
 // @match        https://passthepopcorn.me/top10.php*
 // @match        https://passthepopcorn.me/torrents.php*
-// @match        https://passthepopcorn.me/torrents.php?*page=*
-// @exclude      https://passthepopcorn.me/torrents.php?*id=*
 // @match        https://passthepopcorn.me/user.php*
+// @match        https://passthepopcorn.me/forums.php*
 // @downloadURL  https://github.com/Audionut/add-trackers/raw/main/ptp-tag-hidden.js
 // @updateURL    https://github.com/Audionut/add-trackers/raw/main/ptp-tag-hidden.js
 // @grant        GM_setValue
@@ -23,6 +22,8 @@
     let TAGS_TO_HIDE = GM_getValue('TAGS_TO_HIDE', 'family, animation, comedy, romance');
     let DELAY_RENDER = GM_getValue('DELAY_RENDER', true);
     let HIDDEN_CACHE = GM_getValue('HIDDEN_CACHE', '{}');
+    let SHOW_LOADING_SPINNER = GM_getValue('SHOW_LOADING_SPINNER', false);
+    let HIDE_TORRENT_PAGES = GM_getValue('HIDE_TORRENT_PAGES', true);
     
     // Convert to array and clean up
     let tagsArray = TAGS_TO_HIDE.split(',').map(tag => tag.trim().toLowerCase()).filter(tag => tag.length > 0);
@@ -37,6 +38,8 @@
     
     console.log('Tags to hide:', tagsArray);
     console.log('Delay render:', DELAY_RENDER);
+    console.log('Show loading spinner:', SHOW_LOADING_SPINNER);
+    console.log('Hide torrent pages:', HIDE_TORRENT_PAGES);
     console.log('Cached hidden movies (before cleaning):', Object.keys(hiddenCache).length);
 
     // Clean outdated cache entries
@@ -129,6 +132,26 @@
         console.log('Delay render toggled to:', DELAY_RENDER);
     });
 
+    GM_registerMenuCommand('Toggle Hide Torrent Pages (torrents.php?id=)', () => {
+        HIDE_TORRENT_PAGES = !HIDE_TORRENT_PAGES;
+        GM_setValue('HIDE_TORRENT_PAGES', HIDE_TORRENT_PAGES);
+        
+        if (confirm(`Hide torrent pages is now: ${HIDE_TORRENT_PAGES ? 'ON' : 'OFF'}\n\nRefresh the page for changes to take effect?\n\nClick OK to refresh now, or Cancel to refresh later.`)) {
+            window.location.reload();
+        }
+        console.log('Hide torrent pages toggled to:', HIDE_TORRENT_PAGES);
+    });
+
+    GM_registerMenuCommand('Toggle Loading Spinner', () => {
+        SHOW_LOADING_SPINNER = !SHOW_LOADING_SPINNER;
+        GM_setValue('SHOW_LOADING_SPINNER', SHOW_LOADING_SPINNER);
+        
+        if (confirm(`Loading spinner is now: ${SHOW_LOADING_SPINNER ? 'ON' : 'OFF'}\n\nRefresh the page for changes to take effect?\n\nClick OK to refresh now, or Cancel to refresh later.`)) {
+            window.location.reload();
+        }
+        console.log('Loading spinner toggled to:', SHOW_LOADING_SPINNER);
+    });
+
     GM_registerMenuCommand('View Hidden Cache', () => {
         const cacheEntries = Object.entries(hiddenCache);
         if (cacheEntries.length === 0) {
@@ -170,6 +193,8 @@
         if (confirm('Reset all settings to defaults?\n\nTags: family, animation, comedy, romance\nDelay Render: ON\nClear Cache: YES')) {
             GM_setValue('TAGS_TO_HIDE', 'family, animation, comedy, romance');
             GM_setValue('DELAY_RENDER', true);
+            GM_setValue('SHOW_LOADING_SPINNER', true);
+            GM_setValue('HIDE_TORRENT_PAGES', false);
             clearHiddenCache();
             
             window.location.reload();
@@ -251,6 +276,7 @@
                 border-radius: 50%;
                 animation: spin 1s linear infinite;
                 margin: 15px auto 0;
+                display: ${SHOW_LOADING_SPINNER ? 'block' : 'none'};
             }
             
             @keyframes spin {
@@ -260,17 +286,22 @@
         `;
         (document.head || document.documentElement).appendChild(style);
         
-        // Create the loading overlay
+        // Create the loading overlay with conditional spinner
         const loadingOverlay = document.createElement('div');
         loadingOverlay.id = 'ptp-loading-overlay';
-        loadingOverlay.innerHTML = `
+        
+        let loadingContent = `
             <div id="ptp-loading-content">
                 <div id="ptp-loading-logo"></div>
-                <div id="ptp-loading-text">Processing content...</div>
-                <div id="ptp-loading-subtext">Filtering movies by tags</div>
-                <div id="ptp-loading-spinner"></div>
-            </div>
         `;
+        
+        if (SHOW_LOADING_SPINNER) {
+            loadingContent += `<div id="ptp-loading-spinner"></div>`;
+        }
+        
+        loadingContent += `</div>`;
+        
+        loadingOverlay.innerHTML = loadingContent;
         document.documentElement.appendChild(loadingOverlay);
     }
 
@@ -297,8 +328,249 @@
         }
     }
 
+    // Function to extract data from torrent detail pages
+    function extractTorrentPageData() {
+        // Look for GroupID in script tags first
+        let groupId = null;
+        
+        const scripts = document.querySelectorAll('script[type="text/javascript"]');
+        scripts.forEach(script => {
+            const scriptText = script.textContent || script.innerHTML;
+            
+            // Look for TGroupID or groupid variables
+            const tgroupMatch = scriptText.match(/var\s+TGroupID\s*=\s*['"]*(\d+)['"]*\s*;/);
+            const groupMatch = scriptText.match(/var\s+groupid\s*=\s*(\d+)\s*;/);
+            
+            if (tgroupMatch) {
+                groupId = tgroupMatch[1];
+            } else if (groupMatch) {
+                groupId = groupMatch[1];
+            }
+        });
+        
+        if (!groupId) {
+            // Fallback: check for group_torrent_header elements
+            const groupTorrentHeaders = document.querySelectorAll('tr.group_torrent.group_torrent_header[id*="group_torrent_header"]');
+            
+            if (groupTorrentHeaders.length > 0) {
+                const idAttribute = groupTorrentHeaders[0].getAttribute('id');
+                const groupIdMatch = idAttribute.match(/group_torrent_header_(\d+)/);
+                if (groupIdMatch) {
+                    groupId = groupIdMatch[1];
+                }
+            }
+        }
+        
+        if (!groupId) {
+            return false; // Not a torrent detail page or couldn't find GroupID
+        }
+
+        console.log('Found torrent detail page with GroupID:', groupId);
+
+        // Extract movie title from the page (look for common title selectors)
+        let title = '';
+        let year = '';
+        
+        // Try to find title in various locations
+        const titleSelectors = [
+            'h2.page__title',
+            '.torrent-title',
+            '.group-title',
+            'h1',
+            'h2'
+        ];
+        
+        for (const selector of titleSelectors) {
+            const titleElement = document.querySelector(selector);
+            if (titleElement && titleElement.textContent.trim()) {
+                const titleText = titleElement.textContent.trim();
+                // Try to extract year from title
+                const yearMatch = titleText.match(/\((\d{4})\)|\[(\d{4})\]|(\d{4})/);
+                if (yearMatch) {
+                    year = yearMatch[1] || yearMatch[2] || yearMatch[3];
+                    title = titleText.replace(/\s*[\(\[]\s*\d{4}\s*[\)\]]\s*/, '').trim();
+                } else {
+                    title = titleText;
+                }
+                break;
+            }
+        }
+
+        // Extract tags from the tags panel
+        const tags = [];
+        const tagsPanel = document.querySelector('.box_tags.panel');
+        
+        if (tagsPanel) {
+            const tagLinks = tagsPanel.querySelectorAll('a[href*="taglist="]');
+            tagLinks.forEach(link => {
+                const href = link.getAttribute('href');
+                const tagMatch = href.match(/taglist=([^&]+)/);
+                if (tagMatch) {
+                    const tag = decodeURIComponent(tagMatch[1]).toLowerCase();
+                    tags.push(tag);
+                }
+            });
+        }
+
+        console.log('Extracted tags:', tags);
+
+        // Extract IMDB ID
+        let imdbId = null;
+        
+        // First try: look for direct IMDb link
+        const imdbLink = document.querySelector("a#imdb-title-link.rating");
+        if (imdbLink) {
+            const imdbUrl = imdbLink.getAttribute("href");
+            if (imdbUrl) {
+                const urlParts = imdbUrl.split("/");
+                imdbId = urlParts[4];
+                if (imdbId && !imdbId.startsWith('tt')) {
+                    imdbId = 'tt' + imdbId;
+                }
+            }
+        }
+        
+        // Fallback: check request table for IMDb link
+        if (!imdbId) {
+            const requestTable = document.querySelector('table#request-table');
+            if (requestTable) {
+                const imdbRow = Array.from(requestTable.querySelectorAll('tr')).find(tr =>
+                    tr.querySelector('.label') && tr.querySelector('.label').textContent.trim().toLowerCase() === 'imdb link'
+                );
+                if (imdbRow) {
+                    const imdbAnchor = imdbRow.querySelector('a[href*="imdb.com/title/tt"]');
+                    if (imdbAnchor) {
+                        const imdbUrl = imdbAnchor.getAttribute('href');
+                        const match = imdbUrl.match(/tt\d+/);
+                        imdbId = match ? match[0] : null;
+                    }
+                }
+            }
+        }
+
+        // Additional fallback: look for any IMDb link on the page
+        if (!imdbId) {
+            const allImdbLinks = document.querySelectorAll('a[href*="imdb.com/title/tt"]');
+            if (allImdbLinks.length > 0) {
+                const imdbUrl = allImdbLinks[0].getAttribute('href');
+                const match = imdbUrl.match(/tt\d+/);
+                imdbId = match ? match[0] : null;
+            }
+        }
+
+        console.log('Extracted IMDB ID:', imdbId || 'N/A');
+
+        // Check if any tags match our filter
+        const matchedTags = tags.filter(tag => tagsArray.includes(tag.toLowerCase()));
+        
+        if (matchedTags.length > 0) {
+            console.log(`Found torrent page with target tags: ${title} (${year}) - GroupId: ${groupId} - IMDB: ${imdbId || 'N/A'} - Matched tags: ${matchedTags.join(', ')}`);
+            
+            // Add to cache
+            addToHiddenCache(groupId, title, year, matchedTags, imdbId);
+            
+            // Hide the torrent page if the option is enabled
+            if (HIDE_TORRENT_PAGES) {
+                hideTorrentPageContent(title, year, matchedTags);
+                
+                // Show page immediately since we've replaced the content
+                console.log('Torrent page content replaced, showing page immediately');
+                showPage();
+                return true; // Indicate that content was hidden and page should be shown
+            }
+        } else if (tags.length > 0) {
+            console.log(`Found torrent page without matching tags: ${title} (${year}) - GroupId: ${groupId} - IMDB: ${imdbId || 'N/A'} - Available tags: ${tags.join(', ')}`);
+        } else {
+            console.log(`Found torrent page with no tags: ${title} (${year}) - GroupId: ${groupId} - IMDB: ${imdbId || 'N/A'}`);
+        }
+        
+        return false; // No content was hidden
+    }
+
+    // Function to hide torrent page content
+    function hideTorrentPageContent(title, year, matchedTags) {
+        const thinDiv = document.querySelector('div.thin');
+        
+        if (thinDiv) {
+            // Check if replacement content already exists
+            const existingReplacement = document.querySelector('.ptp-hidden-replacement');
+            if (existingReplacement) {
+                console.log('Replacement content already exists, skipping...');
+                return;
+            }
+            
+            // Hide the original content
+            thinDiv.style.display = 'none';
+            
+            // Create replacement content
+            const hiddenMessage = document.createElement('div');
+            hiddenMessage.className = 'thin ptp-hidden-replacement'; // Add unique class
+            hiddenMessage.style.cssText = `
+                text-align: center;
+                padding: 50px 20px;
+                color: #666;
+                font-size: 18px;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            `;
+            
+            hiddenMessage.innerHTML = `
+                <div style="background: rgba(0, 0, 0, 0.1); padding: 30px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.1); display: inline-block;">
+                    <div style="font-size: 24px; margin-bottom: 15px; font-weight: bold;">🚫 Hidden by Tag Match</div>
+                    <div style="font-size: 16px; color: #888; margin-bottom: 10px;">
+                        ${title}${year ? ` (${year})` : ''}
+                    </div>
+                    <div style="font-size: 14px; color: #aaa;">
+                        Matched tags: ${matchedTags.join(', ')}
+                    </div>
+                    <div style="font-size: 12px; color: #999; margin-top: 20px;">
+                        Configure your tag filters in the userscript menu
+                    </div>
+                </div>
+            `;
+            
+            // Insert the replacement after the hidden div
+            thinDiv.parentNode.insertBefore(hiddenMessage, thinDiv.nextSibling);
+            
+            console.log(`Hidden torrent page content for: ${title} (${year}) - Tags: ${matchedTags.join(', ')}`);
+        }
+    }
+
+    // Function to check and hide direct torrent links
+    function hideCachedTorrentLinks() {
+        // Find all links that match the pattern torrents.php?id=XXXXX
+        const torrentLinks = document.querySelectorAll('a[href*="torrents.php?id="]');
+        
+        torrentLinks.forEach(link => {
+            const href = link.getAttribute('href');
+            const groupIdMatch = href.match(/torrents\.php\?id=(\d+)(?:&|$)/);
+            
+            if (groupIdMatch) {
+                const groupId = groupIdMatch[1];
+                
+                // Check if this GroupID is in cache and still valid with current tags
+                if (isInHiddenCacheAndValid(groupId)) {
+                    const cachedMovie = hiddenCache[groupId];
+                    
+                    // Replace the link with hidden text
+                    const hiddenSpan = document.createElement('span');
+                    hiddenSpan.textContent = '[hidden by tag match]';
+                    hiddenSpan.style.color = '#666';
+                    hiddenSpan.style.fontStyle = 'italic';
+                    hiddenSpan.style.fontSize = '0.9em';
+                    hiddenSpan.title = `Hidden: ${cachedMovie.title} (${cachedMovie.year}) - Tags: ${cachedMovie.tags.join(', ')}`;
+                    
+                    // Replace the link with the hidden span
+                    link.parentNode.replaceChild(hiddenSpan, link);
+                    
+                    console.log(`Hidden torrent link for ${cachedMovie.title} (${cachedMovie.year}) - GroupId: ${groupId} - Tags: ${cachedMovie.tags.join(', ')}`);
+                }
+            }
+        });
+    }
+
     function hideMoviesWithTargetTags() {
         let foundData = false;
+        let hiddenElements = false;
         
         // Find all script tags
         const scripts = document.querySelectorAll('script');
@@ -328,6 +600,7 @@
                                 if (isInHiddenCacheAndValid(movie.GroupId)) {
                                     console.log(`Found valid cached movie: ${movie.Title} (${movie.Year}) - GroupId: ${movie.GroupId}`);
                                     hideSpecificMovieElement(arrayIndex, movieIndex, movie.GroupId, movie.Title, hiddenCache[movie.GroupId].tags);
+                                    hiddenElements = true;
                                 }
                                 // Then check if movie has any of the current target tags
                                 else if (movie.Tags && movie.Tags.some(tag => tagsArray.includes(tag.toLowerCase()))) {
@@ -339,6 +612,7 @@
                                     
                                     // Hide corresponding HTML elements using both indices
                                     hideSpecificMovieElement(arrayIndex, movieIndex, movie.GroupId, movie.Title, matchedTags);
+                                    hiddenElements = true;
                                 }
                             });
                         }
@@ -367,6 +641,7 @@
                                     if (isInHiddenCacheAndValid(movie.GroupId)) {
                                         console.log(`Found valid cached movie: ${movie.Title} (${movie.Year}) - GroupId: ${movie.GroupId}`);
                                         hideSpecificMovieElement(-1, movieIndex, movie.GroupId, movie.Title, hiddenCache[movie.GroupId].tags);
+                                        hiddenElements = true;
                                     }
                                     // Then check if movie has any of the current target tags
                                     else if (movie.Tags && movie.Tags.some(tag => tagsArray.includes(tag.toLowerCase()))) {
@@ -378,6 +653,7 @@
                                         
                                         // Hide corresponding HTML elements
                                         hideSpecificMovieElement(-1, movieIndex, movie.GroupId, movie.Title, matchedTags);
+                                        hiddenElements = true;
                                     }
                                 });
                             }
@@ -395,9 +671,30 @@
             }
         });
 
-        // If we found data and processed it, or if no data exists, show the page
-        if (foundData || document.readyState === 'complete') {
-            setTimeout(showPage, 100); // Small delay to ensure DOM updates are complete
+        // Check for torrent detail pages (even if no script data found)
+        const torrentPageHidden = extractTorrentPageData();
+        
+        // If torrent page was hidden and shown, don't continue with other processing
+        if (torrentPageHidden) {
+            return;
+        }
+
+        // Hide cached torrent links and check if any were hidden
+        const originalLinksCount = document.querySelectorAll('a[href*="torrents.php?id="]').length;
+        hideCachedTorrentLinks();
+        const newLinksCount = document.querySelectorAll('a[href*="torrents.php?id="]').length;
+        if (originalLinksCount > newLinksCount) {
+            hiddenElements = true;
+        }
+
+        // Show page based on different conditions
+        if (document.readyState === 'complete' && !hiddenElements) {
+            // DOM is fully loaded and no elements were hidden - show immediately
+            console.log('DOM complete, no hiding required - showing page immediately');
+            showPage();
+        } else if (foundData || document.readyState === 'complete') {
+            // Either found data to process or DOM is complete - show with small delay
+            setTimeout(showPage, hiddenElements ? 100 : 50);
         }
     }
 
@@ -546,6 +843,7 @@
     // Monitor for dynamically loaded content
     const observer = new MutationObserver((mutations) => {
         let shouldCheck = false;
+        let shouldCheckLinks = false;
         
         mutations.forEach(mutation => {
             if (mutation.type === 'childList') {
@@ -559,6 +857,14 @@
                         if (node.querySelectorAll && node.querySelectorAll('script').length > 0) {
                             shouldCheck = true;
                         }
+                        // Check if torrent links were added
+                        if (node.tagName === 'A' && node.href && node.href.includes('torrents.php?id=')) {
+                            shouldCheckLinks = true;
+                        }
+                        // Check if torrent links were added as children
+                        if (node.querySelectorAll && node.querySelectorAll('a[href*="torrents.php?id="]').length > 0) {
+                            shouldCheckLinks = true;
+                        }
                     }
                 });
             }
@@ -566,6 +872,8 @@
         
         if (shouldCheck) {
             setTimeout(hideMoviesWithTargetTags, 50);
+        } else if (shouldCheckLinks) {
+            setTimeout(hideCachedTorrentLinks, 50);
         }
     });
 
@@ -580,6 +888,6 @@
             console.log('Timeout reached, showing page anyway');
             showPage();
         }
-    }, 3000); // 3 second maximum delay
+    }, 3000); // 3 seconds maximum delay
 
 })();
