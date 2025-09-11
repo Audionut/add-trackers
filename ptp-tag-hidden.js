@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP content hider
-// @version      1.9
+// @version      1.9.1
 // @description  Hide html elements with specified tags
 // @match        https://passthepopcorn.me/index.php*
 // @match        https://passthepopcorn.me/top10.php*
@@ -547,8 +547,10 @@
             }
         } else if (tags.length > 0) {
             console.log(`Found torrent page without matching tags: ${title} (${year}) - GroupId: ${groupId} - IMDB: ${imdbId || 'N/A'} - Available tags: ${tags.join(', ')}`);
+            return true;
         } else {
             console.log(`Found torrent page with no tags: ${title} (${year}) - GroupId: ${groupId} - IMDB: ${imdbId || 'N/A'}`);
+            return true;
         }
         
         return false; // No content was hidden
@@ -924,14 +926,6 @@
     }
 
     function hideMoviesWithTargetTags() {
-        const isRequestDetailPage = window.location.pathname.includes('/requests.php') && window.location.search.includes('action=view');
-        
-        if (!isRequestDetailPage) {
-            // Hide cached torrent and collage links on all pages except request detail pages
-            hideCachedTorrentLinks();
-            hideCachedCollageLinks();
-        }
-        
         // Check page type
         const isForumPage = window.location.pathname.includes('/forums.php');
         const isRequestPage = window.location.pathname.includes('/requests.php') && !window.location.search.includes('action=view');
@@ -1135,12 +1129,21 @@
             }
         });
 
+        const isRequestDetailPage = window.location.pathname.includes('/requests.php') && window.location.search.includes('action=view');
+        
+        if (!isRequestDetailPage) {
+            // Hide cached torrent and collage links on all pages except request detail pages
+            hideCachedTorrentLinks();
+            hideCachedCollageLinks();
+        }
+
         // Check for torrent detail pages (even if no script data found)
         const torrentPageHidden = extractTorrentPageData();
         
         // If torrent page was hidden and shown, don't continue with other processing
         if (torrentPageHidden) {
-            return;
+            console.log('Torrent page was found and processed, showing page immediately');
+            showPage();
         }
 
         // Check if any links were hidden (already processed in universal section)
@@ -1297,111 +1300,18 @@
         });
     }
 
-    // Run when DOM starts loading
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', hideMoviesWithTargetTags);
-    } else {
+    document.addEventListener('DOMContentLoaded', () => {
+        console.log('DOMContentLoaded fired, scheduling initial processing...');
+        console.log('Running initial hideMoviesWithTargetTags...');
         hideMoviesWithTargetTags();
-    }
-
-    // Monitor for dynamically loaded content
-    const observer = new MutationObserver((mutations) => {
-        const isForumPage = window.location.pathname.includes('/forums.php');
-        const isRequestPage = window.location.pathname.includes('/requests.php') && !window.location.search.includes('action=view');
-        const isCollagesPage = window.location.pathname.includes('/collages.php');
-        const isRequestDetailPage = window.location.pathname.includes('/requests.php') && window.location.search.includes('action=view');
-        const isTorrentDetailPage = window.location.pathname.includes('/torrents.php') && window.location.search.includes('id=');
-        const hasAnchor = window.location.hash;
-        let shouldCheck = false;
-        let shouldCheckLinks = false;
-        let shouldCheckRequests = false;
-        let shouldCheckCollages = false;
-        
-        mutations.forEach(mutation => {
-            if (mutation.type === 'childList') {
-                mutation.addedNodes.forEach(node => {
-                    if (node.nodeType === Node.ELEMENT_NODE) {
-                        // Check for torrent and collage links on all pages except request detail pages
-                        if (!isRequestDetailPage) {
-                            if (node.tagName === 'A' && node.href && (node.href.includes('torrents.php?id=') || node.href.includes('collages.php?id='))) {
-                                shouldCheckLinks = true;
-                            }
-                            if (node.querySelectorAll && (node.querySelectorAll('a[href*="torrents.php?id="]').length > 0 || node.querySelectorAll('a[href*="collages.php?id="]').length > 0)) {
-                                shouldCheckLinks = true;
-                            }
-                        }
-                        
-                        if (isRequestPage) {
-                            // On request pages, also check for request links
-                            if (node.tagName === 'A' && node.classList.contains('l_movie') && node.href.includes('requests.php?action=view')) {
-                                shouldCheckRequests = true;
-                            }
-                            if (node.querySelectorAll && node.querySelectorAll('a.l_movie[href*="requests.php?action=view"]').length > 0) {
-                                shouldCheckRequests = true;
-                            }
-                        } else if (isCollagesPage) {
-                            // On collages pages, check for table rows for new collage entries
-                            if (node.tagName === 'TR' || (node.querySelectorAll && node.querySelectorAll('tr').length > 0)) {
-                                shouldCheckCollages = true;
-                            }
-                        } else if (!isForumPage && !isRequestPage && !isCollagesPage && !isRequestDetailPage && !isTorrentDetailPage) {
-                            // On other pages, do full processing
-                            if (node.tagName === 'SCRIPT' && node.textContent.includes('coverViewJsonData')) {
-                                shouldCheck = true;
-                            }
-                            if (node.querySelectorAll && node.querySelectorAll('script').length > 0) {
-                                shouldCheck = true;
-                            }
-                        }
-                    }
-                });
-            }
-        });
-        
-        if (shouldCheckLinks && !isRequestDetailPage) {
-            // Use shorter delay for pages with anchors
-            setTimeout(() => {
-                hideCachedTorrentLinks();
-                hideCachedCollageLinks();
-            }, hasAnchor ? 10 : 50);
-        }
-        
-        if (isRequestPage && shouldCheckRequests) {
-            setTimeout(hideRequestEntries, hasAnchor ? 10 : 50);
-        }
-        
-        if (isCollagesPage && shouldCheckCollages && !isProcessingCollages) {
-            // Handle collages pages with debouncing
-            if (collageProcessingTimeout) {
-                clearTimeout(collageProcessingTimeout);
-            }
-            
-            collageProcessingTimeout = setTimeout(() => {
-                if (!isProcessingCollages) {
-                    isProcessingCollages = true;
-                    console.log('MutationObserver triggered collages processing');
-                    hideCollageEntries();
-                    isProcessingCollages = false;
-                }
-            }, hasAnchor ? 10 : 100);
-        }
-        
-        if (!isForumPage && !isRequestPage && !isCollagesPage && !isRequestDetailPage && !isTorrentDetailPage && shouldCheck) {
-            setTimeout(hideMoviesWithTargetTags, 50);
-        }
     });
 
-    observer.observe(document.documentElement, {
-        childList: true,
-        subtree: true
-    });
-
-    // Fallback: ensure page is shown after a maximum delay
+    // Final fallback: ensure page is shown
     setTimeout(() => {
         if (DELAY_RENDER && !pageProcessed) {
-            console.log('Timeout reached, showing page anyway');
+            console.log('Maximum timeout reached, showing page anyway');
             showPage();
         }
-    }, 3000); // 3 seconds maximum delay
+    }, 3000);
 
 })();
