@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name         PTP content hider
-// @version      1.7
+// @version      1.8
 // @description  Hide html elements with specified tags
 // @match        https://passthepopcorn.me/index.php*
 // @match        https://passthepopcorn.me/top10.php*
 // @match        https://passthepopcorn.me/torrents.php*
 // @match        https://passthepopcorn.me/user.php*
 // @match        https://passthepopcorn.me/forums.php*
+// @match        https://passthepopcorn.me/requests.php*
 // @downloadURL  https://github.com/Audionut/add-trackers/raw/main/ptp-tag-hidden.js
 // @updateURL    https://github.com/Audionut/add-trackers/raw/main/ptp-tag-hidden.js
 // @grant        GM_setValue
@@ -366,7 +367,21 @@
                 }
             }
         }
-        
+
+        if (!groupId) {
+            const requestsHeader = document.querySelector('h2.page__title');
+            if (requestsHeader) {
+                const torrentLink = requestsHeader.querySelector('a[href*="torrents.php?id="]');
+                if (torrentLink) {
+                    const href = torrentLink.getAttribute('href');
+                    const groupIdMatch = href.match(/torrents\.php\?id=(\d+)/);
+                    if (groupIdMatch) {
+                        groupId = groupIdMatch[1];
+                    }
+                }
+            }
+        }
+
         if (!groupId) {
             return false; // Not a torrent detail page or couldn't find GroupID
         }
@@ -391,10 +406,12 @@
             if (titleElement && titleElement.textContent.trim()) {
                 const titleText = titleElement.textContent.trim();
                 // Try to extract year from title
-                const yearMatch = titleText.match(/\((\d{4})\)|\[(\d{4})\]|(\d{4})/);
+                const yearMatch = titleText.match(/\[(\d{4})\]|\((\d{4})\)/);
                 if (yearMatch) {
-                    year = yearMatch[1] || yearMatch[2] || yearMatch[3];
-                    title = titleText.replace(/\s*[\(\[]\s*\d{4}\s*[\)\]]\s*/, '').trim();
+                    year = yearMatch[1] || yearMatch[2];
+                    title = titleText.replace(/\s*[\[\(]\d{4}[\]\)]\s*/, ' ').trim();
+                    // Clean up any double spaces
+                    title = title.replace(/\s+/g, ' ');
                 } else {
                     title = titleText;
                 }
@@ -404,19 +421,48 @@
 
         // Extract tags from the tags panel
         const tags = [];
-        const tagsPanel = document.querySelector('.box_tags.panel');
-        
-        if (tagsPanel) {
-            const tagLinks = tagsPanel.querySelectorAll('a[href*="taglist="]');
+        const panels = document.querySelectorAll('.panel');
+        panels.forEach(panel => {
+            const heading = panel.querySelector('.panel__heading .panel__heading__title');
+            if (heading && heading.textContent.trim().toLowerCase() === 'tags') {
+                const panelBody = panel.querySelector('.panel__body');
+                if (panelBody) {
+                    const tagLinks = panelBody.querySelectorAll('a[href*="taglist="]');
+                    console.log(`Found ${tagLinks.length} tag links in new panel format`);
+                    tagLinks.forEach(link => {
+                        const href = link.getAttribute('href');
+                        console.log('Processing tag link:', href);
+                        // Updated regex to handle both "taglist=tag" and "taglist=tag&other" formats
+                        const tagMatch = href.match(/taglist=([^&\s]+)/);
+                        if (tagMatch) {
+                            const tag = decodeURIComponent(tagMatch[1]).toLowerCase();
+                            if (!tags.includes(tag)) {
+                                tags.push(tag);
+                                console.log('Added tag:', tag);
+                            }
+                        }
+                    });
+                }
+            }
+        });
+
+        const oldTagsPanel = document.querySelector('.box_tags.panel');
+        if (oldTagsPanel) {
+            const tagLinks = oldTagsPanel.querySelectorAll('a[href*="taglist="]');
             tagLinks.forEach(link => {
                 const href = link.getAttribute('href');
                 const tagMatch = href.match(/taglist=([^&]+)/);
                 if (tagMatch) {
                     const tag = decodeURIComponent(tagMatch[1]).toLowerCase();
-                    tags.push(tag);
+                    if (!tags.includes(tag)) {
+                        tags.push(tag);
+                    }
                 }
             });
-        }
+        };
+
+        console.log('All panels on page:', document.querySelectorAll('.panel').length);
+        console.log('Panel headings found:', Array.from(document.querySelectorAll('.panel .panel__heading .panel__heading__title')).map(h => h.textContent.trim()));
 
         console.log('Extracted tags:', tags);
 
@@ -572,22 +618,103 @@
                 }
             }
         });
+
+        // Also find and process request links - handle both encoded and non-encoded ampersands
+        const requestLinks = document.querySelectorAll('a[href*="requests.php?action=view"], a[href*="requests.php?action=view&amp;id="]');
+        
+        requestLinks.forEach(link => {
+            const href = link.getAttribute('href');
+            // Handle both &amp; (encoded) and & (unencoded) in the URL
+            const requestIdMatch = href.match(/requests\.php\?action=view&(?:amp;)?id=(\d+)/);
+            
+            if (requestIdMatch) {
+                const requestId = requestIdMatch[1];
+                
+                // For request links, we need to check if any cached movie matches this request
+                // This would require additional logic to map request IDs to group IDs
+                // For now, we can look for any data attributes or check if the link text matches cached titles
+                
+                const linkText = link.textContent.trim();
+                
+                // Check if any cached movie title matches the link text
+                const matchingCacheEntry = Object.entries(hiddenCache).find(([groupId, cachedMovie]) => {
+                    if (!isInHiddenCacheAndValid(groupId)) return false;
+                    
+                    // Check if the link text contains the movie title
+                    return linkText.toLowerCase().includes(cachedMovie.title.toLowerCase());
+                });
+                
+                if (matchingCacheEntry) {
+                    const [groupId, cachedMovie] = matchingCacheEntry;
+                    
+                    // Replace the link with hidden text
+                    const hiddenSpan = document.createElement('span');
+                    hiddenSpan.textContent = '[hidden by tag match]';
+                    hiddenSpan.style.color = '#666';
+                    hiddenSpan.style.fontStyle = 'italic';
+                    hiddenSpan.style.fontSize = '0.9em';
+                    hiddenSpan.title = `Hidden: ${cachedMovie.title} (${cachedMovie.year}) - Tags: ${cachedMovie.tags.join(', ')}`;
+                    
+                    // Replace the link with the hidden span
+                    link.parentNode.replaceChild(hiddenSpan, link);
+                    
+                    console.log(`Hidden request link for ${cachedMovie.title} (${cachedMovie.year}) - RequestId: ${requestId} - Tags: ${cachedMovie.tags.join(', ')}`);
+                }
+            }
+        });
+    }
+
+    // Function to hide request entries on the main requests page
+    function hideRequestEntries() {
+        // Find all request links that match the pattern
+        const requestLinks = document.querySelectorAll('a.l_movie[href*="requests.php?action=view&"]');
+        
+        requestLinks.forEach(link => {
+            const href = link.getAttribute('href');
+            const requestIdMatch = href.match(/requests\.php\?action=view&(?:amp;)?id=(\d+)/);
+            
+            if (requestIdMatch) {
+                const requestId = requestIdMatch[1];
+                const linkText = link.textContent.trim();
+                const matchingCacheEntry = Object.entries(hiddenCache).find(([groupId, cachedMovie]) => {
+                    if (!isInHiddenCacheAndValid(groupId)) return false;
+                    
+                    return linkText.toLowerCase().includes(cachedMovie.title.toLowerCase()) ||
+                        cachedMovie.title.toLowerCase().includes(linkText.toLowerCase());
+                });
+                
+                if (matchingCacheEntry) {
+                    const [groupId, cachedMovie] = matchingCacheEntry;
+                    
+                    // Find the parent <tr> element and hide it
+                    const parentRow = link.closest('tr');
+                    if (parentRow) {
+                        parentRow.style.display = 'none';
+                        console.log(`Hidden request row for ${cachedMovie.title} (${cachedMovie.year}) - RequestId: ${requestId} - Tags: ${cachedMovie.tags.join(', ')}`);
+                    }
+                }
+            }
+        });
     }
 
     function hideMoviesWithTargetTags() {
         // Check if this is a forum page - if so, only process torrent links
         const isForumPage = window.location.pathname.includes('/forums.php');
-        
-        if (isForumPage) {
-            console.log('Forum page detected, processing torrent links only');
+        const isRequestPage = window.location.pathname.includes('/requests.php') && !window.location.search.includes('action=view');
+
+        if (isForumPage || isRequestPage) {
+            console.log('Forum or request page detected, processing links only');
 
             const hasAnchor = window.location.hash;
             
             if (hasAnchor) {
-                console.log('Forum anchor navigation detected:', window.location.hash);
+                console.log('Forum or request anchor navigation detected:', window.location.hash);
                 
                 // Process torrent links quickly without delay
                 hideCachedTorrentLinks();
+                if (isRequestPage) {
+                    hideRequestEntries();
+                }
                 showPage();
                 setTimeout(() => {
                     const targetElement = document.querySelector(window.location.hash);
@@ -595,22 +722,32 @@
                         targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
                         console.log('Scrolled to anchor:', window.location.hash);
                     }
-                    // Process torrent links again in case any loaded after initial processing
+                    // Process links again in case any loaded after initial processing
                     hideCachedTorrentLinks();
+                    if (isRequestPage) {
+                        hideRequestEntries();
+                    }
                 }, 50);
                 
                 return;
             }
             
-            // For normal forum page loading (no anchor)
+            // For normal forum/request page loading (no anchor)
             hideCachedTorrentLinks();
+            if (isRequestPage) {
+                hideRequestEntries();
+            }
+            
             if (document.readyState === 'complete') {
-                console.log('Forum page complete, showing immediately');
+                console.log('Forum/request page complete, showing immediately');
                 showPage();
             } else {
                 // Wait just a moment for DOM to complete
                 setTimeout(() => {
                     hideCachedTorrentLinks(); // Check again in case new links loaded
+                    if (isRequestPage) {
+                        hideRequestEntries();
+                    }
                     showPage();
                 }, 100);
             }
@@ -892,9 +1029,11 @@
     // Monitor for dynamically loaded content
     const observer = new MutationObserver((mutations) => {
         const isForumPage = window.location.pathname.includes('/forums.php');
+        const isRequestPage = window.location.pathname.includes('/requests.php') && !window.location.search.includes('action=view');
         const hasAnchor = window.location.hash;
         let shouldCheck = false;
         let shouldCheckLinks = false;
+        let shouldCheckRequests = false;
         
         mutations.forEach(mutation => {
             if (mutation.type === 'childList') {
@@ -908,8 +1047,24 @@
                             if (node.querySelectorAll && node.querySelectorAll('a[href*="torrents.php?id="]').length > 0) {
                                 shouldCheckLinks = true;
                             }
+                        } else if (isRequestPage) {
+                            // On request pages, check for both torrent and request links
+                            if (node.tagName === 'A' && node.href && node.href.includes('torrents.php?id=')) {
+                                shouldCheckLinks = true;
+                            }
+                            if (node.tagName === 'A' && node.classList.contains('l_movie') && node.href.includes('requests.php?action=view')) {
+                                shouldCheckRequests = true;
+                            }
+                            if (node.querySelectorAll) {
+                                if (node.querySelectorAll('a[href*="torrents.php?id="]').length > 0) {
+                                    shouldCheckLinks = true;
+                                }
+                                if (node.querySelectorAll('a.l_movie[href*="requests.php?action=view"]').length > 0) {
+                                    shouldCheckRequests = true;
+                                }
+                            }
                         } else {
-                            // On non-forum pages, do full processing
+                            // On non-forum/non-request pages, do full processing
                             if (node.tagName === 'SCRIPT' && node.textContent.includes('coverViewJsonData')) {
                                 shouldCheck = true;
                             }
@@ -931,9 +1086,15 @@
         if (isForumPage && shouldCheckLinks) {
             // Use shorter delay for forum pages, especially with anchors
             setTimeout(hideCachedTorrentLinks, hasAnchor ? 10 : 50);
-        } else if (!isForumPage && shouldCheck) {
+        } else if (isRequestPage && (shouldCheckLinks || shouldCheckRequests)) {
+            // Handle request pages
+            setTimeout(() => {
+                if (shouldCheckLinks) hideCachedTorrentLinks();
+                if (shouldCheckRequests) hideRequestEntries();
+            }, hasAnchor ? 10 : 50);
+        } else if (!isForumPage && !isRequestPage && shouldCheck) {
             setTimeout(hideMoviesWithTargetTags, 50);
-        } else if (!isForumPage && shouldCheckLinks) {
+        } else if (!isForumPage && !isRequestPage && shouldCheckLinks) {
             setTimeout(hideCachedTorrentLinks, 50);
         }
     });
