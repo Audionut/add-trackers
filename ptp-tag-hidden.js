@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP content hider
-// @version      1.8
+// @version      1.9
 // @description  Hide html elements with specified tags
 // @match        https://passthepopcorn.me/index.php*
 // @match        https://passthepopcorn.me/top10.php*
@@ -8,6 +8,7 @@
 // @match        https://passthepopcorn.me/user.php*
 // @match        https://passthepopcorn.me/forums.php*
 // @match        https://passthepopcorn.me/requests.php*
+// @match        https://passthepopcorn.me/collages.php*
 // @downloadURL  https://github.com/Audionut/add-trackers/raw/main/ptp-tag-hidden.js
 // @updateURL    https://github.com/Audionut/add-trackers/raw/main/ptp-tag-hidden.js
 // @grant        GM_setValue
@@ -25,10 +26,13 @@
     let HIDDEN_CACHE = GM_getValue('HIDDEN_CACHE', '{}');
     let SHOW_LOADING_SPINNER = GM_getValue('SHOW_LOADING_SPINNER', false);
     let HIDE_TORRENT_PAGES = GM_getValue('HIDE_TORRENT_PAGES', true);
+    let HIDE_TORRENT_PAGES_BY_COLLAGE = GM_getValue('HIDE_TORRENT_PAGES_BY_COLLAGE', true);
     
     // Convert to array and clean up
     let tagsArray = TAGS_TO_HIDE.split(',').map(tag => tag.trim().toLowerCase()).filter(tag => tag.length > 0);
     let hiddenCache = {};
+    let collageProcessingTimeout = null;
+    let isProcessingCollages = false;
     
     try {
         hiddenCache = JSON.parse(HIDDEN_CACHE);
@@ -41,6 +45,7 @@
     console.log('Delay render:', DELAY_RENDER);
     console.log('Show loading spinner:', SHOW_LOADING_SPINNER);
     console.log('Hide torrent pages:', HIDE_TORRENT_PAGES);
+    console.log('Hide torrent pages by collage tags:', HIDE_TORRENT_PAGES_BY_COLLAGE);
     console.log('Cached hidden movies:', Object.keys(hiddenCache).length);
 
     // Function to add GroupID to cache
@@ -149,6 +154,16 @@
         console.log('Hide torrent pages toggled to:', HIDE_TORRENT_PAGES);
     });
 
+    GM_registerMenuCommand('Toggle Hide Torrent Pages by Collage Tags', () => {
+        HIDE_TORRENT_PAGES_BY_COLLAGE = !HIDE_TORRENT_PAGES_BY_COLLAGE;
+        GM_setValue('HIDE_TORRENT_PAGES_BY_COLLAGE', HIDE_TORRENT_PAGES_BY_COLLAGE);
+        
+        if (confirm(`Hide torrent pages by collage tags is now: ${HIDE_TORRENT_PAGES_BY_COLLAGE ? 'ON' : 'OFF'}\n\nThis will hide torrent pages if they belong to cached collages with matching tags.\n\nRefresh the page for changes to take effect?\n\nClick OK to refresh now, or Cancel to refresh later.`)) {
+            window.location.reload();
+        }
+        console.log('Hide torrent pages by collage tags toggled to:', HIDE_TORRENT_PAGES_BY_COLLAGE);
+    });
+
     GM_registerMenuCommand('Toggle Loading Spinner', () => {
         SHOW_LOADING_SPINNER = !SHOW_LOADING_SPINNER;
         GM_setValue('SHOW_LOADING_SPINNER', SHOW_LOADING_SPINNER);
@@ -197,12 +212,12 @@
     });
 
     GM_registerMenuCommand('Reset to Defaults', () => {
-        if (confirm('Reset all settings to defaults?\n\nTags: family, animation, comedy, romance\nDelay Render: ON\nClear Cache: YES')) {
+        if (confirm('Reset all settings to defaults?\n\nTags: family, animation, comedy, romance\nDelay Render: ON\nHide Torrent Pages: ON\nHide by Collage Tags: ON\nClear Cache: YES')) {
             GM_setValue('TAGS_TO_HIDE', 'family, animation, comedy, romance');
             GM_setValue('DELAY_RENDER', true);
             GM_setValue('SHOW_LOADING_SPINNER', false);
             GM_setValue('HIDE_TORRENT_PAGES', true);
-            clearHiddenCache();
+            GM_setValue('HIDE_TORRENT_PAGES_BY_COLLAGE', true);
             
             window.location.reload();
         }
@@ -539,6 +554,61 @@
         return false; // No content was hidden
     }
 
+    // Function to hide torrent page content when matched by collage tags
+    function hideTorrentPageContentByCollage(title, year, matchedCollages) {
+        const thinDiv = document.querySelector('div.thin');
+        
+        if (thinDiv) {
+            // Check if replacement content already exists
+            const existingReplacement = document.querySelector('.ptp-hidden-replacement');
+            if (existingReplacement) {
+                console.log('Replacement content already exists, skipping...');
+                return;
+            }
+            
+            // Hide the original content
+            thinDiv.style.display = 'none';
+            
+            // Create replacement content
+            const hiddenMessage = document.createElement('div');
+            hiddenMessage.className = 'thin ptp-hidden-replacement'; // Add unique class
+            hiddenMessage.style.cssText = `
+                text-align: center;
+                padding: 50px 20px;
+                color: #666;
+                font-size: 18px;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            `;
+            
+            const collageInfo = matchedCollages.map(collage => 
+                `"${collage.title}" (${collage.tags.join(', ')})`
+            ).join('<br>');
+            
+            hiddenMessage.innerHTML = `
+                <div style="background: rgba(0, 0, 0, 0.1); padding: 30px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.1); display: inline-block;">
+                    <div style="font-size: 24px; margin-bottom: 15px; font-weight: bold;">🚫 Hidden by Collage Tag Match</div>
+                    <div style="font-size: 16px; color: #888; margin-bottom: 10px;">
+                        ${title}${year ? ` (${year})` : ''}
+                    </div>
+                    <div style="font-size: 14px; color: #aaa; margin-bottom: 10px;">
+                        Found in ${matchedCollages.length} cached collage${matchedCollages.length > 1 ? 's' : ''}:
+                    </div>
+                    <div style="font-size: 12px; color: #bbb; margin-bottom: 20px;">
+                        ${collageInfo}
+                    </div>
+                    <div style="font-size: 12px; color: #999;">
+                        Configure your tag filters in the userscript menu
+                    </div>
+                </div>
+            `;
+            
+            // Insert the replacement after the hidden div
+            thinDiv.parentNode.insertBefore(hiddenMessage, thinDiv.nextSibling);
+            
+            console.log(`Hidden torrent page content for: ${title} (${year}) - Collages: ${matchedCollages.map(c => c.title).join(', ')}`);
+        }
+    }
+
     // Function to hide torrent page content
     function hideTorrentPageContent(title, year, matchedTags) {
         const thinDiv = document.querySelector('div.thin');
@@ -697,10 +767,175 @@
         });
     }
 
+    // Function to hide collage entries on collages pages
+    function hideCollageEntries() {
+        console.log('Processing collages page for hidden entries...');
+        
+        // Find all collage rows in the main table (not torrent_table)
+        const collageRows = document.querySelectorAll('table tbody tr');
+        console.log(`Found ${collageRows.length} total table rows to check`);
+        
+        let processedCount = 0;
+        
+        collageRows.forEach((row, index) => {
+            // Look for collage link to get ID
+            const collageLink = row.querySelector('a[href*="collages.php?id="]');
+            if (!collageLink) return;
+            
+            processedCount++;
+            
+            const href = collageLink.getAttribute('href');
+            const collageIdMatch = href.match(/collages\.php\?id=(\d+)/);
+            if (!collageIdMatch) return;
+            
+            const collageId = collageIdMatch[1];
+            const collageTitle = collageLink.textContent.trim();
+            
+            // Look for tags in this row - they're in a .tags div
+            const tagsDiv = row.querySelector('.tags');
+            if (!tagsDiv) {
+                console.log(`No tags found for collage: ${collageTitle} (ID: ${collageId})`);
+                return;
+            }
+            
+            // Extract tags from the tags div - look for links with tags= parameter
+            const tagLinks = tagsDiv.querySelectorAll('a[href*="tags="]');
+            const collageTags = [];
+            
+            console.log(`Found ${tagLinks.length} tag links for collage: ${collageTitle}`);
+            
+            tagLinks.forEach(tagLink => {
+                const tagHref = tagLink.getAttribute('href');
+                console.log('Processing tag href:', tagHref);
+                
+                // Handle both encoded and unencoded ampersands
+                const tagMatch = tagHref.match(/tags=([^&\s]+)/);
+                if (tagMatch) {
+                    const tag = decodeURIComponent(tagMatch[1]).toLowerCase();
+                    if (!collageTags.includes(tag)) {
+                        collageTags.push(tag);
+                        console.log('Added collage tag:', tag);
+                    }
+                }
+            });
+            
+            console.log(`Collage "${collageTitle}" (ID: ${collageId}) has tags:`, collageTags);
+            
+            // Check if any tags match our filter
+            const matchedTags = collageTags.filter(tag => tagsArray.includes(tag.toLowerCase()));
+            
+            if (matchedTags.length > 0) {
+                console.log(`Hiding collage "${collageTitle}" (ID: ${collageId}) - Matched tags: ${matchedTags.join(', ')}`);
+                
+                // Hide the entire row
+                row.style.display = 'none';
+                
+                // Add to cache using collage ID (prefix with 'collage_' to distinguish from group IDs)
+                addToHiddenCache(`collage_${collageId}`, collageTitle, '', matchedTags, null);
+            }
+        });
+        
+        console.log(`Processed ${processedCount} collage rows out of ${collageRows.length} total rows`);
+    }
+
+    // Function to hide cached collage links
+    function hideCachedCollageLinks() {
+        console.log('Checking for cached collage links to hide...');
+        
+        // Find all collage links
+        const collageLinks = document.querySelectorAll('a[href*="collages.php?id="]');
+        console.log(`Found ${collageLinks.length} collage links to check`);
+        
+        // Check if we're on a torrent detail page for potential page hiding
+        const isTorrentDetailPage = window.location.pathname.includes('/torrents.php') && window.location.search.includes('id=');
+        let matchedCollagesForPageHiding = [];
+        
+        collageLinks.forEach(link => {
+            const href = link.getAttribute('href');
+            const collageIdMatch = href.match(/collages\.php\?id=(\d+)/);
+            
+            if (collageIdMatch) {
+                const collageId = collageIdMatch[1];
+                const cacheKey = `collage_${collageId}`;
+                
+                // Check if this collage ID is in cache and still valid with current tags
+                if (isInHiddenCacheAndValid(cacheKey)) {
+                    const cachedCollage = hiddenCache[cacheKey];
+                    
+                    // If we're on a torrent detail page and the option is enabled, collect for potential page hiding
+                    if (isTorrentDetailPage && HIDE_TORRENT_PAGES_BY_COLLAGE) {
+                        matchedCollagesForPageHiding.push({
+                            id: collageId,
+                            title: cachedCollage.title,
+                            tags: cachedCollage.tags
+                        });
+                    }
+                    
+                    // Find the parent row and hide it
+                    const parentRow = link.closest('tr');
+                    if (parentRow) {
+                        parentRow.style.display = 'none';
+                        console.log(`Hidden cached collage row: ${cachedCollage.title} (ID: ${collageId}) - Tags: ${cachedCollage.tags.join(', ')}`);
+                    } else {
+                        // If not in a table row, replace the link with hidden text
+                        const hiddenSpan = document.createElement('span');
+                        hiddenSpan.textContent = '[hidden by tag match]';
+                        hiddenSpan.style.color = '#666';
+                        hiddenSpan.style.fontStyle = 'italic';
+                        hiddenSpan.style.fontSize = '0.9em';
+                        hiddenSpan.title = `Hidden: ${cachedCollage.title} - Tags: ${cachedCollage.tags.join(', ')}`;
+                        
+                        link.parentNode.replaceChild(hiddenSpan, link);
+                        console.log(`Hidden cached collage link: ${cachedCollage.title} (ID: ${collageId}) - Tags: ${cachedCollage.tags.join(', ')}`);
+                    }
+                }
+            }
+        });
+        
+        // If we found matching collages on a torrent detail page, hide the entire page
+        if (isTorrentDetailPage && matchedCollagesForPageHiding.length > 0) {
+            // Extract title and year from page title
+            let title = '';
+            let year = '';
+            
+            const titleElement = document.querySelector('h2.page__title');
+            if (titleElement && titleElement.textContent.trim()) {
+                const titleText = titleElement.textContent.trim();
+                const yearMatch = titleText.match(/\[(\d{4})\]|\((\d{4})\)/);
+                if (yearMatch) {
+                    year = yearMatch[1] || yearMatch[2];
+                    title = titleText.replace(/\s*[\[\(]\d{4}[\]\)]\s*/, ' ').trim();
+                    title = title.replace(/\s+/g, ' ');
+                } else {
+                    title = titleText;
+                }
+            }
+            
+            console.log(`Torrent page "${title}" (${year}) should be hidden due to ${matchedCollagesForPageHiding.length} matching collage(s)`);
+            hideTorrentPageContentByCollage(title, year, matchedCollagesForPageHiding);
+            
+            // Show page immediately since we've replaced the content
+            console.log('Torrent page content replaced by collage match, showing page immediately');
+            showPage();
+            return true; // Indicate that content was hidden and page should be shown
+        }
+        
+        return false;
+    }
+
     function hideMoviesWithTargetTags() {
-        // Check if this is a forum page - if so, only process torrent links
+        const isRequestDetailPage = window.location.pathname.includes('/requests.php') && window.location.search.includes('action=view');
+        
+        if (!isRequestDetailPage) {
+            // Hide cached torrent and collage links on all pages except request detail pages
+            hideCachedTorrentLinks();
+            hideCachedCollageLinks();
+        }
+        
+        // Check page type
         const isForumPage = window.location.pathname.includes('/forums.php');
         const isRequestPage = window.location.pathname.includes('/requests.php') && !window.location.search.includes('action=view');
+        const isCollagesPage = window.location.pathname.includes('/collages.php');
 
         if (isForumPage || isRequestPage) {
             console.log('Forum or request page detected, processing links only');
@@ -710,8 +945,7 @@
             if (hasAnchor) {
                 console.log('Forum or request anchor navigation detected:', window.location.hash);
                 
-                // Process torrent links quickly without delay
-                hideCachedTorrentLinks();
+                // Links already processed in universal section above
                 if (isRequestPage) {
                     hideRequestEntries();
                 }
@@ -724,6 +958,7 @@
                     }
                     // Process links again in case any loaded after initial processing
                     hideCachedTorrentLinks();
+                    hideCachedCollageLinks();
                     if (isRequestPage) {
                         hideRequestEntries();
                     }
@@ -733,7 +968,7 @@
             }
             
             // For normal forum/request page loading (no anchor)
-            hideCachedTorrentLinks();
+            // Links already processed in universal section above
             if (isRequestPage) {
                 hideRequestEntries();
             }
@@ -745,9 +980,53 @@
                 // Wait just a moment for DOM to complete
                 setTimeout(() => {
                     hideCachedTorrentLinks(); // Check again in case new links loaded
+                    hideCachedCollageLinks();
                     if (isRequestPage) {
                         hideRequestEntries();
                     }
+                    showPage();
+                }, 100);
+            }
+            return;
+        }
+        
+        // Handle collages pages
+        if (isCollagesPage) {
+            console.log('Collages page detected, processing collage entries');
+            
+            const hasAnchor = window.location.hash;
+            
+            // Set processing flag to prevent mutation observer from triggering
+            isProcessingCollages = true;
+            
+            // Links already processed in universal section above
+            // Process current page collage entries
+            hideCollageEntries();
+            
+            // Reset processing flag after a short delay
+            setTimeout(() => {
+                isProcessingCollages = false;
+            }, 500);
+            
+            if (hasAnchor) {
+                console.log('Collages anchor navigation detected:', window.location.hash);
+                showPage();
+                setTimeout(() => {
+                    const targetElement = document.querySelector(window.location.hash);
+                    if (targetElement) {
+                        targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        console.log('Scrolled to anchor:', window.location.hash);
+                    }
+                }, 50);
+                return;
+            }
+            
+            if (document.readyState === 'complete') {
+                console.log('Collages page complete, showing immediately');
+                showPage();
+            } else {
+                // Wait for DOM to complete
+                setTimeout(() => {
                     showPage();
                 }, 100);
             }
@@ -864,11 +1143,10 @@
             return;
         }
 
-        // Hide cached torrent links and check if any were hidden
-        const originalLinksCount = document.querySelectorAll('a[href*="torrents.php?id="]').length;
-        hideCachedTorrentLinks();
-        const newLinksCount = document.querySelectorAll('a[href*="torrents.php?id="]').length;
-        if (originalLinksCount > newLinksCount) {
+        // Check if any links were hidden (already processed in universal section)
+        // This is just to mark that elements were hidden for the timing logic
+        const linksHidden = document.querySelectorAll('span[title*="Hidden:"]').length > 0;
+        if (linksHidden) {
             hiddenElements = true;
             foundData = true;
         }
@@ -1030,52 +1308,49 @@
     const observer = new MutationObserver((mutations) => {
         const isForumPage = window.location.pathname.includes('/forums.php');
         const isRequestPage = window.location.pathname.includes('/requests.php') && !window.location.search.includes('action=view');
+        const isCollagesPage = window.location.pathname.includes('/collages.php');
+        const isRequestDetailPage = window.location.pathname.includes('/requests.php') && window.location.search.includes('action=view');
+        const isTorrentDetailPage = window.location.pathname.includes('/torrents.php') && window.location.search.includes('id=');
         const hasAnchor = window.location.hash;
         let shouldCheck = false;
         let shouldCheckLinks = false;
         let shouldCheckRequests = false;
+        let shouldCheckCollages = false;
         
         mutations.forEach(mutation => {
             if (mutation.type === 'childList') {
                 mutation.addedNodes.forEach(node => {
                     if (node.nodeType === Node.ELEMENT_NODE) {
-                        if (isForumPage) {
-                            // On forum pages, only check for torrent links
-                            if (node.tagName === 'A' && node.href && node.href.includes('torrents.php?id=')) {
+                        // Check for torrent and collage links on all pages except request detail pages
+                        if (!isRequestDetailPage) {
+                            if (node.tagName === 'A' && node.href && (node.href.includes('torrents.php?id=') || node.href.includes('collages.php?id='))) {
                                 shouldCheckLinks = true;
                             }
-                            if (node.querySelectorAll && node.querySelectorAll('a[href*="torrents.php?id="]').length > 0) {
+                            if (node.querySelectorAll && (node.querySelectorAll('a[href*="torrents.php?id="]').length > 0 || node.querySelectorAll('a[href*="collages.php?id="]').length > 0)) {
                                 shouldCheckLinks = true;
                             }
-                        } else if (isRequestPage) {
-                            // On request pages, check for both torrent and request links
-                            if (node.tagName === 'A' && node.href && node.href.includes('torrents.php?id=')) {
-                                shouldCheckLinks = true;
-                            }
+                        }
+                        
+                        if (isRequestPage) {
+                            // On request pages, also check for request links
                             if (node.tagName === 'A' && node.classList.contains('l_movie') && node.href.includes('requests.php?action=view')) {
                                 shouldCheckRequests = true;
                             }
-                            if (node.querySelectorAll) {
-                                if (node.querySelectorAll('a[href*="torrents.php?id="]').length > 0) {
-                                    shouldCheckLinks = true;
-                                }
-                                if (node.querySelectorAll('a.l_movie[href*="requests.php?action=view"]').length > 0) {
-                                    shouldCheckRequests = true;
-                                }
+                            if (node.querySelectorAll && node.querySelectorAll('a.l_movie[href*="requests.php?action=view"]').length > 0) {
+                                shouldCheckRequests = true;
                             }
-                        } else {
-                            // On non-forum/non-request pages, do full processing
+                        } else if (isCollagesPage) {
+                            // On collages pages, check for table rows for new collage entries
+                            if (node.tagName === 'TR' || (node.querySelectorAll && node.querySelectorAll('tr').length > 0)) {
+                                shouldCheckCollages = true;
+                            }
+                        } else if (!isForumPage && !isRequestPage && !isCollagesPage && !isRequestDetailPage && !isTorrentDetailPage) {
+                            // On other pages, do full processing
                             if (node.tagName === 'SCRIPT' && node.textContent.includes('coverViewJsonData')) {
                                 shouldCheck = true;
                             }
                             if (node.querySelectorAll && node.querySelectorAll('script').length > 0) {
                                 shouldCheck = true;
-                            }
-                            if (node.tagName === 'A' && node.href && node.href.includes('torrents.php?id=')) {
-                                shouldCheckLinks = true;
-                            }
-                            if (node.querySelectorAll && node.querySelectorAll('a[href*="torrents.php?id="]').length > 0) {
-                                shouldCheckLinks = true;
                             }
                         }
                     }
@@ -1083,19 +1358,36 @@
             }
         });
         
-        if (isForumPage && shouldCheckLinks) {
-            // Use shorter delay for forum pages, especially with anchors
-            setTimeout(hideCachedTorrentLinks, hasAnchor ? 10 : 50);
-        } else if (isRequestPage && (shouldCheckLinks || shouldCheckRequests)) {
-            // Handle request pages
+        if (shouldCheckLinks && !isRequestDetailPage) {
+            // Use shorter delay for pages with anchors
             setTimeout(() => {
-                if (shouldCheckLinks) hideCachedTorrentLinks();
-                if (shouldCheckRequests) hideRequestEntries();
+                hideCachedTorrentLinks();
+                hideCachedCollageLinks();
             }, hasAnchor ? 10 : 50);
-        } else if (!isForumPage && !isRequestPage && shouldCheck) {
+        }
+        
+        if (isRequestPage && shouldCheckRequests) {
+            setTimeout(hideRequestEntries, hasAnchor ? 10 : 50);
+        }
+        
+        if (isCollagesPage && shouldCheckCollages && !isProcessingCollages) {
+            // Handle collages pages with debouncing
+            if (collageProcessingTimeout) {
+                clearTimeout(collageProcessingTimeout);
+            }
+            
+            collageProcessingTimeout = setTimeout(() => {
+                if (!isProcessingCollages) {
+                    isProcessingCollages = true;
+                    console.log('MutationObserver triggered collages processing');
+                    hideCollageEntries();
+                    isProcessingCollages = false;
+                }
+            }, hasAnchor ? 10 : 100);
+        }
+        
+        if (!isForumPage && !isRequestPage && !isCollagesPage && !isRequestDetailPage && !isTorrentDetailPage && shouldCheck) {
             setTimeout(hideMoviesWithTargetTags, 50);
-        } else if (!isForumPage && !isRequestPage && shouldCheckLinks) {
-            setTimeout(hideCachedTorrentLinks, 50);
         }
     });
 
