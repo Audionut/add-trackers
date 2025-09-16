@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.1.7.0
+// @version      1.1.8
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -15,6 +15,7 @@
 // @grant        GM_registerMenuCommand
 // @grant        GM.listValues
 // @grant        GM.deleteValue
+// @run-at       document-start
 // @connect      api.graphql.imdb.com
 // @require      https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js
 // ==/UserScript==
@@ -667,41 +668,66 @@ function handleResetAll() {
         });
     }
 
-    var link = document.querySelector("a#imdb-title-link.rating");
-    let imdbUrl, imdbId;
+    // Function to find IMDb ID with retry logic
+    const findImdbIdWithRetry = async (maxRetries = 8, retryDelay = 500) => {
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            console.log(`Attempt ${attempt}/${maxRetries} to find IMDb ID`);
+            
+            // Try to find the main IMDb link
+            const link = document.querySelector("a#imdb-title-link.rating");
+            let imdbUrl, imdbId;
 
-    if (link) {
-        imdbUrl = link.getAttribute("href");
-        if (!imdbUrl) {
-            console.error("IMDb URL not found");
-            return;
-        }
-        imdbId = imdbUrl.split("/")[4];
-        if (!imdbId) {
-            console.error("IMDb ID not found");
-            return;
-        }
-    } else {
-        // Fallback: check request table for IMDb link
-        const requestTable = document.querySelector('table#request-table');
-        if (requestTable) {
-            const imdbRow = Array.from(requestTable.querySelectorAll('tr')).find(tr =>
-                tr.querySelector('.label') && tr.querySelector('.label').textContent.trim().toLowerCase() === 'imdb link'
-            );
-            if (imdbRow) {
-                const imdbAnchor = imdbRow.querySelector('a[href*="imdb.com/title/tt"]');
-                if (imdbAnchor) {
-                    imdbUrl = imdbAnchor.getAttribute('href');
-                    const match = imdbUrl.match(/tt\d+/);
-                    imdbId = match ? match[0] : null;
+            if (link) {
+                imdbUrl = link.getAttribute("href");
+                if (imdbUrl) {
+                    imdbId = imdbUrl.split("/")[4];
+                    if (imdbId) {
+                        console.log(`Found IMDb ID on attempt ${attempt}: ${imdbId}`);
+                        return imdbId;
+                    }
                 }
             }
+
+            // Fallback: check request table for IMDb link
+            const requestTable = document.querySelector('table#request-table');
+            if (requestTable) {
+                const imdbRow = Array.from(requestTable.querySelectorAll('tr')).find(tr =>
+                    tr.querySelector('.label') && tr.querySelector('.label').textContent.trim().toLowerCase() === 'imdb link'
+                );
+                if (imdbRow) {
+                    const imdbAnchor = imdbRow.querySelector('a[href*="imdb.com/title/tt"]');
+                    if (imdbAnchor) {
+                        imdbUrl = imdbAnchor.getAttribute('href');
+                        const match = imdbUrl.match(/tt\d+/);
+                        imdbId = match ? match[0] : null;
+                        if (imdbId) {
+                            console.log(`Found IMDb ID in request table on attempt ${attempt}: ${imdbId}`);
+                            return imdbId;
+                        }
+                    }
+                }
+            }
+
+            // If this isn't the last attempt, wait before retrying
+            if (attempt < maxRetries) {
+                console.log(`IMDb ID not found on attempt ${attempt}, retrying in ${retryDelay}ms...`);
+                await new Promise(resolve => setTimeout(resolve, retryDelay));
+            }
         }
-        if (!imdbId) {
-            console.error("IMDb link not found in request table");
-            return;
-        }
+
+        console.error(`IMDb ID not found after ${maxRetries} attempts`);
+        return null;
+    };
+
+    // Try to find IMDb ID with retry logic
+    const imdbId = await findImdbIdWithRetry(8, 500); // 8 attempts, 500ms delay
+    
+    if (!imdbId) {
+        console.error("Failed to find IMDb ID after all retry attempts");
+        return;
     }
+
+    console.log(`Successfully found IMDb ID: ${imdbId}`);
 
     // Cache duration (1 week (by default) in milliseconds)
     const CACHE_DURATION = CACHE_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
@@ -2520,14 +2546,17 @@ function handleResetAll() {
             } else if (SHOW_SOUNDTRACKS) {
                 console.warn("No soundtracks found");
             }
+
             if (SHOW_ALTERNATE_VERSIONS && titleData.alternateVersions && titleData.alternateVersions.edges.length > 0) {
                 displayAlternateVersionsPanel(titleData.alternateVersions.edges);
             }
+
             if (SHOW_KEYWORDS && titleData.keywords && titleData.keywords.edges.length > 0) {
                 displayKeywordsPanel(titleData.keywords.edges);
             } else {
                 console.warn("No keywords found");
             }
+
             if (SHOW_PARENTS_GUIDE) {
                 addParentalGuidePanel(titleData.parentsGuide.categories);
             }
@@ -2536,11 +2565,127 @@ function handleResetAll() {
                 displayCastPhotos(titleData, idToNameMap, namesData);
             }
 
-            formatIMDbText()
+            formatIMDbText();
+
+            // **NEW: Dispatch event when IMDb processing is complete**
+            console.log(`PTP IMDb Combined: Processing complete for ${imdbId}, dispatching completion event`);
+            document.dispatchEvent(new CustomEvent('imdbProcessingComplete', {
+                detail: {
+                    imdbId: imdbId,
+                    timestamp: Date.now(),
+                    source: 'ptp-imdb-combined',
+                    success: true,
+                    titleData: titleData,
+                    processedSoundtracks: processedSoundtracks,
+                    idToNameMap: idToNameMap,
+                    namesData: namesData
+                }
+            }));
+
         } else {
             console.error("Failed to retrieve valid title data");
+
+            // **NEW: Dispatch error event when processing fails**
+            document.dispatchEvent(new CustomEvent('imdbProcessingComplete', {
+                detail: {
+                    imdbId: imdbId,
+                    timestamp: Date.now(),
+                    source: 'ptp-imdb-combined',
+                    success: false,
+                    error: 'Failed to retrieve valid title data'
+                }
+            }));
         }
     }).catch(err => {
-        console.error(err);
+        console.error("PTP IMDb Combined processing error:", err);
+
+        // **NEW: Dispatch error event when fetch fails**
+        document.dispatchEvent(new CustomEvent('imdbProcessingComplete', {
+            detail: {
+                imdbId: imdbId,
+                timestamp: Date.now(),
+                source: 'ptp-imdb-combined',
+                success: false,
+                error: err.message || 'Unknown error'
+            }
+        }));
     });
+
+    // Add IMDb cache sharing via document events
+    document.addEventListener('requestIMDbData', async (event) => {
+        const { imdbId, requestId } = event.detail;
+
+        try {
+            console.log(`PTP IMDb Combined: Received request for ${imdbId} (requestId: ${requestId})`);
+
+            const cacheKey = `iMDB_data_${imdbId}`;
+            console.log(`PTP IMDb Combined: Looking for cache key: ${cacheKey}`);
+
+            // Try to get the data from cache using the same method as the script
+            const cachedData = await getCache(cacheKey);
+            let responseData = null;
+
+            if (cachedData) {
+                console.log(`PTP IMDb Combined: Found cached data for ${imdbId}`);
+                console.log(`PTP IMDb Combined: Cache data type:`, typeof cachedData);
+                console.log(`PTP IMDb Combined: Cache data keys:`, Object.keys(cachedData));
+
+                responseData = {
+                    found: true,
+                    imdbId: imdbId,
+                    timestamp: Date.now(),
+                    data: cachedData,
+                    source: 'ptp-imdb-combined'
+                };
+            } else {
+                console.log(`PTP IMDb Combined: No cached data found for ${imdbId}`);
+
+                responseData = {
+                    found: false,
+                    imdbId: imdbId,
+                    data: null,
+                    source: 'ptp-imdb-combined'
+                };
+            }
+
+            // Send response back
+            console.log(`PTP IMDb Combined: Sending response for ${imdbId} (requestId: ${requestId}):`, responseData.found ? 'Data found' : 'No data');
+            document.dispatchEvent(new CustomEvent('imdbDataResponse', {
+                detail: {
+                    requestId: requestId,
+                    ...responseData
+                }
+            }));
+
+        } catch (error) {
+            console.error('PTP IMDb Combined: Error processing IMDb request:', error);
+
+            // Send error response
+            document.dispatchEvent(new CustomEvent('imdbDataResponse', {
+                detail: {
+                    requestId: requestId,
+                    found: false,
+                    error: error.message,
+                    imdbId: imdbId,
+                    data: null,
+                    source: 'ptp-imdb-combined'
+                }
+            }));
+        }
+    });
+
+    console.log('PTP IMDb Combined: Event listener for requestIMDbData added');
+
+    document.addEventListener('imdbScriptPing', (event) => {
+        const { pingId } = event.detail;
+        console.log(`PTP IMDb Combined: Received ping with ID: ${pingId}`);
+
+        // Respond with pong
+        document.dispatchEvent(new CustomEvent('imdbScriptPong', {
+            detail: { pingId: pingId }
+        }));
+
+        console.log(`PTP IMDb Combined: Sent pong response for ID: ${pingId}`);
+    });
+
 })();
