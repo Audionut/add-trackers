@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP content hider
-// @version      1.9.2
+// @version      1.9.3
 // @description  Hide html elements with specified tags
 // @match        https://passthepopcorn.me/index.php*
 // @match        https://passthepopcorn.me/top10.php*
@@ -21,8 +21,8 @@
     'use strict';
 
     // Load user configuration from GM storage with defaults
-    let TAGS_TO_HIDE = GM_getValue('TAGS_TO_HIDE', 'family, animation, comedy, romance');
-    let IMDB_KEYWORDS_TO_HIDE = GM_getValue('IMDB_KEYWORDS_TO_HIDE', 'family, animation, comedy, romance');
+    let TAGS_TO_HIDE = GM_getValue('TAGS_TO_HIDE', 'adult');
+    let IMDB_KEYWORDS_TO_HIDE = GM_getValue('IMDB_KEYWORDS_TO_HIDE', 'masturbation');
     let DELAY_RENDER = GM_getValue('DELAY_RENDER', true);
     let HIDDEN_CACHE = GM_getValue('HIDDEN_CACHE', '{}');
     let IMDB_KEYWORDS_CACHE = GM_getValue('IMDB_KEYWORDS_CACHE', '{}');
@@ -62,6 +62,607 @@
     console.log('IMDb keyword checking:', ENABLE_IMDB_KEYWORD_CHECK);
     console.log('Cached hidden movies:', Object.keys(hiddenCache).length);
     console.log('Cached IMDb keywords:', Object.keys(imdbKeywordsCache).length);
+
+    // Register settings panel menu command
+    GM_registerMenuCommand('Open Settings Panel', showSettingsPanel);
+
+    // Settings Panel Functions
+    function showSettingsPanel() {
+        // Remove existing panel if it exists
+        const existingPanel = document.getElementById('ptp-settings-overlay');
+        if (existingPanel) {
+            existingPanel.remove();
+        }
+
+        // Create overlay
+        const overlay = document.createElement('div');
+        overlay.id = 'ptp-settings-overlay';
+        overlay.innerHTML = createSettingsPanelHTML();
+        
+        // Add styles
+        injectSettingsPanelStyles();
+        
+        // Add to page
+        document.body.appendChild(overlay);
+        
+        // Populate current values
+        populateSettings();
+        
+        // Add event listeners
+        setupEventListeners();
+        
+        console.log('Settings panel opened');
+    }
+
+    function hideSettingsPanel() {
+        const overlay = document.getElementById('ptp-settings-overlay');
+        if (overlay) {
+            overlay.remove();
+            console.log('Settings panel closed');
+        }
+    }
+
+    function injectSettingsPanelStyles() {
+        // Remove existing styles
+        const existingStyles = document.getElementById('ptp-settings-styles');
+        if (existingStyles) {
+            existingStyles.remove();
+        }
+
+        const style = document.createElement('style');
+        style.id = 'ptp-settings-styles';
+        style.textContent = `
+            #ptp-settings-overlay {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
+                background: rgba(0, 0, 0, 0.8);
+                z-index: 2147483647;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            }
+
+            .ptp-settings-panel {
+                background: #1a1a1a;
+                border-radius: 12px;
+                width: 90vw;
+                max-width: 800px;
+                max-height: 90vh;
+                overflow: hidden;
+                box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+                color: #fff;
+            }
+
+            .ptp-settings-header {
+                background: #2d2d2d;
+                padding: 20px;
+                border-bottom: 1px solid #444;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+
+            .ptp-settings-title {
+                margin: 0;
+                font-size: 24px;
+                font-weight: 600;
+                color: #fff;
+            }
+
+            .ptp-settings-close {
+                background: none;
+                border: none;
+                color: #ccc;
+                font-size: 28px;
+                cursor: pointer;
+                padding: 5px;
+                border-radius: 4px;
+                transition: all 0.2s;
+            }
+
+            .ptp-settings-close:hover {
+                background: #444;
+                color: #fff;
+            }
+
+            .ptp-settings-content {
+                max-height: calc(90vh - 140px);
+                overflow-y: auto;
+                padding: 0;
+            }
+
+            .ptp-settings-section {
+                padding: 20px;
+                border-bottom: 1px solid #333;
+            }
+
+            .ptp-settings-section:last-child {
+                border-bottom: none;
+            }
+
+            .ptp-section-title {
+                margin: 0 0 15px 0;
+                font-size: 18px;
+                font-weight: 600;
+                color: #fff;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+
+            .ptp-section-icon {
+                font-size: 20px;
+            }
+
+            .ptp-setting-group {
+                margin-bottom: 20px;
+            }
+
+            .ptp-setting-group:last-child {
+                margin-bottom: 0;
+            }
+
+            .ptp-setting-label {
+                display: block;
+                margin-bottom: 8px;
+                font-weight: 500;
+                color: #ddd;
+                font-size: 14px;
+            }
+
+            .ptp-setting-input {
+                width: 100%;
+                padding: 10px;
+                border: 1px solid #444;
+                border-radius: 6px;
+                background: #2d2d2d;
+                color: #fff;
+                font-size: 14px;
+                box-sizing: border-box;
+                transition: border-color 0.2s;
+            }
+
+            .ptp-setting-input:focus {
+                outline: none;
+                border-color: #007acc;
+            }
+
+            .ptp-setting-textarea {
+                min-height: 80px;
+                resize: vertical;
+                font-family: inherit;
+            }
+
+            .ptp-setting-checkbox {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                margin-bottom: 10px;
+                cursor: pointer;
+                padding: 8px 0;
+            }
+
+            .ptp-setting-checkbox input[type="checkbox"] {
+                margin: 0;
+                transform: scale(1.2);
+                accent-color: #007acc;
+            }
+
+            .ptp-setting-checkbox label {
+                margin: 0;
+                cursor: pointer;
+                color: #ddd;
+                flex: 1;
+            }
+
+            .ptp-setting-description {
+                font-size: 12px;
+                color: #999;
+                margin-top: 5px;
+                line-height: 1.4;
+            }
+
+            .ptp-cache-stats {
+                background: #2d2d2d;
+                border: 1px solid #444;
+                border-radius: 6px;
+                padding: 15px;
+                margin-bottom: 15px;
+            }
+
+            .ptp-cache-stat {
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 8px;
+                font-size: 14px;
+            }
+
+            .ptp-cache-stat:last-child {
+                margin-bottom: 0;
+            }
+
+            .ptp-cache-count {
+                color: #007acc;
+                font-weight: 600;
+            }
+
+            .ptp-button-group {
+                display: flex;
+                gap: 10px;
+                flex-wrap: wrap;
+            }
+
+            .ptp-button {
+                padding: 8px 16px;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 14px;
+                font-weight: 500;
+                transition: all 0.2s;
+                text-align: center;
+                min-width: 120px;
+            }
+
+            .ptp-button-primary {
+                background: #007acc;
+                color: #fff;
+            }
+
+            .ptp-button-primary:hover {
+                background: #005a9e;
+            }
+
+            .ptp-button-secondary {
+                background: #444;
+                color: #ccc;
+            }
+
+            .ptp-button-secondary:hover {
+                background: #555;
+                color: #fff;
+            }
+
+            .ptp-button-danger {
+                background: #d73a49;
+                color: #fff;
+            }
+
+            .ptp-button-danger:hover {
+                background: #b52d3a;
+            }
+
+            .ptp-settings-footer {
+                padding: 20px;
+                background: #2d2d2d;
+                border-top: 1px solid #444;
+                display: flex;
+                justify-content: flex-end;
+                gap: 10px;
+            }
+
+            /* Scrollbar styling */
+            .ptp-settings-content::-webkit-scrollbar {
+                width: 8px;
+            }
+
+            .ptp-settings-content::-webkit-scrollbar-track {
+                background: #1a1a1a;
+            }
+
+            .ptp-settings-content::-webkit-scrollbar-thumb {
+                background: #444;
+                border-radius: 4px;
+            }
+
+            .ptp-settings-content::-webkit-scrollbar-thumb:hover {
+                background: #555;
+            }
+        `;
+        
+        document.head.appendChild(style);
+    }
+
+    function createSettingsPanelHTML() {
+        return `
+            <div class="ptp-settings-panel">
+                <div class="ptp-settings-header">
+                    <h2 class="ptp-settings-title">PTP Content Hider Settings</h2>
+                    <button class="ptp-settings-close">×</button>
+                </div>
+                
+                <div class="ptp-settings-content">
+                    <!-- PTP Tags Section -->
+                    <div class="ptp-settings-section">
+                        <h3 class="ptp-section-title">
+                            <span class="ptp-section-icon">🏷️</span>
+                            PTP Tags Filtering
+                        </h3>
+                        <div class="ptp-setting-group">
+                            <label class="ptp-setting-label" for="tags-to-hide">Tags to hide (comma-separated):</label>
+                            <textarea id="tags-to-hide" class="ptp-setting-input ptp-setting-textarea" placeholder="family, animation, comedy, romance"></textarea>
+                            <div class="ptp-setting-description">Enter PTP tags separated by commas. Movies with any of these tags will be hidden.</div>
+                        </div>
+                    </div>
+
+                    <!-- General Settings Section -->
+                    <div class="ptp-settings-section">
+                        <h3 class="ptp-section-title">
+                            <span class="ptp-section-icon">⚙️</span>
+                            General Settings
+                        </h3>
+                        <div class="ptp-setting-group">
+                            <div class="ptp-setting-checkbox">
+                                <input type="checkbox" id="delay-render">
+                                <label for="delay-render">Delay page rendering while processing</label>
+                            </div>
+                            <div class="ptp-setting-description">Shows a blank screen while the script processes movies to hide.</div>
+                        </div>
+                        
+                        <div class="ptp-setting-group">
+                            <div class="ptp-setting-checkbox">
+                                <input type="checkbox" id="show-loading-spinner">
+                                <label for="show-loading-spinner">Show loading spinner</label>
+                            </div>
+                            <div class="ptp-setting-description">Display an animated spinner during loading. Slows processing slightly</div>
+                        </div>
+                        
+                        <div class="ptp-setting-group">
+                            <div class="ptp-setting-checkbox">
+                                <input type="checkbox" id="hide-torrent-pages">
+                                <label for="hide-torrent-pages">Hide individual torrent pages</label>
+                            </div>
+                            <div class="ptp-setting-description">Hide torrent detail pages (torrents.php?id=) that match filtering criteria.</div>
+                        </div>
+                        
+                        <div class="ptp-setting-group">
+                            <div class="ptp-setting-checkbox">
+                                <input type="checkbox" id="hide-torrent-pages-by-collage">
+                                <label for="hide-torrent-pages-by-collage">Hide torrent pages by collage tags</label>
+                            </div>
+                            <div class="ptp-setting-description">Also check collage tags when hiding individual torrent pages.</div>
+                        </div>
+                    </div>
+
+                    <!-- IMDb Settings Section -->
+                    <div class="ptp-settings-section">
+                        <h3 class="ptp-section-title">
+                            <span class="ptp-section-icon">🎬</span>
+                            IMDb Integration
+                        </h3>
+                        <div class="ptp-setting-group">
+                            <div class="ptp-setting-checkbox">
+                                <input type="checkbox" id="enable-imdb-keywords">
+                                <label for="enable-imdb-keywords">Enable IMDb keyword filtering</label>
+                            </div>
+                            <div class="ptp-setting-description">Filter movies based on IMDb keywords (requires PTP IMDb Combined script).</div>
+                        </div>
+                        
+                        <div class="ptp-setting-group">
+                            <label class="ptp-setting-label" for="imdb-keywords">IMDb keywords to hide (comma-separated):</label>
+                            <textarea id="imdb-keywords" class="ptp-setting-input ptp-setting-textarea" placeholder="masturbation, explicit-sex"></textarea>
+                            <div class="ptp-setting-description">Movies with any of these IMDb keywords will be hidden.</div>
+                        </div>
+                    </div>
+
+                    <!-- Cache Management Section -->
+                    <div class="ptp-settings-section">
+                        <h3 class="ptp-section-title">
+                            <span class="ptp-section-icon">💾</span>
+                            Cache Management
+                        </h3>
+                        <div class="ptp-cache-stats">
+                            <div class="ptp-cache-stat">
+                                <span>Hidden movies cache:</span>
+                                <span class="ptp-cache-count" id="hidden-cache-count">0</span>
+                            </div>
+                            <div class="ptp-cache-stat">
+                                <span>IMDb keywords cache:</span>
+                                <span class="ptp-cache-count" id="imdb-cache-count">0</span>
+                            </div>
+                        </div>
+                        
+                        <div class="ptp-button-group">
+                            <button class="ptp-button ptp-button-secondary" id="view-hidden-cache-btn">View Hidden Cache</button>
+                            <button class="ptp-button ptp-button-secondary" id="view-imdb-cache-btn">View IMDb Cache</button>
+                            <button class="ptp-button ptp-button-secondary" id="clean-outdated-cache-btn">Clean Outdated</button>
+                            <button class="ptp-button ptp-button-danger" id="clear-hidden-cache-btn">Clear Hidden Cache</button>
+                            <button class="ptp-button ptp-button-danger" id="clear-imdb-cache-btn">Clear IMDb Cache</button>
+                            <button class="ptp-button ptp-button-danger" id="clear-all-caches-btn">Clear All Caches</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="ptp-settings-footer">
+                    <button class="ptp-button ptp-button-secondary" id="reset-defaults-btn">Reset to Defaults</button>
+                    <button class="ptp-button ptp-button-secondary" id="cancel-btn">Cancel</button>
+                    <button class="ptp-button ptp-button-primary" id="save-settings-btn">Save Settings</button>
+                </div>
+            </div>
+        `;
+    }
+
+    function populateSettings() {
+        document.getElementById('tags-to-hide').value = TAGS_TO_HIDE;
+        document.getElementById('delay-render').checked = DELAY_RENDER;
+        document.getElementById('show-loading-spinner').checked = SHOW_LOADING_SPINNER;
+        document.getElementById('hide-torrent-pages').checked = HIDE_TORRENT_PAGES;
+        document.getElementById('hide-torrent-pages-by-collage').checked = HIDE_TORRENT_PAGES_BY_COLLAGE;
+        document.getElementById('enable-imdb-keywords').checked = ENABLE_IMDB_KEYWORD_CHECK;
+        document.getElementById('imdb-keywords').value = IMDB_KEYWORDS_TO_HIDE;
+        
+        // Update cache counts
+        document.getElementById('hidden-cache-count').textContent = Object.keys(hiddenCache).length;
+        document.getElementById('imdb-cache-count').textContent = Object.keys(imdbKeywordsCache).length;
+    }
+
+    function setupEventListeners() {
+        // Close button
+        const closeButton = document.querySelector('.ptp-settings-close');
+        if (closeButton) {
+            closeButton.addEventListener('click', hideSettingsPanel);
+        }
+
+        // Footer buttons
+        document.getElementById('save-settings-btn').addEventListener('click', saveSettings);
+        document.getElementById('cancel-btn').addEventListener('click', hideSettingsPanel);
+        document.getElementById('reset-defaults-btn').addEventListener('click', resetToDefaults);
+
+        // Cache management buttons
+        document.getElementById('view-hidden-cache-btn').addEventListener('click', viewHiddenCache);
+        document.getElementById('view-imdb-cache-btn').addEventListener('click', viewIMDbCache);
+        document.getElementById('clean-outdated-cache-btn').addEventListener('click', cleanOutdatedCache);
+        document.getElementById('clear-hidden-cache-btn').addEventListener('click', function() {
+            if (confirm(`Clear the hidden movies cache?\n\nThis will remove ${Object.keys(hiddenCache).length} cached entries. NOT RECOMMENDED unless you are experiencing issues.`)) {
+                hiddenCache = {};
+                GM_setValue('HIDDEN_CACHE', '{}');
+                document.getElementById('hidden-cache-count').textContent = '0';
+                console.log('Hidden cache cleared');
+                alert('Hidden movies cache cleared.');
+            }
+        });
+        document.getElementById('clear-imdb-cache-btn').addEventListener('click', clearIMDbCache);
+        document.getElementById('clear-all-caches-btn').addEventListener('click', clearAllCaches);
+
+        // Close on escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                hideSettingsPanel();
+            }
+        });
+
+        // Close on background click
+        document.getElementById('ptp-settings-overlay').addEventListener('click', function(e) {
+            if (e.target === this) {
+                hideSettingsPanel();
+            }
+        });
+    }
+
+    function saveSettings() {
+        // Get values from form
+        const newTagsToHide = document.getElementById('tags-to-hide').value.trim();
+        const newDelayRender = document.getElementById('delay-render').checked;
+        const newShowLoadingSpinner = document.getElementById('show-loading-spinner').checked;
+        const newHideTorrentPages = document.getElementById('hide-torrent-pages').checked;
+        const newHideTorrentPagesByCollage = document.getElementById('hide-torrent-pages-by-collage').checked;
+        const newEnableIMDbKeywords = document.getElementById('enable-imdb-keywords').checked;
+        const newIMDbKeywords = document.getElementById('imdb-keywords').value.trim();
+
+        // Save to GM storage
+        GM_setValue('TAGS_TO_HIDE', newTagsToHide);
+        GM_setValue('DELAY_RENDER', newDelayRender);
+        GM_setValue('SHOW_LOADING_SPINNER', newShowLoadingSpinner);
+        GM_setValue('HIDE_TORRENT_PAGES', newHideTorrentPages);
+        GM_setValue('HIDE_TORRENT_PAGES_BY_COLLAGE', newHideTorrentPagesByCollage);
+        GM_setValue('ENABLE_IMDB_KEYWORD_CHECK', newEnableIMDbKeywords);
+        GM_setValue('IMDB_KEYWORDS_TO_HIDE', newIMDbKeywords);
+
+        // Update runtime variables
+        TAGS_TO_HIDE = newTagsToHide;
+        DELAY_RENDER = newDelayRender;
+        SHOW_LOADING_SPINNER = newShowLoadingSpinner;
+        HIDE_TORRENT_PAGES = newHideTorrentPages;
+        HIDE_TORRENT_PAGES_BY_COLLAGE = newHideTorrentPagesByCollage;
+        ENABLE_IMDB_KEYWORD_CHECK = newEnableIMDbKeywords;
+        IMDB_KEYWORDS_TO_HIDE = newIMDbKeywords;
+
+        // Update arrays
+        tagsArray = TAGS_TO_HIDE.split(',').map(tag => tag.trim().toLowerCase()).filter(tag => tag.length > 0);
+        imdbKeywordsArray = IMDB_KEYWORDS_TO_HIDE.split(',').map(keyword => keyword.trim().toLowerCase()).filter(keyword => keyword.length > 0);
+
+        hideSettingsPanel();
+        
+        if (confirm('Settings saved successfully!\n\nWould you like to reload the page to apply changes immediately?')) {
+            window.location.reload();
+        }
+    }
+
+    function resetToDefaults() {
+        if (!confirm('Are you sure you want to reset all settings to their default values?\n\nThis cannot be undone.')) {
+            return;
+        }
+
+        // Set default values
+        document.getElementById('tags-to-hide').value = 'family, animation, comedy, romance';
+        document.getElementById('delay-render').checked = true;
+        document.getElementById('show-loading-spinner').checked = false;
+        document.getElementById('hide-torrent-pages').checked = true;
+        document.getElementById('hide-torrent-pages-by-collage').checked = true;
+        document.getElementById('enable-imdb-keywords').checked = false;
+        document.getElementById('imdb-keywords').value = 'masturbation';
+    }
+
+    // Cache management functions
+    function viewHiddenCache() {
+        const cacheEntries = Object.entries(hiddenCache);
+        if (cacheEntries.length === 0) {
+            alert('No movies currently in hidden cache.');
+            return;
+        }
+
+        const cacheList = cacheEntries.map(([groupId, data]) => {
+            return `${data.title} (${data.year}) - IMDB: ${data.imdbId || 'N/A'} - Tags: ${data.tags.join(', ')}`;
+        }).join('\n');
+
+        alert(`Hidden Movies Cache (${cacheEntries.length} entries):\n\n${cacheList}`);
+    }
+
+    function viewIMDbCache() {
+        const cacheEntries = Object.entries(imdbKeywordsCache);
+        if (cacheEntries.length === 0) {
+            alert('No IMDb keywords currently in cache.');
+            return;
+        }
+
+        const cacheList = cacheEntries.map(([imdbId, data]) => {
+            const age = Math.round((Date.now() - data.cachedAt) / (1000 * 60 * 60));
+            const keywordCount = data.keywords.length;
+            return `${imdbId}: ${keywordCount} keywords (cached ${age}h ago)`;
+        }).join('\n');
+
+        alert(`IMDb Keywords Cache (${cacheEntries.length} entries):\n\n${cacheList}`);
+    }
+
+    function cleanOutdatedCache() {
+        if (confirm('Clean outdated entries from cache?\n\nThis will remove cached movies that no longer match your current tag settings. NOT RECOMMENDED!')) {
+            const cleanedCount = cleanCache();
+            document.getElementById('hidden-cache-count').textContent = Object.keys(hiddenCache).length;
+            
+            if (cleanedCount > 0) {
+                alert(`Cleaned ${cleanedCount} outdated entries from cache.`);
+            } else {
+                alert('Cache is already clean - no outdated entries found.');
+            }
+        }
+    }
+
+    function clearIMDbCache() {
+        if (confirm(`Clear the IMDb keywords cache?\n\nThis will remove ${Object.keys(imdbKeywordsCache).length} cached entries. NOT RECOMMENDED unless you are experiencing issues.`)) {
+            clearIMDbKeywordsCache();
+            document.getElementById('imdb-cache-count').textContent = '0';
+            alert('IMDb keywords cache cleared.');
+        }
+    }
+
+    function clearAllCaches() {
+        const hiddenCount = Object.keys(hiddenCache).length;
+        const keywordsCount = Object.keys(imdbKeywordsCache).length;
+        
+        if (confirm(`Clear all caches?\n\nHidden movies: ${hiddenCount} entries\nIMDb keywords: ${keywordsCount} entries. NOT RECOMMENDED unless you are experiencing issues.`)) {
+            clearHiddenCache();
+            clearIMDbKeywordsCache();
+            document.getElementById('hidden-cache-count').textContent = '0';
+            document.getElementById('imdb-cache-count').textContent = '0';
+            alert('All caches cleared.');
+        }
+    }
+
+
 
     // Function to add GroupID to cache
     function addToHiddenCache(groupId, title, year, matchedTags, imdbId = null) {
@@ -206,313 +807,7 @@
         console.log('IMDb keywords cache cleared');
     }
 
-    // Register menu commands
-    GM_registerMenuCommand('Configure PTP Tags to Hide', () => {
-        const newTags = prompt(
-            'Enter PTP tags to hide (separated by commas):\n\nExample: family, animation, comedy, romance\n\nNote: These are PassThePopcorn user tags',
-            TAGS_TO_HIDE
-        );
-        
-        if (newTags !== null) {
-            TAGS_TO_HIDE = newTags.trim();
-            GM_setValue('TAGS_TO_HIDE', TAGS_TO_HIDE);
-            tagsArray = TAGS_TO_HIDE.split(',').map(tag => tag.trim().toLowerCase()).filter(tag => tag.length > 0);
-            
-            console.log('Updated PTP tags to hide:', tagsArray);
-            
-            if (confirm('PTP tags updated!\n\nRefresh the page for changes to take effect?\n\nClick OK to refresh now, or Cancel to refresh later.')) {
-                window.location.reload();
-            }
-        }
-    });
 
-    GM_registerMenuCommand('Toggle IMDb Keyword Checking', () => {
-        ENABLE_IMDB_KEYWORD_CHECK = !ENABLE_IMDB_KEYWORD_CHECK;
-        GM_setValue('ENABLE_IMDB_KEYWORD_CHECK', ENABLE_IMDB_KEYWORD_CHECK);
-        
-        if (confirm(`IMDb keyword checking is now: ${ENABLE_IMDB_KEYWORD_CHECK ? 'ON' : 'OFF'}\n\nThis will check cached IMDb data for keyword matches.\n\nNote: This feature requires the PTP IMDb Combined script to be running.\n\nRefresh the page for changes to take effect?\n\nClick OK to refresh now, or Cancel to refresh later.`)) {
-            window.location.reload();
-        }
-        console.log('IMDb keyword checking toggled to:', ENABLE_IMDB_KEYWORD_CHECK);
-    });
-
-    GM_registerMenuCommand('Configure IMDb Keywords to Hide', () => {
-        const newKeywords = prompt(
-            'Enter IMDb keywords to hide (separated by commas):\n\nExample: nudity, violence, sexual-content, drug-use\n\nNote: Use IMDb keyword format (lowercase, hyphenated)',
-            IMDB_KEYWORDS_TO_HIDE
-        );
-        
-        if (newKeywords !== null) {
-            IMDB_KEYWORDS_TO_HIDE = newKeywords.trim();
-            GM_setValue('IMDB_KEYWORDS_TO_HIDE', IMDB_KEYWORDS_TO_HIDE);
-            imdbKeywordsArray = IMDB_KEYWORDS_TO_HIDE.split(',').map(keyword => keyword.trim().toLowerCase()).filter(keyword => keyword.length > 0);
-            
-            console.log('Updated IMDb keywords to hide:', imdbKeywordsArray);
-            
-            if (confirm('IMDb keywords updated!\n\nRefresh the page for changes to take effect?\n\nClick OK to refresh now, or Cancel to refresh later.')) {
-                window.location.reload();
-            }
-        }
-    });
-
-    GM_registerMenuCommand('Toggle Delay Render', () => {
-        DELAY_RENDER = !DELAY_RENDER;
-        GM_setValue('DELAY_RENDER', DELAY_RENDER);
-        
-        alert(`Delay render is now: ${DELAY_RENDER ? 'ON' : 'OFF'}\n\nRefresh the page for changes to take effect.`);
-        console.log('Delay render toggled to:', DELAY_RENDER);
-    });
-
-    GM_registerMenuCommand('Toggle Hide Torrent Pages (torrents.php?id=)', () => {
-        HIDE_TORRENT_PAGES = !HIDE_TORRENT_PAGES;
-        GM_setValue('HIDE_TORRENT_PAGES', HIDE_TORRENT_PAGES);
-        
-        if (confirm(`Hide torrent pages is now: ${HIDE_TORRENT_PAGES ? 'ON' : 'OFF'}\n\nRefresh the page for changes to take effect?\n\nClick OK to refresh now, or Cancel to refresh later.`)) {
-            window.location.reload();
-        }
-        console.log('Hide torrent pages toggled to:', HIDE_TORRENT_PAGES);
-    });
-
-    GM_registerMenuCommand('Toggle Hide Torrent Pages by Collage Tags', () => {
-        HIDE_TORRENT_PAGES_BY_COLLAGE = !HIDE_TORRENT_PAGES_BY_COLLAGE;
-        GM_setValue('HIDE_TORRENT_PAGES_BY_COLLAGE', HIDE_TORRENT_PAGES_BY_COLLAGE);
-        
-        if (confirm(`Hide torrent pages by collage tags is now: ${HIDE_TORRENT_PAGES_BY_COLLAGE ? 'ON' : 'OFF'}\n\nThis will hide torrent pages if they belong to cached collages with matching tags.\n\nRefresh the page for changes to take effect?\n\nClick OK to refresh now, or Cancel to refresh later.`)) {
-            window.location.reload();
-        }
-        console.log('Hide torrent pages by collage tags toggled to:', HIDE_TORRENT_PAGES_BY_COLLAGE);
-    });
-
-    GM_registerMenuCommand('Toggle Loading Spinner', () => {
-        SHOW_LOADING_SPINNER = !SHOW_LOADING_SPINNER;
-        GM_setValue('SHOW_LOADING_SPINNER', SHOW_LOADING_SPINNER);
-        
-        if (confirm(`Loading spinner is now: ${SHOW_LOADING_SPINNER ? 'ON' : 'OFF'}\n\nRefresh the page for changes to take effect?\n\nClick OK to refresh now, or Cancel to refresh later.`)) {
-            window.location.reload();
-        }
-        console.log('Loading spinner toggled to:', SHOW_LOADING_SPINNER);
-    });
-
-    GM_registerMenuCommand('View Hidden Cache', () => {
-        const cacheEntries = Object.entries(hiddenCache);
-        if (cacheEntries.length === 0) {
-            alert('No movies currently in hidden cache.');
-            return;
-        }
-        
-        const cacheList = cacheEntries.map(([groupId, data]) => {
-            const tagTypes = data.tags.map(tag => {
-                if (tag.toLowerCase().startsWith('imdb:')) {
-                    return `IMDb:${tag.replace(/^imdb:/i, '')}`;
-                } else {
-                    return `PTP:${tag}`;
-                }
-            });
-            
-            return `${data.title} (${data.year}) - IMDB: ${data.imdbId || 'N/A'} - Tags: ${tagTypes.join(', ')}`;
-        }).join('\n');
-        
-        alert(`Hidden Movies Cache (${cacheEntries.length} entries):\n\n${cacheList}`);
-    });
-
-    GM_registerMenuCommand('View IMDb Keywords Cache', () => {
-        const cacheEntries = Object.entries(imdbKeywordsCache);
-        if (cacheEntries.length === 0) {
-            alert('No IMDb keywords currently in cache.');
-            return;
-        }
-        
-        const cacheList = cacheEntries.map(([imdbId, data]) => {
-            const age = Math.round((Date.now() - data.cachedAt) / (1000 * 60 * 60));
-            const keywordCount = data.keywords.length;
-            return `${imdbId}: ${keywordCount} keywords (cached ${age}h ago)`;
-        }).join('\n');
-        
-        alert(`IMDb Keywords Cache (${cacheEntries.length} entries):\n\n${cacheList}`);
-    });
-
-    GM_registerMenuCommand('Clean Outdated Cache (changed PTP tags)', () => {
-        if (confirm("This is not really recommended. It's better to leave the cache alone in case you revert tag changes at a later date.\n\n" +
-            "The script will ignore entries that do not have matching tags to your current list.\n\nDo you want to proceed with cleaning the cache?")) {
-            const cleanedCount = cleanCache();
-            if (cleanedCount > 0) {
-                if (confirm(`Cleaned ${cleanedCount} outdated entries from cache.\n\nRefresh the page to see changes?\n\nClick OK to refresh now, or Cancel to refresh later.`)) {
-                    window.location.reload();
-                }
-            } else {
-                if (confirm('Cache is already clean - no outdated entries found.\n\nRefresh the page anyway?\n\nClick OK to refresh now, or Cancel to continue.')) {
-                    window.location.reload();
-                }
-            }
-        }
-    });
-
-    GM_registerMenuCommand('Clean Expired IMDb Keywords Cache', () => {
-        if (confirm('Clean expired IMDb keywords from cache?\n\nThis will remove entries older than 24 hours.')) {
-            const cleanedCount = cleanIMDbKeywordsCache();
-            if (cleanedCount > 0) {
-                alert(`Cleaned ${cleanedCount} expired IMDb keyword entries from cache.`);
-            } else {
-                alert('No expired entries found - cache is already clean.');
-            }
-        }
-    });
-
-    GM_registerMenuCommand('Clear Hidden Cache', () => {
-        if (confirm(`Clear the hidden movies cache?\n\nThis will remove ${Object.keys(hiddenCache).length} cached entries.`)) {
-            clearHiddenCache();
-            window.location.reload();
-        }
-    });
-
-    GM_registerMenuCommand('Clear IMDb Keywords Cache', () => {
-        if (confirm(`Clear the IMDb keywords cache?\n\nThis will remove ${Object.keys(imdbKeywordsCache).length} cached entries.`)) {
-            clearIMDbKeywordsCache();
-            alert('IMDb keywords cache cleared.');
-        }
-    });
-
-    GM_registerMenuCommand('Clear All Caches', () => {
-        const hiddenCount = Object.keys(hiddenCache).length;
-        const keywordsCount = Object.keys(imdbKeywordsCache).length;
-        
-        if (confirm(`Clear all caches?\n\nHidden movies: ${hiddenCount} entries\nIMDb keywords: ${keywordsCount} entries`)) {
-            clearHiddenCache();
-            clearIMDbKeywordsCache();
-            window.location.reload();
-        }
-    });
-
-    GM_registerMenuCommand('Reset to Defaults', () => {
-        if (confirm('Reset all settings to defaults?\n\nTags: family, animation, comedy, romance\nDelay Render: ON\nHide Torrent Pages: ON\nHide by Collage Tags: ON\nClear Cache: YES')) {
-            GM_setValue('TAGS_TO_HIDE', 'family, animation, comedy, romance');
-            GM_setValue('IMDB_KEYWORDS_TO_HIDE', 'family, animation, comedy, romance');
-            GM_setValue('DELAY_RENDER', true);
-            GM_setValue('SHOW_LOADING_SPINNER', false);
-            GM_setValue('HIDE_TORRENT_PAGES', true);
-            GM_setValue('HIDE_TORRENT_PAGES_BY_COLLAGE', true);
-            GM_setValue('ENABLE_IMDB_KEYWORD_CHECK', false);
-            
-            window.location.reload();
-        }
-    });
-
-    GM_registerMenuCommand('Test IMDb Event Communication', async () => {
-        // Try to get current page's IMDb ID first
-        let testImdbId = null;
-        
-        // Check if we're on a torrent page and can extract IMDb ID
-        const imdbLink = document.querySelector("a#imdb-title-link.rating");
-        if (imdbLink) {
-            const imdbUrl = imdbLink.getAttribute("href");
-            if (imdbUrl) {
-                const urlParts = imdbUrl.split("/");
-                testImdbId = urlParts[4];
-                if (testImdbId && !testImdbId.startsWith('tt')) {
-                    testImdbId = 'tt' + testImdbId;
-                }
-            }
-        }
-        
-        // Fallback: use a known IMDb ID
-        if (!testImdbId) {
-            testImdbId = prompt('Enter IMDb ID to test (e.g., tt1637976):', 'tt1637976');
-            if (!testImdbId || !testImdbId.startsWith('tt')) {
-                alert('Invalid IMDb ID entered');
-                return;
-            }
-        }
-        
-        console.log(`=== TESTING IMDb EVENT COMMUNICATION ===`);
-        console.log(`Testing with IMDb ID: ${testImdbId}`);
-        console.log(`IMDb keyword checking enabled: ${ENABLE_IMDB_KEYWORD_CHECK}`);
-        console.log(`IMDb keywords to hide: [${imdbKeywordsArray.join(', ')}]`);
-        
-        // First check if we have cached keywords
-        const cachedKeywords = getCachedIMDbKeywords(testImdbId);
-        if (cachedKeywords) {
-            console.log(`Found cached keywords for ${testImdbId}:`, cachedKeywords);
-        } else {
-            console.log(`No cached keywords found for ${testImdbId}`);
-        }
-        
-        try {
-            console.log('Testing raw event system...');
-            
-            const rawResponse = await new Promise((resolve, reject) => {
-                const requestId = Date.now() + '_test_' + Math.random();
-                let timeoutId;
-                
-                console.log(`Sending test requestIMDbData event with requestId: ${requestId}`);
-                
-                const responseHandler = (event) => {
-                    console.log(`Received imdbDataResponse event:`, event.detail);
-                    
-                    if (event.detail.requestId === requestId) {
-                        console.log(`This response matches our requestId: ${requestId}`);
-                        document.removeEventListener('imdbDataResponse', responseHandler);
-                        if (timeoutId) {
-                            clearTimeout(timeoutId);
-                        }
-                        resolve(event.detail);
-                    } else {
-                        console.log(`Response requestId ${event.detail.requestId} doesn't match our requestId ${requestId}`);
-                    }
-                };
-                
-                document.addEventListener('imdbDataResponse', responseHandler);
-                
-                // Send the request
-                document.dispatchEvent(new CustomEvent('requestIMDbData', {
-                    detail: {
-                        imdbId: testImdbId,
-                        requestId: requestId
-                    }
-                }));
-                
-                timeoutId = setTimeout(() => {
-                    document.removeEventListener('imdbDataResponse', responseHandler);
-                    console.log('Raw event test timed out');
-                    reject(new Error('Raw event test timeout'));
-                }, 5000);
-            });
-            
-            console.log('=== RAW EVENT RESPONSE ===');
-            console.log('Full response:', rawResponse);
-            
-            if (rawResponse.found) {
-                console.log('Response source:', rawResponse.source);
-                console.log('Data structure:', rawResponse.data ? Object.keys(rawResponse.data) : 'No data');
-                
-                // Use the correct data structure path
-                if (rawResponse.data && rawResponse.data.data && rawResponse.data.data.title && rawResponse.data.data.title.keywords) {
-                    const keywords = rawResponse.data.data.title.keywords.edges || [];
-                    const keywordTexts = keywords.map(edge => edge.node ? edge.node.legacyId : null).filter(Boolean);
-                    console.log('Keywords found:', keywordTexts);
-                    
-                    const matchedKeywords = keywordTexts.filter(keyword => 
-                        imdbKeywordsArray.includes(keyword.toLowerCase())
-                    );
-                    
-                    console.log('Matched keywords:', matchedKeywords);
-                    
-                    if (matchedKeywords.length > 0) {
-                        alert(`Raw event test successful!\n\nSource: ${rawResponse.source}\nKeywords found: ${keywordTexts.length}\nMatched keywords: ${matchedKeywords.join(', ')}\n\nCheck console for full details.`);
-                    } else {
-                        alert(`Raw event test successful but no keyword matches!\n\nSource: ${rawResponse.source}\nKeywords found: ${keywordTexts.length}\nYour filter: [${imdbKeywordsArray.join(', ')}]\nIMDb keywords: [${keywordTexts.slice(0, 10).join(', ')}${keywordTexts.length > 10 ? '...' : ''}]\n\nCheck console for details.`);
-                    }
-                } else {
-                    alert(`Raw event test successful but unexpected data structure!\n\nSource: ${rawResponse.source}\nExpected: data.data.title.keywords.edges\nActual: Check console for structure\n\nCheck console for details.`);
-                }
-            } else {
-                alert(`No IMDb data found for ${testImdbId}\n\nSource: ${rawResponse.source || 'Unknown'}\nError: ${rawResponse.error || 'No error message'}\n\nPossible issues:\n1. Cache expired\n2. No data for this ID\n3. Wrong cache key format\n\nCheck console for details.`);
-            }
-            
-        } catch (error) {
-            console.error('Error testing IMDb event communication:', error);
-            alert(`Error testing IMDb communication:\n\n${error.message}\n\nPossible issues:\n1. Other script not loaded\n2. Event listener not working\n3. Cache access problems\n\nCheck console for details.`);
-        }
-    });
 
     let pageProcessed = false;
     let originalDisplay = null;
