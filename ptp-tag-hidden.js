@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP content hider
-// @version      1.9.4
+// @version      1.9.5
 // @description  Hide html elements with specified tags
 // @match        https://passthepopcorn.me/index.php*
 // @match        https://passthepopcorn.me/top10.php*
@@ -35,12 +35,14 @@
     let ENABLE_IMDB_KEYWORD_CHECK = GM_getValue('ENABLE_IMDB_KEYWORD_CHECK', false);
     let ENABLE_IMDB_PARENTAL_GUIDE_CHECK = GM_getValue('ENABLE_IMDB_PARENTAL_GUIDE_CHECK', false);
     let FINAL_FALLBACK_TIMEOUT = GM_getValue('FINAL_FALLBACK_TIMEOUT', 3000);
+    let COLLAGE_IDS_TO_HIDE = GM_getValue('COLLAGE_IDS_TO_HIDE', '');
     
     // Convert to array and clean up
     let tagsArray = TAGS_TO_HIDE.split(',').map(tag => tag.trim().toLowerCase()).filter(tag => tag.length > 0);
     let imdbKeywordsArray = IMDB_KEYWORDS_TO_HIDE.split(',').map(keyword => keyword.trim().toLowerCase()).filter(keyword => keyword.length > 0);
     let imdbParentalGuideSeveritiesArray = IMDB_PARENTAL_GUIDE_SEVERITIES.split(',').map(severity => severity.trim()).filter(severity => severity.length > 0);
     let imdbParentalGuideCategoriesArray = IMDB_PARENTAL_GUIDE_CATEGORIES.split(',').map(category => category.trim()).filter(category => category.length > 0);
+    let collageIdsArray = COLLAGE_IDS_TO_HIDE.split(',').map(id => id.trim()).filter(id => id.length > 0);
     let hiddenCache = {};
     let imdbKeywordsCache = {};
     let imdbParentalGuideCache = {};
@@ -469,6 +471,12 @@
                             <textarea id="tags-to-hide" class="ptp-setting-input ptp-setting-textarea" placeholder="family, animation, comedy, romance"></textarea>
                             <div class="ptp-setting-description">Enter PTP tags separated by commas. Movies with any of these tags will be hidden.</div>
                         </div>
+                        
+                        <div class="ptp-setting-group">
+                            <label class="ptp-setting-label" for="collage-ids">Collage IDs to hide (comma-separated):</label>
+                            <textarea id="collage-ids" class="ptp-setting-input ptp-setting-textarea" placeholder="123, 456, 789"></textarea>
+                            <div class="ptp-setting-description">Enter collage IDs separated by commas. Movies from these collages will be hidden on movie list pages.</div>
+                        </div>
                     </div>
 
                     <!-- General Settings Section -->
@@ -657,6 +665,7 @@
 
     function populateSettings() {
         document.getElementById('tags-to-hide').value = TAGS_TO_HIDE;
+        document.getElementById('collage-ids').value = COLLAGE_IDS_TO_HIDE;
         document.getElementById('delay-render').checked = DELAY_RENDER;
         document.getElementById('show-loading-spinner').checked = SHOW_LOADING_SPINNER;
         document.getElementById('final-fallback-timeout').value = FINAL_FALLBACK_TIMEOUT;
@@ -748,6 +757,7 @@
     function saveSettings() {
         // Get values from form
         const newTagsToHide = document.getElementById('tags-to-hide').value.trim();
+        const newCollageIds = document.getElementById('collage-ids').value.trim();
         const newDelayRender = document.getElementById('delay-render').checked;
         const newShowLoadingSpinner = document.getElementById('show-loading-spinner').checked;
         const newFinalFallbackTimeout = parseInt(document.getElementById('final-fallback-timeout').value) || 3000;
@@ -786,6 +796,7 @@
 
         // Save to GM storage
         GM_setValue('TAGS_TO_HIDE', newTagsToHide);
+        GM_setValue('COLLAGE_IDS_TO_HIDE', newCollageIds);
         GM_setValue('DELAY_RENDER', newDelayRender);
         GM_setValue('SHOW_LOADING_SPINNER', newShowLoadingSpinner);
         GM_setValue('FINAL_FALLBACK_TIMEOUT', newFinalFallbackTimeout);
@@ -799,6 +810,7 @@
 
         // Update runtime variables
         TAGS_TO_HIDE = newTagsToHide;
+        COLLAGE_IDS_TO_HIDE = newCollageIds;
         DELAY_RENDER = newDelayRender;
         SHOW_LOADING_SPINNER = newShowLoadingSpinner;
         FINAL_FALLBACK_TIMEOUT = newFinalFallbackTimeout;
@@ -812,6 +824,7 @@
 
         // Update arrays
         tagsArray = TAGS_TO_HIDE.split(',').map(tag => tag.trim().toLowerCase()).filter(tag => tag.length > 0);
+        collageIdsArray = COLLAGE_IDS_TO_HIDE.split(',').map(id => id.trim()).filter(id => id.length > 0);
         imdbKeywordsArray = IMDB_KEYWORDS_TO_HIDE.split(',').map(keyword => keyword.trim().toLowerCase()).filter(keyword => keyword.length > 0);
         imdbParentalGuideCategoriesArray = IMDB_PARENTAL_GUIDE_CATEGORIES.split(',').map(category => category.trim()).filter(category => category.length > 0);
         imdbParentalGuideSeveritiesArray = IMDB_PARENTAL_GUIDE_SEVERITIES.split(',').map(severity => severity.trim()).filter(severity => severity.length > 0);
@@ -830,6 +843,7 @@
 
         // Set default values
         document.getElementById('tags-to-hide').value = 'family, animation, comedy, romance';
+        document.getElementById('collage-ids').value = '';
         document.getElementById('delay-render').checked = true;
         document.getElementById('show-loading-spinner').checked = false;
         document.getElementById('final-fallback-timeout').value = 3000;
@@ -983,22 +997,72 @@
 
     // Function to check if cached movie should still be hidden based on current tags
     function shouldHideCachedMovie(cachedMovie) {
-        if (tagsArray.length === 0 && imdbKeywordsArray.length === 0) {
+        console.log(`shouldHideCachedMovie: Checking cached movie with tags:`, cachedMovie.tags);
+        console.log(`shouldHideCachedMovie: Current tagsArray:`, tagsArray);
+        console.log(`shouldHideCachedMovie: Current imdbKeywordsArray:`, imdbKeywordsArray);
+        console.log(`shouldHideCachedMovie: IMDb parental guide enabled: ${ENABLE_IMDB_PARENTAL_GUIDE_CHECK}`);
+        console.log(`shouldHideCachedMovie: Current parental guide categories:`, imdbParentalGuideCategoriesArray);
+        console.log(`shouldHideCachedMovie: Current parental guide severities:`, imdbParentalGuideSeveritiesArray);
+        
+        if (tagsArray.length === 0 && imdbKeywordsArray.length === 0 && !ENABLE_IMDB_PARENTAL_GUIDE_CHECK) {
+            console.log(`shouldHideCachedMovie: No filtering criteria configured, returning false`);
             return false;
         }
         
-        // Check if any of the cached movie's tags are still in the current hide lists
-        return cachedMovie.tags.some(tag => {
+        // Check if any of the cached movie's tags match current filtering criteria
+        const shouldHide = cachedMovie.tags.some(tag => {
             const lowercaseTag = tag.toLowerCase();
+            console.log(`shouldHideCachedMovie: Checking tag "${lowercaseTag}"`);
             
-            // Check against PTP tags (remove imdb: prefix if present)
-            if (lowercaseTag.startsWith('imdb:')) {
+            // Check for IMDb parental guide tags
+            if (lowercaseTag.startsWith('imdb:parental-guide:') && ENABLE_IMDB_PARENTAL_GUIDE_CHECK) {
+                console.log(`shouldHideCachedMovie: Found parental guide tag "${lowercaseTag}"`);
+                
+                // Parse the parental guide tag format: imdb:parental-guide:category:severity
+                const parts = lowercaseTag.split(':');
+                if (parts.length >= 4) {
+                    const category = parts[2].replace(/---/g, ' & ').replace(/-/g, ' ');
+                    const severity = parts[3];
+                    
+                    console.log(`shouldHideCachedMovie: Parsed category "${category}", severity "${severity}"`);
+                    
+                    // Check if this category and severity combination matches current settings
+                    const categoryIndex = imdbParentalGuideCategoriesArray.findIndex(cat => 
+                        cat.toLowerCase().replace(/\s+/g, ' ').trim() === category.trim()
+                    );
+                    
+                    if (categoryIndex >= 0) {
+                        const requiredSeverity = imdbParentalGuideSeveritiesArray[categoryIndex] || 'Severe';
+                        const severityLevels = ['none', 'mild', 'moderate', 'severe'];
+                        const tagSeverityLevel = severityLevels.indexOf(severity.toLowerCase());
+                        const requiredSeverityLevel = severityLevels.indexOf(requiredSeverity.toLowerCase());
+                        
+                        const matches = tagSeverityLevel >= requiredSeverityLevel;
+                        console.log(`shouldHideCachedMovie: Category "${category}" found at index ${categoryIndex}, required: "${requiredSeverity}", tag: "${severity}", matches: ${matches}`);
+                        return matches;
+                    } else {
+                        console.log(`shouldHideCachedMovie: Category "${category}" not in current filter settings`);
+                    }
+                }
+                return false;
+            }
+            // Check for other IMDb tags (keywords)
+            else if (lowercaseTag.startsWith('imdb:') && !lowercaseTag.startsWith('imdb:parental-guide')) {
                 const imdbKeyword = lowercaseTag.replace('imdb:', '');
-                return imdbKeywordsArray.includes(imdbKeyword);
-            } else {
-                return tagsArray.includes(lowercaseTag);
+                const matches = imdbKeywordsArray.includes(imdbKeyword);
+                console.log(`shouldHideCachedMovie: IMDb keyword "${imdbKeyword}" matches: ${matches}`);
+                return matches;
+            }
+            // Check for regular PTP tags
+            else {
+                const matches = tagsArray.includes(lowercaseTag);
+                console.log(`shouldHideCachedMovie: PTP tag "${lowercaseTag}" matches: ${matches}`);
+                return matches;
             }
         });
+        
+        console.log(`shouldHideCachedMovie: Final result: ${shouldHide}`);
+        return shouldHide;
     }
 
     // Function to clean cache of items that no longer match current tags
@@ -2058,25 +2122,54 @@
     function hideCollageEntries() {
         console.log('Processing collages page for hidden entries...');
         
-        // Find all collage rows in the main table (not torrent_table)
+        // Check if we're on a specific collage page vs collages list page
+        const isSpecificCollagePage = window.location.search.includes('id=');
+        console.log('Is specific collage page:', isSpecificCollagePage);
+        
+        if (isSpecificCollagePage) {
+            console.log('On specific collage page - checking if entire collage should be hidden');
+            
+            // First check if the entire collage should be hidden
+            const isCollageHidden = handleHiddenCollagePage();
+            
+            if (isCollageHidden) {
+                console.log('Entire collage is hidden - skipping individual movie processing');
+                return;
+            }
+            
+            console.log('Collage is not hidden - entries will be processed by processCoverViewJsonData');
+            return; // Let processCoverViewJsonData handle the movie entries
+        }
+        
+        // Find all collage rows in the main table (not torrent_table) - for collages list page
         const collageRows = document.querySelectorAll('table tbody tr');
         console.log(`Found ${collageRows.length} total table rows to check`);
         
         let processedCount = 0;
         
         collageRows.forEach((row, index) => {
+            console.log(`Checking row ${index + 1}:`, row.innerHTML.substring(0, 200) + '...');
+            
             // Look for collage link to get ID
             const collageLink = row.querySelector('a[href*="collages.php?id="]');
-            if (!collageLink) return;
+            if (!collageLink) {
+                console.log(`Row ${index + 1}: No collage link found`);
+                return;
+            }
             
             processedCount++;
+            console.log(`Row ${index + 1}: Found collage link:`, collageLink.href);
             
             const href = collageLink.getAttribute('href');
             const collageIdMatch = href.match(/collages\.php\?id=(\d+)/);
-            if (!collageIdMatch) return;
+            if (!collageIdMatch) {
+                console.log(`Row ${index + 1}: No collage ID match in href:`, href);
+                return;
+            }
             
             const collageId = collageIdMatch[1];
             const collageTitle = collageLink.textContent.trim();
+            console.log(`Row ${index + 1}: Processing collage "${collageTitle}" (ID: ${collageId})`);
             
             // Look for tags in this row - they're in a .tags div
             const tagsDiv = row.querySelector('.tags');
@@ -2108,17 +2201,32 @@
             
             console.log(`Collage "${collageTitle}" (ID: ${collageId}) has tags:`, collageTags);
             
-            // Check if any tags match our filter
-            const matchedTags = collageTags.filter(tag => tagsArray.includes(tag.toLowerCase()));
+            // Check if this collage ID should be hidden
+            let shouldHide = false;
+            let hideReason = '';
+            let matchedTags = [];
             
-            if (matchedTags.length > 0) {
-                console.log(`Hiding collage "${collageTitle}" (ID: ${collageId}) - Matched tags: ${matchedTags.join(', ')}`);
+            if (collageIdsArray.includes(collageId)) {
+                shouldHide = true;
+                hideReason = 'Collage ID';
+                console.log(`Hiding collage "${collageTitle}" (ID: ${collageId}) - Matched collage ID filter`);
+            } else {
+                // Check if any tags match our filter
+                matchedTags = collageTags.filter(tag => tagsArray.includes(tag.toLowerCase()));
                 
+                if (matchedTags.length > 0) {
+                    shouldHide = true;
+                    hideReason = 'Tags';
+                    console.log(`Hiding collage "${collageTitle}" (ID: ${collageId}) - Matched tags: ${matchedTags.join(', ')}`);
+                }
+            }
+            
+            if (shouldHide) {
                 // Hide the entire row
                 row.style.display = 'none';
                 
                 // Add to cache using collage ID (prefix with 'collage_' to distinguish from group IDs)
-                addToHiddenCache(`collage_${collageId}`, collageTitle, '', matchedTags, null);
+                addToHiddenCache(`collage_${collageId}`, collageTitle, '', matchedTags, hideReason);
             }
         });
         
@@ -2210,6 +2318,569 @@
         return false;
     }
 
+    // Function to process coverViewJsonData on collage pages
+    function processCoverViewJsonData(retryCount = 0) {
+        console.log(`Processing coverViewJsonData on collage page... (attempt ${retryCount + 1})`);
+        
+        // Look for the script tag containing coverViewJsonData within the main content div
+        const contentDiv = document.querySelector('#content.page__main-content');
+        const scripts = contentDiv ? contentDiv.querySelectorAll('script') : document.querySelectorAll('script');
+        let coverViewData = null;
+        let foundScript = false;
+        
+        console.log(`Searching in ${scripts.length} script tags${contentDiv ? ' within #content div' : ' in entire document'}`);
+        
+        for (const script of scripts) {
+            const scriptContent = script.textContent || script.innerHTML;
+            if (scriptContent.includes('coverViewJsonData')) {
+                console.log('Found coverViewJsonData script, content preview:', scriptContent.substring(0, 200) + '...');
+                foundScript = true;
+                
+                // Try multiple patterns to extract the JSON data - order matters!
+                const patterns = [
+                    /coverViewJsonData\[\s*(\d+)\s*\]\s*=\s*(\{.*?\});/s,  // Array index format: coverViewJsonData[0] = {...} - try this FIRST
+                    /coverViewJsonData\s*=\s*(\[.*?\]);/s,  // Array format: coverViewJsonData = [...]
+                    /coverViewJsonData\s*=\s*(\{.*?\});/s    // Object format: coverViewJsonData = {...}
+                ];
+                
+                for (const pattern of patterns) {
+                    console.log('Trying pattern:', pattern.toString());
+                    const jsonMatch = scriptContent.match(pattern);
+                    if (jsonMatch) {
+                        console.log('Pattern matched, groups:', jsonMatch.length);
+                        try {
+                            let jsonData;
+                            
+                            // Check if this is the array index format by looking at the pattern
+                            if (pattern.toString().includes('\\d+') && jsonMatch.length > 2 && jsonMatch[2]) {
+                                // Array index format: coverViewJsonData[0] = {...}
+                                jsonData = jsonMatch[2]; // The object part (second capture group)
+                                console.log('Using array index format, parsing object:', jsonData.substring(0, 100) + '...');
+                                coverViewData = JSON.parse(jsonData);
+                            } else {
+                                // Standard formats
+                                jsonData = jsonMatch[1]; // The main capture group
+                                console.log('Using standard format, parsing data:', jsonData.substring(0, 100) + '...');
+                                
+                                // Handle array format - extract first element if it's an array
+                                if (jsonData.startsWith('[')) {
+                                    const arrayData = JSON.parse(jsonData);
+                                    if (arrayData.length > 0) {
+                                        coverViewData = arrayData[0];
+                                    } else {
+                                        console.log('Array format found but array is empty');
+                                        coverViewData = null;
+                                    }
+                                } else {
+                                    coverViewData = JSON.parse(jsonData);
+                                }
+                            }
+                            
+                            console.log('Successfully parsed coverViewJsonData:', coverViewData ? 'Valid data found' : 'Data is null');
+                            if (coverViewData && coverViewData.Movies) {
+                                console.log(`Found ${coverViewData.Movies.length} movies in parsed data`);
+                            }
+                            break;
+                        } catch (error) {
+                            console.error('Error parsing coverViewJsonData with pattern:', pattern, 'Error:', error);
+                            console.error('JSON data that failed to parse:', jsonMatch[1] ? jsonMatch[1].substring(0, 200) : 'undefined');
+                        }
+                    } else {
+                        console.log('Pattern did not match');
+                    }
+                }
+                break;
+            }
+        }
+        
+        // If no script found and we haven't retried much, wait and try again
+        if (!foundScript && retryCount < 5) {
+            console.log(`No coverViewJsonData script found, retrying in ${(retryCount + 1) * 200}ms...`);
+            setTimeout(() => {
+                processCoverViewJsonData(retryCount + 1);
+            }, (retryCount + 1) * 200);
+            return;
+        }
+        
+        // If script found but no valid data and we haven't retried much, try again
+        if (foundScript && (!coverViewData || !coverViewData.Movies) && retryCount < 3) {
+            console.log(`Found script but no valid data, retrying in ${(retryCount + 1) * 300}ms...`);
+            setTimeout(() => {
+                processCoverViewJsonData(retryCount + 1);
+            }, (retryCount + 1) * 300);
+            return;
+        }
+        
+        if (!coverViewData || !coverViewData.Movies) {
+            console.log('No coverViewJsonData or Movies array found after all retries');
+            return;
+        }
+        
+        console.log(`Found ${coverViewData.Movies.length} movies in coverViewJsonData`);
+        
+        // Debug: Log some DOM structure info
+        const allMovieLinks = document.querySelectorAll('a[href*="torrents.php?id="]');
+        console.log(`Total movie links found in DOM: ${allMovieLinks.length}`);
+        if (allMovieLinks.length > 0) {
+            console.log('Sample movie links:');
+            Array.from(allMovieLinks).slice(0, 5).forEach((link, i) => {
+                console.log(`  ${i + 1}: ${link.href} - "${link.textContent.trim().substring(0, 50)}..."`);
+            });
+        }
+        
+        // Keep track of processed Group IDs to avoid duplicates
+        const processedGroupIds = new Set();
+        
+        // Process each movie in the Movies array
+        coverViewData.Movies.forEach((movie, index) => {
+            if (!movie.GroupId) return;
+            
+            const groupId = movie.GroupId.toString();
+            const title = movie.Title || 'Unknown Title';
+            const year = movie.Year || '';
+            
+            // Skip if we've already processed this Group ID
+            if (processedGroupIds.has(groupId)) {
+                console.log(`Skipping already processed Group ID: ${groupId} - ${title}`);
+                return;
+            }
+            processedGroupIds.add(groupId);
+            
+            console.log(`Processing movie from coverViewJsonData: ${title} (${year}) - Group ID: ${groupId}`);
+            
+            // Check if this movie is in the hidden cache and should be hidden
+            console.log(`Checking if Group ID ${groupId} is in hidden cache...`);
+            console.log(`Cache contains: ${Object.keys(hiddenCache).join(', ')}`);
+            const isInCache = hiddenCache.hasOwnProperty(groupId);
+            const isValid = isInCache ? isInHiddenCacheAndValid(groupId) : false;
+            console.log(`Group ID ${groupId} - In cache: ${isInCache}, Valid: ${isValid}`);
+            if (isInCache) {
+                console.log(`Cached movie data for ${groupId}:`, hiddenCache[groupId]);
+            }
+            if (isInHiddenCacheAndValid(groupId)) {
+                const cachedMovie = hiddenCache[groupId];
+                console.log(`Movie ${title} (Group ID: ${groupId}) found in hidden cache - should be hidden`);
+                console.log(`Cached movie tags:`, cachedMovie.tags);
+                
+                // Find and hide all rows for this movie group
+                // On collage pages, movies are in basic-movie-list format
+                let hiddenRowCount = 0;
+                
+                // Find the main movie details row
+                const movieLinks = document.querySelectorAll(`a[href="torrents.php?id=${groupId}"]`);
+                console.log(`Found ${movieLinks.length} movie links for Group ID ${groupId}`);
+                
+                if (movieLinks.length === 0) {
+                    // Try alternative selectors
+                    const altLinks = document.querySelectorAll(`a[href*="torrents.php?id=${groupId}"]`);
+                    console.log(`Alternative search found ${altLinks.length} links for Group ID ${groupId}`);
+                    altLinks.forEach((link, i) => {
+                        console.log(`Alt link ${i + 1}:`, link.href);
+                    });
+                }
+                
+                movieLinks.forEach((link, linkIndex) => {
+                    console.log(`Processing movie link ${linkIndex + 1} for ${title}:`, link.href);
+                    // Find the main details row for this movie
+                    const detailsRow = link.closest('tr.basic-movie-list__details-row');
+                    if (detailsRow && !detailsRow.hasAttribute('data-cover-view-hidden')) {
+                        // Get the rowspan value to know how many rows belong to this movie
+                        const rowspanCell = detailsRow.querySelector('.js-basic-movie-list__rowspan');
+                        let rowspan = 1;
+                        
+                        if (rowspanCell) {
+                            rowspan = parseInt(rowspanCell.getAttribute('rowspan') || rowspanCell.getAttribute('data-rowspan') || '1');
+                        }
+                        
+                        console.log(`Found movie ${title} with ${rowspan} rows to hide`);
+                        
+                        // Hide the main details row
+                        detailsRow.style.display = 'none';
+                        detailsRow.setAttribute('data-cover-view-hidden', 'true');
+                        detailsRow.setAttribute('data-group-id', groupId);
+                        detailsRow.setAttribute('data-hidden-reason', cachedMovie.tags ? cachedMovie.tags.join(', ') : 'cached');
+                        hiddenRowCount++;
+                        
+                        // Hide all subsequent rows that belong to this movie (torrent rows)
+                        let currentRow = detailsRow.nextElementSibling;
+                        let remainingRows = rowspan - 1; // -1 because we already hid the main row
+                        
+                        while (currentRow && remainingRows > 0) {
+                            currentRow.style.display = 'none';
+                            currentRow.setAttribute('data-cover-view-hidden', 'true');
+                            currentRow.setAttribute('data-group-id', groupId);
+                            currentRow.setAttribute('data-hidden-reason', cachedMovie.tags ? cachedMovie.tags.join(', ') : 'cached');
+                            
+                            hiddenRowCount++;
+                            remainingRows--;
+                            currentRow = currentRow.nextElementSibling;
+                        }
+                        
+                        console.log(`Hidden ${hiddenRowCount} rows for ${title} (Group ID: ${groupId}) - Tags: ${cachedMovie.tags ? cachedMovie.tags.join(', ') : 'none'}`);
+                    }
+                });
+                
+                if (movieLinks.length === 0) {
+                    console.log(`No movie links found for Group ID ${groupId} - ${title}`);
+                }
+            } else {
+                // Movie not in cache, check if it should be hidden based on current tag filters
+                const movieTags = movie.Tags || [];
+                const matchedTags = movieTags.filter(tag => tagsArray.includes(tag.toLowerCase()));
+                
+                if (matchedTags.length > 0) {
+                    console.log(`Movie ${title} (Group ID: ${groupId}) matches current tag filters: ${matchedTags.join(', ')}`);
+                    
+                    // Add to cache for future reference
+                    addToHiddenCache(groupId, title, year, matchedTags, movie.ImdbId || null);
+                    
+                    // Find and hide all rows for this movie group (same logic as cached movies)
+                    let hiddenRowCount = 0;
+                    
+                    // Find the main movie details row
+                    const movieLinks = document.querySelectorAll(`a[href="torrents.php?id=${groupId}"]`);
+                    console.log(`Found ${movieLinks.length} movie links for Group ID ${groupId} (tag match)`);
+                    
+                    if (movieLinks.length === 0) {
+                        // Try alternative selectors
+                        const altLinks = document.querySelectorAll(`a[href*="torrents.php?id=${groupId}"]`);
+                        console.log(`Alternative search found ${altLinks.length} links for Group ID ${groupId} (tag match)`);
+                        altLinks.forEach((link, i) => {
+                            console.log(`Alt link ${i + 1} (tag match):`, link.href);
+                        });
+                    }
+                    
+                    movieLinks.forEach((link, linkIndex) => {
+                        console.log(`Processing movie link ${linkIndex + 1} for ${title} (tag match):`, link.href);
+                        // Find the main details row for this movie
+                        const detailsRow = link.closest('tr.basic-movie-list__details-row');
+                        if (detailsRow && !detailsRow.hasAttribute('data-cover-view-hidden')) {
+                            // Get the rowspan value to know how many rows belong to this movie
+                            const rowspanCell = detailsRow.querySelector('.js-basic-movie-list__rowspan');
+                            let rowspan = 1;
+                            
+                            if (rowspanCell) {
+                                rowspan = parseInt(rowspanCell.getAttribute('rowspan') || rowspanCell.getAttribute('data-rowspan') || '1');
+                            }
+                            
+                            console.log(`Found movie ${title} with ${rowspan} rows to hide (matched tags)`);
+                            
+                            // Hide the main details row
+                            detailsRow.style.display = 'none';
+                            detailsRow.setAttribute('data-cover-view-hidden', 'true');
+                            detailsRow.setAttribute('data-group-id', groupId);
+                            detailsRow.setAttribute('data-hidden-reason', matchedTags.join(', '));
+                            hiddenRowCount++;
+                            
+                            // Hide all subsequent rows that belong to this movie (torrent rows)
+                            let currentRow = detailsRow.nextElementSibling;
+                            let remainingRows = rowspan - 1; // -1 because we already hid the main row
+                            
+                            while (currentRow && remainingRows > 0) {
+                                currentRow.style.display = 'none';
+                                currentRow.setAttribute('data-cover-view-hidden', 'true');
+                                currentRow.setAttribute('data-group-id', groupId);
+                                currentRow.setAttribute('data-hidden-reason', matchedTags.join(', '));
+                                
+                                hiddenRowCount++;
+                                remainingRows--;
+                                currentRow = currentRow.nextElementSibling;
+                            }
+                            
+                            console.log(`Hidden ${hiddenRowCount} rows for ${title} (Group ID: ${groupId}) - Matched tags: ${matchedTags.join(', ')}`);
+                        }
+                    });
+                    
+                    if (movieLinks.length === 0) {
+                        console.log(`No movie links found for Group ID ${groupId} - ${title} (tag match)`);
+                    }
+                }
+            }
+        });
+    }
+    
+    // Function to process sidebar movie list on collage pages
+    function processSidebarMovieList() {
+        console.log('Processing sidebar movie list...');
+        
+        // Find the sidebar movie list
+        const sidebar = document.querySelector('.sidebar');
+        if (!sidebar) {
+            console.log('No sidebar found');
+            return;
+        }
+        
+        const movieList = sidebar.querySelector('#collection_movielist .list');
+        if (!movieList) {
+            console.log('No movie list found in sidebar');
+            return;
+        }
+        
+        const movieItems = movieList.querySelectorAll('li[name="torrent"]');
+        console.log(`Found ${movieItems.length} movies in sidebar list`);
+        
+        let hiddenCount = 0;
+        
+        movieItems.forEach((item, index) => {
+            const movieLink = item.querySelector('a[href*="torrents.php?id="]');
+            if (!movieLink) return;
+            
+            const href = movieLink.getAttribute('href');
+            const groupIdMatch = href.match(/torrents\.php\?id=(\d+)/);
+            if (!groupIdMatch) return;
+            
+            const groupId = groupIdMatch[1];
+            const title = movieLink.textContent.trim();
+            
+            console.log(`Checking sidebar movie: ${title} (Group ID: ${groupId})`);
+            
+            // Check if this movie should be hidden based on cache or current filters
+            let shouldHide = false;
+            let hideReason = '';
+            
+            // First check cache
+            if (isInHiddenCacheAndValid(groupId)) {
+                const cachedMovie = hiddenCache[groupId];
+                shouldHide = true;
+                hideReason = `Cached: ${cachedMovie.tags ? cachedMovie.tags.join(', ') : 'unknown'}`;
+                console.log(`Sidebar movie ${title} (Group ID: ${groupId}) found in cache - hiding`);
+            }
+            
+            if (shouldHide) {
+                // Hide the list item
+                item.style.display = 'none';
+                item.setAttribute('data-sidebar-hidden', 'true');
+                item.setAttribute('data-group-id', groupId);
+                item.setAttribute('data-hidden-reason', hideReason);
+                
+                hiddenCount++;
+                console.log(`Hidden sidebar movie: ${title} (Group ID: ${groupId}) - Reason: ${hideReason}`);
+            }
+        });
+        
+        console.log(`Hidden ${hiddenCount} movies from sidebar list`);
+        
+        // Add a summary if movies were hidden
+        if (hiddenCount > 0) {
+            const existingSummary = movieList.querySelector('.ptp-hidden-summary');
+            if (!existingSummary) {
+                const summary = document.createElement('li');
+                summary.className = 'ptp-hidden-summary';
+                summary.style.cssText = `
+                    color: #666;
+                    font-style: italic;
+                    font-size: 0.9em;
+                    padding: 5px 0;
+                    border-top: 1px solid rgba(255, 255, 255, 0.1);
+                    margin-top: 10px;
+                `;
+                summary.innerHTML = `<span>🚫 ${hiddenCount} movie${hiddenCount > 1 ? 's' : ''} hidden by filters</span>`;
+                movieList.appendChild(summary);
+            }
+        }
+    }
+    
+    // Function to check if current collage is hidden and handle page content
+    function handleHiddenCollagePage() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const collageId = urlParams.get('id');
+        
+        if (!collageId) {
+            console.log('No collage ID found for hidden collage check');
+            return false;
+        }
+        
+        const isCollageHidden = collageIdsArray.includes(collageId);
+        console.log(`Collage ${collageId} is ${isCollageHidden ? 'hidden' : 'not hidden'}`);
+        
+        if (isCollageHidden) {
+            console.log(`Hiding main content for collage ${collageId}`);
+            
+            // Hide the main content areas but keep the header/linkbox visible
+            const sidebar = document.querySelector('.sidebar');
+            const mainColumn = document.querySelector('.main-column');
+            
+            if (sidebar) {
+                sidebar.style.display = 'none';
+                console.log('Hidden sidebar');
+            }
+            
+            if (mainColumn) {
+                mainColumn.style.display = 'none';
+                console.log('Hidden main column');
+            }
+            
+            // Ensure the linkbox/header area remains visible for the unhide button
+            const linkbox = document.querySelector('.linkbox');
+            const header = document.querySelector('.header, .thin h2, .box_title');
+            
+            if (linkbox) {
+                linkbox.style.display = '';
+                console.log('Ensured linkbox remains visible');
+            }
+            
+            if (header) {
+                header.style.display = '';
+                console.log('Ensured header remains visible');
+            }
+            
+            // Create a replacement message
+            const container = sidebar?.parentNode || mainColumn?.parentNode || document.querySelector('.thin');
+            if (container) {
+                const hiddenMessage = document.createElement('div');
+                hiddenMessage.className = 'ptp-hidden-collage-message';
+                hiddenMessage.style.cssText = `
+                    text-align: center;
+                    padding: 50px 20px;
+                    color: #666;
+                    font-size: 18px;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                `;
+                
+                hiddenMessage.innerHTML = `
+                    <div style="background: rgba(0, 0, 0, 0.1); padding: 30px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.1); display: inline-block;">
+                        <div style="font-size: 24px; margin-bottom: 15px; font-weight: bold;">🚫 Hidden Collage</div>
+                        <div style="font-size: 16px; color: #888; margin-bottom: 10px;">
+                            This collage is hidden by your filter settings.
+                        </div>
+                        <div style="font-size: 14px; color: #aaa;">
+                            Collage ID: ${collageId}
+                        </div>
+                        <div style="font-size: 12px; color: #999; margin-top: 20px;">
+                            Use the "Unhide this collage" button to remove it from your filter list.
+                        </div>
+                    </div>
+                `;
+                
+                // Insert the message where the content was
+                if (sidebar) {
+                    container.insertBefore(hiddenMessage, sidebar);
+                } else if (mainColumn) {
+                    container.insertBefore(hiddenMessage, mainColumn);
+                } else {
+                    container.appendChild(hiddenMessage);
+                }
+                
+                console.log('Added hidden collage message');
+            }
+        }
+        
+        return isCollageHidden;
+    }
+    
+    // Function to add "Hide/Unhide this collage" button to collage linkbox
+    function addCollageFilterButton() {
+        console.log('Adding collage filter button to linkbox...');
+        
+        // Find the linkbox
+        const linkbox = document.querySelector('.linkbox');
+        if (!linkbox) {
+            console.log('No linkbox found on this page');
+            return;
+        }
+        
+        // Extract collage ID from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const collageId = urlParams.get('id');
+        
+        if (!collageId) {
+            console.log('No collage ID found in URL');
+            return;
+        }
+        
+        // Check if button already exists
+        if (linkbox.querySelector('.ptp-add-collage-filter')) {
+            console.log('Collage filter button already exists');
+            return;
+        }
+        
+        // Check if this collage is currently hidden
+        const isCollageHidden = collageIdsArray.includes(collageId);
+        
+        // Create the button with exact same styling as existing linkbox buttons
+        const filterButton = document.createElement('a');
+        filterButton.href = '#';
+        filterButton.className = 'linkbox__link ptp-add-collage-filter';
+        filterButton.textContent = isCollageHidden ? 'Unhide this collage' : 'Hide this collage';
+        
+        // Add click handler
+        filterButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            
+            if (isCollageHidden) {
+                // Remove from filter list
+                const currentIds = COLLAGE_IDS_TO_HIDE.trim();
+                const idsArray = currentIds.split(',').map(id => id.trim());
+                const filteredIds = idsArray.filter(id => id !== collageId);
+                const newIds = filteredIds.join(', ');
+                
+                // Update the setting
+                GM_setValue('COLLAGE_IDS_TO_HIDE', newIds);
+                COLLAGE_IDS_TO_HIDE = newIds;
+                collageIdsArray = newIds.split(',').map(id => id.trim()).filter(id => id.length > 0);
+                
+                console.log(`Removed collage ID ${collageId} from filter list. New list: ${newIds}`);
+                
+                // Reload the page to show the content
+                window.location.reload();
+                
+            } else {
+                // Add to filter list
+                const currentIds = COLLAGE_IDS_TO_HIDE.trim();
+                let newIds;
+                
+                if (currentIds === '') {
+                    newIds = collageId;
+                } else {
+                    // Check if ID is already in the list (shouldn't happen, but safety check)
+                    const idsArray = currentIds.split(',').map(id => id.trim());
+                    if (idsArray.includes(collageId)) {
+                        alert(`Collage ID ${collageId} is already in the filter list.`);
+                        return;
+                    }
+                    newIds = currentIds + ', ' + collageId;
+                }
+                
+                // Update the setting
+                GM_setValue('COLLAGE_IDS_TO_HIDE', newIds);
+                COLLAGE_IDS_TO_HIDE = newIds;
+                collageIdsArray = newIds.split(',').map(id => id.trim()).filter(id => id.length > 0);
+                
+                console.log(`Added collage ID ${collageId} to filter list. New list: ${newIds}`);
+                
+                // Hide the page content immediately
+                handleHiddenCollagePage();
+                
+                // Update button text
+                filterButton.textContent = 'Unhide this collage';
+            }
+        });
+        
+        // Create the bracketed container for the button to match linkbox format
+        const bracketContainer = document.createElement('span');
+        bracketContainer.style.marginLeft = '5px';
+        
+        // Add opening bracket, button, closing bracket
+        bracketContainer.appendChild(document.createTextNode('['));
+        bracketContainer.appendChild(filterButton);
+        bracketContainer.appendChild(document.createTextNode(']'));
+        
+        // Find where to insert - after the last content
+        const linkboxText = linkbox.textContent;
+        const hasContent = linkboxText.trim().length > 0;
+        
+        if (hasContent) {
+            // Add after existing content with appropriate spacing
+            linkbox.appendChild(document.createTextNode('\n\t\t\t\t\t\t\t'));
+            linkbox.appendChild(bracketContainer);
+        } else {
+            // First element in linkbox
+            linkbox.appendChild(bracketContainer);
+        }
+        
+        console.log(`Added collage ${isCollageHidden ? 'unhide' : 'hide'} button for collage ID: ${collageId}`);
+    }
+
     async function hideMoviesWithTargetTags() {
         // Check page type
         const isForumPage = window.location.pathname.includes('/forums.php');
@@ -2272,6 +2943,23 @@
             
             isProcessingCollages = true;
             hideCollageEntries();
+            
+            // Check if this is a specific collage page and process coverViewJsonData
+            const urlParams = new URLSearchParams(window.location.search);
+            const collageId = urlParams.get('id');
+            if (collageId && !urlParams.has('action')) {
+                console.log(`Specific collage page detected (ID: ${collageId}), calling processing functions`);
+                // Wait a bit for the DOM to be fully populated before processing
+                setTimeout(() => {
+                    console.log('Timeout fired, calling processCoverViewJsonData...');
+                    processCoverViewJsonData();
+                    processSidebarMovieList();
+                }, 100);
+                addCollageFilterButton();
+            } else {
+                console.log('Not a specific collage page or has action parameter, skipping coverViewJsonData processing');
+                console.log('URL params:', Object.fromEntries(urlParams));
+            }
             
             setTimeout(() => {
                 isProcessingCollages = false;
