@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP content hider
-// @version      1.9.3
+// @version      1.9.4
 // @description  Hide html elements with specified tags
 // @match        https://passthepopcorn.me/index.php*
 // @match        https://passthepopcorn.me/top10.php*
@@ -23,19 +23,27 @@
     // Load user configuration from GM storage with defaults
     let TAGS_TO_HIDE = GM_getValue('TAGS_TO_HIDE', 'adult');
     let IMDB_KEYWORDS_TO_HIDE = GM_getValue('IMDB_KEYWORDS_TO_HIDE', 'masturbation');
+    let IMDB_PARENTAL_GUIDE_SEVERITIES = GM_getValue('IMDB_PARENTAL_GUIDE_SEVERITIES', 'Severe');
+    let IMDB_PARENTAL_GUIDE_CATEGORIES = GM_getValue('IMDB_PARENTAL_GUIDE_CATEGORIES', 'Sex & Nudity,Violence & Gore');
     let DELAY_RENDER = GM_getValue('DELAY_RENDER', true);
     let HIDDEN_CACHE = GM_getValue('HIDDEN_CACHE', '{}');
     let IMDB_KEYWORDS_CACHE = GM_getValue('IMDB_KEYWORDS_CACHE', '{}');
+    let IMDB_PARENTAL_GUIDE_CACHE = GM_getValue('IMDB_PARENTAL_GUIDE_CACHE', '{}');
     let SHOW_LOADING_SPINNER = GM_getValue('SHOW_LOADING_SPINNER', false);
     let HIDE_TORRENT_PAGES = GM_getValue('HIDE_TORRENT_PAGES', true);
     let HIDE_TORRENT_PAGES_BY_COLLAGE = GM_getValue('HIDE_TORRENT_PAGES_BY_COLLAGE', true);
     let ENABLE_IMDB_KEYWORD_CHECK = GM_getValue('ENABLE_IMDB_KEYWORD_CHECK', false);
+    let ENABLE_IMDB_PARENTAL_GUIDE_CHECK = GM_getValue('ENABLE_IMDB_PARENTAL_GUIDE_CHECK', false);
+    let FINAL_FALLBACK_TIMEOUT = GM_getValue('FINAL_FALLBACK_TIMEOUT', 3000);
     
     // Convert to array and clean up
     let tagsArray = TAGS_TO_HIDE.split(',').map(tag => tag.trim().toLowerCase()).filter(tag => tag.length > 0);
     let imdbKeywordsArray = IMDB_KEYWORDS_TO_HIDE.split(',').map(keyword => keyword.trim().toLowerCase()).filter(keyword => keyword.length > 0);
+    let imdbParentalGuideSeveritiesArray = IMDB_PARENTAL_GUIDE_SEVERITIES.split(',').map(severity => severity.trim()).filter(severity => severity.length > 0);
+    let imdbParentalGuideCategoriesArray = IMDB_PARENTAL_GUIDE_CATEGORIES.split(',').map(category => category.trim()).filter(category => category.length > 0);
     let hiddenCache = {};
     let imdbKeywordsCache = {};
+    let imdbParentalGuideCache = {};
     let collageProcessingTimeout = null;
     let isProcessingCollages = false;
 
@@ -53,15 +61,26 @@
         imdbKeywordsCache = {};
     }
 
+    try {
+        imdbParentalGuideCache = JSON.parse(IMDB_PARENTAL_GUIDE_CACHE);
+    } catch (e) {
+        console.warn('Failed to parse IMDb parental guide cache, starting fresh:', e);
+        imdbParentalGuideCache = {};
+    }
+
     console.log('Tags to hide:', tagsArray);
     console.log('IMDb keywords to hide:', imdbKeywordsArray);
+    console.log('IMDb parental guide severities:', imdbParentalGuideSeveritiesArray);
+    console.log('IMDb parental guide categories:', imdbParentalGuideCategoriesArray);
     console.log('Delay render:', DELAY_RENDER);
     console.log('Show loading spinner:', SHOW_LOADING_SPINNER);
     console.log('Hide torrent pages:', HIDE_TORRENT_PAGES);
     console.log('Hide torrent pages by collage tags:', HIDE_TORRENT_PAGES_BY_COLLAGE);
     console.log('IMDb keyword checking:', ENABLE_IMDB_KEYWORD_CHECK);
+    console.log('IMDb parental guide checking:', ENABLE_IMDB_PARENTAL_GUIDE_CHECK);
     console.log('Cached hidden movies:', Object.keys(hiddenCache).length);
     console.log('Cached IMDb keywords:', Object.keys(imdbKeywordsCache).length);
+    console.log('Cached IMDb parental guides:', Object.keys(imdbParentalGuideCache).length);
 
     // Register settings panel menu command
     GM_registerMenuCommand('Open Settings Panel', showSettingsPanel);
@@ -259,6 +278,69 @@
                 flex: 1;
             }
 
+            .ptp-checkbox-group {
+                display: flex;
+                flex-direction: column;
+                gap: 5px;
+                padding: 10px;
+                background: rgba(255, 255, 255, 0.05);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 8px;
+                margin-bottom: 15px;
+            }
+
+            .ptp-parental-guide-grid {
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+                padding: 15px;
+                background: rgba(255, 255, 255, 0.05);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 8px;
+                margin-bottom: 15px;
+            }
+
+            .ptp-parental-guide-item {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 15px;
+                padding: 8px 0;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            }
+
+            .ptp-parental-guide-item:last-child {
+                border-bottom: none;
+            }
+
+            .ptp-parental-guide-item .ptp-setting-checkbox {
+                margin-bottom: 0;
+                flex: 1;
+                min-width: 0;
+            }
+
+            .ptp-severity-dropdown {
+                background: #2d2d2d;
+                color: #ddd;
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                border-radius: 4px;
+                padding: 6px 10px;
+                font-size: 13px;
+                min-width: 90px;
+                cursor: pointer;
+            }
+
+            .ptp-severity-dropdown:focus {
+                outline: none;
+                border-color: #007acc;
+                box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.2);
+            }
+
+            .ptp-severity-dropdown option {
+                background: #2d2d2d;
+                color: #ddd;
+            }
+
             .ptp-setting-description {
                 font-size: 12px;
                 color: #999;
@@ -402,7 +484,13 @@
                             </div>
                             <div class="ptp-setting-description">Shows a blank screen while the script processes movies to hide.</div>
                         </div>
-                        
+
+                        <div class="ptp-setting-group">
+                            <label class="ptp-setting-label" for="final-fallback-timeout">Final fallback timeout (milliseconds):</label>
+                            <input type="number" id="final-fallback-timeout" class="ptp-setting-input" min="1000" max="10000" step="500" placeholder="3000">
+                            <div class="ptp-setting-description">Maximum time to wait before showing page if processing hasn't completed (1000-10000ms).</div>
+                        </div>
+
                         <div class="ptp-setting-group">
                             <div class="ptp-setting-checkbox">
                                 <input type="checkbox" id="show-loading-spinner">
@@ -439,13 +527,88 @@
                                 <input type="checkbox" id="enable-imdb-keywords">
                                 <label for="enable-imdb-keywords">Enable IMDb keyword filtering</label>
                             </div>
-                            <div class="ptp-setting-description">Filter movies based on IMDb keywords (requires PTP IMDb Combined script).</div>
+                            <div class="ptp-setting-description">Filter movies based on IMDb keywords (requires PTP IMDb Combined script AND keywords enabled).</div>
                         </div>
                         
                         <div class="ptp-setting-group">
                             <label class="ptp-setting-label" for="imdb-keywords">IMDb keywords to hide (comma-separated):</label>
                             <textarea id="imdb-keywords" class="ptp-setting-input ptp-setting-textarea" placeholder="masturbation, explicit-sex"></textarea>
                             <div class="ptp-setting-description">Movies with any of these IMDb keywords will be hidden.</div>
+                        </div>
+
+                        <div class="ptp-setting-group">
+                            <div class="ptp-setting-checkbox">
+                                <input type="checkbox" id="enable-imdb-parental-guide">
+                                <label for="enable-imdb-parental-guide">Enable IMDb parental guide filtering</label>
+                            </div>
+                            <div class="ptp-setting-description">Filter movies based on IMDb parental guide categories and severity levels (requires PTP IMDb Combined script AND parental guidance enabled).</div>
+                        </div>
+                        
+                        <div class="ptp-setting-group">
+                            <label class="ptp-setting-label">Parental guide categories and minimum severity levels:</label>
+                            <div class="ptp-parental-guide-grid">
+                                <div class="ptp-parental-guide-item">
+                                    <div class="ptp-setting-checkbox">
+                                        <input type="checkbox" id="category-sex-nudity" value="Sex & Nudity">
+                                        <label for="category-sex-nudity">Sex & Nudity</label>
+                                    </div>
+                                    <select id="severity-sex-nudity" class="ptp-severity-dropdown">
+                                        <option value="None">None+</option>
+                                        <option value="Mild">Mild+</option>
+                                        <option value="Moderate">Moderate+</option>
+                                        <option value="Severe">Severe</option>
+                                    </select>
+                                </div>
+                                <div class="ptp-parental-guide-item">
+                                    <div class="ptp-setting-checkbox">
+                                        <input type="checkbox" id="category-violence-gore" value="Violence & Gore">
+                                        <label for="category-violence-gore">Violence & Gore</label>
+                                    </div>
+                                    <select id="severity-violence-gore" class="ptp-severity-dropdown">
+                                        <option value="None">None+</option>
+                                        <option value="Mild">Mild+</option>
+                                        <option value="Moderate">Moderate+</option>
+                                        <option value="Severe">Severe</option>
+                                    </select>
+                                </div>
+                                <div class="ptp-parental-guide-item">
+                                    <div class="ptp-setting-checkbox">
+                                        <input type="checkbox" id="category-profanity" value="Profanity">
+                                        <label for="category-profanity">Profanity</label>
+                                    </div>
+                                    <select id="severity-profanity" class="ptp-severity-dropdown">
+                                        <option value="None">None+</option>
+                                        <option value="Mild">Mild+</option>
+                                        <option value="Moderate">Moderate+</option>
+                                        <option value="Severe">Severe</option>
+                                    </select>
+                                </div>
+                                <div class="ptp-parental-guide-item">
+                                    <div class="ptp-setting-checkbox">
+                                        <input type="checkbox" id="category-alcohol-drugs" value="Alcohol, Drugs & Smoking">
+                                        <label for="category-alcohol-drugs">Alcohol, Drugs & Smoking</label>
+                                    </div>
+                                    <select id="severity-alcohol-drugs" class="ptp-severity-dropdown">
+                                        <option value="None">None+</option>
+                                        <option value="Mild">Mild+</option>
+                                        <option value="Moderate">Moderate+</option>
+                                        <option value="Severe">Severe</option>
+                                    </select>
+                                </div>
+                                <div class="ptp-parental-guide-item">
+                                    <div class="ptp-setting-checkbox">
+                                        <input type="checkbox" id="category-frightening" value="Frightening & Intense Scenes">
+                                        <label for="category-frightening">Frightening & Intense Scenes</label>
+                                    </div>
+                                    <select id="severity-frightening" class="ptp-severity-dropdown">
+                                        <option value="None">None+</option>
+                                        <option value="Mild">Mild+</option>
+                                        <option value="Moderate">Moderate+</option>
+                                        <option value="Severe">Severe</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="ptp-setting-description">Select categories to check and set minimum severity levels. Movies with content at or above the selected severity will be hidden. "None+" means any content in this category will trigger hiding.</div>
                         </div>
                     </div>
 
@@ -464,14 +627,20 @@
                                 <span>IMDb keywords cache:</span>
                                 <span class="ptp-cache-count" id="imdb-cache-count">0</span>
                             </div>
+                            <div class="ptp-cache-stat">
+                                <span>IMDb parental guide cache:</span>
+                                <span class="ptp-cache-count" id="imdb-parental-guide-cache-count">0</span>
+                            </div>
                         </div>
                         
                         <div class="ptp-button-group">
                             <button class="ptp-button ptp-button-secondary" id="view-hidden-cache-btn">View Hidden Cache</button>
                             <button class="ptp-button ptp-button-secondary" id="view-imdb-cache-btn">View IMDb Cache</button>
+                            <button class="ptp-button ptp-button-secondary" id="view-imdb-parental-guide-cache-btn">View Parental Guide Cache</button>
                             <button class="ptp-button ptp-button-secondary" id="clean-outdated-cache-btn">Clean Outdated</button>
                             <button class="ptp-button ptp-button-danger" id="clear-hidden-cache-btn">Clear Hidden Cache</button>
                             <button class="ptp-button ptp-button-danger" id="clear-imdb-cache-btn">Clear IMDb Cache</button>
+                            <button class="ptp-button ptp-button-danger" id="clear-imdb-parental-guide-cache-btn">Clear Parental Guide Cache</button>
                             <button class="ptp-button ptp-button-danger" id="clear-all-caches-btn">Clear All Caches</button>
                         </div>
                     </div>
@@ -490,14 +659,45 @@
         document.getElementById('tags-to-hide').value = TAGS_TO_HIDE;
         document.getElementById('delay-render').checked = DELAY_RENDER;
         document.getElementById('show-loading-spinner').checked = SHOW_LOADING_SPINNER;
+        document.getElementById('final-fallback-timeout').value = FINAL_FALLBACK_TIMEOUT;
         document.getElementById('hide-torrent-pages').checked = HIDE_TORRENT_PAGES;
         document.getElementById('hide-torrent-pages-by-collage').checked = HIDE_TORRENT_PAGES_BY_COLLAGE;
         document.getElementById('enable-imdb-keywords').checked = ENABLE_IMDB_KEYWORD_CHECK;
         document.getElementById('imdb-keywords').value = IMDB_KEYWORDS_TO_HIDE;
+        document.getElementById('enable-imdb-parental-guide').checked = ENABLE_IMDB_PARENTAL_GUIDE_CHECK;
+        
+        // Set parental guide category checkboxes and severity dropdowns
+        const categories = imdbParentalGuideCategoriesArray;
+        const severities = imdbParentalGuideSeveritiesArray;
+        
+        // Parse category-severity pairs from stored data
+        // Format: "Sex & Nudity:Severe,Violence & Gore:Moderate" etc.
+        const categorySettings = {};
+        categories.forEach((category, index) => {
+            const severity = severities[index] || 'Severe'; // Default to Severe if not specified
+            categorySettings[category] = severity;
+        });
+        
+        // Set checkboxes and dropdowns
+        document.getElementById('category-sex-nudity').checked = categorySettings.hasOwnProperty('Sex & Nudity');
+        document.getElementById('severity-sex-nudity').value = categorySettings['Sex & Nudity'] || 'Severe';
+        
+        document.getElementById('category-violence-gore').checked = categorySettings.hasOwnProperty('Violence & Gore');
+        document.getElementById('severity-violence-gore').value = categorySettings['Violence & Gore'] || 'Severe';
+        
+        document.getElementById('category-profanity').checked = categorySettings.hasOwnProperty('Profanity');
+        document.getElementById('severity-profanity').value = categorySettings['Profanity'] || 'Severe';
+        
+        document.getElementById('category-alcohol-drugs').checked = categorySettings.hasOwnProperty('Alcohol, Drugs & Smoking');
+        document.getElementById('severity-alcohol-drugs').value = categorySettings['Alcohol, Drugs & Smoking'] || 'Severe';
+        
+        document.getElementById('category-frightening').checked = categorySettings.hasOwnProperty('Frightening & Intense Scenes');
+        document.getElementById('severity-frightening').value = categorySettings['Frightening & Intense Scenes'] || 'Severe';
         
         // Update cache counts
         document.getElementById('hidden-cache-count').textContent = Object.keys(hiddenCache).length;
         document.getElementById('imdb-cache-count').textContent = Object.keys(imdbKeywordsCache).length;
+        document.getElementById('imdb-parental-guide-cache-count').textContent = Object.keys(imdbParentalGuideCache).length;
     }
 
     function setupEventListeners() {
@@ -515,6 +715,7 @@
         // Cache management buttons
         document.getElementById('view-hidden-cache-btn').addEventListener('click', viewHiddenCache);
         document.getElementById('view-imdb-cache-btn').addEventListener('click', viewIMDbCache);
+        document.getElementById('view-imdb-parental-guide-cache-btn').addEventListener('click', viewIMDbParentalGuideCache);
         document.getElementById('clean-outdated-cache-btn').addEventListener('click', cleanOutdatedCache);
         document.getElementById('clear-hidden-cache-btn').addEventListener('click', function() {
             if (confirm(`Clear the hidden movies cache?\n\nThis will remove ${Object.keys(hiddenCache).length} cached entries. NOT RECOMMENDED unless you are experiencing issues.`)) {
@@ -526,6 +727,7 @@
             }
         });
         document.getElementById('clear-imdb-cache-btn').addEventListener('click', clearIMDbCache);
+        document.getElementById('clear-imdb-parental-guide-cache-btn').addEventListener('click', clearIMDbParentalGuideCacheButton);
         document.getElementById('clear-all-caches-btn').addEventListener('click', clearAllCaches);
 
         // Close on escape key
@@ -548,32 +750,71 @@
         const newTagsToHide = document.getElementById('tags-to-hide').value.trim();
         const newDelayRender = document.getElementById('delay-render').checked;
         const newShowLoadingSpinner = document.getElementById('show-loading-spinner').checked;
+        const newFinalFallbackTimeout = parseInt(document.getElementById('final-fallback-timeout').value) || 3000;
         const newHideTorrentPages = document.getElementById('hide-torrent-pages').checked;
         const newHideTorrentPagesByCollage = document.getElementById('hide-torrent-pages-by-collage').checked;
         const newEnableIMDbKeywords = document.getElementById('enable-imdb-keywords').checked;
         const newIMDbKeywords = document.getElementById('imdb-keywords').value.trim();
+        const newEnableIMDbParentalGuide = document.getElementById('enable-imdb-parental-guide').checked;
+        // Get selected parental guide categories and their severity levels
+        const selectedCategories = [];
+        const selectedSeverities = [];
+        
+        if (document.getElementById('category-sex-nudity').checked) {
+            selectedCategories.push('Sex & Nudity');
+            selectedSeverities.push(document.getElementById('severity-sex-nudity').value);
+        }
+        if (document.getElementById('category-violence-gore').checked) {
+            selectedCategories.push('Violence & Gore');
+            selectedSeverities.push(document.getElementById('severity-violence-gore').value);
+        }
+        if (document.getElementById('category-profanity').checked) {
+            selectedCategories.push('Profanity');
+            selectedSeverities.push(document.getElementById('severity-profanity').value);
+        }
+        if (document.getElementById('category-alcohol-drugs').checked) {
+            selectedCategories.push('Alcohol, Drugs & Smoking');
+            selectedSeverities.push(document.getElementById('severity-alcohol-drugs').value);
+        }
+        if (document.getElementById('category-frightening').checked) {
+            selectedCategories.push('Frightening & Intense Scenes');
+            selectedSeverities.push(document.getElementById('severity-frightening').value);
+        }
+        
+        const newIMDbParentalGuideCategories = selectedCategories.join(',');
+        const newIMDbParentalGuideSeverities = selectedSeverities.join(',');
 
         // Save to GM storage
         GM_setValue('TAGS_TO_HIDE', newTagsToHide);
         GM_setValue('DELAY_RENDER', newDelayRender);
         GM_setValue('SHOW_LOADING_SPINNER', newShowLoadingSpinner);
+        GM_setValue('FINAL_FALLBACK_TIMEOUT', newFinalFallbackTimeout);
         GM_setValue('HIDE_TORRENT_PAGES', newHideTorrentPages);
         GM_setValue('HIDE_TORRENT_PAGES_BY_COLLAGE', newHideTorrentPagesByCollage);
         GM_setValue('ENABLE_IMDB_KEYWORD_CHECK', newEnableIMDbKeywords);
         GM_setValue('IMDB_KEYWORDS_TO_HIDE', newIMDbKeywords);
+        GM_setValue('ENABLE_IMDB_PARENTAL_GUIDE_CHECK', newEnableIMDbParentalGuide);
+        GM_setValue('IMDB_PARENTAL_GUIDE_CATEGORIES', newIMDbParentalGuideCategories);
+        GM_setValue('IMDB_PARENTAL_GUIDE_SEVERITIES', newIMDbParentalGuideSeverities);
 
         // Update runtime variables
         TAGS_TO_HIDE = newTagsToHide;
         DELAY_RENDER = newDelayRender;
         SHOW_LOADING_SPINNER = newShowLoadingSpinner;
+        FINAL_FALLBACK_TIMEOUT = newFinalFallbackTimeout;
         HIDE_TORRENT_PAGES = newHideTorrentPages;
         HIDE_TORRENT_PAGES_BY_COLLAGE = newHideTorrentPagesByCollage;
         ENABLE_IMDB_KEYWORD_CHECK = newEnableIMDbKeywords;
         IMDB_KEYWORDS_TO_HIDE = newIMDbKeywords;
+        ENABLE_IMDB_PARENTAL_GUIDE_CHECK = newEnableIMDbParentalGuide;
+        IMDB_PARENTAL_GUIDE_CATEGORIES = newIMDbParentalGuideCategories;
+        IMDB_PARENTAL_GUIDE_SEVERITIES = newIMDbParentalGuideSeverities;
 
         // Update arrays
         tagsArray = TAGS_TO_HIDE.split(',').map(tag => tag.trim().toLowerCase()).filter(tag => tag.length > 0);
         imdbKeywordsArray = IMDB_KEYWORDS_TO_HIDE.split(',').map(keyword => keyword.trim().toLowerCase()).filter(keyword => keyword.length > 0);
+        imdbParentalGuideCategoriesArray = IMDB_PARENTAL_GUIDE_CATEGORIES.split(',').map(category => category.trim()).filter(category => category.length > 0);
+        imdbParentalGuideSeveritiesArray = IMDB_PARENTAL_GUIDE_SEVERITIES.split(',').map(severity => severity.trim()).filter(severity => severity.length > 0);
 
         hideSettingsPanel();
         
@@ -591,10 +832,24 @@
         document.getElementById('tags-to-hide').value = 'family, animation, comedy, romance';
         document.getElementById('delay-render').checked = true;
         document.getElementById('show-loading-spinner').checked = false;
+        document.getElementById('final-fallback-timeout').value = 3000;
         document.getElementById('hide-torrent-pages').checked = true;
         document.getElementById('hide-torrent-pages-by-collage').checked = true;
         document.getElementById('enable-imdb-keywords').checked = false;
         document.getElementById('imdb-keywords').value = 'masturbation';
+        document.getElementById('enable-imdb-parental-guide').checked = false;
+        
+        // Reset parental guide settings to defaults
+        document.getElementById('category-sex-nudity').checked = true;
+        document.getElementById('severity-sex-nudity').value = 'Severe';
+        document.getElementById('category-violence-gore').checked = true;
+        document.getElementById('severity-violence-gore').value = 'Severe';
+        document.getElementById('category-profanity').checked = false;
+        document.getElementById('severity-profanity').value = 'Severe';
+        document.getElementById('category-alcohol-drugs').checked = false;
+        document.getElementById('severity-alcohol-drugs').value = 'Severe';
+        document.getElementById('category-frightening').checked = false;
+        document.getElementById('severity-frightening').value = 'Severe';
     }
 
     // Cache management functions
@@ -628,6 +883,22 @@
         alert(`IMDb Keywords Cache (${cacheEntries.length} entries):\n\n${cacheList}`);
     }
 
+    function viewIMDbParentalGuideCache() {
+        const cacheEntries = Object.entries(imdbParentalGuideCache);
+        if (cacheEntries.length === 0) {
+            alert('No IMDb parental guides currently in cache.');
+            return;
+        }
+
+        const cacheList = cacheEntries.map(([imdbId, data]) => {
+            const age = Math.round((Date.now() - data.cachedAt) / (1000 * 60 * 60));
+            const categoryCount = data.parentalGuide.length;
+            return `${imdbId}: ${categoryCount} categories (cached ${age}h ago)`;
+        }).join('\n');
+
+        alert(`IMDb Parental Guide Cache (${cacheEntries.length} entries):\n\n${cacheList}`);
+    }
+
     function cleanOutdatedCache() {
         if (confirm('Clean outdated entries from cache?\n\nThis will remove cached movies that no longer match your current tag settings. NOT RECOMMENDED!')) {
             const cleanedCount = cleanCache();
@@ -649,15 +920,26 @@
         }
     }
 
+    function clearIMDbParentalGuideCacheButton() {
+        if (confirm(`Clear the IMDb parental guide cache?\n\nThis will remove ${Object.keys(imdbParentalGuideCache).length} cached entries. NOT RECOMMENDED unless you are experiencing issues.`)) {
+            clearIMDbParentalGuideCache();
+            document.getElementById('imdb-parental-guide-cache-count').textContent = '0';
+            alert('IMDb parental guide cache cleared.');
+        }
+    }
+
     function clearAllCaches() {
         const hiddenCount = Object.keys(hiddenCache).length;
         const keywordsCount = Object.keys(imdbKeywordsCache).length;
+        const parentalGuideCount = Object.keys(imdbParentalGuideCache).length;
         
-        if (confirm(`Clear all caches?\n\nHidden movies: ${hiddenCount} entries\nIMDb keywords: ${keywordsCount} entries. NOT RECOMMENDED unless you are experiencing issues.`)) {
+        if (confirm(`Clear all caches?\n\nHidden movies: ${hiddenCount} entries\nIMDb keywords: ${keywordsCount} entries\nIMDb parental guides: ${parentalGuideCount} entries\n\nNOT RECOMMENDED unless you are experiencing issues.`)) {
             clearHiddenCache();
             clearIMDbKeywordsCache();
+            clearIMDbParentalGuideCache();
             document.getElementById('hidden-cache-count').textContent = '0';
             document.getElementById('imdb-cache-count').textContent = '0';
+            document.getElementById('imdb-parental-guide-cache-count').textContent = '0';
             alert('All caches cleared.');
         }
     }
@@ -805,6 +1087,120 @@
         imdbKeywordsCache = {};
         GM_setValue('IMDB_KEYWORDS_CACHE', '{}');
         console.log('IMDb keywords cache cleared');
+    }
+
+    // Function to add IMDb parental guide to cache
+    function addToIMDbParentalGuideCache(imdbId, parentalGuide, timestamp = Date.now()) {
+        imdbParentalGuideCache[imdbId] = {
+            parentalGuide: parentalGuide,
+            cachedAt: timestamp,
+            lastChecked: timestamp
+        };
+        
+        // Save to GM storage
+        GM_setValue('IMDB_PARENTAL_GUIDE_CACHE', JSON.stringify(imdbParentalGuideCache));
+        console.log(`Added IMDb parental guide to cache: ${imdbId} - Categories: ${parentalGuide.length}`);
+    }
+
+    // Function to check if cached IMDb parental guide is still valid (not expired)
+    function isIMDbParentalGuideCacheValid(imdbId, maxAgeHours = 24) {
+        if (!imdbParentalGuideCache.hasOwnProperty(imdbId)) {
+            return false;
+        }
+        
+        const cached = imdbParentalGuideCache[imdbId];
+        const ageInHours = (Date.now() - cached.cachedAt) / (1000 * 60 * 60);
+        
+        return ageInHours < maxAgeHours;
+    }
+
+    // Function to get cached IMDb parental guide
+    function getCachedIMDbParentalGuide(imdbId) {
+        if (!isIMDbParentalGuideCacheValid(imdbId)) {
+            return null;
+        }
+        
+        return imdbParentalGuideCache[imdbId].parentalGuide;
+    }
+
+    // Function to clean expired IMDb parental guide cache
+    function cleanIMDbParentalGuideCache(maxAgeHours = 24) {
+        let cleanedCount = 0;
+        const originalCacheSize = Object.keys(imdbParentalGuideCache).length;
+        const cutoffTime = Date.now() - (maxAgeHours * 60 * 60 * 1000);
+        
+        Object.keys(imdbParentalGuideCache).forEach(imdbId => {
+            if (imdbParentalGuideCache[imdbId].cachedAt < cutoffTime) {
+                delete imdbParentalGuideCache[imdbId];
+                cleanedCount++;
+            }
+        });
+        
+        if (cleanedCount > 0) {
+            GM_setValue('IMDB_PARENTAL_GUIDE_CACHE', JSON.stringify(imdbParentalGuideCache));
+            console.log(`Cleaned ${cleanedCount} expired IMDb parental guide entries from cache (${originalCacheSize} -> ${Object.keys(imdbParentalGuideCache).length})`);
+        }
+        
+        return cleanedCount;
+    }
+
+    // Function to clear IMDb parental guide cache
+    function clearIMDbParentalGuideCache() {
+        imdbParentalGuideCache = {};
+        GM_setValue('IMDB_PARENTAL_GUIDE_CACHE', '{}');
+        console.log('IMDb parental guide cache cleared');
+    }
+
+    // Function to check if parental guide categories/severities match filter
+    function checkParentalGuideMatch(parentalGuide) {
+        if (!parentalGuide || !Array.isArray(parentalGuide)) {
+            return null;
+        }
+
+        // Create severity hierarchy for comparison
+        const severityLevels = ['None', 'Mild', 'Moderate', 'Severe'];
+        
+        // Create category-severity mapping from current settings
+        const categorySettings = {};
+        imdbParentalGuideCategoriesArray.forEach((category, index) => {
+            const severity = imdbParentalGuideSeveritiesArray[index] || 'Severe';
+            categorySettings[category] = severity;
+        });
+
+        const matches = [];
+
+        for (const category of parentalGuide) {
+            const categoryName = category.category?.text;
+            const severityLevel = category.severity?.text;
+
+            if (!categoryName || !severityLevel) {
+                continue;
+            }
+
+            // Check each configured category
+            for (const [filterCategory, thresholdSeverity] of Object.entries(categorySettings)) {
+                // Check if category matches (case-insensitive partial match)
+                if (categoryName.toLowerCase().includes(filterCategory.toLowerCase()) || 
+                    filterCategory.toLowerCase().includes(categoryName.toLowerCase())) {
+                    
+                    // Get severity level indices for comparison
+                    const currentSeverityIndex = severityLevels.indexOf(severityLevel);
+                    const thresholdSeverityIndex = severityLevels.indexOf(thresholdSeverity);
+                    
+                    // If current severity is at or above threshold, it's a match
+                    if (currentSeverityIndex >= thresholdSeverityIndex && currentSeverityIndex !== -1) {
+                        console.log(`Parental guide match found: ${categoryName} - ${severityLevel} (threshold: ${thresholdSeverity})`);
+                        matches.push({
+                            category: categoryName,
+                            severity: severityLevel,
+                            threshold: thresholdSeverity
+                        });
+                    }
+                }
+            }
+        }
+
+        return matches.length > 0 ? matches : null;
     }
 
 
@@ -1116,39 +1512,64 @@
         // Check if any PTP tags match our filter
         const ptpMatchedTags = tags.filter(tag => tagsArray.includes(tag.toLowerCase()));
         
-        // Check IMDb keywords if enabled (regardless of PTP tag matches)
+        // Check IMDb data (keywords and parental guide) if enabled (regardless of PTP tag matches)
         let imdbMatchedKeywords = [];
+        let imdbMatchedParentalGuide = false;
         let shouldHideByImdb = false;
         
-        if (ENABLE_IMDB_KEYWORD_CHECK && imdbId) {
-            // For torrent pages, we need to handle this synchronously or show a loading state
-            // Let's add the IMDb check asynchronously
-            checkIMDbKeywords(imdbId, title, year).then(keywordMatch => {
-                if (keywordMatch) {
-                    imdbMatchedKeywords = keywordMatch.keywords.map(k => `imdb:${k}`);
+        if ((ENABLE_IMDB_KEYWORD_CHECK || ENABLE_IMDB_PARENTAL_GUIDE_CHECK) && imdbId) {
+            // For torrent pages, we need to handle this asynchronously
+            checkIMDbData(imdbId, title, year).then(imdbData => {
+                let hideTags = [];
+                
+                // Handle keyword matches
+                if (imdbData.keywords && imdbData.keywords.matched) {
+                    imdbMatchedKeywords = imdbData.keywords.matched.map(k => `imdb:${k}`);
+                    hideTags = hideTags.concat(imdbMatchedKeywords);
+                    shouldHideByImdb = true;
+                    console.log(`Found torrent page with IMDb keyword matches: ${title} (${year}) - GroupId: ${groupId} - IMDB: ${imdbId} - Matched keywords: ${imdbData.keywords.matched.join(', ')}`);
+                }
+                
+                // Handle parental guide matches
+                if (imdbData.parentalGuide && imdbData.parentalGuide.matched) {
+                    imdbMatchedParentalGuide = true;
+                    
+                    // Create detailed tags for each parental guide match
+                    imdbData.parentalGuide.matched.forEach(match => {
+                        // Create tags in format: imdb:parental-guide:Category:Severity
+                        const categoryTag = match.category.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+                        const detailedTag = `imdb:parental-guide:${categoryTag}:${match.severity.toLowerCase()}`;
+                        hideTags.push(detailedTag);
+                    });
+                    
+                    // Also add the general parental guide tag for backward compatibility
+                    hideTags.push('imdb:parental-guide');
                     shouldHideByImdb = true;
                     
-                    console.log(`Found torrent page with IMDb keyword matches: ${title} (${year}) - GroupId: ${groupId} - IMDB: ${imdbId} - Matched keywords: ${keywordMatch.keywords.join(', ')}`);
-                    
+                    const matchSummary = imdbData.parentalGuide.matched.map(m => `${m.category}:${m.severity}`).join(', ');
+                    console.log(`Found torrent page with IMDb parental guide matches: ${title} (${year}) - GroupId: ${groupId} - IMDB: ${imdbId} - Matches: ${matchSummary}`);
+                }
+                
+                if (shouldHideByImdb) {
                     // If we should hide by IMDb and the page isn't already hidden by PTP tags
                     if (ptpMatchedTags.length === 0) {
-                        // Add to cache with IMDb keyword tags
-                        addToHiddenCache(groupId, title, year, imdbMatchedKeywords, imdbId);
+                        // Add to cache with IMDb tags
+                        addToHiddenCache(groupId, title, year, hideTags, imdbId);
                         
                         // Hide the torrent page if the option is enabled
                         if (HIDE_TORRENT_PAGES) {
-                            hideTorrentPageContent(title, year, imdbMatchedKeywords);
+                            hideTorrentPageContent(title, year, hideTags);
                             console.log('Torrent page content replaced by IMDb keywords, showing page');
                             showPage();
                         }
                     } else {
                         // Both PTP and IMDb matched, update cache with combined tags
-                        const combinedTags = [...ptpMatchedTags, ...imdbMatchedKeywords];
+                        const combinedTags = [...ptpMatchedTags, ...hideTags];
                         addToHiddenCache(groupId, title, year, combinedTags, imdbId);
                     }
                 }
             }).catch(error => {
-                console.warn(`Failed to check IMDb keywords for torrent page ${title} (${imdbId}):`, error);
+                console.log(`Error checking IMDb data for ${title} (${year}): ${error.message}`);
             });
         }
         
@@ -1259,83 +1680,101 @@
         });
     }
 
-    // checkIMDbKeywords function with global availability check and processing wait
-    async function checkIMDbKeywords(imdbId, title, year) {
-        if (!imdbId || imdbKeywordsArray.length === 0) return null;
+    // checkIMDbData function that handles both keywords and parental guide
+    async function checkIMDbData(imdbId, title, year) {
+        const results = { keywords: null, parentalGuide: null };
+        
+        if (!imdbId) return results;
+        
+        // Check if either feature is enabled
+        const keywordsEnabled = ENABLE_IMDB_KEYWORD_CHECK && imdbKeywordsArray.length > 0;
+        const parentalGuideEnabled = ENABLE_IMDB_PARENTAL_GUIDE_CHECK && 
+            (imdbParentalGuideCategoriesArray.length > 0 || imdbParentalGuideSeveritiesArray.length > 0);
+        
+        if (!keywordsEnabled && !parentalGuideEnabled) {
+            return results;
+        }
         
         try {
-            // First, check if we have valid cached keywords
-            const cachedKeywords = getCachedIMDbKeywords(imdbId);
-            
-            if (cachedKeywords) {
-                console.log(`Using cached IMDb keywords for ${title} (${imdbId}):`, cachedKeywords);
-                
-                // Check if any cached keywords match our IMDb keywords list
-                const matchedKeywords = cachedKeywords.filter(keyword => 
-                    imdbKeywordsArray.includes(keyword.toLowerCase())
-                );
-                
-                if (matchedKeywords.length > 0) {
-                    console.log(`Found cached IMDb keyword matches for ${title}: ${matchedKeywords.join(', ')}`);
-                    return {
-                        matched: true,
-                        keywords: matchedKeywords,
-                        allKeywords: cachedKeywords,
-                        fromCache: true
-                    };
-                } else {
-                    console.log(`Cached keywords for ${title} don't match current filter list`);
-                    return null;
+            // Check caches first
+            if (keywordsEnabled) {
+                const cachedKeywords = getCachedIMDbKeywords(imdbId);
+                if (cachedKeywords) {
+                    console.log(`Using cached IMDb keywords for ${title} (${imdbId}):`, cachedKeywords);
+                    const matchedKeywords = cachedKeywords.filter(keyword => 
+                        imdbKeywordsArray.includes(keyword.toLowerCase())
+                    );
+                    if (matchedKeywords.length > 0) {
+                        console.log(`Found cached IMDb keyword matches for ${title}: ${matchedKeywords.join(', ')}`);
+                        results.keywords = { matched: matchedKeywords, source: 'cache' };
+                    }
                 }
             }
             
-            // Check if IMDb script is known to be unavailable
+            if (parentalGuideEnabled) {
+                const cachedParentalGuide = getCachedIMDbParentalGuide(imdbId);
+                if (cachedParentalGuide) {
+                    console.log(`Using cached IMDb parental guide for ${title} (${imdbId}):`, cachedParentalGuide);
+                    const parentalGuideMatches = checkParentalGuideMatch(cachedParentalGuide);
+                    if (parentalGuideMatches) {
+                        console.log(`Found cached IMDb parental guide matches for ${title}:`, parentalGuideMatches);
+                        results.parentalGuide = { matched: parentalGuideMatches, source: 'cache' };
+                    }
+                }
+            }
+            
+            // If we have cache hits for all enabled features, return early
+            if ((!keywordsEnabled || results.keywords) && (!parentalGuideEnabled || results.parentalGuide)) {
+                return results;
+            }
+            
+            // Need to fetch fresh data
+            return await fetchIMDbData(imdbId, title, year, keywordsEnabled, parentalGuideEnabled);
+            
+        } catch (error) {
+            console.error(`Error checking IMDb data for ${title} (${imdbId}):`, error);
+            return results;
+        }
+    }
+    
+    // Fetch fresh IMDb data from the external script
+    async function fetchIMDbData(imdbId, title, year, checkKeywords, checkParentalGuide) {
+        const results = { keywords: null, parentalGuide: null };
+        
+        try {
+            // Wait for IMDb script availability
+            if (imdbScriptAvailable === null) {
+                console.log(`checkIMDbData: Checking if IMDb Combined script is available for ${imdbId}...`);
+                await waitForIMDbScript(5000);
+            }
+            
             if (imdbScriptAvailable === false) {
-                console.log(`Skipping IMDb keyword check for ${title} (${imdbId}) - IMDb script unavailable`);
-                return null;
+                console.log(`checkIMDbData: IMDb Combined script not available for ${imdbId}, skipping`);
+                return results;
             }
             
-            // No valid cache, first wait for the IMDb script to be ready
-            console.log(`No cached keywords for ${imdbId}, checking if IMDb combined script is ready...`);
-            
-            try {
-                await waitForIMDbScript(5000); // Wait up to 5 seconds
-            } catch (error) {
-                console.warn(`IMDb Combined script not ready: ${error.message}`);
-                return null;
-            }
-            
-            console.log(`IMDb script ready, requesting keywords for ${imdbId}...`);
+            // Request data from IMDb Combined script
+            const requestId = Date.now() + '_' + Math.random();
+            console.log(`checkIMDbData: Sending IMDb data request for ${imdbId} with requestId: ${requestId}`);
             
             const response = await new Promise((resolve, reject) => {
-                const requestId = Date.now() + '_keywords_' + Math.random();
-                let timeoutId;
-                
-                console.log(`checkIMDbKeywords: Sending IMDb data request for ${imdbId} with requestId: ${requestId}`);
-                
-                // Create the response handler
                 const responseHandler = (event) => {
-                    console.log(`checkIMDbKeywords received imdbDataResponse event:`, event.detail);
+                    console.log(`checkIMDbData received imdbDataResponse event:`, event.detail);
                     
-                    // Check if this response is for our request
                     if (event.detail.requestId === requestId) {
-                        console.log(`checkIMDbKeywords: This response matches our requestId: ${requestId}`);
-                        // Clean up: remove event listener and clear timeout
+                        console.log(`checkIMDbData: This response matches our requestId: ${requestId}`);
                         document.removeEventListener('imdbDataResponse', responseHandler);
                         if (timeoutId) {
                             clearTimeout(timeoutId);
                         }
-                        
                         resolve(event.detail);
                     } else {
-                        console.log(`checkIMDbKeywords: Response requestId ${event.detail.requestId} doesn't match our requestId ${requestId}`);
+                        console.log(`checkIMDbData: Response requestId ${event.detail.requestId} doesn't match our requestId ${requestId}`);
                     }
                 };
                 
-                // Add the event listener
                 document.addEventListener('imdbDataResponse', responseHandler);
                 
-                // Send the request
                 document.dispatchEvent(new CustomEvent('requestIMDbData', {
                     detail: {
                         imdbId: imdbId,
@@ -1343,166 +1782,63 @@
                     }
                 }));
                 
-                // Set timeout for cleanup (5 seconds)
-                timeoutId = setTimeout(() => {
-                    // Clean up: remove event listener
+                const timeoutId = setTimeout(() => {
                     document.removeEventListener('imdbDataResponse', responseHandler);
-                    console.warn(`checkIMDbKeywords: IMDb data request timeout for ${imdbId} (requestId: ${requestId})`);
-                    reject(new Error(`IMDb keywords request timeout for ${imdbId}`));
-                }, 5000);
+                    console.warn(`checkIMDbData: IMDb data request timeout for ${imdbId} (requestId: ${requestId})`);
+                    reject(new Error('IMDb data request timeout'));
+                }, 10000);
             });
             
-            // Check if data was found or if we need to wait for processing
-            if (response.found === false) {
-                console.log(`No cached IMDb data found for ${imdbId}, waiting for IMDb script to fetch and process...`);
+            if (response.found && response.data && response.data.data && response.data.data.title) {
+                const titleData = response.data.data.title;
                 
-                // Wait for the IMDb processing to complete
-                const processingResult = await new Promise((resolve, reject) => {
-                    let processingTimeoutId;
+                // Process keywords if enabled
+                if (checkKeywords && titleData.keywords && titleData.keywords.edges) {
+                    const keywords = titleData.keywords.edges
+                        .map(edge => edge.node ? edge.node.legacyId : null)
+                        .filter(Boolean);
                     
-                    const processingHandler = (event) => {
-                        const { imdbId: eventImdbId, success, error } = event.detail;
-                        
-                        // Check if this event is for our IMDb ID
-                        if (eventImdbId === imdbId) {
-                            console.log(`checkIMDbKeywords: Received imdbProcessingComplete for ${imdbId}, success: ${success}`);
-                            
-                            // Clean up
-                            document.removeEventListener('imdbProcessingComplete', processingHandler);
-                            if (processingTimeoutId) {
-                                clearTimeout(processingTimeoutId);
-                            }
-                            
-                            if (success) {
-                                resolve(true);
-                            } else {
-                                console.warn(`checkIMDbKeywords: IMDb processing failed for ${imdbId}: ${error}`);
-                                resolve(false);
-                            }
-                        }
-                    };
+                    console.log(`checkIMDbData: Found ${keywords.length} keywords for ${title} (${imdbId})`);
                     
-                    // Listen for processing completion
-                    document.addEventListener('imdbProcessingComplete', processingHandler);
+                    // Cache the keywords
+                    addToIMDbKeywordsCache(imdbId, keywords);
                     
-                    // Set timeout for processing (10 seconds)
-                    processingTimeoutId = setTimeout(() => {
-                        document.removeEventListener('imdbProcessingComplete', processingHandler);
-                        console.warn(`checkIMDbKeywords: Timeout waiting for IMDb processing completion for ${imdbId}`);
-                        resolve(false);
-                    }, 10000);
-                });
+                    // Check for matches
+                    const matchedKeywords = keywords.filter(keyword => 
+                        imdbKeywordsArray.includes(keyword.toLowerCase())
+                    );
+                    
+                    if (matchedKeywords.length > 0) {
+                        console.log(`Found IMDb keyword matches for ${title}: ${matchedKeywords.join(', ')}`);
+                        results.keywords = { matched: matchedKeywords, source: 'fresh' };
+                    }
+                }
                 
-                if (processingResult) {
-                    console.log(`checkIMDbKeywords: IMDb processing completed for ${imdbId}, retrying data request...`);
+                // Process parental guide if enabled
+                if (checkParentalGuide && titleData.parentsGuide && titleData.parentsGuide.categories) {
+                    const parentalGuide = titleData.parentsGuide.categories;
                     
-                    // Retry the data request now that processing is complete
-                    const retryResponse = await new Promise((resolve, reject) => {
-                        const retryRequestId = Date.now() + '_retry_' + Math.random();
-                        let retryTimeoutId;
-                        
-                        console.log(`checkIMDbKeywords: Retrying IMDb data request for ${imdbId} with requestId: ${retryRequestId}`);
-                        
-                        const retryResponseHandler = (event) => {
-                            console.log(`checkIMDbKeywords received retry imdbDataResponse event:`, event.detail);
-                            
-                            if (event.detail.requestId === retryRequestId) {
-                                console.log(`checkIMDbKeywords: Retry response matches our requestId: ${retryRequestId}`);
-                                document.removeEventListener('imdbDataResponse', retryResponseHandler);
-                                if (retryTimeoutId) {
-                                    clearTimeout(retryTimeoutId);
-                                }
-                                resolve(event.detail);
-                            }
-                        };
-                        
-                        document.addEventListener('imdbDataResponse', retryResponseHandler);
-                        
-                        // Send the retry request
-                        document.dispatchEvent(new CustomEvent('requestIMDbData', {
-                            detail: {
-                                imdbId: imdbId,
-                                requestId: retryRequestId
-                            }
-                        }));
-                        
-                        retryTimeoutId = setTimeout(() => {
-                            document.removeEventListener('imdbDataResponse', retryResponseHandler);
-                            console.warn(`checkIMDbKeywords: Retry request timeout for ${imdbId}`);
-                            reject(new Error(`Retry IMDb keywords request timeout for ${imdbId}`));
-                        }, 5000);
-                    });
+                    console.log(`checkIMDbData: Found parental guide for ${title} (${imdbId}) with ${parentalGuide.length} categories`);
                     
-                    // Process the retry response
-                    return await processIMDbResponse(retryResponse, title, imdbId);
-                } else {
-                    console.log(`checkIMDbKeywords: IMDb processing failed or timed out for ${imdbId}`);
-                    // Cache empty result to avoid repeated requests
-                    addToIMDbKeywordsCache(imdbId, []);
-                    return null;
+                    // Cache the parental guide
+                    addToIMDbParentalGuideCache(imdbId, parentalGuide);
+                    
+                    // Check for matches
+                    const parentalGuideMatches = checkParentalGuideMatch(parentalGuide);
+                    if (parentalGuideMatches) {
+                        console.log(`Found IMDb parental guide matches for ${title}:`, parentalGuideMatches);
+                        results.parentalGuide = { matched: parentalGuideMatches, source: 'fresh' };
+                    }
                 }
             } else {
-                // Data was found immediately, process it
-                return await processIMDbResponse(response, title, imdbId);
+                console.log(`checkIMDbData: No valid data found for ${imdbId}`);
             }
             
         } catch (error) {
-            console.warn(`Failed to check IMDb keywords for ${imdbId}:`, error);
-            return null;
-        }
-    }
-
-    // Helper function to process IMDb response data
-    async function processIMDbResponse(response, title, imdbId) {
-        // Process the response - use the correct data structure
-        let keywordsData = null;
-        
-        if (response.found && response.data) {
-            if (response.data.data && response.data.data.title && response.data.data.title.keywords) {
-                // Correct GraphQL structure: data.data.title.keywords
-                keywordsData = response.data.data.title.keywords;
-                console.log(`Found keywords in GraphQL structure for ${title}`);
-            } else if (response.data.title && response.data.title.keywords) {
-                // Fallback: direct structure data.title.keywords (probably won't be used but kept for compatibility)
-                keywordsData = response.data.title.keywords;
-                console.log(`Found keywords in direct structure for ${title}`);
-            }
+            console.error(`Error fetching IMDb data for ${title} (${imdbId}):`, error);
         }
         
-        if (keywordsData) {
-            const keywords = keywordsData.edges || [];
-            
-            // Extract keyword legacyIds with proper null checking
-            const keywordTexts = keywords.map(edge => edge.node ? edge.node.legacyId : null).filter(Boolean);
-            console.log(`Received IMDb keywords for ${title} (${imdbId}):`, keywordTexts);
-            
-            // Cache the keywords for future use
-            addToIMDbKeywordsCache(imdbId, keywordTexts);
-            
-            // Check if any keywords match our IMDb keywords list
-            const matchedKeywords = keywordTexts.filter(keyword => 
-                imdbKeywordsArray.includes(keyword.toLowerCase())
-            );
-            
-            if (matchedKeywords.length > 0) {
-                console.log(`Found IMDb keyword matches for ${title}: ${matchedKeywords.join(', ')}`);
-                return {
-                    matched: true,
-                    keywords: matchedKeywords,
-                    allKeywords: keywordTexts,
-                    fromCache: false
-                };
-            }
-        } else if (response.found === false) {
-            // Cache empty result to avoid repeated requests for movies without data
-            addToIMDbKeywordsCache(imdbId, []);
-            console.log(`No IMDb data found for ${imdbId}, cached empty result`);
-        } else {
-            console.warn(`Received response but no keywords data found for ${imdbId}:`, response);
-            console.log('Response data structure:', response.data ? Object.keys(response.data) : 'No data');
-        }
-        
-        return null;
+        return results;
     }
 
     // Function to hide torrent page content when matched by collage tags
@@ -2002,28 +2338,55 @@
                     console.log(`Found movie with target PTP tags (${arrayName}): ${movie.Title} (${movie.Year}) - GroupId: ${movie.GroupId} - IMDB: ${movie.ImdbId || 'N/A'} - Matched tags: ${ptpMatchedTags.join(', ')}`);
                 }
                 
-                // Check IMDb keywords if enabled (regardless of PTP tag matches)
-                if (ENABLE_IMDB_KEYWORD_CHECK && movie.ImdbId) {
+                // Check IMDb data (keywords and parental guide) if enabled (regardless of PTP tag matches)
+                if ((ENABLE_IMDB_KEYWORD_CHECK || ENABLE_IMDB_PARENTAL_GUIDE_CHECK) && movie.ImdbId) {
                     try {
-                        const keywordMatch = await checkIMDbKeywords(movie.ImdbId, movie.Title, movie.Year);
-                        if (keywordMatch) {
-                            const imdbTags = keywordMatch.keywords.map(k => `imdb:${k}`);
+                        const imdbData = await checkIMDbData(movie.ImdbId, movie.Title, movie.Year);
+                        
+                        let imdbMatchedTags = [];
+                        let imdbMatchTypes = [];
+                        
+                        // Handle keyword matches
+                        if (imdbData.keywords && imdbData.keywords.matched) {
+                            const keywordTags = imdbData.keywords.matched.map(k => `imdb:${k}`);
+                            imdbMatchedTags = imdbMatchedTags.concat(keywordTags);
+                            imdbMatchTypes.push('keywords');
+                            console.log(`Found movie with IMDb keyword matches (${arrayName}): ${movie.Title} (${movie.Year}) - GroupId: ${movie.GroupId} - IMDB: ${movie.ImdbId} - Matched keywords: ${imdbData.keywords.matched.join(', ')}`);
+                        }
+                        
+                        // Handle parental guide matches
+                        if (imdbData.parentalGuide && imdbData.parentalGuide.matched) {
+                            // Create detailed tags for each parental guide match
+                            imdbData.parentalGuide.matched.forEach(match => {
+                                // Create tags in format: imdb:parental-guide:Category:Severity
+                                const categoryTag = match.category.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+                                const detailedTag = `imdb:parental-guide:${categoryTag}:${match.severity.toLowerCase()}`;
+                                imdbMatchedTags.push(detailedTag);
+                            });
                             
+                            // Also add the general parental guide tag for backward compatibility
+                            imdbMatchedTags.push('imdb:parental-guide');
+                            imdbMatchTypes.push('parental guide');
+                            
+                            const matchSummary = imdbData.parentalGuide.matched.map(m => `${m.category}:${m.severity}`).join(', ');
+                            console.log(`Found movie with IMDb parental guide matches (${arrayName}): ${movie.Title} (${movie.Year}) - GroupId: ${movie.GroupId} - IMDB: ${movie.ImdbId} - Matches: ${matchSummary}`);
+                        }
+                        
+                        if (imdbMatchedTags.length > 0) {
                             if (!shouldHide) {
-                                // Only IMDb keywords matched
-                                matchedTags = imdbTags;
+                                // Only IMDb data matched
+                                matchedTags = imdbMatchedTags;
                                 shouldHide = true;
-                                matchType = 'IMDb keywords';
-                                console.log(`Found movie with IMDb keyword matches (${arrayName}): ${movie.Title} (${movie.Year}) - GroupId: ${movie.GroupId} - IMDB: ${movie.ImdbId} - Matched keywords: ${keywordMatch.keywords.join(', ')}`);
+                                matchType = `IMDb ${imdbMatchTypes.join(' + ')}`;
                             } else {
-                                // Both PTP tags and IMDb keywords matched
-                                matchedTags = [...matchedTags, ...imdbTags];
-                                matchType = 'PTP tags + IMDb keywords';
-                                console.log(`Found movie with BOTH PTP tags AND IMDb keyword matches (${arrayName}): ${movie.Title} (${movie.Year}) - GroupId: ${movie.GroupId} - IMDB: ${movie.ImdbId} - PTP: ${movie.Tags.filter(tag => tagsArray.includes(tag.toLowerCase())).join(', ')} - IMDb: ${keywordMatch.keywords.join(', ')}`);
+                                // Both PTP tags and IMDb data matched
+                                matchedTags = [...matchedTags, ...imdbMatchedTags];
+                                matchType = `PTP tags + IMDb ${imdbMatchTypes.join(' + ')}`;
+                                console.log(`Found movie with BOTH PTP tags AND IMDb matches (${arrayName}): ${movie.Title} (${movie.Year}) - GroupId: ${movie.GroupId} - IMDB: ${movie.ImdbId} - PTP: ${movie.Tags.filter(tag => tagsArray.includes(tag.toLowerCase())).join(', ')} - IMDb: ${imdbMatchTypes.join(', ')}`);
                             }
                         }
                     } catch (error) {
-                        console.warn(`Failed to check IMDb keywords for ${movie.Title} (${movie.ImdbId}):`, error);
+                        console.warn(`Failed to check IMDb data for ${movie.Title} (${movie.ImdbId}):`, error);
                     }
                 }
                 
@@ -2297,9 +2660,9 @@
     // Final fallback: ensure page is shown
     setTimeout(() => {
         if (DELAY_RENDER && !pageProcessed) {
-            console.log('Maximum timeout reached, showing page anyway');
+            console.log(`Maximum timeout reached (${FINAL_FALLBACK_TIMEOUT}ms), showing page anyway`);
             showPage();
         }
-    }, 3000);
+    }, FINAL_FALLBACK_TIMEOUT);
 
 })();
