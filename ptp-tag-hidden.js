@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP content hider
-// @version      1.9.1
+// @version      1.9.2
 // @description  Hide html elements with specified tags
 // @match        https://passthepopcorn.me/index.php*
 // @match        https://passthepopcorn.me/top10.php*
@@ -22,31 +22,46 @@
 
     // Load user configuration from GM storage with defaults
     let TAGS_TO_HIDE = GM_getValue('TAGS_TO_HIDE', 'family, animation, comedy, romance');
+    let IMDB_KEYWORDS_TO_HIDE = GM_getValue('IMDB_KEYWORDS_TO_HIDE', 'family, animation, comedy, romance');
     let DELAY_RENDER = GM_getValue('DELAY_RENDER', true);
     let HIDDEN_CACHE = GM_getValue('HIDDEN_CACHE', '{}');
+    let IMDB_KEYWORDS_CACHE = GM_getValue('IMDB_KEYWORDS_CACHE', '{}');
     let SHOW_LOADING_SPINNER = GM_getValue('SHOW_LOADING_SPINNER', false);
     let HIDE_TORRENT_PAGES = GM_getValue('HIDE_TORRENT_PAGES', true);
     let HIDE_TORRENT_PAGES_BY_COLLAGE = GM_getValue('HIDE_TORRENT_PAGES_BY_COLLAGE', true);
+    let ENABLE_IMDB_KEYWORD_CHECK = GM_getValue('ENABLE_IMDB_KEYWORD_CHECK', false);
     
     // Convert to array and clean up
     let tagsArray = TAGS_TO_HIDE.split(',').map(tag => tag.trim().toLowerCase()).filter(tag => tag.length > 0);
+    let imdbKeywordsArray = IMDB_KEYWORDS_TO_HIDE.split(',').map(keyword => keyword.trim().toLowerCase()).filter(keyword => keyword.length > 0);
     let hiddenCache = {};
+    let imdbKeywordsCache = {};
     let collageProcessingTimeout = null;
     let isProcessingCollages = false;
-    
+
     try {
         hiddenCache = JSON.parse(HIDDEN_CACHE);
     } catch (e) {
         console.warn('Failed to parse hidden cache, starting fresh:', e);
         hiddenCache = {};
     }
-    
+
+    try {
+        imdbKeywordsCache = JSON.parse(IMDB_KEYWORDS_CACHE);
+    } catch (e) {
+        console.warn('Failed to parse IMDb keywords cache, starting fresh:', e);
+        imdbKeywordsCache = {};
+    }
+
     console.log('Tags to hide:', tagsArray);
+    console.log('IMDb keywords to hide:', imdbKeywordsArray);
     console.log('Delay render:', DELAY_RENDER);
     console.log('Show loading spinner:', SHOW_LOADING_SPINNER);
     console.log('Hide torrent pages:', HIDE_TORRENT_PAGES);
     console.log('Hide torrent pages by collage tags:', HIDE_TORRENT_PAGES_BY_COLLAGE);
+    console.log('IMDb keyword checking:', ENABLE_IMDB_KEYWORD_CHECK);
     console.log('Cached hidden movies:', Object.keys(hiddenCache).length);
+    console.log('Cached IMDb keywords:', Object.keys(imdbKeywordsCache).length);
 
     // Function to add GroupID to cache
     function addToHiddenCache(groupId, title, year, matchedTags, imdbId = null) {
@@ -68,11 +83,11 @@
             return false;
         }
         
-        if (tagsArray.length === 0) {
+        if (tagsArray.length === 0 && imdbKeywordsArray.length === 0) {
             return false;
         }
         
-        // Check if the cached movie should still be hidden with current tags
+        // Check if the cached movie should still be hidden with current tags/keywords
         return shouldHideCachedMovie(hiddenCache[groupId]);
     }
 
@@ -85,19 +100,29 @@
 
     // Function to check if cached movie should still be hidden based on current tags
     function shouldHideCachedMovie(cachedMovie) {
-        if (tagsArray.length === 0) {
+        if (tagsArray.length === 0 && imdbKeywordsArray.length === 0) {
             return false;
         }
         
-        // Check if any of the cached movie's tags are still in the current hide list
-        return cachedMovie.tags.some(tag => tagsArray.includes(tag.toLowerCase()));
+        // Check if any of the cached movie's tags are still in the current hide lists
+        return cachedMovie.tags.some(tag => {
+            const lowercaseTag = tag.toLowerCase();
+            
+            // Check against PTP tags (remove imdb: prefix if present)
+            if (lowercaseTag.startsWith('imdb:')) {
+                const imdbKeyword = lowercaseTag.replace('imdb:', '');
+                return imdbKeywordsArray.includes(imdbKeyword);
+            } else {
+                return tagsArray.includes(lowercaseTag);
+            }
+        });
     }
 
     // Function to clean cache of items that no longer match current tags
     function cleanCache() {
-        // Don't clean cache if no tags are configured
-        if (tagsArray.length === 0) {
-            console.log('No tags configured for hiding - cache cleaning skipped to preserve entries');
+        // Don't clean cache if no tags or keywords are configured
+        if (tagsArray.length === 0 && imdbKeywordsArray.length === 0) {
+            console.log('No tags or keywords configured for hiding - cache cleaning skipped to preserve entries');
             return 0;
         }
         
@@ -119,10 +144,72 @@
         return cleanedCount;
     }
 
+    // Function to add IMDb keywords to cache
+    function addToIMDbKeywordsCache(imdbId, keywords, timestamp = Date.now()) {
+        imdbKeywordsCache[imdbId] = {
+            keywords: keywords,
+            cachedAt: timestamp,
+            lastChecked: timestamp
+        };
+        
+        // Save to GM storage
+        GM_setValue('IMDB_KEYWORDS_CACHE', JSON.stringify(imdbKeywordsCache));
+        console.log(`Added IMDb keywords to cache: ${imdbId} - Keywords: ${keywords.join(', ')}`);
+    }
+
+    // Function to check if cached IMDb keywords are still valid (not expired)
+    function isIMDbKeywordsCacheValid(imdbId, maxAgeHours = 24) {
+        if (!imdbKeywordsCache.hasOwnProperty(imdbId)) {
+            return false;
+        }
+        
+        const cached = imdbKeywordsCache[imdbId];
+        const ageInHours = (Date.now() - cached.cachedAt) / (1000 * 60 * 60);
+        
+        return ageInHours < maxAgeHours;
+    }
+
+    // Function to get cached IMDb keywords
+    function getCachedIMDbKeywords(imdbId) {
+        if (!isIMDbKeywordsCacheValid(imdbId)) {
+            return null;
+        }
+        
+        return imdbKeywordsCache[imdbId].keywords;
+    }
+
+    // Function to clean expired IMDb keywords cache
+    function cleanIMDbKeywordsCache(maxAgeHours = 24) {
+        let cleanedCount = 0;
+        const originalCacheSize = Object.keys(imdbKeywordsCache).length;
+        const cutoffTime = Date.now() - (maxAgeHours * 60 * 60 * 1000);
+        
+        Object.keys(imdbKeywordsCache).forEach(imdbId => {
+            if (imdbKeywordsCache[imdbId].cachedAt < cutoffTime) {
+                delete imdbKeywordsCache[imdbId];
+                cleanedCount++;
+            }
+        });
+        
+        if (cleanedCount > 0) {
+            GM_setValue('IMDB_KEYWORDS_CACHE', JSON.stringify(imdbKeywordsCache));
+            console.log(`Cleaned ${cleanedCount} expired IMDb keyword entries from cache (${originalCacheSize} -> ${Object.keys(imdbKeywordsCache).length})`);
+        }
+        
+        return cleanedCount;
+    }
+
+    // Function to clear IMDb keywords cache
+    function clearIMDbKeywordsCache() {
+        imdbKeywordsCache = {};
+        GM_setValue('IMDB_KEYWORDS_CACHE', '{}');
+        console.log('IMDb keywords cache cleared');
+    }
+
     // Register menu commands
-    GM_registerMenuCommand('Configure Tags to Hide', () => {
+    GM_registerMenuCommand('Configure PTP Tags to Hide', () => {
         const newTags = prompt(
-            'Enter tags to hide (separated by commas):\n\nExample: family, animation, comedy, romance',
+            'Enter PTP tags to hide (separated by commas):\n\nExample: family, animation, comedy, romance\n\nNote: These are PassThePopcorn user tags',
             TAGS_TO_HIDE
         );
         
@@ -131,8 +218,40 @@
             GM_setValue('TAGS_TO_HIDE', TAGS_TO_HIDE);
             tagsArray = TAGS_TO_HIDE.split(',').map(tag => tag.trim().toLowerCase()).filter(tag => tag.length > 0);
             
-            console.log('Updated tags to hide:', tagsArray);
+            console.log('Updated PTP tags to hide:', tagsArray);
+            
+            if (confirm('PTP tags updated!\n\nRefresh the page for changes to take effect?\n\nClick OK to refresh now, or Cancel to refresh later.')) {
+                window.location.reload();
+            }
+        }
+    });
+
+    GM_registerMenuCommand('Toggle IMDb Keyword Checking', () => {
+        ENABLE_IMDB_KEYWORD_CHECK = !ENABLE_IMDB_KEYWORD_CHECK;
+        GM_setValue('ENABLE_IMDB_KEYWORD_CHECK', ENABLE_IMDB_KEYWORD_CHECK);
+        
+        if (confirm(`IMDb keyword checking is now: ${ENABLE_IMDB_KEYWORD_CHECK ? 'ON' : 'OFF'}\n\nThis will check cached IMDb data for keyword matches.\n\nNote: This feature requires the PTP IMDb Combined script to be running.\n\nRefresh the page for changes to take effect?\n\nClick OK to refresh now, or Cancel to refresh later.`)) {
             window.location.reload();
+        }
+        console.log('IMDb keyword checking toggled to:', ENABLE_IMDB_KEYWORD_CHECK);
+    });
+
+    GM_registerMenuCommand('Configure IMDb Keywords to Hide', () => {
+        const newKeywords = prompt(
+            'Enter IMDb keywords to hide (separated by commas):\n\nExample: nudity, violence, sexual-content, drug-use\n\nNote: Use IMDb keyword format (lowercase, hyphenated)',
+            IMDB_KEYWORDS_TO_HIDE
+        );
+        
+        if (newKeywords !== null) {
+            IMDB_KEYWORDS_TO_HIDE = newKeywords.trim();
+            GM_setValue('IMDB_KEYWORDS_TO_HIDE', IMDB_KEYWORDS_TO_HIDE);
+            imdbKeywordsArray = IMDB_KEYWORDS_TO_HIDE.split(',').map(keyword => keyword.trim().toLowerCase()).filter(keyword => keyword.length > 0);
+            
+            console.log('Updated IMDb keywords to hide:', imdbKeywordsArray);
+            
+            if (confirm('IMDb keywords updated!\n\nRefresh the page for changes to take effect?\n\nClick OK to refresh now, or Cancel to refresh later.')) {
+                window.location.reload();
+            }
         }
     });
 
@@ -181,14 +300,38 @@
             return;
         }
         
-        const cacheList = cacheEntries.map(([groupId, data]) => 
-            `${data.title} (${data.year}) - IMDB: ${data.imdbId || 'N/A'} - Tags: ${data.tags.join(', ')}`
-        ).join('\n');
+        const cacheList = cacheEntries.map(([groupId, data]) => {
+            const tagTypes = data.tags.map(tag => {
+                if (tag.toLowerCase().startsWith('imdb:')) {
+                    return `IMDb:${tag.replace(/^imdb:/i, '')}`;
+                } else {
+                    return `PTP:${tag}`;
+                }
+            });
+            
+            return `${data.title} (${data.year}) - IMDB: ${data.imdbId || 'N/A'} - Tags: ${tagTypes.join(', ')}`;
+        }).join('\n');
         
         alert(`Hidden Movies Cache (${cacheEntries.length} entries):\n\n${cacheList}`);
     });
 
-    GM_registerMenuCommand('Clean Outdated Cache (changed tags)', () => {
+    GM_registerMenuCommand('View IMDb Keywords Cache', () => {
+        const cacheEntries = Object.entries(imdbKeywordsCache);
+        if (cacheEntries.length === 0) {
+            alert('No IMDb keywords currently in cache.');
+            return;
+        }
+        
+        const cacheList = cacheEntries.map(([imdbId, data]) => {
+            const age = Math.round((Date.now() - data.cachedAt) / (1000 * 60 * 60));
+            const keywordCount = data.keywords.length;
+            return `${imdbId}: ${keywordCount} keywords (cached ${age}h ago)`;
+        }).join('\n');
+        
+        alert(`IMDb Keywords Cache (${cacheEntries.length} entries):\n\n${cacheList}`);
+    });
+
+    GM_registerMenuCommand('Clean Outdated Cache (changed PTP tags)', () => {
         if (confirm("This is not really recommended. It's better to leave the cache alone in case you revert tag changes at a later date.\n\n" +
             "The script will ignore entries that do not have matching tags to your current list.\n\nDo you want to proceed with cleaning the cache?")) {
             const cleanedCount = cleanCache();
@@ -204,6 +347,17 @@
         }
     });
 
+    GM_registerMenuCommand('Clean Expired IMDb Keywords Cache', () => {
+        if (confirm('Clean expired IMDb keywords from cache?\n\nThis will remove entries older than 24 hours.')) {
+            const cleanedCount = cleanIMDbKeywordsCache();
+            if (cleanedCount > 0) {
+                alert(`Cleaned ${cleanedCount} expired IMDb keyword entries from cache.`);
+            } else {
+                alert('No expired entries found - cache is already clean.');
+            }
+        }
+    });
+
     GM_registerMenuCommand('Clear Hidden Cache', () => {
         if (confirm(`Clear the hidden movies cache?\n\nThis will remove ${Object.keys(hiddenCache).length} cached entries.`)) {
             clearHiddenCache();
@@ -211,15 +365,152 @@
         }
     });
 
+    GM_registerMenuCommand('Clear IMDb Keywords Cache', () => {
+        if (confirm(`Clear the IMDb keywords cache?\n\nThis will remove ${Object.keys(imdbKeywordsCache).length} cached entries.`)) {
+            clearIMDbKeywordsCache();
+            alert('IMDb keywords cache cleared.');
+        }
+    });
+
+    GM_registerMenuCommand('Clear All Caches', () => {
+        const hiddenCount = Object.keys(hiddenCache).length;
+        const keywordsCount = Object.keys(imdbKeywordsCache).length;
+        
+        if (confirm(`Clear all caches?\n\nHidden movies: ${hiddenCount} entries\nIMDb keywords: ${keywordsCount} entries`)) {
+            clearHiddenCache();
+            clearIMDbKeywordsCache();
+            window.location.reload();
+        }
+    });
+
     GM_registerMenuCommand('Reset to Defaults', () => {
         if (confirm('Reset all settings to defaults?\n\nTags: family, animation, comedy, romance\nDelay Render: ON\nHide Torrent Pages: ON\nHide by Collage Tags: ON\nClear Cache: YES')) {
             GM_setValue('TAGS_TO_HIDE', 'family, animation, comedy, romance');
+            GM_setValue('IMDB_KEYWORDS_TO_HIDE', 'family, animation, comedy, romance');
             GM_setValue('DELAY_RENDER', true);
             GM_setValue('SHOW_LOADING_SPINNER', false);
             GM_setValue('HIDE_TORRENT_PAGES', true);
             GM_setValue('HIDE_TORRENT_PAGES_BY_COLLAGE', true);
+            GM_setValue('ENABLE_IMDB_KEYWORD_CHECK', false);
             
             window.location.reload();
+        }
+    });
+
+    GM_registerMenuCommand('Test IMDb Event Communication', async () => {
+        // Try to get current page's IMDb ID first
+        let testImdbId = null;
+        
+        // Check if we're on a torrent page and can extract IMDb ID
+        const imdbLink = document.querySelector("a#imdb-title-link.rating");
+        if (imdbLink) {
+            const imdbUrl = imdbLink.getAttribute("href");
+            if (imdbUrl) {
+                const urlParts = imdbUrl.split("/");
+                testImdbId = urlParts[4];
+                if (testImdbId && !testImdbId.startsWith('tt')) {
+                    testImdbId = 'tt' + testImdbId;
+                }
+            }
+        }
+        
+        // Fallback: use a known IMDb ID
+        if (!testImdbId) {
+            testImdbId = prompt('Enter IMDb ID to test (e.g., tt1637976):', 'tt1637976');
+            if (!testImdbId || !testImdbId.startsWith('tt')) {
+                alert('Invalid IMDb ID entered');
+                return;
+            }
+        }
+        
+        console.log(`=== TESTING IMDb EVENT COMMUNICATION ===`);
+        console.log(`Testing with IMDb ID: ${testImdbId}`);
+        console.log(`IMDb keyword checking enabled: ${ENABLE_IMDB_KEYWORD_CHECK}`);
+        console.log(`IMDb keywords to hide: [${imdbKeywordsArray.join(', ')}]`);
+        
+        // First check if we have cached keywords
+        const cachedKeywords = getCachedIMDbKeywords(testImdbId);
+        if (cachedKeywords) {
+            console.log(`Found cached keywords for ${testImdbId}:`, cachedKeywords);
+        } else {
+            console.log(`No cached keywords found for ${testImdbId}`);
+        }
+        
+        try {
+            console.log('Testing raw event system...');
+            
+            const rawResponse = await new Promise((resolve, reject) => {
+                const requestId = Date.now() + '_test_' + Math.random();
+                let timeoutId;
+                
+                console.log(`Sending test requestIMDbData event with requestId: ${requestId}`);
+                
+                const responseHandler = (event) => {
+                    console.log(`Received imdbDataResponse event:`, event.detail);
+                    
+                    if (event.detail.requestId === requestId) {
+                        console.log(`This response matches our requestId: ${requestId}`);
+                        document.removeEventListener('imdbDataResponse', responseHandler);
+                        if (timeoutId) {
+                            clearTimeout(timeoutId);
+                        }
+                        resolve(event.detail);
+                    } else {
+                        console.log(`Response requestId ${event.detail.requestId} doesn't match our requestId ${requestId}`);
+                    }
+                };
+                
+                document.addEventListener('imdbDataResponse', responseHandler);
+                
+                // Send the request
+                document.dispatchEvent(new CustomEvent('requestIMDbData', {
+                    detail: {
+                        imdbId: testImdbId,
+                        requestId: requestId
+                    }
+                }));
+                
+                timeoutId = setTimeout(() => {
+                    document.removeEventListener('imdbDataResponse', responseHandler);
+                    console.log('Raw event test timed out');
+                    reject(new Error('Raw event test timeout'));
+                }, 5000);
+            });
+            
+            console.log('=== RAW EVENT RESPONSE ===');
+            console.log('Full response:', rawResponse);
+            
+            if (rawResponse.found) {
+                console.log('Response source:', rawResponse.source);
+                console.log('Data structure:', rawResponse.data ? Object.keys(rawResponse.data) : 'No data');
+                
+                // Use the correct data structure path
+                if (rawResponse.data && rawResponse.data.data && rawResponse.data.data.title && rawResponse.data.data.title.keywords) {
+                    const keywords = rawResponse.data.data.title.keywords.edges || [];
+                    const keywordTexts = keywords.map(edge => edge.node ? edge.node.legacyId : null).filter(Boolean);
+                    console.log('Keywords found:', keywordTexts);
+                    
+                    const matchedKeywords = keywordTexts.filter(keyword => 
+                        imdbKeywordsArray.includes(keyword.toLowerCase())
+                    );
+                    
+                    console.log('Matched keywords:', matchedKeywords);
+                    
+                    if (matchedKeywords.length > 0) {
+                        alert(`Raw event test successful!\n\nSource: ${rawResponse.source}\nKeywords found: ${keywordTexts.length}\nMatched keywords: ${matchedKeywords.join(', ')}\n\nCheck console for full details.`);
+                    } else {
+                        alert(`Raw event test successful but no keyword matches!\n\nSource: ${rawResponse.source}\nKeywords found: ${keywordTexts.length}\nYour filter: [${imdbKeywordsArray.join(', ')}]\nIMDb keywords: [${keywordTexts.slice(0, 10).join(', ')}${keywordTexts.length > 10 ? '...' : ''}]\n\nCheck console for details.`);
+                    }
+                } else {
+                    alert(`Raw event test successful but unexpected data structure!\n\nSource: ${rawResponse.source}\nExpected: data.data.title.keywords.edges\nActual: Check console for structure\n\nCheck console for details.`);
+                }
+            } else {
+                alert(`No IMDb data found for ${testImdbId}\n\nSource: ${rawResponse.source || 'Unknown'}\nError: ${rawResponse.error || 'No error message'}\n\nPossible issues:\n1. Cache expired\n2. No data for this ID\n3. Wrong cache key format\n\nCheck console for details.`);
+            }
+            
+        } catch (error) {
+            console.error('Error testing IMDb event communication:', error);
+            alert(`Error testing IMDb communication:\n\n${error.message}\n\nPossible issues:\n1. Other script not loaded\n2. Event listener not working\n3. Cache access problems\n\nCheck console for details.`);
         }
     });
 
@@ -527,33 +818,396 @@
 
         console.log('Extracted IMDB ID:', imdbId || 'N/A');
 
-        // Check if any tags match our filter
-        const matchedTags = tags.filter(tag => tagsArray.includes(tag.toLowerCase()));
+        // Check if any PTP tags match our filter
+        const ptpMatchedTags = tags.filter(tag => tagsArray.includes(tag.toLowerCase()));
         
-        if (matchedTags.length > 0) {
-            console.log(`Found torrent page with target tags: ${title} (${year}) - GroupId: ${groupId} - IMDB: ${imdbId || 'N/A'} - Matched tags: ${matchedTags.join(', ')}`);
+        // Check IMDb keywords if enabled (regardless of PTP tag matches)
+        let imdbMatchedKeywords = [];
+        let shouldHideByImdb = false;
+        
+        if (ENABLE_IMDB_KEYWORD_CHECK && imdbId) {
+            // For torrent pages, we need to handle this synchronously or show a loading state
+            // Let's add the IMDb check asynchronously
+            checkIMDbKeywords(imdbId, title, year).then(keywordMatch => {
+                if (keywordMatch) {
+                    imdbMatchedKeywords = keywordMatch.keywords.map(k => `imdb:${k}`);
+                    shouldHideByImdb = true;
+                    
+                    console.log(`Found torrent page with IMDb keyword matches: ${title} (${year}) - GroupId: ${groupId} - IMDB: ${imdbId} - Matched keywords: ${keywordMatch.keywords.join(', ')}`);
+                    
+                    // If we should hide by IMDb and the page isn't already hidden by PTP tags
+                    if (ptpMatchedTags.length === 0) {
+                        // Add to cache with IMDb keyword tags
+                        addToHiddenCache(groupId, title, year, imdbMatchedKeywords, imdbId);
+                        
+                        // Hide the torrent page if the option is enabled
+                        if (HIDE_TORRENT_PAGES) {
+                            hideTorrentPageContent(title, year, imdbMatchedKeywords);
+                            console.log('Torrent page content replaced by IMDb keywords, showing page');
+                            showPage();
+                        }
+                    } else {
+                        // Both PTP and IMDb matched, update cache with combined tags
+                        const combinedTags = [...ptpMatchedTags, ...imdbMatchedKeywords];
+                        addToHiddenCache(groupId, title, year, combinedTags, imdbId);
+                    }
+                }
+            }).catch(error => {
+                console.warn(`Failed to check IMDb keywords for torrent page ${title} (${imdbId}):`, error);
+            });
+        }
+        
+        // Handle PTP tag matches immediately
+        if (ptpMatchedTags.length > 0) {
+            console.log(`Found torrent page with target PTP tags: ${title} (${year}) - GroupId: ${groupId} - IMDB: ${imdbId || 'N/A'} - Matched tags: ${ptpMatchedTags.join(', ')}`);
             
             // Add to cache
-            addToHiddenCache(groupId, title, year, matchedTags, imdbId);
+            addToHiddenCache(groupId, title, year, ptpMatchedTags, imdbId);
             
             // Hide the torrent page if the option is enabled
             if (HIDE_TORRENT_PAGES) {
-                hideTorrentPageContent(title, year, matchedTags);
+                hideTorrentPageContent(title, year, ptpMatchedTags);
                 
                 // Show page immediately since we've replaced the content
-                console.log('Torrent page content replaced, showing page immediately');
+                console.log('Torrent page content replaced by PTP tags, showing page immediately');
                 showPage();
                 return true; // Indicate that content was hidden and page should be shown
             }
         } else if (tags.length > 0) {
-            console.log(`Found torrent page without matching tags: ${title} (${year}) - GroupId: ${groupId} - IMDB: ${imdbId || 'N/A'} - Available tags: ${tags.join(', ')}`);
-            return true;
+            console.log(`Found torrent page without matching PTP tags: ${title} (${year}) - GroupId: ${groupId} - IMDB: ${imdbId || 'N/A'} - Available tags: ${tags.join(', ')}`);
+            
+            // Don't return true here - let IMDb checking happen asynchronously
+            // The page will be shown by the normal flow or by the IMDb check above
         } else {
             console.log(`Found torrent page with no tags: ${title} (${year}) - GroupId: ${groupId} - IMDB: ${imdbId || 'N/A'}`);
-            return true;
         }
         
-        return false; // No content was hidden
+        return false; // No immediate content hiding by PTP tags
+    }
+
+    // Global flag to track IMDb script availability
+    let imdbScriptAvailable = null; // null = unknown, true = available, false = unavailable
+
+    // Function to check if the IMDb Combined script is ready
+    function waitForIMDbScript(maxWaitTime = 10000) {
+        return new Promise((resolve, reject) => {
+            // If we already know the script is unavailable, reject immediately
+            if (imdbScriptAvailable === false) {
+                reject(new Error('IMDb Combined script is not available (previously failed)'));
+                return;
+            }
+            
+            // If we already know the script is available, resolve immediately
+            if (imdbScriptAvailable === true) {
+                resolve(true);
+                return;
+            }
+            
+            const startTime = Date.now();
+            let attemptCount = 0;
+            const maxAttempts = 2;
+            
+            // First, try to ping the script to see if it's ready
+            const checkReady = () => {
+                if (Date.now() - startTime > maxWaitTime) {
+                    imdbScriptAvailable = false; // Mark as unavailable
+                    reject(new Error('Timeout waiting for IMDb Combined script'));
+                    return;
+                }
+                
+                if (attemptCount >= maxAttempts) {
+                    imdbScriptAvailable = false; // Mark as unavailable
+                    reject(new Error(`Failed to reach IMDb Combined script after ${maxAttempts} attempts`));
+                    return;
+                }
+                
+                attemptCount++;
+                console.log(`Attempting to ping IMDb Combined script (attempt ${attemptCount}/${maxAttempts})`);
+                
+                // Send a ping event
+                const pingId = Date.now() + '_ping_' + Math.random();
+                let pingTimeout;
+                
+                const pongHandler = (event) => {
+                    if (event.detail.pingId === pingId) {
+                        document.removeEventListener('imdbScriptPong', pongHandler);
+                        if (pingTimeout) clearTimeout(pingTimeout);
+                        console.log(`IMDb Combined script is ready (responded on attempt ${attemptCount})`);
+                        imdbScriptAvailable = true; // Mark as available
+                        resolve(true);
+                    }
+                };
+                
+                document.addEventListener('imdbScriptPong', pongHandler);
+                
+                // Send ping
+                document.dispatchEvent(new CustomEvent('imdbScriptPing', {
+                    detail: { pingId: pingId }
+                }));
+                
+                // If no response in 1 second, try again or give up
+                pingTimeout = setTimeout(() => {
+                    document.removeEventListener('imdbScriptPong', pongHandler);
+                    
+                    if (attemptCount < maxAttempts) {
+                        console.log(`No response from IMDb Combined script on attempt ${attemptCount}, retrying in 500ms...`);
+                        setTimeout(checkReady, 500); // Try again in 500ms
+                    } else {
+                        console.log(`No response from IMDb Combined script after ${maxAttempts} attempts, giving up`);
+                        imdbScriptAvailable = false; // Mark as unavailable
+                        reject(new Error(`No response from IMDb Combined script after ${maxAttempts} attempts`));
+                    }
+                }, 1000);
+            };
+            
+            checkReady();
+        });
+    }
+
+    // checkIMDbKeywords function with global availability check and processing wait
+    async function checkIMDbKeywords(imdbId, title, year) {
+        if (!imdbId || imdbKeywordsArray.length === 0) return null;
+        
+        try {
+            // First, check if we have valid cached keywords
+            const cachedKeywords = getCachedIMDbKeywords(imdbId);
+            
+            if (cachedKeywords) {
+                console.log(`Using cached IMDb keywords for ${title} (${imdbId}):`, cachedKeywords);
+                
+                // Check if any cached keywords match our IMDb keywords list
+                const matchedKeywords = cachedKeywords.filter(keyword => 
+                    imdbKeywordsArray.includes(keyword.toLowerCase())
+                );
+                
+                if (matchedKeywords.length > 0) {
+                    console.log(`Found cached IMDb keyword matches for ${title}: ${matchedKeywords.join(', ')}`);
+                    return {
+                        matched: true,
+                        keywords: matchedKeywords,
+                        allKeywords: cachedKeywords,
+                        fromCache: true
+                    };
+                } else {
+                    console.log(`Cached keywords for ${title} don't match current filter list`);
+                    return null;
+                }
+            }
+            
+            // Check if IMDb script is known to be unavailable
+            if (imdbScriptAvailable === false) {
+                console.log(`Skipping IMDb keyword check for ${title} (${imdbId}) - IMDb script unavailable`);
+                return null;
+            }
+            
+            // No valid cache, first wait for the IMDb script to be ready
+            console.log(`No cached keywords for ${imdbId}, checking if IMDb combined script is ready...`);
+            
+            try {
+                await waitForIMDbScript(5000); // Wait up to 5 seconds
+            } catch (error) {
+                console.warn(`IMDb Combined script not ready: ${error.message}`);
+                return null;
+            }
+            
+            console.log(`IMDb script ready, requesting keywords for ${imdbId}...`);
+            
+            const response = await new Promise((resolve, reject) => {
+                const requestId = Date.now() + '_keywords_' + Math.random();
+                let timeoutId;
+                
+                console.log(`checkIMDbKeywords: Sending IMDb data request for ${imdbId} with requestId: ${requestId}`);
+                
+                // Create the response handler
+                const responseHandler = (event) => {
+                    console.log(`checkIMDbKeywords received imdbDataResponse event:`, event.detail);
+                    
+                    // Check if this response is for our request
+                    if (event.detail.requestId === requestId) {
+                        console.log(`checkIMDbKeywords: This response matches our requestId: ${requestId}`);
+                        // Clean up: remove event listener and clear timeout
+                        document.removeEventListener('imdbDataResponse', responseHandler);
+                        if (timeoutId) {
+                            clearTimeout(timeoutId);
+                        }
+                        
+                        resolve(event.detail);
+                    } else {
+                        console.log(`checkIMDbKeywords: Response requestId ${event.detail.requestId} doesn't match our requestId ${requestId}`);
+                    }
+                };
+                
+                // Add the event listener
+                document.addEventListener('imdbDataResponse', responseHandler);
+                
+                // Send the request
+                document.dispatchEvent(new CustomEvent('requestIMDbData', {
+                    detail: {
+                        imdbId: imdbId,
+                        requestId: requestId
+                    }
+                }));
+                
+                // Set timeout for cleanup (5 seconds)
+                timeoutId = setTimeout(() => {
+                    // Clean up: remove event listener
+                    document.removeEventListener('imdbDataResponse', responseHandler);
+                    console.warn(`checkIMDbKeywords: IMDb data request timeout for ${imdbId} (requestId: ${requestId})`);
+                    reject(new Error(`IMDb keywords request timeout for ${imdbId}`));
+                }, 5000);
+            });
+            
+            // Check if data was found or if we need to wait for processing
+            if (response.found === false) {
+                console.log(`No cached IMDb data found for ${imdbId}, waiting for IMDb script to fetch and process...`);
+                
+                // Wait for the IMDb processing to complete
+                const processingResult = await new Promise((resolve, reject) => {
+                    let processingTimeoutId;
+                    
+                    const processingHandler = (event) => {
+                        const { imdbId: eventImdbId, success, error } = event.detail;
+                        
+                        // Check if this event is for our IMDb ID
+                        if (eventImdbId === imdbId) {
+                            console.log(`checkIMDbKeywords: Received imdbProcessingComplete for ${imdbId}, success: ${success}`);
+                            
+                            // Clean up
+                            document.removeEventListener('imdbProcessingComplete', processingHandler);
+                            if (processingTimeoutId) {
+                                clearTimeout(processingTimeoutId);
+                            }
+                            
+                            if (success) {
+                                resolve(true);
+                            } else {
+                                console.warn(`checkIMDbKeywords: IMDb processing failed for ${imdbId}: ${error}`);
+                                resolve(false);
+                            }
+                        }
+                    };
+                    
+                    // Listen for processing completion
+                    document.addEventListener('imdbProcessingComplete', processingHandler);
+                    
+                    // Set timeout for processing (10 seconds)
+                    processingTimeoutId = setTimeout(() => {
+                        document.removeEventListener('imdbProcessingComplete', processingHandler);
+                        console.warn(`checkIMDbKeywords: Timeout waiting for IMDb processing completion for ${imdbId}`);
+                        resolve(false);
+                    }, 10000);
+                });
+                
+                if (processingResult) {
+                    console.log(`checkIMDbKeywords: IMDb processing completed for ${imdbId}, retrying data request...`);
+                    
+                    // Retry the data request now that processing is complete
+                    const retryResponse = await new Promise((resolve, reject) => {
+                        const retryRequestId = Date.now() + '_retry_' + Math.random();
+                        let retryTimeoutId;
+                        
+                        console.log(`checkIMDbKeywords: Retrying IMDb data request for ${imdbId} with requestId: ${retryRequestId}`);
+                        
+                        const retryResponseHandler = (event) => {
+                            console.log(`checkIMDbKeywords received retry imdbDataResponse event:`, event.detail);
+                            
+                            if (event.detail.requestId === retryRequestId) {
+                                console.log(`checkIMDbKeywords: Retry response matches our requestId: ${retryRequestId}`);
+                                document.removeEventListener('imdbDataResponse', retryResponseHandler);
+                                if (retryTimeoutId) {
+                                    clearTimeout(retryTimeoutId);
+                                }
+                                resolve(event.detail);
+                            }
+                        };
+                        
+                        document.addEventListener('imdbDataResponse', retryResponseHandler);
+                        
+                        // Send the retry request
+                        document.dispatchEvent(new CustomEvent('requestIMDbData', {
+                            detail: {
+                                imdbId: imdbId,
+                                requestId: retryRequestId
+                            }
+                        }));
+                        
+                        retryTimeoutId = setTimeout(() => {
+                            document.removeEventListener('imdbDataResponse', retryResponseHandler);
+                            console.warn(`checkIMDbKeywords: Retry request timeout for ${imdbId}`);
+                            reject(new Error(`Retry IMDb keywords request timeout for ${imdbId}`));
+                        }, 5000);
+                    });
+                    
+                    // Process the retry response
+                    return await processIMDbResponse(retryResponse, title, imdbId);
+                } else {
+                    console.log(`checkIMDbKeywords: IMDb processing failed or timed out for ${imdbId}`);
+                    // Cache empty result to avoid repeated requests
+                    addToIMDbKeywordsCache(imdbId, []);
+                    return null;
+                }
+            } else {
+                // Data was found immediately, process it
+                return await processIMDbResponse(response, title, imdbId);
+            }
+            
+        } catch (error) {
+            console.warn(`Failed to check IMDb keywords for ${imdbId}:`, error);
+            return null;
+        }
+    }
+
+    // Helper function to process IMDb response data
+    async function processIMDbResponse(response, title, imdbId) {
+        // Process the response - use the correct data structure
+        let keywordsData = null;
+        
+        if (response.found && response.data) {
+            if (response.data.data && response.data.data.title && response.data.data.title.keywords) {
+                // Correct GraphQL structure: data.data.title.keywords
+                keywordsData = response.data.data.title.keywords;
+                console.log(`Found keywords in GraphQL structure for ${title}`);
+            } else if (response.data.title && response.data.title.keywords) {
+                // Fallback: direct structure data.title.keywords (probably won't be used but kept for compatibility)
+                keywordsData = response.data.title.keywords;
+                console.log(`Found keywords in direct structure for ${title}`);
+            }
+        }
+        
+        if (keywordsData) {
+            const keywords = keywordsData.edges || [];
+            
+            // Extract keyword legacyIds with proper null checking
+            const keywordTexts = keywords.map(edge => edge.node ? edge.node.legacyId : null).filter(Boolean);
+            console.log(`Received IMDb keywords for ${title} (${imdbId}):`, keywordTexts);
+            
+            // Cache the keywords for future use
+            addToIMDbKeywordsCache(imdbId, keywordTexts);
+            
+            // Check if any keywords match our IMDb keywords list
+            const matchedKeywords = keywordTexts.filter(keyword => 
+                imdbKeywordsArray.includes(keyword.toLowerCase())
+            );
+            
+            if (matchedKeywords.length > 0) {
+                console.log(`Found IMDb keyword matches for ${title}: ${matchedKeywords.join(', ')}`);
+                return {
+                    matched: true,
+                    keywords: matchedKeywords,
+                    allKeywords: keywordTexts,
+                    fromCache: false
+                };
+            }
+        } else if (response.found === false) {
+            // Cache empty result to avoid repeated requests for movies without data
+            addToIMDbKeywordsCache(imdbId, []);
+            console.log(`No IMDb data found for ${imdbId}, cached empty result`);
+        } else {
+            console.warn(`Received response but no keywords data found for ${imdbId}:`, response);
+            console.log('Response data structure:', response.data ? Object.keys(response.data) : 'No data');
+        }
+        
+        return null;
     }
 
     // Function to hide torrent page content when matched by collage tags
@@ -925,7 +1579,7 @@
         return false;
     }
 
-    function hideMoviesWithTargetTags() {
+    async function hideMoviesWithTargetTags() {
         // Check page type
         const isForumPage = window.location.pathname.includes('/forums.php');
         const isRequestPage = window.location.pathname.includes('/requests.php') && !window.location.search.includes('action=view');
@@ -939,7 +1593,6 @@
             if (hasAnchor) {
                 console.log('Forum or request anchor navigation detected:', window.location.hash);
                 
-                // Links already processed in universal section above
                 if (isRequestPage) {
                     hideRequestEntries();
                 }
@@ -950,7 +1603,6 @@
                         targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
                         console.log('Scrolled to anchor:', window.location.hash);
                     }
-                    // Process links again in case any loaded after initial processing
                     hideCachedTorrentLinks();
                     hideCachedCollageLinks();
                     if (isRequestPage) {
@@ -961,8 +1613,6 @@
                 return;
             }
             
-            // For normal forum/request page loading (no anchor)
-            // Links already processed in universal section above
             if (isRequestPage) {
                 hideRequestEntries();
             }
@@ -971,9 +1621,8 @@
                 console.log('Forum/request page complete, showing immediately');
                 showPage();
             } else {
-                // Wait just a moment for DOM to complete
                 setTimeout(() => {
-                    hideCachedTorrentLinks(); // Check again in case new links loaded
+                    hideCachedTorrentLinks();
                     hideCachedCollageLinks();
                     if (isRequestPage) {
                         hideRequestEntries();
@@ -990,14 +1639,9 @@
             
             const hasAnchor = window.location.hash;
             
-            // Set processing flag to prevent mutation observer from triggering
             isProcessingCollages = true;
-            
-            // Links already processed in universal section above
-            // Process current page collage entries
             hideCollageEntries();
             
-            // Reset processing flag after a short delay
             setTimeout(() => {
                 isProcessingCollages = false;
             }, 500);
@@ -1019,7 +1663,6 @@
                 console.log('Collages page complete, showing immediately');
                 showPage();
             } else {
-                // Wait for DOM to complete
                 setTimeout(() => {
                     showPage();
                 }, 100);
@@ -1033,7 +1676,80 @@
         // Find all script tags
         const scripts = document.querySelectorAll('script');
         
-        scripts.forEach(script => {
+        // Helper function to process movie arrays with optional IMDb keyword checking
+        const processMovieArrayAsync = async (movies, arrayName, arrayIndex = -1) => {
+            if (!movies || !Array.isArray(movies)) return false;
+            
+            let elementsHidden = false;
+            
+            for (let movieIndex = 0; movieIndex < movies.length; movieIndex++) {
+                const movie = movies[movieIndex];
+                
+                // First check if movie is already in cache AND still valid with current tags/keywords
+                if (isInHiddenCacheAndValid(movie.GroupId)) {
+                    console.log(`Found valid cached movie: ${movie.Title} (${movie.Year}) - GroupId: ${movie.GroupId}`);
+                    hideSpecificMovieElement(arrayIndex, movieIndex, movie.GroupId, movie.Title, hiddenCache[movie.GroupId].tags);
+                    elementsHidden = true;
+                    continue; // Skip further processing for this movie
+                }
+                
+                // Check if movie should be hidden based on PTP tags OR IMDb keywords
+                let shouldHide = false;
+                let matchedTags = [];
+                let matchType = '';
+                
+                // Check PTP tags first
+                if (movie.Tags && movie.Tags.some(tag => tagsArray.includes(tag.toLowerCase()))) {
+                    const ptpMatchedTags = movie.Tags.filter(tag => tagsArray.includes(tag.toLowerCase()));
+                    matchedTags = ptpMatchedTags;
+                    shouldHide = true;
+                    matchType = 'PTP tags';
+                    console.log(`Found movie with target PTP tags (${arrayName}): ${movie.Title} (${movie.Year}) - GroupId: ${movie.GroupId} - IMDB: ${movie.ImdbId || 'N/A'} - Matched tags: ${ptpMatchedTags.join(', ')}`);
+                }
+                
+                // Check IMDb keywords if enabled (regardless of PTP tag matches)
+                if (ENABLE_IMDB_KEYWORD_CHECK && movie.ImdbId) {
+                    try {
+                        const keywordMatch = await checkIMDbKeywords(movie.ImdbId, movie.Title, movie.Year);
+                        if (keywordMatch) {
+                            const imdbTags = keywordMatch.keywords.map(k => `imdb:${k}`);
+                            
+                            if (!shouldHide) {
+                                // Only IMDb keywords matched
+                                matchedTags = imdbTags;
+                                shouldHide = true;
+                                matchType = 'IMDb keywords';
+                                console.log(`Found movie with IMDb keyword matches (${arrayName}): ${movie.Title} (${movie.Year}) - GroupId: ${movie.GroupId} - IMDB: ${movie.ImdbId} - Matched keywords: ${keywordMatch.keywords.join(', ')}`);
+                            } else {
+                                // Both PTP tags and IMDb keywords matched
+                                matchedTags = [...matchedTags, ...imdbTags];
+                                matchType = 'PTP tags + IMDb keywords';
+                                console.log(`Found movie with BOTH PTP tags AND IMDb keyword matches (${arrayName}): ${movie.Title} (${movie.Year}) - GroupId: ${movie.GroupId} - IMDB: ${movie.ImdbId} - PTP: ${movie.Tags.filter(tag => tagsArray.includes(tag.toLowerCase())).join(', ')} - IMDb: ${keywordMatch.keywords.join(', ')}`);
+                            }
+                        }
+                    } catch (error) {
+                        console.warn(`Failed to check IMDb keywords for ${movie.Title} (${movie.ImdbId}):`, error);
+                    }
+                }
+                
+                // Hide the movie if it matches any criteria
+                if (shouldHide) {
+                    console.log(`Hiding movie based on ${matchType}: ${movie.Title} (${movie.Year}) - GroupId: ${movie.GroupId} - All matched tags: ${matchedTags.join(', ')}`);
+                    
+                    // Add to cache with all matched tags (both PTP and IMDb)
+                    addToHiddenCache(movie.GroupId, movie.Title, movie.Year, matchedTags, movie.ImdbId);
+                    
+                    // Hide corresponding HTML elements
+                    hideSpecificMovieElement(arrayIndex, movieIndex, movie.GroupId, movie.Title, matchedTags);
+                    elementsHidden = true;
+                }
+            }
+            
+            return elementsHidden;
+        };
+        
+        // Process scripts for movie data
+        for (const script of scripts) {
             const scriptText = script.textContent || script.innerHTML;
             
             // Check for coverViewJsonData
@@ -1053,26 +1769,12 @@
                         
                         // Check if Movies array exists
                         if (data.Movies && Array.isArray(data.Movies)) {
-                            data.Movies.forEach((movie, movieIndex) => {
-                                // First check if movie is already in cache AND still valid with current tags
-                                if (isInHiddenCacheAndValid(movie.GroupId)) {
-                                    console.log(`Found valid cached movie: ${movie.Title} (${movie.Year}) - GroupId: ${movie.GroupId}`);
-                                    hideSpecificMovieElement(arrayIndex, movieIndex, movie.GroupId, movie.Title, hiddenCache[movie.GroupId].tags);
-                                    hiddenElements = true;
-                                }
-                                // Then check if movie has any of the current target tags
-                                else if (movie.Tags && movie.Tags.some(tag => tagsArray.includes(tag.toLowerCase()))) {
-                                    const matchedTags = movie.Tags.filter(tag => tagsArray.includes(tag.toLowerCase()));
-                                    console.log(`Found movie with target tags (coverViewJsonData): ${movie.Title} (${movie.Year}) - GroupId: ${movie.GroupId} - IMDB: ${movie.ImdbId || 'N/A'} - Matched tags: ${matchedTags.join(', ')} - Array Index: ${arrayIndex}, Movie Index: ${movieIndex}`);
-                                    
-                                    // Add to cache with IMDB ID
-                                    addToHiddenCache(movie.GroupId, movie.Title, movie.Year, matchedTags, movie.ImdbId);
-                                    
-                                    // Hide corresponding HTML elements using both indices
-                                    hideSpecificMovieElement(arrayIndex, movieIndex, movie.GroupId, movie.Title, matchedTags);
-                                    hiddenElements = true;
-                                }
-                            });
+                            console.log(`Processing coverViewJsonData[${arrayIndex}] with ${data.Movies.length} movies, IMDb checking: ${ENABLE_IMDB_KEYWORD_CHECK ? 'enabled' : 'disabled'}`);
+                            
+                            const elementsHidden = await processMovieArrayAsync(data.Movies, `coverViewJsonData[${arrayIndex}]`, arrayIndex);
+                            if (elementsHidden) {
+                                hiddenElements = true;
+                            }
                         }
                     } catch (e) {
                         console.warn('Failed to parse coverViewJsonData:', e);
@@ -1091,48 +1793,29 @@
                         const pageDataString = pageDataMatch[1];
                         const pageData = JSON.parse(pageDataString);
                         
-                        // Helper function to process movie arrays
-                        const processMovieArray = (movies, arrayName) => {
-                            if (movies && Array.isArray(movies)) {
-                                movies.forEach((movie, movieIndex) => {
-                                    // First check if movie is already in cache AND still valid with current tags
-                                    if (isInHiddenCacheAndValid(movie.GroupId)) {
-                                        console.log(`Found valid cached movie: ${movie.Title} (${movie.Year}) - GroupId: ${movie.GroupId}`);
-                                        hideSpecificMovieElement(-1, movieIndex, movie.GroupId, movie.Title, hiddenCache[movie.GroupId].tags);
-                                        hiddenElements = true;
-                                    }
-                                    // Then check if movie has any of the current target tags
-                                    else if (movie.Tags && movie.Tags.some(tag => tagsArray.includes(tag.toLowerCase()))) {
-                                        const matchedTags = movie.Tags.filter(tag => tagsArray.includes(tag.toLowerCase()));
-                                        console.log(`Found movie with target tags (${arrayName}): ${movie.Title} (${movie.Year}) - GroupId: ${movie.GroupId} - IMDB: ${movie.ImdbId || 'N/A'} - Matched tags: ${matchedTags.join(', ')} - Movie Index: ${movieIndex}`);
-                                        
-                                        // Add to cache with IMDB ID
-                                        addToHiddenCache(movie.GroupId, movie.Title, movie.Year, matchedTags, movie.ImdbId);
-                                        
-                                        // Hide corresponding HTML elements
-                                        hideSpecificMovieElement(-1, movieIndex, movie.GroupId, movie.Title, matchedTags);
-                                        hiddenElements = true;
-                                    }
-                                });
-                            }
-                        };
+                        console.log(`Processing PageData, IMDb checking: ${ENABLE_IMDB_KEYWORD_CHECK ? 'enabled' : 'disabled'}`);
                         
                         // Process all movie arrays
-                        processMovieArray(pageData.Movies, 'PageData.Movies');
-                        processMovieArray(pageData.RecentRatings, 'PageData.RecentRatings');
-                        processMovieArray(pageData.RecentSnatches, 'PageData.RecentSnatches');
-                        processMovieArray(pageData.RecentUploads, 'PageData.RecentUploads');
+                        const results = await Promise.all([
+                            processMovieArrayAsync(pageData.Movies, 'PageData.Movies'),
+                            processMovieArrayAsync(pageData.RecentRatings, 'PageData.RecentRatings'),
+                            processMovieArrayAsync(pageData.RecentSnatches, 'PageData.RecentSnatches'),
+                            processMovieArrayAsync(pageData.RecentUploads, 'PageData.RecentUploads')
+                        ]);
+                        
+                        if (results.some(result => result)) {
+                            hiddenElements = true;
+                        }
                     }
                 } catch (e) {
                     console.warn('Failed to parse PageData:', e);
                 }
             }
-        });
+        }
 
         const isRequestDetailPage = window.location.pathname.includes('/requests.php') && window.location.search.includes('action=view');
         
         if (!isRequestDetailPage) {
-            // Hide cached torrent and collage links on all pages except request detail pages
             hideCachedTorrentLinks();
             hideCachedCollageLinks();
         }
@@ -1144,10 +1827,10 @@
         if (torrentPageHidden) {
             console.log('Torrent page was found and processed, showing page immediately');
             showPage();
+            return;
         }
 
-        // Check if any links were hidden (already processed in universal section)
-        // This is just to mark that elements were hidden for the timing logic
+        // Check if any links were hidden
         const linksHidden = document.querySelectorAll('span[title*="Hidden:"]').length > 0;
         if (linksHidden) {
             hiddenElements = true;
@@ -1156,11 +1839,9 @@
 
         // Show page based on different conditions
         if (document.readyState === 'complete' && !hiddenElements) {
-            // DOM is fully loaded and no elements were hidden - show immediately
             console.log('DOM complete, no hiding required - showing page immediately');
             showPage();
         } else if (foundData || document.readyState === 'complete') {
-            // Either found data to process or DOM is complete - show with small delay
             setTimeout(showPage, hiddenElements ? 100 : 50);
         }
     }
@@ -1300,10 +1981,22 @@
         });
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
         console.log('DOMContentLoaded fired, scheduling initial processing...');
         console.log('Running initial hideMoviesWithTargetTags...');
-        hideMoviesWithTargetTags();
+        await hideMoviesWithTargetTags();
+    });
+
+    document.addEventListener('imdbProcessingComplete', (event) => {
+        const { imdbId, success, titleData, error } = event.detail;
+        
+        if (success) {
+            console.log(`PTP Content Hider: IMDb processing completed for ${imdbId}`);
+            // You could trigger additional processing here if needed
+            // For example, check if this movie should be hidden based on IMDb data
+        } else {
+            console.log(`PTP Content Hider: IMDb processing failed for ${imdbId}:`, error);
+        }
     });
 
     // Final fallback: ensure page is shown
