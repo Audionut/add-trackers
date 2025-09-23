@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP content hider
-// @version      1.9.5
+// @version      1.9.6
 // @description  Hide html elements with specified tags
 // @match        https://passthepopcorn.me/index.php*
 // @match        https://passthepopcorn.me/top10.php*
@@ -468,7 +468,7 @@
                         </h3>
                         <div class="ptp-setting-group">
                             <label class="ptp-setting-label" for="tags-to-hide">Tags to hide (comma-separated):</label>
-                            <textarea id="tags-to-hide" class="ptp-setting-input ptp-setting-textarea" placeholder="family, animation, comedy, romance"></textarea>
+                            <textarea id="tags-to-hide" class="ptp-setting-input ptp-setting-textarea" placeholder="adult"></textarea>
                             <div class="ptp-setting-description">Enter PTP tags separated by commas. Movies with any of these tags will be hidden.</div>
                         </div>
                         
@@ -842,7 +842,7 @@
         }
 
         // Set default values
-        document.getElementById('tags-to-hide').value = 'family, animation, comedy, romance';
+        document.getElementById('tags-to-hide').value = 'adult';
         document.getElementById('collage-ids').value = '';
         document.getElementById('delay-render').checked = true;
         document.getElementById('show-loading-spinner').checked = false;
@@ -3229,13 +3229,26 @@
                     hiddenCount++;
                     console.log(`Hidden cover movie div with GroupID ${groupId} for ${title} (tags: ${matchedTags.join(', ')}):`, coverMovieDiv);
                 }
+                // Check if the element is inside a Last 5 Movies table
+                else if (element.closest('.last5-movies__table')) {
+                    const parentTd = element.closest('td');
+                    if (parentTd) {
+                        // Hide only the specific table cell in Last 5 Movies table
+                        parentTd.style.display = 'none';
+                        hiddenCount++;
+                        console.log(`Hidden Last 5 Movies table cell with GroupID ${groupId} for ${title} (tags: ${matchedTags.join(', ')}):`, parentTd);
+                    }
+                }
                 // Check if the element is inside a tbody (for movie list tables)
                 else if (element.closest('tbody')) {
                     const parentTbody = element.closest('tbody');
-                    // Hide the entire tbody instead of just individual cells
-                    parentTbody.style.display = 'none';
-                    hiddenCount++;
-                    console.log(`Hidden tbody with GroupID ${groupId} for ${title} (tags: ${matchedTags.join(', ')}):`, parentTbody);
+                    // Check if this is a regular movie list table (not Last 5 Movies)
+                    if (!parentTbody.closest('.last5-movies__table')) {
+                        // Hide the entire tbody for regular movie list tables
+                        parentTbody.style.display = 'none';
+                        hiddenCount++;
+                        console.log(`Hidden tbody with GroupID ${groupId} for ${title} (tags: ${matchedTags.join(', ')}):`, parentTbody);
+                    }
                 }
                 // Check if the element is inside a table cell
                 else if (element.closest('td')) {
