@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.5.0-A
+// @version      4.5.1-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -82,6 +82,8 @@
         "pxhd": {"label": "PxHD", "type": "checkbox", "default": false},
         "red": {"label": "RED *", "type": "checkbox", "default": false, "tooltip": "Enter API key below. Additional filtering options below"},
         "red_api": {"label": "RED_API_TOKEN", "type": "text", "default": ""},
+        "ras": {"label": "RAS *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
+        "ras_api": {"label": "RAS_API_TOKEN", "type": "text", "default": ""},
         "rfx": {"label": "RFX *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "rfx_api": {"label": "RFX_API_TOKEN", "type": "text", "default": ""},
         "rtf": {"label": "RTF *", "type": "checkbox", "default": false, "tooltip": "Enter RTF username and password below"},
@@ -96,6 +98,8 @@
         "easysearch": {"label": "TVV easy searching", "type": "checkbox", "default": true, "tooltip": "TVV has strict searching limits, especially for lower user groups. Disable this to search with more expensive options, better feedback including seeding status, but you're more likely to hit searching to soon error."},
         "ulcx": {"label": "ULCX *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "ulcx_api": {"label": "ULCX_API_TOKEN", "type": "text", "default": ""},
+        "yoink": {"label": "YOINK *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
+        "yoink_api": {"label": "YOINK_API_TOKEN", "type": "text", "default": ""},
         "yus": {"label": "YUS *", "type": "checkbox", "default": false, "tooltip": "Enter API key below"},
         "yus_api": {"label": "YUS_API_TOKEN", "type": "text", "default": ""},
         "media": {"label": "RED/OPS media filtering", "type": "text", "default": "", "tooltip": "Filter torrents from RED/OPS by media. CD, WEB, Vinyl"},
@@ -245,11 +249,13 @@
                     "ops": GM_config.fields.ops.node,
                     "phd": GM_config.fields.phd.node,
                     "red": GM_config.fields.red.node,
+                    "ras": GM_config.fields.ras.node,
                     "rfx": GM_config.fields.rfx.node,
                     "rtf": GM_config.fields.rtf.node,
                     "tik": GM_config.fields.tik.node,
                     "tvv": GM_config.fields.tvv.node,
                     "ulcx": GM_config.fields.ulcx.node,
+                    "yoink": GM_config.fields.yoink.node,
                     "yus": GM_config.fields.yus.node,
                     "hidesamesize": GM_config.fields.hidesamesize.node,
                 };
@@ -330,6 +336,8 @@
             "DP": GM_config.get("dp"),
             "LDU": GM_config.get("ldu"),
             "YUS": GM_config.get("yus"),
+            "YOINK": GM_config.get("yoink"),
+            "RAS": GM_config.get("ras"),
         };
 
         const movie_only_dict = {};
@@ -437,6 +445,8 @@
     const DP_API_TOKEN = GM_config.get("dp_api");
     const YUS_API_TOKEN = GM_config.get("yus_api");
     const LDU_API_TOKEN = GM_config.get("ldu_api");
+    const YOINK_API_TOKEN = GM_config.get("yoink_api");
+    const RAS_API_TOKEN = GM_config.get("ras_api");
 
     // We need to use XML response with TVV and have to define some parameters for it to work correctly.
     const TVV_AUTH_KEY = GM_config.get("tvv_auth"); // If you want to use TVV - find your authkey from a torrent download link
@@ -788,7 +798,9 @@ function toUnixTime(dateString) {
             "OTW": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAA7EAAAOxAGVKw4bAAACTUlEQVQ4jZ2Tz0tUURTHv+fe994wmqOlY2G2EUMmiUrGTEPKhUG1auOmNhmEi1b9A43bSAiCalO0ajEI0SJL+uEsWpSoBDUbQZRGpHJqbBpnnPfm3W+LGQcjDOm7OnDP+d7zuXwvsEWcmbGrNeMa/yOSVnaZjTvtt0iKiJALC/WoC/bmimir218Kk+k40DgPQESktJ2BqlaJcYPMyjXXR7SIbK0LXICLyOYl224gIqxs8YuZ9LiyMBBYLTVjOfVDupo+VbC2NagekJREAjp6An27xL+EwnqzaQi91SK3ygajglEANyqDEjN/OJEUkpL3eH3N5V3P8DtJFlxe/ucjVoaViBiX7BaiwwE+CjAP4LijESIgmH5xCKWkg40lg+AxLb3Dc4zHtdrqZgMpJUg5FoZ8gzQApbzsMwEIvhqG9/wOVPA1nMgIAKA7bKsyjxiSTQC+Ov7Px75BSoAakEkEQp85cTGEvT151LStAO4crNYHAIAllDYRIsbgnOehCFXveQbftCCojIxZlriMx32sJgvI5oIoJG7K6dvvGYOSgYHSJsIXrWUskMUjQ6wJ0eQbfNB69iWnpiwUr/TAXu9HS+dBbKSHOHmmDzGShFKVDGRI7kEYlqORI2DbCu9Eoh7qcg5q9lloHxnDgfMdqD8cxrpDTCU0RgEkmXRICn3/HskiyUVjOE5jZmnMG2YWGwCATyODnL76kJNd9/mk82gZHaqaMpK76TLKfL6VZC3JFpJHSNqMxRQn+k/xLAKcaA9w8uQgSeGWIO5Q/OuL/wY6nDtmJZCTKgAAAABJRU5ErkJggg==",
             "DP": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABUAAAAVCAYAAACpF6WWAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAEzklEQVQ4jSXRS29cVwHA8f953HPvnbkezzghbghpQpSI1qVEUUElZGMJlAipbLpBfIGKTRdISGz7HVC7QIgNC4TyEUCqKioKQqZ5KA+nqeO4duz4Mc6MZ+4999zzYMHvK/zEX1L3E4+2MzpdIV8bwrJAFDPCZEhacXDSIl70EMsLyDc0SZ6QXhaIMxUMQQLIRPQR4SIk3ZLaDOKALCS8jYiTHPIcGT1iK0HMCMZAZSAKIgIlSkQlcSogEkgvETGSEohOJrLM05m6gwKdB8hrwrSFWkOm8cOMOAC8JGUJaTLkNzaIP+8c5HcIZqJIFaRMk7KCONSOLhVAkZE8wQvCrEAVmrggScsCOW8JFlAO4jyov96/w78+NYQfH/JocZneW1eyd09l3FQEE6CTfbJYktFCSqimRBmIo46gPHKWkFKi8gBxf6b+dOsT/maHlLeW6O+fZzc/y9E/7/PZ5jZ/tEHtBEKhpafXaqID2wOZwCSICUKC6CHvnH46fsHGfzdZ/81P6TfPibMBeTvAfHGX/V+v8quEvxTRrwRqSSuN9HiC0wmDcQRvUAc5DDx6d/KC8fgr9vI+5uKQK53nORWmcSzrTdKbb9P3dDc0YpDobACvwaNAdgYiQSRILX4kyJ9sfcmTMCa0I76bGt7UlokrGacCnec8v7/D9OZZbnTEDvR+JElJ6mkPRPAlJIESEHDkXz/8B+sjRXBDVLQcILnXWEpXkIzl8GBOWl0F8O9GpPXEmEAKVNQtxICuNciAn7czs7n7JcfnElpKcj9HzCLiKGN7r087KtC6RczvMF25zg1HGkhS3f3/IWWkTIO2DXiH8wuH5snhXeLiAn5LUR8fwyXg4RnyMKQ7rgiLY+RWj+5n73Pa0f4wIMYKjADRgZ1ALVtwAtrdXbP/2b+xn1c0245Ye9LaBt1t4O4PmD/bwY52UHVBuL2Off001yJCR0TtSfMIrSU5R7Ba4hqLadV/aAtg+gC+vkR3sAt8GyYXsT9/CnuGonLEP3xB88lNvuPozgnUHqAElAoaSaIDp7/Bhllt7AZw/jVM2cMfQNi+RmcLJCDXx8j5BeLtT2k/fo/lpTK805BeTfGzBMEgqiXoCaS0JK8n40Hz6Bn142/hNwvivSM8mnDxMjruIuQm6eg6CbAfXaM8U4arJwSnSM7hnQfZoU8qhDrBTccQ5fxzJtk+9vr12+7eVZq3LpB+u0q+uUbozQlvf4/sEqTfgXj9cnfZ4luBHEvUrCSvDcoOUMGR5pCfLJJb8dGDZB6sEDbWkL98g1Nn+vRbXOZqM/1wk8Pfr9hzAwrXQSOwK5KiLUBO6IIgi4JOZWQq0MUMOgFKfJBSxhrceGdnYMmGBicTCwGaYp98drYZhbx8dvolw+MRDCSqhMa2CJmTxROErslijxQExI5OiY/TfiXYyypSlrCh4thMEBoKloDA91PHOK85dln9I1/1nvZyJkicaNmm4YJsySkRoqUfJE7oAzYknAqPOApXifoY2gGTtiJ4xWHYZJr+vv1eKh4ilSF8sFq8kpCNeGw8aE+tBdJEnrWW3BtGUXyYvhqcQsstqnCFXf2KfvwFXYR1jnhMy54vWRRrXIgrPNc5pVihFNuclyW3qoDLAwfTwKJqmIQBL+3/ALtjmey2suzAAAAAAElFTkSuQmCC",
             "YUS": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABABAMAAABYR2ztAAAAMFBMVEUAAAAKCxnyBwhxBhSwBxJd+PsWLUo/zuYIiN46obvq9PQHU5g2XnLtLETle4iRnaRqUG26AAAAAXRSTlMAQObYZgAAA0RJREFUSMfd1M1r1EAYBvABLVX08polohas0z15ELIJIohgk7lWvIxxqyDxY61WlD3UtSCeFEfw4Iq1rngR/IAB9SK2ZU+rtkqpCm1PYgpST4VWvHgo0vWdJNvOLvkH9DkNmd/O+2wSQv6RbKyo3InWJS2rF3kcbcn9xAxGIF9QGVfL44W1AKZCoqsmLs2zhwlpKwImgNV8TkC9Xv/VoUBtZ72+YsGFSpTf0JOAOSmfwQAhPkxKOQ9feJTeeXATkPsqX8E4rmBZvrAuyRicyCbAN0/SBRlsPdxWNKWcMXtl/C/uNQCvnaa7JZbACnjAefn0gVB53QBtZaB7VAkfzssf5rK8IqJcb4D2I+BSVUJVmNkmn4sWQPKQi0oUQb7sPoMH3GYq4SrgQSYqUe7ACkNcCJdmXUqpAkkJA0s8Btgun2ATcZ1mPQePWANYgr38CTC5NGPyo+JtFpIgSEo4bGEpgJUlrwPBdHcrGIAMO7RU61gMY2AZLmOebVsN0FYzWM/i953hLIIrYhpyZL1LVRqgCIwtfrsYASHuImjJcSwRzn0KWZfpi9I1MGxGD+rAB5wRhiH+9QeixGsAYLidGsAS3oEwnKZd0CeGeH5qIkChgzLYjgK7YJ+4xTH+BBjaEe2XwbZ7QkotsEV1iKvUmqrmsdcBBDi7r1qtVEqc5yGjHVEKDNvBCgj2VlXGOC8C1WbUcIaqgDNiMcLz+oyNZQQuVvBw1t5+JQZ4sEWbcRUMBJDJAkpbnXKDlw0NVGKQ67RQOMzbXx3xL0NWKxHEgKxXAjM6hoCmAOJZgHE+Cv8quPrNbgDC7BiUUoFnk3WMeZD5IIbv6aA9BoZtq8e8rtsYHhxVoLUDgOGod8kyS4Oj71PAhQlQyIJt/Fh1NgWc6/0TKGIO8fv9aaDv4dP8o6mpqWHuFwpdKfdhx02e5FjhdBd0ak8rASLZx09fbpeRAkbx4zWM39A3hQK1MmkAd+KczDa9cxti0F+Ngvun8O1x00Dye4dSfK1TwCl80g5TN7Mbci2AISiobcZw3wODkiaQwesAdhILwO1sBgZeBi04QM+mAJpiuJSkAYdh8ChsQZqz+V20Rz0sSTEHSWsUcGmW/J/5C0x5gAjJEKFdAAAAAElFTkSuQmCC",
-            "LDU": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAfAgMAAAD7OCcfAAAADFBMVEUOFQiu2Bk5SQx8nBS983KFAAAAT0lEQVQY02MgE2gxMK1qADGmNnCGHlgAY9yAMOIb7kAYEQzXMBjXqc0IAzJMEzgjuEEM1fif4V9jgAze0MrQ0AoggxnEeAB29KJVq4jzHgDikTAb4Q/EagAAAABJRU5ErkJggg=="
+            "LDU": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAfAgMAAAD7OCcfAAAADFBMVEUOFQiu2Bk5SQx8nBS983KFAAAAT0lEQVQY02MgE2gxMK1qADGmNnCGHlgAY9yAMOIb7kAYEQzXMBjXqc0IAzJMEzgjuEEM1fif4V9jgAze0MrQ0AoggxnEeAB29KJVq4jzHgDikTAb4Q/EagAAAABJRU5ErkJggg==",
+            "YOINK": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAABNVBMVEUAAAD1q7rqnrn0q7r0rLr1qrn0q7r1qbv9r771q7r0q7r1q7v1q7v1qrr0q7r1q7r1q7r0rLr1q7r1qrr0q7r1q7r1qrr0q7r1rLrzq7j0qrj2qrz0q7r0q7r0q7r0q7ryp7r1q7v0q7r1q7r0q7r0q7rzq7rzq7r0qrrwqbj1sr32rLr0q7rqWW70qropLzNmIRPrXnPqXHDzpbXtcoXrYHXdU2Tymanwi53vgZPvhpfzo7LynKzxkqPgVGa4Q0x9KyP1qLjsbIDwj6DxlKXviJrve47saX3sprXno7HcnKrxlaXQlaK7iZXsboLrYnfoWG3lV2tNRUtBPkM2NzybNzeKMCuDLSdxJRrzn68zNTnWmabHj5ywgo3tdompfYiGaHFtWWBlVFtHQUfxjZ8yNDhmIRJLlpvHAAAALHRSTlMA+QT9XDKYGQro7eBH9fLkzTtOHdrJtZODLScOu5yLehPQxGRYwa2GaiIHb+OpYtIAAAMbSURBVEjHvZTXWuMwEIXHNU7vnd5hZRM7DnEakErvoXfY3fd/hJUUo3VIAtmb/a/Op5kjzVgjw7+TWRElBcZgTVpYSQMoSS4QDE1HwUFWiohiRMqCA9d0PBjgJhWIziKCR07TY3hXeCrEkRUNcbNTYRcPGCWd9CBCLAqSn8SoJQx8eDnO0Yi9yMVTEg+S7LYXuTDMI9Qu35Kw4J5KBgX0CSGYTPVWb8tthH5AUqsbqmoe5J0bD+p8y1RVvY4mYQIVVYxu1lh4iLNm6iSriOYghiyVOopoAI2Jok6TmpoX3KhM5EkRfUnxhGSVUQACqIRVAReksV2ZcBZVwGklxIEHdchZLDyyjSY1+CGGTzBKaAxKBjZ4IYENZn4cQ97EPUzANLIKB2gsDgpNNA1pT7HzTQNMd6qeNChT+Qr6Guap1OUsgCvElr5lNgrYEBvfEHNhgxigeu9+d7Rn934PEQIigCLT3R/PL9720Qj23y7OHwWiZMVuYf99fX39dZThFQff6XYhF3lxmId1zN0owx2JPhDll2CetnvYxUvnZKnSKneezOPG8bH51Cm36Cc/x8HuIfXOw2Svq5fu3cWRVrEahtqH0bAq2tHFr+7LLiLIMKdRsXf0fCjUdtQhNFrC4fPRHqIsghcx8LMaSqGKGF7wM11vqCM4rrMB8YPw9wD8pr49QgCODcVPWtHm1tamnce0XmMGDtxMW+QDnV3mcpdnWDi1YbEkN8T7DRvXudz1BhZM9xviMMlKqukkaTuX26YGpvtKkkG02ydNjzIUiuwriZBhTeR3SJ9XudwV6ZTq3z29k2ctZCC7hGzoH+106+Zm6xQLpy6xlKUsgMiurjLipnUygewBwUyC+ctD8402S0jMAGY16PhVDeL4zQVXgRJmA1gdMq47VTZ4YejB+0LMYX5+D2ZVs2MhHw8fjqjMfVTVLvSNnfVRDydHwQEfmfMItqXcONF1w9ALJ422nS54Fun2ThTf8oR9h/Vqq2lZzYPbun1bEymfAoPwM5lIKuHlkAPOm0j5MjM8fMGaS/JFFkRxIeKTXDz8f/4AvCtS3Oz3sRQAAAAASUVORK5CYII=",
+            "RAS": "data:image/png;base64,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"
         };
 
         const get_tracker_icon = (tracker) => {
@@ -809,7 +821,9 @@ function toUnixTime(dateString) {
                 (tracker === "OTW") ||
                 (tracker === "DP") ||
                 (tracker === "YUS") ||
-                (tracker === "LDU")
+                (tracker === "LDU") ||
+                (tracker === "YOINK") ||
+                (tracker === "RAS")
             )
                 return true;
             else return false;
@@ -2255,6 +2269,18 @@ function toUnixTime(dateString) {
                         imdb_id.split("tt")[1] +
                         "&categories[0]=1&perPage=100&api_token=" +
                         DP_API_TOKEN;
+                } else if (tracker === "YOINK") {
+                    api_query_url =
+                        "https://yoinked.org/api/torrents/filter?imdbId=" +
+                        imdb_id.split("tt")[1] +
+                        "&categories[0]=1&perPage=100&api_token=" +
+                        YOINK_API_TOKEN;
+                } else if (tracker === "RAS") {
+                    api_query_url =
+                        "https://rastastugan.org/api/torrents/filter?imdbId=" +
+                        imdb_id.split("tt")[1] +
+                        "&categories[0]=1&perPage=100&api_token=" +
+                        RAS_API_TOKEN;
                 }
                 else if (tracker === "TVV") {
                     if (!easysearching) {
@@ -4203,7 +4229,9 @@ function toUnixTime(dateString) {
                 tracker === "OTW" ||
                 tracker === "DP" ||
                 tracker === "YUS" ||
-                tracker === "LDU"
+                tracker === "LDU" ||
+                tracker === "YOINK" ||
+                tracker === "RAS"
             ) {
                 torrent_objs = json.data.map((element) => {
                     let originalInfoText;
@@ -4971,7 +4999,7 @@ function toUnixTime(dateString) {
                         if (torrent.site === "MTV") {
                             torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__tags torrent-info__tags--internal'>Internal</span>" : false;
                         }
-                        if (torrent.site === "BLU" || torrent.site === "Aither" || torrent.site === "RFX" || torrent.site === "OE" || torrent.site === "HUNO" || torrent.site === "LST" || torrent.site === "FL" || tracker === "IFL" || tracker === "ULCX" || tracker === "OTW" || tracker === "DP" || tracker === "YUS" || tracker === "LDU") {
+                        if (torrent.site === "BLU" || torrent.site === "Aither" || torrent.site === "RFX" || torrent.site === "OE" || torrent.site === "HUNO" || torrent.site === "LST" || torrent.site === "FL" || tracker === "IFL" || tracker === "ULCX" || tracker === "OTW" || tracker === "DP" || tracker === "YUS" || tracker === "LDU" || tracker === "YOINK" || tracker === "RAS") {
                             get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__tags torrent-info__tags--internal'>Internal</span>") : false;
                             get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__download-modifier'>DU</span>") : false;
                             get_api_featured(torrent.featured) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__download-modifier'>Featured</span>") : false;
@@ -4999,7 +5027,7 @@ function toUnixTime(dateString) {
                         if (torrent.site === "MTV") {
                             torrent.internal ? cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #2f4879'>Internal</span>" : false;
                         }
-                        if (torrent.site === "BLU" || torrent.site === "Aither" || torrent.site === "RFX" || torrent.site === "OE" || torrent.site === "HUNO" || torrent.site === "LST" || torrent.site === "FL" || tracker === "IFL" || tracker === "ULCX" || tracker === "OTW" || tracker === "DP" || tracker === "YUS" || tracker === "LDU") {
+                        if (torrent.site === "BLU" || torrent.site === "Aither" || torrent.site === "RFX" || torrent.site === "OE" || torrent.site === "HUNO" || torrent.site === "LST" || torrent.site === "FL" || tracker === "IFL" || tracker === "ULCX" || tracker === "OTW" || tracker === "DP" || tracker === "YUS" || tracker === "LDU" || tracker === "YOINK" || tracker === "RAS") {
                             get_api_internal(torrent.internal) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__internal' style='font-weight: bold; color: #baaf92'>Internal</span>") : false;
                             get_api_double_upload(torrent.double_upload) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__DU' style='font-weight: bold; color: #279d29'>DU</span>") : false;
                             get_api_featured(torrent.featured) ? (cln.querySelector(".torrent-info-link").innerHTML += " / <span class='torrent-info__Featured' style='font-weight: bold; color: #997799'>Featured</span>") : false;
@@ -5175,7 +5203,7 @@ function toUnixTime(dateString) {
 
                 cln.querySelector(".size-span").textContent = ptp_format_size;
 
-                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV", "LST", "ANT", "RTF", "AvistaZ", "CinemaZ", "PHD", "TL", "FL", "MTeam", "IFL", "RED", "OPS", "ULCX", "AR", "OTW", "DP", "YUS", "LDU"];
+                const byteSizedTrackers = ["BLU", "Aither", "RFX", "OE", "HUNO", "TIK", "TVV", "BHD", "HDB", "NBL", "BTN", "MTV", "LST", "ANT", "RTF", "AvistaZ", "CinemaZ", "PHD", "TL", "FL", "MTeam", "IFL", "RED", "OPS", "ULCX", "AR", "OTW", "DP", "YUS", "LDU", "YOINK", "RAS"];
                 if (byteSizedTrackers.includes(torrent.site)) {
                     cln.querySelector(".size-span").setAttribute("title", api_sized);
                 } else {
