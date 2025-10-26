@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.5.2-A
+// @version      4.5.3-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -2216,7 +2216,7 @@ function toUnixTime(dateString) {
                 }
                 else if (tracker === "RFX") {
                     api_query_url =
-                        "https://reelflix.xyz/api/torrents/filter?imdbId=" +
+                        "https://reelflix.cc/api/torrents/filter?imdbId=" +
                         imdb_id.split("tt")[1] +
                         "&categories[0]=1&perPage=100&api_token=" +
                         RFX_API_TOKEN;
