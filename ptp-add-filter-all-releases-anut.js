@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.5.4-A
+// @version      4.5.5-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -830,9 +830,7 @@ function toUnixTime(dateString) {
                 (tracker === "LST") ||
                 (tracker === "IFL") ||
                 (tracker === "ULCX") ||
-                (tracker === "OTW") ||
                 (tracker === "DP") ||
-                (tracker === "YUS") ||
                 (tracker === "LDU") ||
                 (tracker === "YOINK") ||
                 (tracker === "RAS") ||
@@ -859,7 +857,9 @@ function toUnixTime(dateString) {
               (tracker === "MTeam") ||
               (tracker === "RED") ||
               (tracker === "OPS") ||
-              (tracker === "AR")
+              (tracker === "AR") ||
+              (tracker === "YUS") ||
+              (tracker === "OTW")
               ) {
                 return true;
             } else {
@@ -1485,7 +1485,7 @@ function toUnixTime(dateString) {
                         let time = d.querySelector("td:nth-child(9)").textContent;
                         if (time) {
                             const match = time.match(/^([A-Za-z]{3})\s(\d{1,2})\s'(\d{2})$/);
-                            
+
                             if (match) {
                                 const [_, monthStr, day, year] = match;
                                 const months = {
@@ -1887,6 +1887,16 @@ function toUnixTime(dateString) {
                     'Content-Type': 'application/json',
                     'Authorization': GM_config.get("ops_api"),
                 },
+                'YUS': {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Accept': 'application/json',
+                    'Authorization': `Bearer ${YUS_API_TOKEN}`,
+                },
+                'OTW': {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Accept': 'application/json',
+                    'Authorization': `Bearer ${OTW_API_TOKEN}`,
+                },
                 // Add more trackers and their headers as needed
             };
 
@@ -1908,6 +1918,8 @@ function toUnixTime(dateString) {
                 'RED': 'GET',
                 'OPS': 'GET',
                 'AR': 'GET',
+                'YUS': 'GET',
+                'OTW': 'GET',
             };
             const method = methodMapping[tracker] || 'POST';
 
@@ -1920,7 +1932,7 @@ function toUnixTime(dateString) {
                 GM_xmlhttpRequest({
                     url: post_query_url,
                     method: method,
-                    data: JSON.stringify(postData),
+                    data: (tracker === 'YUS' || tracker === 'OTW') ? new URLSearchParams(postData).toString() : JSON.stringify(postData),
                     headers: headers,
                     onload: (res) => {
                         clearTimeout(timer);
@@ -2201,112 +2213,40 @@ function toUnixTime(dateString) {
                         imdb_id: imdb_id.split("tt")[1],
                     };
                 } else if (tracker === "BLU") {
-                    api_query_url =
-                        "https://blutopia.cc/api/torrents/filter?imdbId=" +
-                        imdb_id.split("tt")[1] +
-                        "&categories[0]=1&categories[1]=2&categories[2]=3&perPage=100&api_token=" +
-                        BLU_API_TOKEN;
+                    api_query_url = "https://blutopia.cc/api/torrents/filter";
                 }
                 else if (tracker === "TIK") {
-                    api_query_url =
-                        "https://cinematik.net/api/torrents/filter?imdbId=" +
-                        imdb_id.split("tt")[1] +
-                        "&categories[0]=1&categories[1]=2&categories[2]=3&categories[3]=4&categories[4]=5&categories[5]=6&perPage=100&api_token=" +
-                        TIK_API_TOKEN;
+                    api_query_url = "https://cinematik.net/api/torrents/filter";
                 }
                 else if (tracker === "Aither") {
-                    api_query_url =
-                        "https://aither.cc/api/torrents/filter?imdbId=" +
-                        imdb_id.split("tt")[1] +
-                        "&categories[0]=1&categories[1]=2&perPage=100&api_token=" +
-                        AITHER_API_TOKEN;
+                    api_query_url = "https://aither.cc/api/torrents/filter";
                 }
                 else if (tracker === "RFX") {
-                    api_query_url =
-                        "https://reelflix.cc/api/torrents/filter?imdbId=" +
-                        imdb_id.split("tt")[1] +
-                        "&categories[0]=1&perPage=100&api_token=" +
-                        RFX_API_TOKEN;
+                    api_query_url = "https://reelflix.cc/api/torrents/filter";
                 }
                 else if (tracker === "OE") {
-                    api_query_url =
-                        "https://onlyencodes.cc/api/torrents/filter?imdbId=" +
-                        imdb_id.split("tt")[1] +
-                        "&categories[0]=1&perPage=100&api_token=" +
-                        OE_API_TOKEN;
+                    api_query_url = "https://onlyencodes.cc/api/torrents/filter";
                 }
                 else if (tracker === "HUNO") {
-                    api_query_url =
-                        "https://hawke.uno/api/torrents/filter?imdbId=" +
-                        imdb_id.split("tt")[1] +
-                        "&categories[0]=2&categories[1]=1&perPage=100&api_token=" +
-                        HUNO_API_TOKEN;
+                    api_query_url = "https://hawke.uno/api/torrents/filter";
                 } else if (tracker === "IFL") {
-                    api_query_url =
-                        "https://infinitylibrary.net/api/torrents/filter?imdbId=" +
-                        imdb_id.split("tt")[1] +
-                        "&categories[0]=1&categories[1]=2&categories[2]=3&perPage=100&api_token=" +
-                        IFL_API_TOKEN;
+                    api_query_url = "https://infinitylibrary.net/api/torrents/filter";
                 } else if (tracker === "LST") {
-                    api_query_url =
-                        "https://lst.gg/api/torrents/filter?imdbId=" +
-                        imdb_id.split("tt")[1] +
-                        "&categories[0]=1&categories[1]=2&categories[2]=6&categories[3]=8&perPage=100&api_token=" +
-                        LST_API_TOKEN;
-                } else if (tracker === "YUS") {
-                    api_query_url =
-                        "https://yu-scene.net/api/torrents/filter?imdbId=" +
-                        imdb_id.split("tt")[1] +
-                        "&categories[0]=1&categories[1]=2&categories[2]=6&categories[3]=8&perPage=100&api_token=" +
-                        YUS_API_TOKEN;
+                    api_query_url = "https://lst.gg/api/torrents/filter";
                 } else if (tracker === "LDU") {
-                    api_query_url =
-                        "https://theldu.to/api/torrents/filter?imdbId=" +
-                        imdb_id.split("tt")[1] +
-                        "&categoryIds[0]=1&categoryIds[1]=33&categoryIds[2]=21&categoryIds[3]=25&categoryIds[4]=18&categoryIds[5]=24&categoryIds[6]=19&categoryIds[7]=42&categoryIds[8]=17&categoryIds[9]=12&categoryIds[10]=27&categoryIds[11]=22&categoryIds[12]=28&categoryIds[13]=8&categoryIds[14]=9&categoryIds[15]=2&categoryIds[16]=41&categoryIds[17]=31&categoryIds[18]=29&categoryIds[19]=32&categoryIds[20]=38&categoryIds[21]=40&categoryIds[22]=46&categoryIds[23]=20&categoryIds[24]=3&categoryIds[25]=16&categoryIds[26]=35&categoryIds[27]=37&categoryIds[28]=6&categoryIds[29]=45&categoryIds[30]=30&categoryIds[31]=15&categoryIds[32]=10&categoryIds[33]=14&categoryIds[34]=39&categoryIds[35]=11&categoryIds[36]=23&perPage=100&api_token=" +
-                        LDU_API_TOKEN;
+                    api_query_url = "https://theldu.to/api/torrents/filter";
                 } else if (tracker === "ULCX") {
-                    api_query_url =
-                        "https://upload.cx/api/torrents/filter?imdbId=" +
-                        imdb_id.split("tt")[1] +
-                        "&categories[0]=1&categories[1]=2&categories[2]=6&categories[3]=8&perPage=100&api_token=" +
-                        ULCX_API_TOKEN;
-                } else if (tracker === "OTW") {
-                    api_query_url =
-                        "https://oldtoons.world/api/torrents/filter?imdbId=" +
-                        imdb_id.split("tt")[1] +
-                        "&categories[0]=1&categories[1]=2&perPage=100&api_token=" +
-                        OTW_API_TOKEN;
+                    api_query_url = "https://upload.cx/api/torrents/filter";
                 } else if (tracker === "DP") {
-                    api_query_url =
-                        "https://darkpeers.org/api/torrents/filter?imdbId=" +
-                        imdb_id.split("tt")[1] +
-                        "&categories[0]=1&categories[1]=2&categories[2]=6&perPage=100&api_token=" +
-                        DP_API_TOKEN;
+                    api_query_url = "https://darkpeers.org/api/torrents/filter";
                 } else if (tracker === "SP") {
-                    api_query_url =
-                        "https://seedpool.org/api/torrents/filter?imdbId=" +
-                        imdb_id.split("tt")[1] +
-                        "&categories[0]=1&categories[1]=2&categories[2]=6&perPage=100&api_token=" +
-                        SP_API_TOKEN;
+                    api_query_url = "https://seedpool.org/api/torrents/filter";
                 } else if (tracker === "YOINK") {
-                    api_query_url =
-                        "https://yoinked.org/api/torrents/filter?imdbId=" +
-                        imdb_id.split("tt")[1] +
-                        "&categories[0]=1&categories[1]=2&perPage=100&api_token=" +
-                        YOINK_API_TOKEN;
+                    api_query_url = "https://yoinked.org/api/torrents/filter";
                 } else if (tracker === "RAS") {
-                    api_query_url =
-                        "https://rastastugan.org/api/torrents/filter?imdbId=" +
-                        imdb_id.split("tt")[1] +
-                        "&categories[0]=1&categories[1]=2&categories[2]=6&perPage=100&api_token=" +
-                        RAS_API_TOKEN;
+                    api_query_url = "https://rastastugan.org/api/torrents/filter";
                 } else if (tracker === "HHD") {
-                    api_query_url =
-                        "https://homiehelpdesk.net/api/torrents/filter?imdbId=" +
-                        imdb_id.split("tt")[1] +
-                        "&categories[0]=1&categories[1]=2&categoryIds[2]=3&categoryIds[3]=10&perPage=100&api_token=" +
-                        HHD_API_TOKEN;
+                    api_query_url = "https://homiehelpdesk.net/api/torrents/filter";
                 } else if (tracker === "TVV") {
                     if (!easysearching) {
                         query_url = "https://tv-vault.me/xmlsearch.php?query=get&torrent_pass=" + TVV_TORR_PASS + "&imdbid=" + imdb_id + "&xmladd-x-currentseed=1";
@@ -2398,6 +2338,18 @@ function toUnixTime(dateString) {
                 }
                 else if (tracker === "AR") {
                     post_query_url = "https://alpharatio.cc/ajax.php?action=browse&searchstr=" + show_nbl_name + " " + year + "&taglist=&tags_type=1&order_by=time&order_way=desc&scene=&freetorrent=&uploader=&archive=&filter_cat[1]=1&filter_cat[2]=1&filter_cat[3]=1&filter_cat[4]=1&filter_cat[5]=1&filter_cat[6]=1&filter_cat[7]=1&filter_cat[8]=1&filter_cat[9]=1&filter_cat[10]=1&filter_cat[11]=1&filter_cat[12]=1&filter_cat[13]=1&filter_cat[14]=1&filter_cat[15]=1&filter_cat[16]=1&filter_cat[17]=1";
+                }
+                else if (tracker === "YUS") {
+                    post_query_url = `https://yu-scene.net/api/torrents/filter?imdbId=${imdb_id.split("tt")[1]}&perPage=100`;
+                    postData = {
+                        api_token: YUS_API_TOKEN
+                    };
+                }
+                else if (tracker === "OTW") {
+                    post_query_url = `https://oldtoons.world/api/torrents/filter?imdbId=${imdb_id.split("tt")[1]}&perPage=100`;
+                    postData = {
+                        api_token: OTW_API_TOKEN
+                    };
                 }
                 else if (tracker === "PTP") {
                     query_url = "https://passthepopcorn.me/torrents.php?imdb=" + imdb_id;
@@ -2562,6 +2514,15 @@ function toUnixTime(dateString) {
                                             console.log(`Data fetched successfully from ${tracker}`);
                                             resolve(get_post_torrent_objects(tracker, result));
                                         }
+                                    } else if (result && (tracker === "YUS" || tracker === "OTW")) {
+                                        if (!result.data || result.data.length === 0) {
+                                            console.log(`${tracker} reached successfully but no results were returned`);
+                                            resolve([]);
+                                        } else {
+                                            console.log(`Data fetched successfully from ${tracker}`);
+                                            // YUS and OTW have the same structure as other API trackers, just pass the result directly
+                                            resolve(get_api_torrent_objects(tracker, result));
+                                        }
                                     } else {
                                         console.warn(`Unhandled tracker or response format for ${tracker}`);
                                         resolve([]);
@@ -2604,7 +2565,40 @@ function toUnixTime(dateString) {
                                 resolve([]); // Resolve with an empty array if there's an error
                             });
                     } else {
-                        fetch(api_query_url)
+                        // Create query parameters for GET request
+                        const queryParams = new URLSearchParams();
+                        queryParams.append('imdbId', imdb_id.split("tt")[1]);
+                        queryParams.append('perPage', '100');
+
+                        const fullApiUrl = `${api_query_url}?${queryParams.toString()}`;
+
+                        // Create API token mapping for headers
+                        const apiHeadersMapping = {
+                            'BLU': { 'Authorization': `Bearer ${BLU_API_TOKEN}`, 'Accept': 'application/json' },
+                            'TIK': { 'Authorization': `Bearer ${TIK_API_TOKEN}`, 'Accept': 'application/json' },
+                            'Aither': { 'Authorization': `Bearer ${AITHER_API_TOKEN}`, 'Accept': 'application/json' },
+                            'RFX': { 'Authorization': `Bearer ${RFX_API_TOKEN}`, 'Accept': 'application/json' },
+                            'OE': { 'Authorization': `Bearer ${OE_API_TOKEN}`, 'Accept': 'application/json' },
+                            'HUNO': { 'Authorization': `Bearer ${HUNO_API_TOKEN}`, 'Accept': 'application/json' },
+                            'IFL': { 'Authorization': `Bearer ${IFL_API_TOKEN}`, 'Accept': 'application/json' },
+                            'LST': { 'Authorization': `Bearer ${LST_API_TOKEN}`, 'Accept': 'application/json' },
+                            'YUS': { 'Authorization': `Bearer ${YUS_API_TOKEN}`, 'Accept': 'application/json' },
+                            'LDU': { 'Authorization': `Bearer ${LDU_API_TOKEN}`, 'Accept': 'application/json' },
+                            'ULCX': { 'Authorization': `Bearer ${ULCX_API_TOKEN}`, 'Accept': 'application/json' },
+                            'OTW': { 'Authorization': `Bearer ${OTW_API_TOKEN}`, 'Accept': 'application/json' },
+                            'DP': { 'Authorization': `Bearer ${DP_API_TOKEN}`, 'Accept': 'application/json' },
+                            'SP': { 'Authorization': `Bearer ${SP_API_TOKEN}`, 'Accept': 'application/json' },
+                            'YOINK': { 'Authorization': `Bearer ${YOINK_API_TOKEN}`, 'Accept': 'application/json' },
+                            'RAS': { 'Authorization': `Bearer ${RAS_API_TOKEN}`, 'Accept': 'application/json' },
+                            'HHD': { 'Authorization': `Bearer ${HHD_API_TOKEN}`, 'Accept': 'application/json' }
+                        };
+
+                        const headers = apiHeadersMapping[tracker] || { 'Accept': 'application/json' };
+
+                        fetch(fullApiUrl, {
+                            method: 'GET',
+                            headers: headers
+                        })
                             .then(response => {
                                 clearTimeout(timer); // Clear the timer on successful fetch
                                 if (!response.ok) throw new Error('Failed to fetch data');
