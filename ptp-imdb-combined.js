@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.1.8
+// @version      1.1.9
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -1220,26 +1220,60 @@ function handleResetAll() {
                                 }
                             }
                         }
-                        credits(first: 130) {
-                            edges {
-                            node {
-                                name {
-                                id
-                                nameText {
-                                    text
-                                }
-                                }
-                                category {
+                        principalCreditsV2 {
+                            grouping {
                                 id
                                 text
-                                }
-                                title {
-                                id
-                                titleText {
-                                    text
-                                }
+                            }
+                            credits {
+                                ... on CreditV2 {
+                                    id
+                                    name {
+                                        id
+                                        nameText {
+                                            text
+                                        }
+                                    }
+                                    creditedRoles {
+                                        edges {
+                                            node {
+                                                category {
+                                                    id
+                                                    text
+                                                }
+                                                characters {
+                                                    edges {
+                                                        node {
+                                                            name
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
+                        }
+                        credits(first: 130) {
+                            edges {
+                                node {
+                                    name {
+                                        id
+                                        nameText {
+                                            text
+                                        }
+                                    }
+                                    category {
+                                        id
+                                        text
+                                    }
+                                    title {
+                                        id
+                                        titleText {
+                                            text
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -1252,6 +1286,8 @@ function handleResetAll() {
             }
         };
 
+        console.log("[API Debug] Fetching IMDb data for:", imdbId, "afterCursor:", afterCursor);
+        
         return new Promise(async (resolve, reject) => {
             GM_xmlhttpRequest({
                 method: "POST",
@@ -1263,12 +1299,131 @@ function handleResetAll() {
                 onload: async function (response) {
                     if (response.status >= 200 && response.status < 300) {
                         const data = JSON.parse(response.responseText);
-                        //console.log("IMDb data fetched successfully:", data); // Log the fetched data
+                        console.log("[API Debug] IMDb API response received, status:", response.status);
+                        
                         if (data && data.data && data.data.title) {
                             const titleData = data.data.title;
                             const soundtracks = titleData.soundtrack.edges;
                             const alternateVersions = titleData.alternateVersions.edges;
                             const keywords = titleData.keywords.edges;
+                            
+                            // Process principalCreditsV2 and full credits, then merge
+                            const principalCreditsArray = [];
+                            const fullCreditsArray = titleData.credits?.edges || [];
+                            
+                            console.log("[API Debug] Full credits from API:", fullCreditsArray.length, "total");
+                            
+                            if (titleData.principalCreditsV2) {
+                                // CORRECT: Preserve grouping structure and process in order
+                                const groupedCredits = titleData.principalCreditsV2.map(grouping => ({
+                                    grouping: grouping.grouping.text,
+                                    groupingId: grouping.grouping.id,
+                                    credits: grouping.credits
+                                }));
+                                
+                                console.log("[API Debug] Principal credits V2 groupings:", groupedCredits.map(g => ({
+                                    grouping: g.grouping,
+                                    count: g.credits.length
+                                })));
+                                
+                                // Find Stars grouping and process it first, then others
+                                const starsGrouping = groupedCredits.find(g => g.grouping === 'Stars');
+                                const otherGroupings = groupedCredits.filter(g => g.grouping !== 'Stars');
+                                
+                                // Process Stars first (top-billed cast in correct order)
+                                if (starsGrouping) {
+                                    console.log(`[API Debug] Processing Stars grouping with ${starsGrouping.credits.length} credits`);
+                                    console.log("[API Debug] Stars grouping details:", starsGrouping.credits.map((credit, idx) => {
+                                        const firstRoleEdge = credit.creditedRoles?.edges?.[0];
+                                        const firstRole = firstRoleEdge?.node;
+                                        const characters = firstRole?.characters?.edges?.map(e => e.node.name).join(', ') || '';
+                                        return {
+                                            position: idx,
+                                            id: credit.name.id,
+                                            name: credit.name.nameText.text,
+                                            character: characters
+                                        };
+                                    }));
+                                    
+                                    starsGrouping.credits.forEach((credit, indexInGroup) => {
+                                        const firstRoleEdge = credit.creditedRoles?.edges?.[0];
+                                        const firstRole = firstRoleEdge?.node;
+                                        const characters = firstRole?.characters?.edges?.map(e => ({ name: e.node.name })) || [];
+                                        
+                                        principalCreditsArray.push({
+                                            node: {
+                                                name: credit.name,
+                                                category: firstRole?.category || { id: 'actor', text: 'Actor' },
+                                                characters: characters,
+                                                jobs: [],
+                                                isPrincipal: true,
+                                                principalGrouping: 'Stars',
+                                                positionInGrouping: indexInGroup
+                                            }
+                                        });
+                                    });
+                                }
+                                
+                                // Then process other groupings (Directors, Writers, etc.)
+                                otherGroupings.forEach(group => {
+                                    console.log(`[API Debug] Processing grouping: ${group.grouping} with ${group.credits.length} credits`);
+                                    
+                                    group.credits.forEach((credit, indexInGroup) => {
+                                        const firstRoleEdge = credit.creditedRoles?.edges?.[0];
+                                        const firstRole = firstRoleEdge?.node;
+                                        const characters = firstRole?.characters?.edges?.map(e => ({ name: e.node.name })) || [];
+                                        
+                                        principalCreditsArray.push({
+                                            node: {
+                                                name: credit.name,
+                                                category: firstRole?.category || { id: 'unknown', text: 'Unknown' },
+                                                characters: characters,
+                                                jobs: [],
+                                                isPrincipal: true,
+                                                principalGrouping: group.grouping,
+                                                positionInGrouping: indexInGroup
+                                            }
+                                        });
+                                    });
+                                });
+                                
+                                console.log("[API Debug] Principal credits V2 received:", principalCreditsArray.length, "total");
+                                console.log("[API Debug] First 10 principal credits:", principalCreditsArray.slice(0, 10).map((e, idx) => ({
+                                    position: idx,
+                                    id: e.node.name.id,
+                                    name: e.node.name.nameText.text,
+                                    category: e.node.category.text,
+                                    grouping: e.node.principalGrouping,
+                                    positionInGrouping: e.node.positionInGrouping,
+                                    characters: e.node.characters?.map(c => c.name).join(', ')
+                                })));
+                            }
+                            
+                            // Create a Set of principal credit IDs for deduplication
+                            const principalIds = new Set(principalCreditsArray.map(e => e.node.name.id));
+                            
+                            // Filter full credits to remove duplicates already in principal credits
+                            const additionalCredits = fullCreditsArray.filter(edge => {
+                                return !principalIds.has(edge.node.name.id);
+                            });
+                            
+                            console.log("[API Debug] Additional credits after deduplication:", additionalCredits.length);
+                            
+                            // Merge: principal credits first (preserving grouping order), then additional credits
+                            const mergedCredits = [...principalCreditsArray, ...additionalCredits];
+                            
+                            titleData.credits = { edges: mergedCredits };
+                            
+                            console.log("[API Debug] Total merged credits:", mergedCredits.length);
+                            console.log("[API Debug] First 10 merged credits:", mergedCredits.slice(0, 10).map((e, idx) => ({
+                                position: idx,
+                                id: e.node.name.id,
+                                name: e.node.name.nameText.text,
+                                category: e.node.category.text,
+                                categoryId: e.node.category.id,
+                                isPrincipal: e.node.isPrincipal || false,
+                                grouping: e.node.principalGrouping || 'N/A'
+                            })));
 
                             const awardNominations = titleData.awardNominations.edges.map(edge => edge.node);
                             allAwards.push(...awardNominations);
@@ -1292,25 +1447,29 @@ function handleResetAll() {
                                     });
                                 });
 
-                                // Add unique IDs from credits
+                                // Add unique IDs from credits (already flattened above)
                                 const credits = titleData.credits.edges;
+                                console.log("[API Debug] Extracting IDs from", credits.length, "principal credits");
                                 credits.forEach(edge => {
                                     const creditNode = edge.node;
                                     if (creditNode.name && creditNode.name.id) {
                                         uniqueIds.push(creditNode.name.id);
                                     }
                                 });
+                                console.log("[API Debug] Total unique IDs to fetch:", uniqueIds.length, "(before deduplication)");
 
                                 // Fetch names for unique IDs
                                 const uniqueIdSet = [...new Set(uniqueIds)];
+                                console.log("[API Debug] Unique IDs after deduplication:", uniqueIdSet.length);
                                 const names = await fetchNames(uniqueIdSet);
+                                console.log("[API Debug] Names fetched:", names.length, "entries");
 
                                 // Map IDs to names
                                 const idToNameMap = {};
                                 names.forEach(name => {
                                     idToNameMap[name.id] = name.nameText.text;
                                 });
-                                //console.log("ID to Name Map:", idToNameMap); // Log the ID to Name mapping
+                                console.log("[API Debug] ID to Name Map created with", Object.keys(idToNameMap).length, "entries");
 
                                 // Process the soundtrack data
                                 const processedSoundtracks = soundtracks.map(edge => {
@@ -1998,6 +2157,14 @@ function handleResetAll() {
     };
 
     const createSongDiv = (song, movie_title, index, bg_color_1, bg_color_2, idToNameMap) => {
+        // Skip songs with null/undefined title
+        if (!song || !song.title) {
+            console.warn("[Soundtrack Debug] Skipping song with null/undefined title:", song);
+            const div = document.createElement("div");
+            div.style.display = "none";
+            return div;
+        }
+        
         let div = document.createElement("div");
         div.style.height = "31px";
         div.style.overflow = "hidden";
@@ -2006,7 +2173,7 @@ function handleResetAll() {
         let track_line = document.createElement("a");
         track_line.textContent = song.title;
         track_line.title = song.title;
-        track_line.href = "https://www.youtube.com/results?search_query=" + movie_title.replace(/&/, " and ") + " " + song.title.replace(/&/, " and ");
+        track_line.href = "https://www.youtube.com/results?search_query=" + movie_title.replace(/&/g, " and ") + " " + song.title.replace(/&/g, " and ");
         track_line.target = "_blank";
 
         let seperator = document.createElement("span");
@@ -2360,44 +2527,112 @@ function handleResetAll() {
 
     const displayCastPhotos = (titleData, idToNameMap, namePhotos) => {
         const credits = titleData.credits.edges;
+        console.log("[Credits Debug] Raw credits from API:", credits.length, "items");
+        console.log("[Credits Debug] First 5 credits:", credits.slice(0, 5).map(e => ({
+            id: e.node.name.id,
+            name: e.node.name.nameText.text,
+            category: e.node.category.text
+        })));
+        
         if (!credits || credits.length === 0) {
             console.warn("No credits data found");
             return;
         }
 
         // Filter credits based on type setting
+        // Important: Array.filter() preserves the original order from the API
         let filteredCredits = credits;
         if (CAST_FILTER_TYPE === 'actors') {
             filteredCredits = credits.filter(edge => {
                 const category = edge.node.category.id.toLowerCase();
                 return category === 'actor' || category === 'actress';
             });
+            console.log("[Credits Debug] Filtered to actors only:", filteredCredits.length, "items");
+        } else {
+            console.log("[Credits Debug] Showing all credits (no filter applied)");
         }
+        console.log("[Credits Debug] First 5 filtered credits:", filteredCredits.slice(0, 5).map(e => ({
+            id: e.node.name.id,
+            name: e.node.name.nameText.text,
+            category: e.node.category.text
+        })));
+
+        // Create a lookup map for namePhotos to improve performance
+        // This preserves order since we're using the filteredCredits array order, not the namePhotos order
+        const namePhotosMap = {};
+        if (Array.isArray(namePhotos)) {
+            console.log("[Credits Debug] namePhotos is an array with", namePhotos.length, "items");
+            namePhotos.forEach(name => {
+                if (name && name.id) {
+                    namePhotosMap[name.id] = name;
+                }
+            });
+        } else if (namePhotos) {
+            // Handle case where namePhotos might be an object
+            const namePhotosArray = Object.values(namePhotos);
+            console.log("[Credits Debug] namePhotos is an object with", namePhotosArray.length, "items");
+            namePhotosArray.forEach(name => {
+                if (name && name.id) {
+                    namePhotosMap[name.id] = name;
+                }
+            });
+        }
+        console.log("[Credits Debug] namePhotosMap created with", Object.keys(namePhotosMap).length, "entries");
 
         // Map credits to cast format with photos from fetchNames
-        let cast = filteredCredits.map(edge => {
+        // Important: Array.map() preserves the order from filteredCredits, which maintains API order
+        let cast = filteredCredits.map((edge, index) => {
             const creditNode = edge.node;
             const personId = creditNode.name.id;
             const personName = idToNameMap[personId] || creditNode.name.nameText.text;
 
             let photoUrl = 'https://ptpimg.me/9wv452.png'; // Default
 
-            const nameData = Object.values(namePhotos || {}).find(name => name.id === personId);
+            // Use the lookup map for O(1) access instead of find() which is O(n)
+            const nameData = namePhotosMap[personId];
             if (nameData && nameData.primaryImage && nameData.primaryImage.url) {
                 photoUrl = nameData.primaryImage.url;
             }
 
-            return {
+            // Get role from characters (for Cast) or jobs (for Crew) or category
+            let role = creditNode.category?.text || 'Unknown';
+            if (creditNode.characters && creditNode.characters.length > 0) {
+                role = creditNode.characters.map(c => c.name).join(', ');
+            } else if (creditNode.jobs && creditNode.jobs.length > 0) {
+                role = creditNode.jobs.map(j => j.text).join(', ');
+            }
+            
+            // If no specific role, use category text
+            if (role === 'Unknown' && creditNode.category) {
+                role = creditNode.category.text;
+            }
+
+            const castMember = {
                 photo: photoUrl,
                 name: personName,
                 imdbId: personId,
-                role: creditNode.category.text || 'Unknown',
-                link: `https://www.imdb.com/name/${personId}/`
+                role: role,
+                link: `https://www.imdb.com/name/${personId}/`,
+                position: creditNode.position // billing position for Cast
             };
+            
+            if (index < 5) {
+                console.log(`[Credits Debug] Mapped cast member ${index}:`, {
+                    name: castMember.name,
+                    role: castMember.role,
+                    billingPosition: castMember.position,
+                    hasPhoto: castMember.photo !== 'https://ptpimg.me/9wv452.png'
+                });
+            }
+            
+            return castMember;
         });
+        console.log("[Credits Debug] Total cast members after mapping:", cast.length);
 
         // Try to match with existing cast table on page
         const actorRows = document.querySelectorAll('.table--panel-like tbody tr');
+        console.log("[Credits Debug] Found", actorRows.length, "existing actor rows on page");
+        let matchCount = 0;
         actorRows.forEach(row => {
             const actorNameElement = row.querySelector('.movie-page__actor-column a');
             const roleNameElement = row.querySelector('td:nth-child(2)');
@@ -2409,14 +2644,32 @@ function handleResetAll() {
                 if (castMember) {
                     castMember.role = roleName;
                     castMember.link = actorLink;
+                    matchCount++;
                 }
             }
         });
+        console.log("[Credits Debug] Matched", matchCount, "cast members with existing table data");
 
-        // Filter and limit based on settings
+        // Filter and limit based on settings, then reorder: cast with photos first, then without photos
         const filteredCast = cast
             .filter(person => person.role && person.role.trim())
             .slice(0, CAST_MAX_DISPLAY);
+        
+        // Separate cast members with and without photos
+        const castWithPhotos = filteredCast.filter(person => person.photo !== 'https://ptpimg.me/9wv452.png');
+        const castWithoutPhotos = filteredCast.filter(person => person.photo === 'https://ptpimg.me/9wv452.png');
+        
+        // Combine: photos first (in original order), then no photos (in original order)
+        const reorderedCast = [...castWithPhotos, ...castWithoutPhotos];
+        
+        console.log("[Credits Debug] Final filtered cast:", filteredCast.length, "members (max:", CAST_MAX_DISPLAY + ")");
+        console.log("[Credits Debug] Cast with photos:", castWithPhotos.length, "- Cast without photos:", castWithoutPhotos.length);
+        console.log("[Credits Debug] First 5 final cast members:", reorderedCast.slice(0, 5).map(p => ({
+            name: p.name,
+            role: p.role,
+            hasPhoto: p.photo !== 'https://ptpimg.me/9wv452.png'
+        })));
+        console.log("[Credits Debug] Cast ordering: Photos first, then no-photos (original order preserved within each group) ✓");
 
         const cDiv = document.createElement('div');
         cDiv.className = 'panel';
@@ -2459,7 +2712,7 @@ function handleResetAll() {
 
         const bg = getComputedStyle(document.querySelector('.panel') || document.body).backgroundColor || '#2c2c2c';
 
-        filteredCast.forEach((person, index) => {
+        reorderedCast.forEach((person, index) => {
             const cellDiv = document.createElement('div');
             cellDiv.className = 'cast-member-cell';
             castDiv.appendChild(cellDiv);
@@ -2500,7 +2753,7 @@ function handleResetAll() {
             `;
         });
 
-        if (filteredCast.length === 0) {
+        if (reorderedCast.length === 0) {
             const messageDiv = document.createElement('div');
             messageDiv.style.cssText = 'padding: 20px; text-align: center; color: #ccc;';
             messageDiv.textContent = `No ${CAST_FILTER_TYPE === 'actors' ? 'actor/actress' : 'credit'} data found`;
