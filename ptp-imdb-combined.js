@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.1.9
+// @version      1.2.0
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -48,6 +48,7 @@ let CAST_MAX_DISPLAY = 128;
 let CONST_PIXEL_HEIGHT = 300;
 let CAST_IMAGES_PER_ROW = 4;
 let CAST_DEFAULT_ROWS = 2;
+let DISABLE_CUSTOM_COLORS = false;
 
 const saveSettings = () => {
     GM.setValue('SHOW_SIMILAR_MOVIES', SHOW_SIMILAR_MOVIES);
@@ -78,6 +79,7 @@ const saveSettings = () => {
     GM.setValue('EXISTING_IMDB_TAGS', EXISTING_IMDB_TAGS);
     GM.setValue('SIMILAR_MOVIES_LOCATION', SIMILAR_MOVIES_LOCATION);
     GM.setValue('PARENTS_LOCATION', PARENTS_LOCATION);
+    GM.setValue('DISABLE_CUSTOM_COLORS', DISABLE_CUSTOM_COLORS);
 };
 
 const loadSettings = async () => {
@@ -87,7 +89,7 @@ const loadSettings = async () => {
     SHOW_BOX_OFFICE = await GM.getValue('SHOW_BOX_OFFICE', true);
     SHOW_AWARDS = await GM.getValue('SHOW_AWARDS', true);
     SHOW_SOUNDTRACKS = await GM.getValue('SHOW_SOUNDTRACKS', true);
-    CACHE_EXPIRY_DAYS = await GM.getValue('CACHE_EXPIRY_DAYS', 7);
+    CACHE_EXPIRY_DAYS = await GM.getValue('CACHE_EXPIRY_DAYS', 14);
     SHOW_ALTERNATE_VERSIONS = await GM.getValue('SHOW_ALTERNATE_VERSIONS', true);
     ALTERNATE_VERSIONS_PANEL_OPEN = await GM.getValue('ALTERNATE_VERSIONS_PANEL_OPEN', false);
     SHOW_KEYWORDS = await GM.getValue('SHOW_KEYWORDS', true);
@@ -109,6 +111,30 @@ const loadSettings = async () => {
     EXISTING_IMDB_TAGS = await GM.getValue('EXISTING_IMDB_TAGS', 6);
     SIMILAR_MOVIES_LOCATION = await GM.getValue('SIMILAR_MOVIES_LOCATION', 5);
     PARENTS_LOCATION = await GM.getValue('PARENTS_LOCATION', 3);
+    DISABLE_CUSTOM_COLORS = await GM.getValue('DISABLE_CUSTOM_COLORS', false);
+};
+
+const IMDB_ACCENT_COLOR = '#F2DB83';
+const AWARDS_HIGHLIGHT_COLOR = 'yellow';
+const PARENTS_GUIDE_SEVERITY_COLORS = {
+    None: IMDB_ACCENT_COLOR,
+    Mild: '#c5e197',
+    Moderate: '#fbca8c',
+    Severe: '#ffb3ad'
+};
+
+const getColorStyleAttr = (color) => DISABLE_CUSTOM_COLORS ? '' : ` style="color: ${color};"`;
+const getInlineColorPrefix = (color) => DISABLE_CUSTOM_COLORS ? '' : `color: ${color}; `;
+
+const applyColorIfEnabled = (element, color) => {
+    if (!DISABLE_CUSTOM_COLORS && element) {
+        element.style.color = color;
+    }
+};
+
+const getIMDbLabelHTML = (suffix = '') => {
+    const imdbCore = DISABLE_CUSTOM_COLORS ? 'IMDb' : `<span style="color: ${IMDB_ACCENT_COLOR};">IMDb</span>`;
+    return suffix ? `${imdbCore} ${suffix}` : imdbCore;
 };
 
 const flushCache = async () => {
@@ -228,6 +254,14 @@ function showSettingsPanel() {
                             <input type="checkbox" id="show-cast-photos" style="margin-right: 8px;">
                             <span>Credit Photos</span>
                         </label>
+
+                        <label style="display: block; margin-bottom: 4px; cursor: pointer;">
+                            <input type="checkbox" id="disable-custom-colors" style="margin-right: 8px;">
+                            <span>Use default site colors</span>
+                        </label>
+                        <p style="margin: 0 0 12px 26px; font-size: 0.85em; color: #ccc;">
+                            Prevent the script from applying custom text colors.
+                        </p>
 
                         <div style="margin-left: 20px; margin-bottom: 15px;">
                             <label style="display: block; margin-bottom: 8px;">
@@ -519,6 +553,7 @@ function loadSettingsIntoForm() {
     document.getElementById('show-awards').checked = SHOW_AWARDS;
     document.getElementById('show-soundtracks').checked = SHOW_SOUNDTRACKS;
     document.getElementById('show-cast-photos').checked = SHOW_CAST_PHOTOS;
+    document.getElementById('disable-custom-colors').checked = DISABLE_CUSTOM_COLORS;
     document.getElementById('cast-filter-type').value = CAST_FILTER_TYPE;
     document.getElementById('cast-max-display').value = CAST_MAX_DISPLAY;
     document.getElementById('cast-images-per-row').value = CAST_IMAGES_PER_ROW;
@@ -550,6 +585,7 @@ function saveSettingsFromForm() {
     SHOW_AWARDS = document.getElementById('show-awards').checked;
     SHOW_SOUNDTRACKS = document.getElementById('show-soundtracks').checked;
     SHOW_CAST_PHOTOS = document.getElementById('show-cast-photos').checked;
+    DISABLE_CUSTOM_COLORS = document.getElementById('disable-custom-colors').checked;
     CAST_FILTER_TYPE = document.getElementById('cast-filter-type').value;
     CAST_MAX_DISPLAY = parseInt(document.getElementById('cast-max-display').value) || 128;
     CAST_IMAGES_PER_ROW = parseInt(document.getElementById('cast-images-per-row').value) || 4;
@@ -620,6 +656,7 @@ function handleResetAll() {
         AWARDS_LOCATION = 4;
         SIMILAR_MOVIES_LOCATION = 5;
         EXISTING_IMDB_TAGS = 6;
+        DISABLE_CUSTOM_COLORS = false;
 
         saveSettings();
         flushCache();
@@ -656,7 +693,7 @@ function handleResetAll() {
         imdbPanels.forEach(imdbPanel => {
             var imdbElement = imdbPanel.querySelector('.panel__heading__title');
             if (imdbElement) {
-                imdbElement.innerHTML = '<span class="panel__heading__title"><span style="color: rgb(242, 219, 131);">IMDb</span> tags</span>';
+                imdbElement.innerHTML = `<span class="panel__heading__title">${getIMDbLabelHTML('tags')}</span>`;
             }
             // Move the IMDb panel to the desired location
             sidebar.insertBefore(imdbPanel, sidebar.childNodes[3 + EXISTING_IMDB_TAGS]);
@@ -1575,8 +1612,8 @@ function handleResetAll() {
         title.className = 'panel__heading__title';
 
         var imdb = document.createElement('span');
-        imdb.style.color = '#F2DB83';
         imdb.textContent = 'IMDb';
+        applyColorIfEnabled(imdb, IMDB_ACCENT_COLOR);
         title.appendChild(imdb);
         title.appendChild(document.createTextNode(' More like this'));
 
@@ -1749,8 +1786,8 @@ function handleResetAll() {
         title.className = 'panel__heading__title';
 
         var imdb = document.createElement('span');
-        imdb.style.color = '#F2DB83';
         imdb.textContent = 'IMDb';
+        applyColorIfEnabled(imdb, IMDB_ACCENT_COLOR);
         title.appendChild(imdb);
         title.appendChild(document.createTextNode(' Technical Specifications'));
 
@@ -1795,7 +1832,7 @@ function handleResetAll() {
 
         const specContainer = document.createElement('div');
         specContainer.className = 'technicalSpecification';
-        specContainer.style.color = "#fff";
+        applyColorIfEnabled(specContainer, '#fff');
         specContainer.style.fontSize = "1em";
 
         const formatSpec = (title, items, key, attributesKey) => {
@@ -1874,8 +1911,8 @@ function handleResetAll() {
         title.className = 'panel__heading__title';
 
         var imdb = document.createElement('span');
-        imdb.style.color = '#F2DB83';
         imdb.textContent = 'IMDb';
+        applyColorIfEnabled(imdb, IMDB_ACCENT_COLOR);
         title.appendChild(imdb);
         title.appendChild(document.createTextNode(' Box Office'));
 
@@ -1911,7 +1948,7 @@ function handleResetAll() {
 
         const boxOfficeContainer = document.createElement('div');
         boxOfficeContainer.className = 'boxOffice';
-        boxOfficeContainer.style.color = "#fff";
+        applyColorIfEnabled(boxOfficeContainer, '#fff');
         boxOfficeContainer.style.fontSize = "1em";
 
         const formatCurrency = (amount) => {
@@ -1996,7 +2033,7 @@ function handleResetAll() {
         aDiv.innerHTML = `
             <div class="panel__heading">
                 <span class="panel__heading__title">
-                    <span style="color: rgb(242, 219, 131);">IMDb</span> Awards
+                    ${getIMDbLabelHTML('Awards')}
                 </span>
                 <a href="https://www.imdb.com/title/${imdbId}/awards/" target="_blank" rel="noreferrer" style="float:right; font-size:0.9em; margin-right: 10px;">(View on IMDb)</a>
             </div>`;
@@ -2007,6 +2044,7 @@ function handleResetAll() {
         // Placeholder for the awards content
         const awardsContent = document.createElement('div');
         awardsContent.setAttribute('id', 'awards-content');
+        const awardsHighlightAttr = getColorStyleAttr(AWARDS_HIGHLIGHT_COLOR);
         awardsContent.innerHTML = `
             <style>
                 .awards-text {
@@ -2025,14 +2063,14 @@ function handleResetAll() {
             <div class="awards-text">
                 <table class="awards-table">
                     <tr>
-                        <th style="color: yellow;">OSCARS</th>
+                        <th${awardsHighlightAttr}>OSCARS</th>
                         <th>Wins</th>
                         <th>Nominations</th>
                     </tr>
                     <tr>
                         <td></td>
-                        <td style="color: yellow;">${wins}</td>
-                        <td style="color: yellow;">${nominations}</td>
+                        <td${awardsHighlightAttr}>${wins}</td>
+                        <td${awardsHighlightAttr}>${nominations}</td>
                     </tr>
                     <tr>
                         <th>Total Awards</th>
@@ -2041,8 +2079,8 @@ function handleResetAll() {
                     </tr>
                     <tr>
                         <td></td>
-                        <td style="color: yellow;">${totalWins}</td>
-                        <td style="color: yellow;">${totalNominations}</td>
+                        <td${awardsHighlightAttr}>${totalWins}</td>
+                        <td${awardsHighlightAttr}>${totalNominations}</td>
                     </tr>
                 </table>
             </div>`;
@@ -2083,7 +2121,7 @@ function handleResetAll() {
         new_panel.style.padding = 0;
         new_panel.style.margin = "18px 0";
 
-        new_panel.innerHTML = '<div class="panel__heading"><span class="panel__heading__title"><a href="https://www.imdb.com/title/' + imdbId + '/soundtrack" target="_blank" rel="noopener noreferrer"><span style="color: rgb(242, 219, 131);">IMDb</span> Soundtrack</a></span></div>';
+        new_panel.innerHTML = `<div class="panel__heading"><span class="panel__heading__title"><a href="https://www.imdb.com/title/${imdbId}/soundtrack" target="_blank" rel="noopener noreferrer">${getIMDbLabelHTML('Soundtrack')}</a></span></div>`;
 
         new_panel.querySelector(".panel__heading").style.display = "flex";
         new_panel.querySelector(".panel__heading").style.justifyContent = "space-between";
@@ -2207,7 +2245,7 @@ function handleResetAll() {
         const heading = document.createElement('div');
         heading.className = 'panel__heading';
         heading.style.cursor = 'pointer';
-        heading.innerHTML = `<span class="panel__heading__title"><span style="color: rgb(242, 219, 131);">IMDb</span> Alternate Versions</span>`;
+        heading.innerHTML = `<span class="panel__heading__title">${getIMDbLabelHTML('Alternate Versions')}</span>`;
         panel.appendChild(heading);
 
         // Panel body (toggle display based on option)
@@ -2296,7 +2334,7 @@ function handleResetAll() {
 
         const heading = document.createElement('div');
         heading.className = 'panel__heading';
-        heading.innerHTML = `<span class="panel__heading__title"><span style="color: rgb(242, 219, 131);">IMDb</span> Keywords</span>`;
+        heading.innerHTML = `<span class="panel__heading__title">${getIMDbLabelHTML('Keywords')}</span>`;
         panel.appendChild(heading);
 
         const body = document.createElement('div');
@@ -2321,7 +2359,7 @@ function handleResetAll() {
                 kw.target = "_blank";
                 kw.rel = "noopener noreferrer";
                 kw.style.background = '#222';
-                kw.style.color = '#F2DB83';
+                applyColorIfEnabled(kw, IMDB_ACCENT_COLOR);
                 kw.style.padding = '2px 8px';
                 kw.style.borderRadius = '8px';
                 kw.style.fontSize = '0.95em';
@@ -2352,10 +2390,11 @@ function handleResetAll() {
             const style = document.createElement('style');
             style.id = 'parental-guide-style';
             style.type = 'text/css';
+            const parentalHeaderColor = DISABLE_CUSTOM_COLORS ? '' : `color: ${IMDB_ACCENT_COLOR}; `;
             style.innerHTML = `
                 .parentalspoiler { color: transparent; }
                 .parentalspoiler:hover { color: inherit; }
-                .parentalHeader { color: #F2DB83; margin-top: 12px; margin-bottom: 5px; }
+                .parentalHeader { ${parentalHeaderColor}margin-top: 12px; margin-bottom: 5px; }
                 .parentalHeader:hover { cursor: pointer; }
                 .hide { display: none; }
             `;
@@ -2373,8 +2412,8 @@ function handleResetAll() {
         const title = document.createElement('span');
         title.className = 'panel__heading__title';
         const imdb = document.createElement('span');
-        imdb.style.color = '#F2DB83';
         imdb.textContent = 'IMDb';
+        applyColorIfEnabled(imdb, IMDB_ACCENT_COLOR);
         title.appendChild(imdb);
         title.appendChild(document.createTextNode(' Parental Notes'));
 
@@ -2448,11 +2487,8 @@ function handleResetAll() {
             const severity = document.createElement("span");
             if (categories[i].severity != null) {
                 const sev = categories[i].severity.text;
-                severity.style.color =
-                    sev === "None" ? "#F2DB83" :
-                    sev === "Mild" ? "#c5e197" :
-                    sev === "Moderate" ? "#fbca8c" :
-                    sev === "Severe" ? "#ffb3ad" : "#F2DB83";
+                const severityColor = PARENTS_GUIDE_SEVERITY_COLORS[sev] || IMDB_ACCENT_COLOR;
+                applyColorIfEnabled(severity, severityColor);
                 severity.innerHTML = sev;
             } else {
                 severity.innerHTML = "Unknown";
@@ -2475,7 +2511,7 @@ function handleResetAll() {
                 const item = document.createElement("li");
                 item.style.padding = "3px 0px";
                 const text = document.createElement('a');
-                text.style.color = "#FFF";
+                applyColorIfEnabled(text, "#FFF");
                 text.textContent = currentItem.node.text.plainText;
                 if (hidetext) text.classList.add('parentalspoiler');
                 if (currentItem.node.isSpoiler && hideSpoilers) {
@@ -2676,7 +2712,7 @@ function handleResetAll() {
         cDiv.id = 'imdb_cast_photos';
 
         const titleText = CAST_FILTER_TYPE === 'actors' ? 'Cast' : 'Credits';
-        cDiv.innerHTML = `<div class="panel__heading"><span class="panel__heading__title"><a href="https://www.imdb.com/title/${imdbId}/fullcredits" target="_blank" rel="noopener noreferrer"><span style="color: rgb(242, 219, 131);">IMDb</span> ${titleText}</a></span></div>`;
+        cDiv.innerHTML = `<div class="panel__heading"><span class="panel__heading__title"><a href="https://www.imdb.com/title/${imdbId}/fullcredits" target="_blank" rel="noopener noreferrer">${getIMDbLabelHTML(titleText)}</a></span></div>`;
 
         const castDiv = document.createElement('div');
         castDiv.style.cssText = 'display: flex; flex-wrap: wrap; justify-content: flex-start; margin: -4px;';
@@ -2747,15 +2783,16 @@ function handleResetAll() {
                     </div>
                 </a>
                 <div style="padding: 8px;">
-                    <div><a href="https://www.imdb.com/name/${person.imdbId}" target="_blank" style="color: #F2DB83; text-decoration: none; font-size: 0.9em;">${person.name}</a></div>
-                    <div style="color: #ccc; font-size: 0.9em; margin-top: 2px;">${person.role}</div>
+                    <div><a href="https://www.imdb.com/name/${person.imdbId}" target="_blank" style="${getInlineColorPrefix(IMDB_ACCENT_COLOR)}text-decoration: none; font-size: 0.9em;">${person.name}</a></div>
+                    <div style="${getInlineColorPrefix('#ccc')}font-size: 0.9em; margin-top: 2px;">${person.role}</div>
                 </div>
             `;
         });
 
         if (reorderedCast.length === 0) {
             const messageDiv = document.createElement('div');
-            messageDiv.style.cssText = 'padding: 20px; text-align: center; color: #ccc;';
+            messageDiv.style.cssText = 'padding: 20px; text-align: center;';
+            applyColorIfEnabled(messageDiv, '#ccc');
             messageDiv.textContent = `No ${CAST_FILTER_TYPE === 'actors' ? 'actor/actress' : 'credit'} data found`;
             castDiv.appendChild(messageDiv);
         }
