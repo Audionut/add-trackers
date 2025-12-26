@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Scale Comparison Images
-// @version      1.3
+// @version      1.4
 // @description  Scales screenshot comparison images to fit within the browser window
 // @author       Audionut
 // @match        https://passthepopcorn.me/*
@@ -233,6 +233,12 @@
     }
 
     function loadImagesLazy(container) {
+        // Check if already lazy loaded (completed)
+        if (container.dataset.lazyLoadComplete === 'true') {
+            debugLog('Container already lazy loaded, skipping');
+            return;
+        }
+        
         // Check if already lazy loading this container
         if (container.dataset.lazyLoadingInProgress === 'true') {
             debugLog('Lazy loading already in progress for this container, skipping');
@@ -294,9 +300,10 @@
         function loadRow(rowIndex) {
             if (rowIndex >= rows.length) {
                 debugLog('All rows loaded');
-                // Clear the lazy loading flag
+                // Clear the lazy loading flag and mark as complete
                 delete container.dataset.lazyLoadingInProgress;
-                debugLog('Cleared lazy loading flag');
+                container.dataset.lazyLoadComplete = 'true';
+                debugLog('Cleared lazy loading flag and marked as complete');
                 return;
             }
             
