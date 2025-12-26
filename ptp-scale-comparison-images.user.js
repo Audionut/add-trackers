@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Scale Comparison Images
-// @version      1.2
+// @version      1.3
 // @description  Scales screenshot comparison images to fit within the browser window
 // @author       Audionut
 // @match        https://passthepopcorn.me/*
@@ -18,6 +18,7 @@
     const DEFAULT_SCALE_ENABLED = true;
     const DEFAULT_RESOLUTION = 'match-largest'; // 'auto' or one of the values in RESOLUTION_PRESETS
     const DEFAULT_LAZY_LOADING = true; // Set to true to enable lazy loading by default
+    const DEBUGGING = false; // Set to true to enable debug logging for lazy loading
     const RESOLUTION_PRESETS = [
         { label: 'Auto (fit window)', value: 'auto' },
         { label: 'Match Largest (original)', value: 'match-largest' },
@@ -113,6 +114,13 @@
     }
 
     injectCSS();
+
+    // Helper function for debug logging
+    function debugLog(...args) {
+        if (DEBUGGING) {
+            console.log('[PTP Scale Images - Lazy Loading]', ...args);
+        }
+    }
 
     function parsePreset(value) {
         if (!value || value === 'auto') return { width: Infinity, height: Infinity, mode: 'auto' };
@@ -225,14 +233,31 @@
     }
 
     function loadImagesLazy(container) {
+        // Check if already lazy loading this container
+        if (container.dataset.lazyLoadingInProgress === 'true') {
+            debugLog('Lazy loading already in progress for this container, skipping');
+            return;
+        }
+        
         const rows = container.querySelectorAll('.screenshot-comparison__row');
-        if (rows.length === 0) return;
+        debugLog('loadImagesLazy called, found', rows.length, 'rows');
+        if (rows.length === 0) {
+            debugLog('No rows found, exiting');
+            return;
+        }
+        
+        // Mark container as being lazy loaded
+        container.dataset.lazyLoadingInProgress = 'true';
+        debugLog('Marked container as lazy loading in progress');
 
         // First, prepare all images for lazy loading by moving src to data-lazy-src
+        let totalImages = 0;
         rows.forEach((row, rowIndex) => {
             const images = row.querySelectorAll('.screenshot-comparison__image, img');
+            totalImages += images.length;
             images.forEach(img => {
                 if (!img.dataset.lazySrc && img.src) {
+                    debugLog(`Row ${rowIndex}: Preparing image for lazy loading:`, img.src);
                     img.dataset.lazySrc = img.src;
                     img.removeAttribute('src');
                     img.style.setProperty('visibility', 'hidden', 'important');
@@ -241,36 +266,52 @@
             // Hide rows initially
             if (rowIndex > 0) {
                 row.style.setProperty('display', 'none', 'important');
+                debugLog(`Row ${rowIndex}: Hidden initially`);
             }
         });
+        debugLog('Prepared', totalImages, 'images for lazy loading');
 
         // Calculate dimensions from first row to establish target size
         const firstRowImages = rows[0].querySelectorAll('img[data-lazy-src]');
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
         const presetDims = parsePreset(selectedPreset);
+        debugLog('Viewport:', viewportWidth, 'x', viewportHeight);
+        debugLog('Selected preset:', selectedPreset, '- Parsed dims:', presetDims);
         
         const availableWidth = selectedPreset === 'auto' ? viewportWidth * 0.90 : viewportWidth * 0.98;
         const availableHeight = selectedPreset === 'auto' ? viewportHeight - 250 : viewportHeight * 0.98;
         
         const maxWidth = Number.isFinite(presetDims.width) ? Math.min(presetDims.width, availableWidth) : availableWidth;
         const maxHeight = Number.isFinite(presetDims.height) ? Math.min(presetDims.height, availableHeight) : availableHeight;
+        debugLog('Available dimensions:', availableWidth, 'x', availableHeight);
+        debugLog('Max dimensions:', maxWidth, 'x', maxHeight);
         
         let globalMaxNaturalHeight = 0;
         let globalMaxNaturalWidth = 0;
 
         // Load and process rows sequentially
         function loadRow(rowIndex) {
-            if (rowIndex >= rows.length) return;
+            if (rowIndex >= rows.length) {
+                debugLog('All rows loaded');
+                // Clear the lazy loading flag
+                delete container.dataset.lazyLoadingInProgress;
+                debugLog('Cleared lazy loading flag');
+                return;
+            }
             
+            debugLog(`Loading row ${rowIndex} of ${rows.length}`);
             const row = rows[rowIndex];
             const images = row.querySelectorAll('img[data-lazy-src]');
+            debugLog(`Row ${rowIndex}: Found`, images.length, 'images');
             
             // Show the row
             row.style.removeProperty('display');
+            debugLog(`Row ${rowIndex}: Displayed`);
             
             // Load images by restoring src attribute
-            images.forEach(img => {
+            images.forEach((img, imgIndex) => {
+                debugLog(`Row ${rowIndex}, Image ${imgIndex}: Loading`, img.dataset.lazySrc);
                 img.src = img.dataset.lazySrc;
             });
             
@@ -288,8 +329,10 @@
             });
             
             Promise.all(imageLoadPromises).then(() => {
+                debugLog(`Row ${rowIndex}: All images loaded`);
                 // Update global max dimensions
-                images.forEach(img => {
+                images.forEach((img, imgIndex) => {
+                    debugLog(`Row ${rowIndex}, Image ${imgIndex}: Natural size`, img.naturalWidth, 'x', img.naturalHeight);
                     if (img.naturalHeight > globalMaxNaturalHeight) {
                         globalMaxNaturalHeight = img.naturalHeight;
                     }
@@ -297,6 +340,7 @@
                         globalMaxNaturalWidth = img.naturalWidth;
                     }
                 });
+                debugLog('Global max dimensions updated to:', globalMaxNaturalWidth, 'x', globalMaxNaturalHeight);
                 
                 // Calculate target dimensions
                 let targetWidth, targetHeight;
@@ -304,18 +348,22 @@
                 if (presetDims.mode === 'match-largest') {
                     targetWidth = globalMaxNaturalWidth;
                     targetHeight = globalMaxNaturalHeight;
+                    debugLog('Using match-largest mode - Target:', targetWidth, 'x', targetHeight);
                 } else {
                     const widthScale = maxWidth / globalMaxNaturalWidth;
                     const heightScale = maxHeight / globalMaxNaturalHeight;
                     const scaleFactor = Math.min(widthScale, heightScale);
+                    debugLog('Scale factors - Width:', widthScale.toFixed(3), 'Height:', heightScale.toFixed(3), 'Using:', scaleFactor.toFixed(3));
                     targetWidth = Math.floor(globalMaxNaturalWidth * scaleFactor);
                     targetHeight = Math.floor(globalMaxNaturalHeight * scaleFactor);
+                    debugLog('Calculated target dimensions:', targetWidth, 'x', targetHeight);
                 }
                 
                 // Apply scaling to ALL loaded rows (not just current)
+                debugLog(`Applying scaling to rows 0-${rowIndex}`);
                 for (let i = 0; i <= rowIndex; i++) {
                     const rowImages = rows[i].querySelectorAll('img');
-                    rowImages.forEach(img => {
+                    rowImages.forEach((img, imgIndex) => {
                         img.dataset.scaled = 'true';
                         img.style.removeProperty('max-width');
                         img.style.removeProperty('max-height');
@@ -323,15 +371,18 @@
                         img.style.setProperty('height', targetHeight + 'px', 'important');
                         img.style.setProperty('object-fit', 'contain', 'important');
                         img.style.setProperty('visibility', 'visible', 'important');
+                        debugLog(`Row ${i}, Image ${imgIndex}: Scaled and made visible`);
                     });
                 }
                 
                 // Load next row after delay
+                debugLog(`Scheduling row ${rowIndex + 1} load in 200ms`);
                 setTimeout(() => loadRow(rowIndex + 1), 200);
             });
         }
         
         // Start loading from first row
+        debugLog('Starting lazy load sequence');
         loadRow(0);
     }
 
