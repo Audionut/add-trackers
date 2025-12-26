@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Scale Comparison Images
-// @version      1.4
+// @version      1.5
 // @description  Scales screenshot comparison images to fit within the browser window
 // @author       Audionut
 // @match        https://passthepopcorn.me/*
@@ -449,6 +449,10 @@
 
             // If lazy loading is enabled, load images row by row
             if (lazyLoadingEnabled) {
+                // Skip if lazy loading is in progress or already complete for this container
+                if (container.dataset.lazyLoadingInProgress === 'true' || container.dataset.lazyLoadComplete === 'true') {
+                    return;
+                }
                 loadImagesLazy(container);
                 return;
             }
