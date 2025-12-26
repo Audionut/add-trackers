@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Scale Comparison Images
-// @version      1.5
+// @version      1.6
 // @description  Scales screenshot comparison images to fit within the browser window
 // @author       Audionut
 // @match        https://passthepopcorn.me/*
@@ -188,6 +188,9 @@
         checkbox.addEventListener('change', () => {
             scaleEnabled = checkbox.checked;
             if (scaleEnabled) {
+                // Reset lazy load flags so images can be re-processed
+                delete container.dataset.lazyLoadComplete;
+                delete container.dataset.lazyLoadingInProgress;
                 scaleComparisonImages();
             } else {
                 unscaleComparisonImages(container);
@@ -196,12 +199,18 @@
 
         lazyCheckbox.addEventListener('change', () => {
             lazyLoadingEnabled = lazyCheckbox.checked;
+            // Reset lazy load flags so new setting can take effect
+            delete container.dataset.lazyLoadComplete;
+            delete container.dataset.lazyLoadingInProgress;
             // Note: User needs to close and reopen comparison for lazy loading to take effect
         });
 
         select.addEventListener('change', () => {
             selectedPreset = select.value;
             if (scaleEnabled) {
+                // Reset lazy load flags so images can be re-processed with new preset
+                delete container.dataset.lazyLoadComplete;
+                delete container.dataset.lazyLoadingInProgress;
                 scaleComparisonImages();
             }
         });
