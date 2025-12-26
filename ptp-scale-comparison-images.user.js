@@ -1,9 +1,11 @@
 // ==UserScript==
 // @name         PTP Scale Comparison Images
-// @version      1.1
+// @version      1.2
 // @description  Scales screenshot comparison images to fit within the browser window
 // @author       Audionut
 // @match        https://passthepopcorn.me/*
+// @downloadURL  https://github.com/Audionut/add-trackers/raw/refs/heads/main/ptp-scale-comparison-images.user.js
+// @updateURL    https://github.com/Audionut/add-trackers/raw/refs/heads/main/ptp-scale-comparison-images.user.js
 // @grant        none
 // @run-at       document-start
 // ==/UserScript==
@@ -14,9 +16,11 @@
     // Options
     const SHOW_SCALE_CONTROL = true; // Set to false to hide the toggle box entirely
     const DEFAULT_SCALE_ENABLED = true;
-    const DEFAULT_RESOLUTION = 'auto'; // 'auto' or one of the values in RESOLUTION_PRESETS
+    const DEFAULT_RESOLUTION = 'match-largest'; // 'auto' or one of the values in RESOLUTION_PRESETS
+    const DEFAULT_LAZY_LOADING = true; // Set to true to enable lazy loading by default
     const RESOLUTION_PRESETS = [
         { label: 'Auto (fit window)', value: 'auto' },
+        { label: 'Match Largest (original)', value: 'match-largest' },
         { label: '1280 x 720', value: '1280x720' },
         { label: '1920 x 1080', value: '1920x1080' },
         { label: '2560 x 1440', value: '2560x1440' },
@@ -25,6 +29,7 @@
 
     let scaleEnabled = DEFAULT_SCALE_ENABLED;
     let selectedPreset = DEFAULT_RESOLUTION;
+    let lazyLoadingEnabled = DEFAULT_LAZY_LOADING;
 
     // Inject CSS to override PTP's styles
     function injectCSS() {
@@ -84,6 +89,7 @@
                 border-radius: 6px !important;
                 font-size: 12px !important;
                 display: flex !important;
+                flex-wrap: wrap !important;
                 gap: 10px !important;
                 align-items: center !important;
                 pointer-events: auto !important;
@@ -109,12 +115,13 @@
     injectCSS();
 
     function parsePreset(value) {
-        if (!value || value === 'auto') return { width: Infinity, height: Infinity };
+        if (!value || value === 'auto') return { width: Infinity, height: Infinity, mode: 'auto' };
+        if (value === 'match-largest') return { width: Infinity, height: Infinity, mode: 'match-largest' };
         const parts = value.split('x').map(Number);
         if (parts.length === 2 && parts.every(n => Number.isFinite(n) && n > 0)) {
-            return { width: parts[0], height: parts[1] };
+            return { width: parts[0], height: parts[1], mode: 'fixed' };
         }
-        return { width: Infinity, height: Infinity };
+        return { width: Infinity, height: Infinity, mode: 'auto' };
     }
 
     function ensureControlBox(container) {
@@ -122,9 +129,11 @@
 
         let box = container.querySelector('.ptp-scale-control');
         if (box) {
-            const checkbox = box.querySelector('input[type="checkbox"]');
+            const checkbox = box.querySelector('input[type="checkbox"][data-control="scale"]');
+            const lazyCheckbox = box.querySelector('input[type="checkbox"][data-control="lazy"]');
             const select = box.querySelector('select');
             if (checkbox) checkbox.checked = scaleEnabled;
+            if (lazyCheckbox) lazyCheckbox.checked = lazyLoadingEnabled;
             if (select && select.value !== selectedPreset) select.value = selectedPreset;
             return box;
         }
@@ -136,8 +145,17 @@
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.checked = scaleEnabled;
+        checkbox.dataset.control = 'scale';
         label.appendChild(checkbox);
         label.appendChild(document.createTextNode('Scale images'));
+
+        const lazyLabel = document.createElement('label');
+        const lazyCheckbox = document.createElement('input');
+        lazyCheckbox.type = 'checkbox';
+        lazyCheckbox.checked = lazyLoadingEnabled;
+        lazyCheckbox.dataset.control = 'lazy';
+        lazyLabel.appendChild(lazyCheckbox);
+        lazyLabel.appendChild(document.createTextNode('Lazy load'));
 
         const select = document.createElement('select');
         RESOLUTION_PRESETS.forEach(preset => {
@@ -149,6 +167,7 @@
         });
 
         box.appendChild(label);
+        box.appendChild(lazyLabel);
         box.appendChild(select);
 
         // Stop overlay-close handlers from firing when interacting with the controls
@@ -165,6 +184,11 @@
             } else {
                 unscaleComparisonImages(container);
             }
+        });
+
+        lazyCheckbox.addEventListener('change', () => {
+            lazyLoadingEnabled = lazyCheckbox.checked;
+            // Note: User needs to close and reopen comparison for lazy loading to take effect
         });
 
         select.addEventListener('change', () => {
@@ -200,6 +224,117 @@
         });
     }
 
+    function loadImagesLazy(container) {
+        const rows = container.querySelectorAll('.screenshot-comparison__row');
+        if (rows.length === 0) return;
+
+        // First, prepare all images for lazy loading by moving src to data-lazy-src
+        rows.forEach((row, rowIndex) => {
+            const images = row.querySelectorAll('.screenshot-comparison__image, img');
+            images.forEach(img => {
+                if (!img.dataset.lazySrc && img.src) {
+                    img.dataset.lazySrc = img.src;
+                    img.removeAttribute('src');
+                    img.style.setProperty('visibility', 'hidden', 'important');
+                }
+            });
+            // Hide rows initially
+            if (rowIndex > 0) {
+                row.style.setProperty('display', 'none', 'important');
+            }
+        });
+
+        // Calculate dimensions from first row to establish target size
+        const firstRowImages = rows[0].querySelectorAll('img[data-lazy-src]');
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        const presetDims = parsePreset(selectedPreset);
+        
+        const availableWidth = selectedPreset === 'auto' ? viewportWidth * 0.90 : viewportWidth * 0.98;
+        const availableHeight = selectedPreset === 'auto' ? viewportHeight - 250 : viewportHeight * 0.98;
+        
+        const maxWidth = Number.isFinite(presetDims.width) ? Math.min(presetDims.width, availableWidth) : availableWidth;
+        const maxHeight = Number.isFinite(presetDims.height) ? Math.min(presetDims.height, availableHeight) : availableHeight;
+        
+        let globalMaxNaturalHeight = 0;
+        let globalMaxNaturalWidth = 0;
+
+        // Load and process rows sequentially
+        function loadRow(rowIndex) {
+            if (rowIndex >= rows.length) return;
+            
+            const row = rows[rowIndex];
+            const images = row.querySelectorAll('img[data-lazy-src]');
+            
+            // Show the row
+            row.style.removeProperty('display');
+            
+            // Load images by restoring src attribute
+            images.forEach(img => {
+                img.src = img.dataset.lazySrc;
+            });
+            
+            // Wait for all images in this row to load
+            const imageLoadPromises = Array.from(images).map(img => {
+                return new Promise(resolve => {
+                    if (img.complete && img.naturalWidth > 0) {
+                        resolve();
+                    } else {
+                        img.addEventListener('load', resolve, { once: true });
+                        img.addEventListener('error', resolve, { once: true });
+                        setTimeout(resolve, 5000); // Timeout fallback
+                    }
+                });
+            });
+            
+            Promise.all(imageLoadPromises).then(() => {
+                // Update global max dimensions
+                images.forEach(img => {
+                    if (img.naturalHeight > globalMaxNaturalHeight) {
+                        globalMaxNaturalHeight = img.naturalHeight;
+                    }
+                    if (img.naturalWidth > globalMaxNaturalWidth) {
+                        globalMaxNaturalWidth = img.naturalWidth;
+                    }
+                });
+                
+                // Calculate target dimensions
+                let targetWidth, targetHeight;
+                
+                if (presetDims.mode === 'match-largest') {
+                    targetWidth = globalMaxNaturalWidth;
+                    targetHeight = globalMaxNaturalHeight;
+                } else {
+                    const widthScale = maxWidth / globalMaxNaturalWidth;
+                    const heightScale = maxHeight / globalMaxNaturalHeight;
+                    const scaleFactor = Math.min(widthScale, heightScale);
+                    targetWidth = Math.floor(globalMaxNaturalWidth * scaleFactor);
+                    targetHeight = Math.floor(globalMaxNaturalHeight * scaleFactor);
+                }
+                
+                // Apply scaling to ALL loaded rows (not just current)
+                for (let i = 0; i <= rowIndex; i++) {
+                    const rowImages = rows[i].querySelectorAll('img');
+                    rowImages.forEach(img => {
+                        img.dataset.scaled = 'true';
+                        img.style.removeProperty('max-width');
+                        img.style.removeProperty('max-height');
+                        img.style.setProperty('width', targetWidth + 'px', 'important');
+                        img.style.setProperty('height', targetHeight + 'px', 'important');
+                        img.style.setProperty('object-fit', 'contain', 'important');
+                        img.style.setProperty('visibility', 'visible', 'important');
+                    });
+                }
+                
+                // Load next row after delay
+                setTimeout(() => loadRow(rowIndex + 1), 200);
+            });
+        }
+        
+        // Start loading from first row
+        loadRow(0);
+    }
+
     // Wait for the page to load and BBCode object to be available
     function init() {
         if (typeof BBCode === 'undefined' || !BBCode.ScreenshotComparisonToggleShow) {
@@ -213,18 +348,32 @@
         // Override the function
         BBCode.ScreenshotComparisonToggleShow = function(element, labels, urls) {
 
-            // Call the original function
-            originalToggleShow.call(this, element, labels, urls);
+            // If lazy loading is enabled, we need to intercept before original function runs
+            if (lazyLoadingEnabled && scaleEnabled) {
+                // Call original function
+                originalToggleShow.call(this, element, labels, urls);
+                
+                // Immediately find the container and prepare for lazy loading
+                setTimeout(() => {
+                    const container = document.querySelector('.screenshot-comparison__container');
+                    if (container) {
+                        ensureControlBox(container);
+                        loadImagesLazy(container);
+                    }
+                }, 10);
+            } else {
+                // Call the original function
+                originalToggleShow.call(this, element, labels, urls);
 
-            // Wait for the DOM to update, then scale images
-            // Use longer timeouts to ensure images are loaded
-            setTimeout(() => {
-                scaleComparisonImages();
-            }, 500);
+                // Wait for the DOM to update, then scale images
+                setTimeout(() => {
+                    scaleComparisonImages();
+                }, 500);
 
-            setTimeout(() => {
-                scaleComparisonImages();
-            }, 1000);
+                setTimeout(() => {
+                    scaleComparisonImages();
+                }, 1000);
+            }
         };
     }
 
@@ -237,6 +386,12 @@
 
             if (!scaleEnabled) {
                 unscaleComparisonImages(container);
+                return;
+            }
+
+            // If lazy loading is enabled, load images row by row
+            if (lazyLoadingEnabled) {
+                loadImagesLazy(container);
                 return;
             }
 
@@ -282,14 +437,22 @@
                     }
                 });
 
-                // Calculate scale factor to fit the largest image and optional preset
-                const widthScale = maxWidth / maxNaturalWidth;
-                const heightScale = maxHeight / maxNaturalHeight;
-                const scaleFactor = Math.min(widthScale, heightScale);
-
-                // Calculate target dimensions (all images will be this size)
-                const targetWidth = Math.floor(maxNaturalWidth * scaleFactor);
-                const targetHeight = Math.floor(maxNaturalHeight * scaleFactor);
+                // Calculate scale factor and target dimensions based on mode
+                let targetWidth, targetHeight, scaleFactor;
+                
+                if (presetDims.mode === 'match-largest') {
+                    // For match-largest mode: use original dimensions of largest image (no scaling)
+                    targetWidth = maxNaturalWidth;
+                    targetHeight = maxNaturalHeight;
+                    scaleFactor = 1;
+                } else {
+                    // For auto and fixed presets: scale to fit within constraints
+                    const widthScale = maxWidth / maxNaturalWidth;
+                    const heightScale = maxHeight / maxNaturalHeight;
+                    scaleFactor = Math.min(widthScale, heightScale);
+                    targetWidth = Math.floor(maxNaturalWidth * scaleFactor);
+                    targetHeight = Math.floor(maxNaturalHeight * scaleFactor);
+                }
 
                 // Apply the same dimensions to ALL images
                 images.forEach((img, imgIndex) => {
