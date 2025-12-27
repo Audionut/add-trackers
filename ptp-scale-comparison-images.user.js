@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Scale Comparison Images
-// @version      1.7
+// @version      1.8
 // @description  Scales screenshot comparison images to fit within the browser window
 // @author       Audionut
 // @match        https://passthepopcorn.me/*
@@ -42,42 +42,13 @@
         const style = document.createElement('style');
         style.textContent = `
             .screenshot-comparison__container {
-                max-width: 100vw !important;
-                max-height: 100vh !important;
                 overflow-y: auto !important;
-                overflow-x: hidden !important;
-            }
-            .screenshot-comparison__row {
-                max-width: 95vw !important;
-                max-height: calc(100vh - 200px) !important;
-                width: auto !important;
-                height: auto !important;
-            }
-            .screenshot-comparison__row > div {
-                max-width: 95vw !important;
-                max-height: calc(100vh - 200px) !important;
-            }
-            .screenshot-comparison__row img {
-                max-width: 95vw !important;
-                max-height: calc(100vh - 200px) !important;
-                width: auto !important;
-                height: auto !important;
-                object-fit: contain !important;
+                overflow-x: auto !important;
             }
             .screenshot-comparison__image-container {
-                max-width: 95vw !important;
-                max-height: calc(100vh - 200px) !important;
                 display: flex !important;
                 align-items: center !important;
                 justify-content: center !important;
-            }
-            .screenshot-comparison__image {
-                max-width: 95vw !important;
-                max-height: calc(100vh - 200px) !important;
-                width: auto !important;
-                height: auto !important;
-                object-fit: contain !important;
-                flex-shrink: 1 !important;
             }
             .ptp-scale-control {
                 position: fixed !important;
@@ -294,12 +265,25 @@
         debugLog('Viewport:', viewportWidth, 'x', viewportHeight);
         debugLog('Selected preset:', selectedPreset, '- Parsed dims:', presetDims);
         
-        const availableWidth = selectedPreset === 'auto' ? viewportWidth * 0.90 : viewportWidth * 0.98;
-        const availableHeight = selectedPreset === 'auto' ? viewportHeight - 250 : viewportHeight * 0.98;
-        
-        const maxWidth = Number.isFinite(presetDims.width) ? Math.min(presetDims.width, availableWidth) : availableWidth;
-        const maxHeight = Number.isFinite(presetDims.height) ? Math.min(presetDims.height, availableHeight) : availableHeight;
-        debugLog('Available dimensions:', availableWidth, 'x', availableHeight);
+        let maxWidth, maxHeight;
+        if (presetDims.mode === 'auto') {
+            // Auto mode: fit to browser window with margins
+            const availableWidth = viewportWidth * 0.90;
+            const availableHeight = viewportHeight - 250;
+            maxWidth = availableWidth;
+            maxHeight = availableHeight;
+            debugLog('Auto mode - Available dimensions:', availableWidth, 'x', availableHeight);
+        } else if (presetDims.mode === 'match-largest') {
+            // Match largest: no constraints
+            maxWidth = Infinity;
+            maxHeight = Infinity;
+            debugLog('Match-largest mode - No constraints');
+        } else {
+            // Fixed preset: use exact dimensions from preset, ignore viewport
+            maxWidth = presetDims.width;
+            maxHeight = presetDims.height;
+            debugLog('Fixed preset mode - Dimensions:', maxWidth, 'x', maxHeight);
+        }
         debugLog('Max dimensions:', maxWidth, 'x', maxHeight);
         
         let globalMaxNaturalHeight = 0;
@@ -473,12 +457,22 @@
 
             const presetDims = parsePreset(selectedPreset);
 
-            // Allow tighter fit when a preset is chosen; keep roomy margins for auto
-            const availableWidth = selectedPreset === 'auto' ? viewportWidth * 0.90 : viewportWidth * 0.98;
-            const availableHeight = selectedPreset === 'auto' ? viewportHeight - 250 : viewportHeight * 0.98;
-
-            const maxWidth = Number.isFinite(presetDims.width) ? Math.min(presetDims.width, availableWidth) : availableWidth;
-            const maxHeight = Number.isFinite(presetDims.height) ? Math.min(presetDims.height, availableHeight) : availableHeight;
+            let maxWidth, maxHeight;
+            if (presetDims.mode === 'auto') {
+                // Auto mode: fit to browser window with margins
+                const availableWidth = viewportWidth * 0.90;
+                const availableHeight = viewportHeight - 250;
+                maxWidth = availableWidth;
+                maxHeight = availableHeight;
+            } else if (presetDims.mode === 'match-largest') {
+                // Match largest: no constraints
+                maxWidth = Infinity;
+                maxHeight = Infinity;
+            } else {
+                // Fixed preset: use exact dimensions from preset, ignore viewport
+                maxWidth = presetDims.width;
+                maxHeight = presetDims.height;
+            }
 
             let maxNaturalHeight = 0;
             let maxNaturalWidth = 0;
@@ -536,19 +530,6 @@
                     img.style.setProperty('height', targetHeight + 'px', 'important');
                     img.style.setProperty('object-fit', 'contain', 'important');
                 });
-            });
-
-            // Also scale the row and image containers
-            const rows = container.querySelectorAll('.screenshot-comparison__row');
-            rows.forEach(row => {
-                row.style.setProperty('max-width', '100vw', 'important');
-                row.style.setProperty('max-height', 'calc(100vh - 200px)', 'important');
-            });
-
-            const imageContainers = container.querySelectorAll('.screenshot-comparison__image-container');
-            imageContainers.forEach(imgContainer => {
-                imgContainer.style.setProperty('max-width', 'none', 'important');
-                imgContainer.style.setProperty('max-height', 'calc(100vh - 200px)', 'important');
             });
         });
     }
