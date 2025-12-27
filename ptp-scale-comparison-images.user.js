@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Scale Comparison Images
-// @version      1.6
+// @version      1.7
 // @description  Scales screenshot comparison images to fit within the browser window
 // @author       Audionut
 // @match        https://passthepopcorn.me/*
@@ -325,14 +325,8 @@
             row.style.removeProperty('display');
             debugLog(`Row ${rowIndex}: Displayed`);
             
-            // Load images by restoring src attribute
-            images.forEach((img, imgIndex) => {
-                debugLog(`Row ${rowIndex}, Image ${imgIndex}: Loading`, img.dataset.lazySrc);
-                img.src = img.dataset.lazySrc;
-            });
-            
             // Wait for all images in this row to load
-            const imageLoadPromises = Array.from(images).map(img => {
+            const imageLoadPromises = Array.from(images).map((img, imgIndex) => {
                 return new Promise(resolve => {
                     if (img.complete && img.naturalWidth > 0) {
                         resolve();
@@ -340,6 +334,10 @@
                         img.addEventListener('load', resolve, { once: true });
                         img.addEventListener('error', resolve, { once: true });
                         setTimeout(resolve, 5000); // Timeout fallback
+                        
+                        // Set src AFTER attaching listeners to avoid race condition
+                        debugLog(`Row ${rowIndex}, Image ${imgIndex}: Loading`, img.dataset.lazySrc);
+                        img.src = img.dataset.lazySrc;
                     }
                 });
             });
