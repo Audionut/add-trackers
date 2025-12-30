@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.5.5-A
+// @version      4.5.6-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -10,9 +10,9 @@
 // @downloadURL  https://github.com/Audionut/add-trackers/raw/main/ptp-add-filter-all-releases-anut.js
 // @updateURL    https://github.com/Audionut/add-trackers/raw/main/ptp-add-filter-all-releases-anut.js
 // @grant        GM_xmlhttpRequest
-// @grant        GM.getValue
-// @grant        GM.setValue
-// @grant        GM.registerMenuCommand
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_registerMenuCommand
 // @require      https://cdn.jsdelivr.net/gh/sizzlemctwizzle/GM_config@43fd0fe4de1166f343883511e53546e87840aeaf/gm_config.js
 // @require      https://github.com/Audionut/add-trackers/raw/main/scene_groups.js
 // ==/UserScript==
@@ -297,8 +297,42 @@
         }
     });
 
+    // Migrate localStorage to GM storage (one-time migration)
+    function migrateFromLocalStorage() {
+        const localStorageKey = 'PTPAddReleases';
+        try {
+            // Check if data exists in localStorage
+            const localData = localStorage.getItem(localStorageKey);
+            if (localData) {
+                console.log('Found data in localStorage, migrating to GM storage...');
+                // Check if GM storage already has data
+                const gmData = GM_getValue(localStorageKey, null);
+                if (!gmData) {
+                    // Save to GM storage
+                    GM_setValue(localStorageKey, localData);
+                    console.log('Migration successful! Data saved to GM storage.');
+                    console.log('Size:', (new Blob([localData]).size / 1024).toFixed(2), 'KB');
+                    // Clear localStorage to prevent future quota issues
+                    localStorage.removeItem(localStorageKey);
+                    console.log('Cleared localStorage. Refreshing page...');
+                    // Reload page to ensure GM_config uses the new storage
+                    window.location.reload();
+                } else {
+                    console.log('GM storage already has data, skipping migration.');
+                }
+            } else {
+                console.log('No localStorage data to migrate.');
+            }
+        } catch (e) {
+            console.error('Error during migration:', e);
+        }
+    }
+
+    // Run migration on script load
+    migrateFromLocalStorage();
+
     // Register menu command
-    GM.registerMenuCommand("PTP - Add releases from other trackers", () => {
+    GM_registerMenuCommand("PTP - Add releases from other trackers", () => {
         console.log("Menu command clicked");
         GM_config.open();
     });
@@ -6521,7 +6555,7 @@ function toUnixTime(dateString) {
         }
 
         async function waitForTvdbId(imdb_Id) {
-            let tvdbId = await GM.getValue(`tvdb_id_${imdb_Id}`);
+            let tvdbId = await GM_getValue(`tvdb_id_${imdb_Id}`);
             if (tvdbId) {
                 return tvdbId;
             } else {
@@ -6543,7 +6577,7 @@ function toUnixTime(dateString) {
                             console.log(data);
                             if (data && data.results && data.results.bindings.length > 0) {
                                 const tvdbId = data.results.bindings[0].tvdbID.value;
-                                GM.setValue(`tvdb_id_${imdb_Id}`, tvdbId);
+                                GM_setValue(`tvdb_id_${imdb_Id}`, tvdbId);
                                 resolve(tvdbId);
                             } else {
                                 resolve(null);
@@ -6560,7 +6594,7 @@ function toUnixTime(dateString) {
 
         // Function to get TVmaze ID
         async function getTvmazeId(imdb_Id) {
-            let tvmazeId = await GM.getValue(`tvmaze_id_${imdb_Id}`);
+            let tvmazeId = await GM_getValue(`tvmaze_id_${imdb_Id}`);
             if (tvmazeId) {
                 return tvmazeId
             } else {
@@ -6570,7 +6604,7 @@ function toUnixTime(dateString) {
               function parseTvmazeResponse(response) {
                   const data = JSON.parse(response.responseText);
                   if (data && data.id) {
-                      GM.setValue(`tvmaze_id_${imdb_Id}`, data.id);
+                      GM_setValue(`tvmaze_id_${imdb_Id}`, data.id);
                       return tvmazeId
                   } else {
                       return
