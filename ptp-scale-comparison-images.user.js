@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Scale Comparison Images
-// @version      1.8
+// @version      1.9
 // @description  Scales screenshot comparison images to fit within the browser window
 // @author       Audionut
 // @match        https://passthepopcorn.me/*
@@ -49,6 +49,7 @@
                 display: flex !important;
                 align-items: center !important;
                 justify-content: center !important;
+                padding-left: 6px !important;
             }
             .ptp-scale-control {
                 position: fixed !important;
