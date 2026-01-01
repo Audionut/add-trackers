@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Scale Comparison Images
-// @version      1.9
+// @version      1.9.1
 // @description  Scales screenshot comparison images to fit within the browser window
 // @author       Audionut
 // @match        https://passthepopcorn.me/*
