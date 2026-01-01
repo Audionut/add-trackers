@@ -46,10 +46,14 @@
                 overflow-x: auto !important;
             }
             .screenshot-comparison__image-container {
-                display: flex !important;
-                align-items: center !important;
-                justify-content: center !important;
-                padding-left: 6px !important;
+                display: block !important;
+                text-align: center !important;
+                min-width: min-content !important;
+            }
+            .screenshot-comparison__image,
+            .screenshot-comparison__row img {
+                display: inline-block !important;
+                margin-left: 3px !important;
             }
             .ptp-scale-control {
                 position: fixed !important;
