@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Scale Comparison Images
-// @version      1.9.1
+// @version      1.9.2
 // @description  Scales screenshot comparison images to fit within the browser window
 // @author       Audionut
 // @match        https://passthepopcorn.me/*
@@ -269,6 +269,10 @@
         const presetDims = parsePreset(selectedPreset);
         debugLog('Viewport:', viewportWidth, 'x', viewportHeight);
         debugLog('Selected preset:', selectedPreset, '- Parsed dims:', presetDims);
+
+        // In match-largest (original) mode, avoid applying explicit width/height.
+        // Firefox can do subtle resampling/rounding when both dimensions are forced.
+        const isOriginalMode = presetDims.mode === 'match-largest';
         
         let maxWidth, maxHeight;
         if (presetDims.mode === 'auto') {
@@ -347,12 +351,8 @@
                 
                 // Calculate target dimensions
                 let targetWidth, targetHeight;
-                
-                if (presetDims.mode === 'match-largest') {
-                    targetWidth = globalMaxNaturalWidth;
-                    targetHeight = globalMaxNaturalHeight;
-                    debugLog('Using match-largest mode - Target:', targetWidth, 'x', targetHeight);
-                } else {
+
+                if (!isOriginalMode) {
                     const widthScale = maxWidth / globalMaxNaturalWidth;
                     const heightScale = maxHeight / globalMaxNaturalHeight;
                     const scaleFactor = Math.min(widthScale, heightScale);
@@ -367,12 +367,19 @@
                 for (let i = 0; i <= rowIndex; i++) {
                     const rowImages = rows[i].querySelectorAll('img');
                     rowImages.forEach((img, imgIndex) => {
-                        img.dataset.scaled = 'true';
                         img.style.removeProperty('max-width');
                         img.style.removeProperty('max-height');
-                        img.style.setProperty('width', targetWidth + 'px', 'important');
-                        img.style.setProperty('height', targetHeight + 'px', 'important');
-                        img.style.setProperty('object-fit', 'contain', 'important');
+                        if (isOriginalMode) {
+                            img.style.removeProperty('width');
+                            img.style.removeProperty('height');
+                            img.style.removeProperty('object-fit');
+                            delete img.dataset.scaled;
+                        } else {
+                            img.dataset.scaled = 'true';
+                            img.style.setProperty('width', targetWidth + 'px', 'important');
+                            img.style.setProperty('height', targetHeight + 'px', 'important');
+                            img.style.setProperty('object-fit', 'contain', 'important');
+                        }
                         img.style.setProperty('visibility', 'visible', 'important');
                         debugLog(`Row ${i}, Image ${imgIndex}: Scaled and made visible`);
                     });
@@ -462,6 +469,13 @@
 
             const presetDims = parsePreset(selectedPreset);
 
+            // "Match Largest (original)" should not force explicit width/height.
+            // Keep the toggle enabled (and CSS overrides) but let the browser render at natural size.
+            if (presetDims.mode === 'match-largest') {
+                unscaleComparisonImages(container);
+                return;
+            }
+
             let maxWidth, maxHeight;
             if (presetDims.mode === 'auto') {
                 // Auto mode: fit to browser window with margins
@@ -505,22 +519,12 @@
                     }
                 });
 
-                // Calculate scale factor and target dimensions based on mode
-                let targetWidth, targetHeight, scaleFactor;
-                
-                if (presetDims.mode === 'match-largest') {
-                    // For match-largest mode: use original dimensions of largest image (no scaling)
-                    targetWidth = maxNaturalWidth;
-                    targetHeight = maxNaturalHeight;
-                    scaleFactor = 1;
-                } else {
-                    // For auto and fixed presets: scale to fit within constraints
-                    const widthScale = maxWidth / maxNaturalWidth;
-                    const heightScale = maxHeight / maxNaturalHeight;
-                    scaleFactor = Math.min(widthScale, heightScale);
-                    targetWidth = Math.floor(maxNaturalWidth * scaleFactor);
-                    targetHeight = Math.floor(maxNaturalHeight * scaleFactor);
-                }
+                // Calculate scale factor and target dimensions
+                const widthScale = maxWidth / maxNaturalWidth;
+                const heightScale = maxHeight / maxNaturalHeight;
+                const scaleFactor = Math.min(widthScale, heightScale);
+                const targetWidth = Math.floor(maxNaturalWidth * scaleFactor);
+                const targetHeight = Math.floor(maxNaturalHeight * scaleFactor);
 
                 // Apply the same dimensions to ALL images
                 images.forEach((img, imgIndex) => {
