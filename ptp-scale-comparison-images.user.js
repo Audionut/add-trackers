@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name         PTP Scale Comparison Images
-// @version      1.9.3
+// @version      1.9.4
 // @description  Scales screenshot comparison images to fit within the browser window
 // @author       Audionut
 // @match        https://passthepopcorn.me/*
 // @downloadURL  https://github.com/Audionut/add-trackers/raw/refs/heads/main/ptp-scale-comparison-images.user.js
 // @updateURL    https://github.com/Audionut/add-trackers/raw/refs/heads/main/ptp-scale-comparison-images.user.js
-// @grant        none
+// @grant        GM_getValue
+// @grant        GM_setValue
 // @run-at       document-start
 // ==/UserScript==
 
@@ -31,6 +32,65 @@
     let scaleEnabled = DEFAULT_SCALE_ENABLED;
     let selectedPreset = DEFAULT_RESOLUTION;
     let lazyLoadingEnabled = DEFAULT_LAZY_LOADING;
+
+    const SETTINGS_PREFIX = 'ptpScaleComparisonImages.';
+    const SETTINGS_KEYS = {
+        scaleEnabled: SETTINGS_PREFIX + 'scaleEnabled',
+        selectedPreset: SETTINGS_PREFIX + 'selectedPreset',
+        lazyLoadingEnabled: SETTINGS_PREFIX + 'lazyLoadingEnabled'
+    };
+
+    let originalScreenshotComparisonToggleShow = null;
+    let lastComparisonArgs = null;
+
+    function gmStorageAvailable() {
+        return (typeof GM_getValue === 'function' && typeof GM_setValue === 'function');
+    }
+
+    function getStoredValue(key, defaultValue) {
+        try {
+            if (gmStorageAvailable()) {
+                return GM_getValue(key, defaultValue);
+            }
+            const raw = localStorage.getItem(key);
+            if (raw == null) return defaultValue;
+            return JSON.parse(raw);
+        } catch (_) {
+            return defaultValue;
+        }
+    }
+
+    function setStoredValue(key, value) {
+        try {
+            if (gmStorageAvailable()) {
+                GM_setValue(key, value);
+                return;
+            }
+            localStorage.setItem(key, JSON.stringify(value));
+        } catch (_) {
+            // ignore
+        }
+    }
+
+    function normalizeSelectedPreset(value) {
+        if (!value) return DEFAULT_RESOLUTION;
+        const allowed = new Set(RESOLUTION_PRESETS.map(p => p.value));
+        return allowed.has(value) ? value : DEFAULT_RESOLUTION;
+    }
+
+    function loadSettingsFromStorage() {
+        scaleEnabled = !!getStoredValue(SETTINGS_KEYS.scaleEnabled, DEFAULT_SCALE_ENABLED);
+        selectedPreset = normalizeSelectedPreset(getStoredValue(SETTINGS_KEYS.selectedPreset, DEFAULT_RESOLUTION));
+        lazyLoadingEnabled = !!getStoredValue(SETTINGS_KEYS.lazyLoadingEnabled, DEFAULT_LAZY_LOADING);
+    }
+
+    function persistSettingsToStorage() {
+        setStoredValue(SETTINGS_KEYS.scaleEnabled, !!scaleEnabled);
+        setStoredValue(SETTINGS_KEYS.selectedPreset, selectedPreset);
+        setStoredValue(SETTINGS_KEYS.lazyLoadingEnabled, !!lazyLoadingEnabled);
+    }
+
+    loadSettingsFromStorage();
 
     // Inject CSS to override PTP's styles
     function injectCSS() {
@@ -85,6 +145,14 @@
                 border-radius: 4px !important;
                 padding: 2px 4px !important;
             }
+            .ptp-scale-control button {
+                background: #111 !important;
+                color: #fff !important;
+                border: 1px solid #333 !important;
+                border-radius: 4px !important;
+                padding: 2px 6px !important;
+                cursor: pointer !important;
+            }
         `;
         document.head.appendChild(style);
     }
@@ -116,9 +184,11 @@
             const checkbox = box.querySelector('input[type="checkbox"][data-control="scale"]');
             const lazyCheckbox = box.querySelector('input[type="checkbox"][data-control="lazy"]');
             const select = box.querySelector('select');
+            const refreshButton = box.querySelector('button[data-control="refresh"]');
             if (checkbox) checkbox.checked = scaleEnabled;
             if (lazyCheckbox) lazyCheckbox.checked = lazyLoadingEnabled;
             if (select && select.value !== selectedPreset) select.value = selectedPreset;
+            if (refreshButton) refreshButton.disabled = !lastComparisonArgs;
             return box;
         }
 
@@ -150,9 +220,16 @@
             select.appendChild(option);
         });
 
+        const refreshButton = document.createElement('button');
+        refreshButton.type = 'button';
+        refreshButton.textContent = 'Refresh';
+        refreshButton.dataset.control = 'refresh';
+        refreshButton.disabled = !lastComparisonArgs;
+
         box.appendChild(label);
         box.appendChild(lazyLabel);
         box.appendChild(select);
+        box.appendChild(refreshButton);
 
         // Stop overlay-close handlers from firing when interacting with the controls
         ['click', 'mousedown', 'mouseup', 'pointerdown', 'pointerup', 'touchstart', 'touchend'].forEach(evt => {
@@ -163,6 +240,7 @@
 
         checkbox.addEventListener('change', () => {
             scaleEnabled = checkbox.checked;
+            setStoredValue(SETTINGS_KEYS.scaleEnabled, !!scaleEnabled);
             if (scaleEnabled) {
                 // Reset lazy load flags so images can be re-processed
                 delete container.dataset.lazyLoadComplete;
@@ -175,6 +253,7 @@
 
         lazyCheckbox.addEventListener('change', () => {
             lazyLoadingEnabled = lazyCheckbox.checked;
+            setStoredValue(SETTINGS_KEYS.lazyLoadingEnabled, !!lazyLoadingEnabled);
             // Reset lazy load flags so new setting can take effect
             delete container.dataset.lazyLoadComplete;
             delete container.dataset.lazyLoadingInProgress;
@@ -182,7 +261,8 @@
         });
 
         select.addEventListener('change', () => {
-            selectedPreset = select.value;
+            selectedPreset = normalizeSelectedPreset(select.value);
+            setStoredValue(SETTINGS_KEYS.selectedPreset, selectedPreset);
             if (scaleEnabled) {
                 // Reset lazy load flags so images can be re-processed with new preset
                 delete container.dataset.lazyLoadComplete;
@@ -191,8 +271,47 @@
             }
         });
 
+        refreshButton.addEventListener('click', () => {
+            refreshComparison(container, box);
+        });
+
         container.appendChild(box);
         return box;
+    }
+
+    function refreshComparison(container, controlBox) {
+        loadSettingsFromStorage();
+        persistSettingsToStorage();
+
+        if (controlBox) {
+            const checkbox = controlBox.querySelector('input[type="checkbox"][data-control="scale"]');
+            const lazyCheckbox = controlBox.querySelector('input[type="checkbox"][data-control="lazy"]');
+            const select = controlBox.querySelector('select');
+            if (checkbox) checkbox.checked = scaleEnabled;
+            if (lazyCheckbox) lazyCheckbox.checked = lazyLoadingEnabled;
+            if (select) select.value = selectedPreset;
+        }
+
+        delete container.dataset.lazyLoadComplete;
+        delete container.dataset.lazyLoadingInProgress;
+
+        const args = lastComparisonArgs;
+        if (!args || typeof originalScreenshotComparisonToggleShow !== 'function') {
+            scaleComparisonImages();
+            return;
+        }
+
+        const isOpen = !!document.querySelector('.screenshot-comparison__container');
+        if (isOpen) {
+            // Close, then re-open to force the comparison to rebuild (important for lazy load setting).
+            originalScreenshotComparisonToggleShow.call(BBCode, args.element, args.labels, args.urls);
+            setTimeout(() => {
+                originalScreenshotComparisonToggleShow.call(BBCode, args.element, args.labels, args.urls);
+            }, 50);
+            return;
+        }
+
+        originalScreenshotComparisonToggleShow.call(BBCode, args.element, args.labels, args.urls);
     }
 
     function unscaleComparisonImages(container) {
@@ -424,9 +543,12 @@
 
         // Store the original function
         const originalToggleShow = BBCode.ScreenshotComparisonToggleShow;
+        originalScreenshotComparisonToggleShow = originalToggleShow;
 
         // Override the function
         BBCode.ScreenshotComparisonToggleShow = function(element, labels, urls) {
+
+            lastComparisonArgs = { element, labels, urls };
 
             // If lazy loading is enabled, we need to intercept before original function runs
             if (lazyLoadingEnabled && scaleEnabled) {
