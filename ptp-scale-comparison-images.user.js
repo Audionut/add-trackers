@@ -382,7 +382,6 @@
         debugLog('Prepared', totalImages, 'images for lazy loading');
 
         // Calculate dimensions from first row to establish target size
-        const firstRowImages = rows[0].querySelectorAll('img[data-lazy-src]');
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
         const presetDims = parsePreset(selectedPreset);
@@ -413,9 +412,12 @@
             debugLog('Fixed preset mode - Dimensions:', maxWidth, 'x', maxHeight);
         }
         debugLog('Max dimensions:', maxWidth, 'x', maxHeight);
-        
-        let globalMaxNaturalHeight = 0;
-        let globalMaxNaturalWidth = 0;
+
+        let baselineReady = false;
+        let baselineMaxNaturalHeight = 0;
+        let baselineMaxNaturalWidth = 0;
+        let baselineTargetWidth = null;
+        let baselineTargetHeight = null;
 
         // Load and process rows sequentially
         function loadRow(rowIndex) {
@@ -456,72 +458,62 @@
             
             Promise.all(imageLoadPromises).then(() => {
                 debugLog(`Row ${rowIndex}: All images loaded`);
-                // Update global max dimensions
-                images.forEach((img, imgIndex) => {
-                    debugLog(`Row ${rowIndex}, Image ${imgIndex}: Natural size`, img.naturalWidth, 'x', img.naturalHeight);
-                    if (img.naturalHeight > globalMaxNaturalHeight) {
-                        globalMaxNaturalHeight = img.naturalHeight;
-                    }
-                    if (img.naturalWidth > globalMaxNaturalWidth) {
-                        globalMaxNaturalWidth = img.naturalWidth;
-                    }
-                });
-                debugLog('Global max dimensions updated to:', globalMaxNaturalWidth, 'x', globalMaxNaturalHeight);
-                
-                // Calculate target dimensions
-                let targetWidth, targetHeight;
 
-                if (!isOriginalMode) {
-                    const widthScale = maxWidth / globalMaxNaturalWidth;
-                    const heightScale = maxHeight / globalMaxNaturalHeight;
-                    const scaleFactor = Math.min(widthScale, heightScale);
-                    debugLog('Scale factors - Width:', widthScale.toFixed(3), 'Height:', heightScale.toFixed(3), 'Using:', scaleFactor.toFixed(3));
-                    targetWidth = Math.floor(globalMaxNaturalWidth * scaleFactor);
-                    targetHeight = Math.floor(globalMaxNaturalHeight * scaleFactor);
-                    debugLog('Calculated target dimensions:', targetWidth, 'x', targetHeight);
-                }
-                
-                // Apply scaling to ALL loaded rows (not just current)
-                debugLog(`Applying scaling to rows 0-${rowIndex}`);
-                for (let i = 0; i <= rowIndex; i++) {
-                    const rowImages = rows[i].querySelectorAll('img');
-
-                    // For match-largest: scale smaller images within the row up to the row max height.
-                    // Use height + width:auto to avoid the subtle FF “forced width/height” adjustment.
-                    let rowMaxNaturalHeight = 0;
-                    if (isOriginalMode) {
-                        rowImages.forEach(img => {
-                            if (img.naturalHeight > rowMaxNaturalHeight) {
-                                rowMaxNaturalHeight = img.naturalHeight;
-                            }
-                        });
-                    }
-
-                    rowImages.forEach((img, imgIndex) => {
-                        img.style.removeProperty('max-width');
-                        img.style.removeProperty('max-height');
-                        if (isOriginalMode) {
-                            if (rowMaxNaturalHeight > 0 && img.naturalHeight > 0 && img.naturalHeight < rowMaxNaturalHeight) {
-                                img.dataset.scaled = 'true';
-                                img.style.setProperty('height', rowMaxNaturalHeight + 'px', 'important');
-                                img.style.setProperty('width', 'auto', 'important');
-                                img.style.removeProperty('object-fit');
-                            } else {
-                                img.style.removeProperty('width');
-                                img.style.removeProperty('height');
-                                img.style.removeProperty('object-fit');
-                                delete img.dataset.scaled;
-                            }
-                        } else {
-                            img.dataset.scaled = 'true';
-                            img.style.setProperty('width', targetWidth + 'px', 'important');
-                            img.style.setProperty('height', targetHeight + 'px', 'important');
-                            img.style.setProperty('object-fit', 'contain', 'important');
-                        }
-                        img.style.setProperty('visibility', 'visible', 'important');
-                        debugLog(`Row ${i}, Image ${imgIndex}: Scaled and made visible`);
+                // Establish baseline sizing from the first row only.
+                // Once a row has been loaded and sized, do not re-style it again while later rows load.
+                if (!baselineReady) {
+                    images.forEach((img, imgIndex) => {
+                        debugLog(`Row ${rowIndex}, Image ${imgIndex}: Natural size`, img.naturalWidth, 'x', img.naturalHeight);
+                        if (img.naturalHeight > baselineMaxNaturalHeight) baselineMaxNaturalHeight = img.naturalHeight;
+                        if (img.naturalWidth > baselineMaxNaturalWidth) baselineMaxNaturalWidth = img.naturalWidth;
                     });
+
+                    if (!isOriginalMode) {
+                        const widthScale = maxWidth / baselineMaxNaturalWidth;
+                        const heightScale = maxHeight / baselineMaxNaturalHeight;
+                        const scaleFactor = Math.min(widthScale, heightScale);
+                        debugLog('Baseline scale factors - Width:', widthScale.toFixed(3), 'Height:', heightScale.toFixed(3), 'Using:', scaleFactor.toFixed(3));
+                        baselineTargetWidth = Math.floor(baselineMaxNaturalWidth * scaleFactor);
+                        baselineTargetHeight = Math.floor(baselineMaxNaturalHeight * scaleFactor);
+                        debugLog('Baseline target dimensions:', baselineTargetWidth, 'x', baselineTargetHeight);
+                    } else {
+                        debugLog('Baseline established for match-largest; first-row max height:', baselineMaxNaturalHeight);
+                    }
+
+                    baselineReady = true;
                 }
+
+                // Apply scaling ONLY to the row that just finished loading.
+                const rowImages = rows[rowIndex].querySelectorAll('img');
+
+                // For match-largest: scale smaller images up to the first row's max height.
+                // Use height + width:auto to avoid the subtle FF “forced width/height” adjustment.
+                rowImages.forEach((img, imgIndex) => {
+                    img.style.removeProperty('max-width');
+                    img.style.removeProperty('max-height');
+
+                    if (isOriginalMode) {
+                        if (baselineMaxNaturalHeight > 0 && img.naturalHeight > 0 && img.naturalHeight < baselineMaxNaturalHeight) {
+                            img.dataset.scaled = 'true';
+                            img.style.setProperty('height', baselineMaxNaturalHeight + 'px', 'important');
+                            img.style.setProperty('width', 'auto', 'important');
+                            img.style.removeProperty('object-fit');
+                        } else {
+                            img.style.removeProperty('width');
+                            img.style.removeProperty('height');
+                            img.style.removeProperty('object-fit');
+                            delete img.dataset.scaled;
+                        }
+                    } else {
+                        img.dataset.scaled = 'true';
+                        img.style.setProperty('width', baselineTargetWidth + 'px', 'important');
+                        img.style.setProperty('height', baselineTargetHeight + 'px', 'important');
+                        img.style.setProperty('object-fit', 'contain', 'important');
+                    }
+
+                    img.style.setProperty('visibility', 'visible', 'important');
+                    debugLog(`Row ${rowIndex}, Image ${imgIndex}: Scaled and made visible`);
+                });
                 
                 // Load next row after delay
                 debugLog(`Scheduling row ${rowIndex + 1} load in 200ms`);
