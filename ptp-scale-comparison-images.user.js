@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Scale Comparison Images
-// @version      1.9.2
+// @version      1.9.3
 // @description  Scales screenshot comparison images to fit within the browser window
 // @author       Audionut
 // @match        https://passthepopcorn.me/*
@@ -270,8 +270,8 @@
         debugLog('Viewport:', viewportWidth, 'x', viewportHeight);
         debugLog('Selected preset:', selectedPreset, '- Parsed dims:', presetDims);
 
-        // In match-largest (original) mode, avoid applying explicit width/height.
-        // Firefox can do subtle resampling/rounding when both dimensions are forced.
+        // In match-largest mode, avoid applying explicit width+height.
+        // Firefox can show subtle resampling/rounding when both dimensions are forced.
         const isOriginalMode = presetDims.mode === 'match-largest';
         
         let maxWidth, maxHeight;
@@ -366,14 +366,33 @@
                 debugLog(`Applying scaling to rows 0-${rowIndex}`);
                 for (let i = 0; i <= rowIndex; i++) {
                     const rowImages = rows[i].querySelectorAll('img');
+
+                    // For match-largest: scale smaller images within the row up to the row max height.
+                    // Use height + width:auto to avoid the subtle FF “forced width/height” adjustment.
+                    let rowMaxNaturalHeight = 0;
+                    if (isOriginalMode) {
+                        rowImages.forEach(img => {
+                            if (img.naturalHeight > rowMaxNaturalHeight) {
+                                rowMaxNaturalHeight = img.naturalHeight;
+                            }
+                        });
+                    }
+
                     rowImages.forEach((img, imgIndex) => {
                         img.style.removeProperty('max-width');
                         img.style.removeProperty('max-height');
                         if (isOriginalMode) {
-                            img.style.removeProperty('width');
-                            img.style.removeProperty('height');
-                            img.style.removeProperty('object-fit');
-                            delete img.dataset.scaled;
+                            if (rowMaxNaturalHeight > 0 && img.naturalHeight > 0 && img.naturalHeight < rowMaxNaturalHeight) {
+                                img.dataset.scaled = 'true';
+                                img.style.setProperty('height', rowMaxNaturalHeight + 'px', 'important');
+                                img.style.setProperty('width', 'auto', 'important');
+                                img.style.removeProperty('object-fit');
+                            } else {
+                                img.style.removeProperty('width');
+                                img.style.removeProperty('height');
+                                img.style.removeProperty('object-fit');
+                                delete img.dataset.scaled;
+                            }
                         } else {
                             img.dataset.scaled = 'true';
                             img.style.setProperty('width', targetWidth + 'px', 'important');
@@ -469,13 +488,6 @@
 
             const presetDims = parsePreset(selectedPreset);
 
-            // "Match Largest (original)" should not force explicit width/height.
-            // Keep the toggle enabled (and CSS overrides) but let the browser render at natural size.
-            if (presetDims.mode === 'match-largest') {
-                unscaleComparisonImages(container);
-                return;
-            }
-
             let maxWidth, maxHeight;
             if (presetDims.mode === 'auto') {
                 // Auto mode: fit to browser window with margins
@@ -509,6 +521,45 @@
             });
 
             Promise.all(imageLoadPromises).then(() => {
+                // Match-largest mode: scale up only the smaller images within each row.
+                // Do not force both width and height on all images, to avoid subtle FF adjustments.
+                if (presetDims.mode === 'match-largest') {
+                    const rows = container.querySelectorAll('.screenshot-comparison__row');
+                    if (rows.length === 0) {
+                        // Fallback: no rows detected; just ensure we aren't forcing dimensions.
+                        unscaleComparisonImages(container);
+                        return;
+                    }
+
+                    rows.forEach(row => {
+                        const rowImages = row.querySelectorAll('.screenshot-comparison__image, img');
+                        let rowMaxNaturalHeight = 0;
+                        rowImages.forEach(img => {
+                            if (img.naturalHeight > rowMaxNaturalHeight) {
+                                rowMaxNaturalHeight = img.naturalHeight;
+                            }
+                        });
+
+                        rowImages.forEach(img => {
+                            img.style.removeProperty('max-width');
+                            img.style.removeProperty('max-height');
+
+                            if (rowMaxNaturalHeight > 0 && img.naturalHeight > 0 && img.naturalHeight < rowMaxNaturalHeight) {
+                                img.dataset.scaled = 'true';
+                                img.style.setProperty('height', rowMaxNaturalHeight + 'px', 'important');
+                                img.style.setProperty('width', 'auto', 'important');
+                                img.style.removeProperty('object-fit');
+                            } else {
+                                img.style.removeProperty('width');
+                                img.style.removeProperty('height');
+                                img.style.removeProperty('object-fit');
+                                delete img.dataset.scaled;
+                            }
+                        });
+                    });
+                    return;
+                }
+
                 // Find the largest dimensions
                 images.forEach(img => {
                     if (img.naturalHeight > maxNaturalHeight) {
