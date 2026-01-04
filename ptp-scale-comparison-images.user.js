@@ -19,6 +19,7 @@
     const DEFAULT_SCALE_ENABLED = true;
     const DEFAULT_RESOLUTION = 'match-largest'; // 'auto' or one of the values in RESOLUTION_PRESETS
     const DEFAULT_LAZY_LOADING = true; // Set to true to enable lazy loading by default
+    const DEFAULT_SCALE_SMALLER_IMAGES = true; // Only applies to match-largest mode
     const DEBUGGING = false; // Set to true to enable debug logging for lazy loading
     const RESOLUTION_PRESETS = [
         { label: 'Auto (fit window)', value: 'auto' },
@@ -32,12 +33,14 @@
     let scaleEnabled = DEFAULT_SCALE_ENABLED;
     let selectedPreset = DEFAULT_RESOLUTION;
     let lazyLoadingEnabled = DEFAULT_LAZY_LOADING;
+    let scaleSmallerImagesEnabled = DEFAULT_SCALE_SMALLER_IMAGES;
 
     const SETTINGS_PREFIX = 'ptpScaleComparisonImages.';
     const SETTINGS_KEYS = {
         scaleEnabled: SETTINGS_PREFIX + 'scaleEnabled',
         selectedPreset: SETTINGS_PREFIX + 'selectedPreset',
-        lazyLoadingEnabled: SETTINGS_PREFIX + 'lazyLoadingEnabled'
+        lazyLoadingEnabled: SETTINGS_PREFIX + 'lazyLoadingEnabled',
+        scaleSmallerImagesEnabled: SETTINGS_PREFIX + 'scaleSmallerImagesEnabled'
     };
 
     let originalScreenshotComparisonToggleShow = null;
@@ -82,12 +85,14 @@
         scaleEnabled = !!getStoredValue(SETTINGS_KEYS.scaleEnabled, DEFAULT_SCALE_ENABLED);
         selectedPreset = normalizeSelectedPreset(getStoredValue(SETTINGS_KEYS.selectedPreset, DEFAULT_RESOLUTION));
         lazyLoadingEnabled = !!getStoredValue(SETTINGS_KEYS.lazyLoadingEnabled, DEFAULT_LAZY_LOADING);
+        scaleSmallerImagesEnabled = !!getStoredValue(SETTINGS_KEYS.scaleSmallerImagesEnabled, DEFAULT_SCALE_SMALLER_IMAGES);
     }
 
     function persistSettingsToStorage() {
         setStoredValue(SETTINGS_KEYS.scaleEnabled, !!scaleEnabled);
         setStoredValue(SETTINGS_KEYS.selectedPreset, selectedPreset);
         setStoredValue(SETTINGS_KEYS.lazyLoadingEnabled, !!lazyLoadingEnabled);
+        setStoredValue(SETTINGS_KEYS.scaleSmallerImagesEnabled, !!scaleSmallerImagesEnabled);
     }
 
     loadSettingsFromStorage();
@@ -183,10 +188,12 @@
         if (box) {
             const checkbox = box.querySelector('input[type="checkbox"][data-control="scale"]');
             const lazyCheckbox = box.querySelector('input[type="checkbox"][data-control="lazy"]');
+            const scaleSmallerCheckbox = box.querySelector('input[type="checkbox"][data-control="scale-smaller"]');
             const select = box.querySelector('select');
             const refreshButton = box.querySelector('button[data-control="refresh"]');
             if (checkbox) checkbox.checked = scaleEnabled;
             if (lazyCheckbox) lazyCheckbox.checked = lazyLoadingEnabled;
+            if (scaleSmallerCheckbox) scaleSmallerCheckbox.checked = scaleSmallerImagesEnabled;
             if (select && select.value !== selectedPreset) select.value = selectedPreset;
             if (refreshButton) refreshButton.disabled = !lastComparisonArgs;
             return box;
@@ -211,6 +218,14 @@
         lazyLabel.appendChild(lazyCheckbox);
         lazyLabel.appendChild(document.createTextNode('Lazy load'));
 
+        const scaleSmallerLabel = document.createElement('label');
+        const scaleSmallerCheckbox = document.createElement('input');
+        scaleSmallerCheckbox.type = 'checkbox';
+        scaleSmallerCheckbox.checked = scaleSmallerImagesEnabled;
+        scaleSmallerCheckbox.dataset.control = 'scale-smaller';
+        scaleSmallerLabel.appendChild(scaleSmallerCheckbox);
+        scaleSmallerLabel.appendChild(document.createTextNode('Scale smaller'));
+
         const select = document.createElement('select');
         RESOLUTION_PRESETS.forEach(preset => {
             const option = document.createElement('option');
@@ -228,6 +243,7 @@
 
         box.appendChild(label);
         box.appendChild(lazyLabel);
+        box.appendChild(scaleSmallerLabel);
         box.appendChild(select);
         box.appendChild(refreshButton);
 
@@ -258,6 +274,17 @@
             delete container.dataset.lazyLoadComplete;
             delete container.dataset.lazyLoadingInProgress;
             // Note: User needs to close and reopen comparison for lazy loading to take effect
+        });
+
+        scaleSmallerCheckbox.addEventListener('change', () => {
+            scaleSmallerImagesEnabled = scaleSmallerCheckbox.checked;
+            setStoredValue(SETTINGS_KEYS.scaleSmallerImagesEnabled, !!scaleSmallerImagesEnabled);
+            // Reset lazy load flags so images can be re-processed with new behavior
+            delete container.dataset.lazyLoadComplete;
+            delete container.dataset.lazyLoadingInProgress;
+            if (scaleEnabled) {
+                scaleComparisonImages();
+            }
         });
 
         select.addEventListener('change', () => {
@@ -320,6 +347,7 @@
             img.style.removeProperty('width');
             img.style.removeProperty('height');
             img.style.removeProperty('object-fit');
+            img.style.removeProperty('object-position');
             delete img.dataset.scaled;
         });
 
@@ -477,7 +505,7 @@
                         baselineTargetHeight = Math.floor(baselineMaxNaturalHeight * scaleFactor);
                         debugLog('Baseline target dimensions:', baselineTargetWidth, 'x', baselineTargetHeight);
                     } else {
-                        debugLog('Baseline established for match-largest; first-row max height:', baselineMaxNaturalHeight);
+                        debugLog('Baseline established for match-largest; first-row max:', baselineMaxNaturalWidth, 'x', baselineMaxNaturalHeight);
                     }
 
                     baselineReady = true;
@@ -486,26 +514,39 @@
                 // Apply scaling ONLY to the row that just finished loading.
                 const rowImages = rows[rowIndex].querySelectorAll('img');
 
-                // For match-largest: scale smaller images up to the first row's max height.
-                // Use height + width:auto to avoid the subtle FF “forced width/height” adjustment.
                 rowImages.forEach((img, imgIndex) => {
                     img.style.removeProperty('max-width');
                     img.style.removeProperty('max-height');
 
                     if (isOriginalMode) {
-                        if (baselineMaxNaturalHeight > 0 && img.naturalHeight > 0 && img.naturalHeight < baselineMaxNaturalHeight) {
+                        // match-largest mode
+                        if (!scaleSmallerImagesEnabled) {
+                            // Keep natural size, but align by placing into a fixed-size box.
                             img.dataset.scaled = 'true';
+                            img.style.setProperty('width', baselineMaxNaturalWidth + 'px', 'important');
                             img.style.setProperty('height', baselineMaxNaturalHeight + 'px', 'important');
-                            img.style.setProperty('width', 'auto', 'important');
-                            img.style.removeProperty('object-fit');
+                            img.style.setProperty('object-fit', 'none', 'important');
+                            img.style.setProperty('object-position', 'center', 'important');
                         } else {
-                            img.style.removeProperty('width');
-                            img.style.removeProperty('height');
-                            img.style.removeProperty('object-fit');
-                            delete img.dataset.scaled;
+                            // Scale smaller images up to the baseline height.
+                            img.style.removeProperty('object-position');
+                            if (baselineMaxNaturalHeight > 0 && img.naturalHeight > 0 && img.naturalHeight < baselineMaxNaturalHeight) {
+                                img.dataset.scaled = 'true';
+                                img.style.setProperty('height', baselineMaxNaturalHeight + 'px', 'important');
+                                img.style.setProperty('width', 'auto', 'important');
+                                img.style.setProperty('max-width', baselineMaxNaturalWidth + 'px', 'important');
+                                img.style.removeProperty('object-fit');
+                            } else {
+                                img.style.removeProperty('width');
+                                img.style.removeProperty('height');
+                                img.style.removeProperty('object-fit');
+                                img.style.removeProperty('max-width');
+                                delete img.dataset.scaled;
+                            }
                         }
                     } else {
                         img.dataset.scaled = 'true';
+                        img.style.removeProperty('object-position');
                         img.style.setProperty('width', baselineTargetWidth + 'px', 'important');
                         img.style.setProperty('height', baselineTargetHeight + 'px', 'important');
                         img.style.setProperty('object-fit', 'contain', 'important');
@@ -648,9 +689,13 @@
                     rows.forEach(row => {
                         const rowImages = row.querySelectorAll('.screenshot-comparison__image, img');
                         let rowMaxNaturalHeight = 0;
+                        let rowMaxNaturalWidth = 0;
                         rowImages.forEach(img => {
                             if (img.naturalHeight > rowMaxNaturalHeight) {
                                 rowMaxNaturalHeight = img.naturalHeight;
+                            }
+                            if (img.naturalWidth > rowMaxNaturalWidth) {
+                                rowMaxNaturalWidth = img.naturalWidth;
                             }
                         });
 
@@ -658,16 +703,31 @@
                             img.style.removeProperty('max-width');
                             img.style.removeProperty('max-height');
 
-                            if (rowMaxNaturalHeight > 0 && img.naturalHeight > 0 && img.naturalHeight < rowMaxNaturalHeight) {
+                            if (!scaleSmallerImagesEnabled) {
+                                // Keep natural size, but align by placing into a fixed-size box.
                                 img.dataset.scaled = 'true';
+                                img.style.setProperty('width', rowMaxNaturalWidth + 'px', 'important');
                                 img.style.setProperty('height', rowMaxNaturalHeight + 'px', 'important');
-                                img.style.setProperty('width', 'auto', 'important');
-                                img.style.removeProperty('object-fit');
+                                img.style.setProperty('object-fit', 'none', 'important');
+                                img.style.setProperty('object-position', 'center', 'important');
+                                img.style.removeProperty('max-width');
+                                img.style.removeProperty('max-height');
                             } else {
-                                img.style.removeProperty('width');
-                                img.style.removeProperty('height');
-                                img.style.removeProperty('object-fit');
-                                delete img.dataset.scaled;
+                                // Scale smaller images up to the row max height.
+                                img.style.removeProperty('object-position');
+                                if (rowMaxNaturalHeight > 0 && img.naturalHeight > 0 && img.naturalHeight < rowMaxNaturalHeight) {
+                                    img.dataset.scaled = 'true';
+                                    img.style.setProperty('height', rowMaxNaturalHeight + 'px', 'important');
+                                    img.style.setProperty('width', 'auto', 'important');
+                                    img.style.setProperty('max-width', rowMaxNaturalWidth + 'px', 'important');
+                                    img.style.removeProperty('object-fit');
+                                } else {
+                                    img.style.removeProperty('width');
+                                    img.style.removeProperty('height');
+                                    img.style.removeProperty('object-fit');
+                                    img.style.removeProperty('max-width');
+                                    delete img.dataset.scaled;
+                                }
                             }
                         });
                     });
@@ -698,6 +758,7 @@
                     // Remove any existing constraints
                     img.style.removeProperty('max-width');
                     img.style.removeProperty('max-height');
+                    img.style.removeProperty('object-position');
 
                     // Set exact dimensions - same for all images
                     img.style.setProperty('width', targetWidth + 'px', 'important');
