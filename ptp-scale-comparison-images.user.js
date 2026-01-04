@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Scale Comparison Images
-// @version      1.9.4
+// @version      1.9.5
 // @description  Scales screenshot comparison images to fit within the browser window
 // @author       Audionut
 // @match        https://passthepopcorn.me/*
@@ -19,7 +19,6 @@
     const DEFAULT_SCALE_ENABLED = true;
     const DEFAULT_RESOLUTION = 'match-largest'; // 'auto' or one of the values in RESOLUTION_PRESETS
     const DEFAULT_LAZY_LOADING = true; // Set to true to enable lazy loading by default
-    const DEFAULT_SCALE_SMALLER_IMAGES = true; // Only applies to match-largest mode
     const DEFAULT_OLD_SCHOOL_DEFAULT = false;
     const DEBUGGING = false; // Set to true to enable debug logging for lazy loading
     const RESOLUTION_PRESETS = [
@@ -34,7 +33,6 @@
     let scaleEnabled = DEFAULT_SCALE_ENABLED;
     let selectedPreset = DEFAULT_RESOLUTION;
     let lazyLoadingEnabled = DEFAULT_LAZY_LOADING;
-    let scaleSmallerImagesEnabled = DEFAULT_SCALE_SMALLER_IMAGES;
     let oldSchoolDefaultEnabled = DEFAULT_OLD_SCHOOL_DEFAULT;
 
     const SETTINGS_PREFIX = 'ptpScaleComparisonImages.';
@@ -42,7 +40,6 @@
         scaleEnabled: SETTINGS_PREFIX + 'scaleEnabled',
         selectedPreset: SETTINGS_PREFIX + 'selectedPreset',
         lazyLoadingEnabled: SETTINGS_PREFIX + 'lazyLoadingEnabled',
-        scaleSmallerImagesEnabled: SETTINGS_PREFIX + 'scaleSmallerImagesEnabled',
         oldSchoolDefaultEnabled: SETTINGS_PREFIX + 'oldSchoolDefaultEnabled'
     };
 
@@ -89,7 +86,6 @@
         scaleEnabled = !!getStoredValue(SETTINGS_KEYS.scaleEnabled, DEFAULT_SCALE_ENABLED);
         selectedPreset = normalizeSelectedPreset(getStoredValue(SETTINGS_KEYS.selectedPreset, DEFAULT_RESOLUTION));
         lazyLoadingEnabled = !!getStoredValue(SETTINGS_KEYS.lazyLoadingEnabled, DEFAULT_LAZY_LOADING);
-        scaleSmallerImagesEnabled = !!getStoredValue(SETTINGS_KEYS.scaleSmallerImagesEnabled, DEFAULT_SCALE_SMALLER_IMAGES);
         oldSchoolDefaultEnabled = !!getStoredValue(SETTINGS_KEYS.oldSchoolDefaultEnabled, DEFAULT_OLD_SCHOOL_DEFAULT);
     }
 
@@ -97,7 +93,6 @@
         setStoredValue(SETTINGS_KEYS.scaleEnabled, !!scaleEnabled);
         setStoredValue(SETTINGS_KEYS.selectedPreset, selectedPreset);
         setStoredValue(SETTINGS_KEYS.lazyLoadingEnabled, !!lazyLoadingEnabled);
-        setStoredValue(SETTINGS_KEYS.scaleSmallerImagesEnabled, !!scaleSmallerImagesEnabled);
         setStoredValue(SETTINGS_KEYS.oldSchoolDefaultEnabled, !!oldSchoolDefaultEnabled);
     }
 
@@ -237,13 +232,11 @@
         if (box) {
             const checkbox = box.querySelector('input[type="checkbox"][data-control="scale"]');
             const lazyCheckbox = box.querySelector('input[type="checkbox"][data-control="lazy"]');
-            const scaleSmallerCheckbox = box.querySelector('input[type="checkbox"][data-control="scale-smaller"]');
             const oldSchoolCheckbox = box.querySelector('input[type="checkbox"][data-control="old-school"]');
             const select = box.querySelector('select');
             const refreshButton = box.querySelector('button[data-control="refresh"]');
             if (checkbox) checkbox.checked = scaleEnabled;
             if (lazyCheckbox) lazyCheckbox.checked = lazyLoadingEnabled;
-            if (scaleSmallerCheckbox) scaleSmallerCheckbox.checked = scaleSmallerImagesEnabled;
             if (oldSchoolCheckbox) oldSchoolCheckbox.checked = oldSchoolDefaultEnabled;
             if (select && select.value !== selectedPreset) select.value = selectedPreset;
             if (refreshButton) refreshButton.disabled = !lastComparisonArgs;
@@ -268,14 +261,6 @@
         lazyCheckbox.dataset.control = 'lazy';
         lazyLabel.appendChild(lazyCheckbox);
         lazyLabel.appendChild(document.createTextNode('Lazy load'));
-
-        const scaleSmallerLabel = document.createElement('label');
-        const scaleSmallerCheckbox = document.createElement('input');
-        scaleSmallerCheckbox.type = 'checkbox';
-        scaleSmallerCheckbox.checked = scaleSmallerImagesEnabled;
-        scaleSmallerCheckbox.dataset.control = 'scale-smaller';
-        scaleSmallerLabel.appendChild(scaleSmallerCheckbox);
-        scaleSmallerLabel.appendChild(document.createTextNode('Scale smaller'));
 
         const oldSchoolLabel = document.createElement('label');
         const oldSchoolCheckbox = document.createElement('input');
@@ -302,7 +287,6 @@
 
         box.appendChild(label);
         box.appendChild(lazyLabel);
-        box.appendChild(scaleSmallerLabel);
         box.appendChild(oldSchoolLabel);
         box.appendChild(select);
         box.appendChild(refreshButton);
@@ -334,17 +318,6 @@
             delete container.dataset.lazyLoadComplete;
             delete container.dataset.lazyLoadingInProgress;
             // Note: User needs to close and reopen comparison for lazy loading to take effect
-        });
-
-        scaleSmallerCheckbox.addEventListener('change', () => {
-            scaleSmallerImagesEnabled = scaleSmallerCheckbox.checked;
-            setStoredValue(SETTINGS_KEYS.scaleSmallerImagesEnabled, !!scaleSmallerImagesEnabled);
-            // Reset lazy load flags so images can be re-processed with new behavior
-            delete container.dataset.lazyLoadComplete;
-            delete container.dataset.lazyLoadingInProgress;
-            if (scaleEnabled) {
-                scaleComparisonImages();
-            }
         });
 
         oldSchoolCheckbox.addEventListener('change', () => {
@@ -412,8 +385,12 @@
         images.forEach(img => {
             img.style.removeProperty('width');
             img.style.removeProperty('height');
+            img.style.removeProperty('max-width');
+            img.style.removeProperty('max-height');
             img.style.removeProperty('object-fit');
             img.style.removeProperty('object-position');
+            img.style.removeProperty('display');
+            img.style.removeProperty('margin');
             delete img.dataset.scaled;
         });
 
@@ -482,8 +459,8 @@
         debugLog('Viewport:', viewportWidth, 'x', viewportHeight);
         debugLog('Selected preset:', selectedPreset, '- Parsed dims:', presetDims);
 
-        // In match-largest mode, avoid applying explicit width+height.
-        // Firefox can show subtle resampling/rounding when both dimensions are forced.
+        // In match-largest (original) mode, avoid applying explicit width/height.
+        // Firefox can do subtle resampling/rounding when both dimensions are forced.
         const isOriginalMode = presetDims.mode === 'match-largest';
         
         let maxWidth, maxHeight;
@@ -585,30 +562,29 @@
                     img.style.removeProperty('max-height');
 
                     if (isOriginalMode) {
-                        // match-largest mode
-                        if (!scaleSmallerImagesEnabled) {
-                            // Keep natural size, but align by placing into a fixed-size box.
+                        // Match-largest (original): do not force explicit width/height.
+                        const box = img.closest('.screenshot-comparison__image-container');
+                        if (box && box.dataset.ptpScaleBox === 'true') {
+                            box.style.removeProperty('width');
+                            box.style.removeProperty('height');
+                            box.style.removeProperty('display');
+                            box.style.removeProperty('text-align');
+                            delete box.dataset.ptpScaleBox;
+                        }
+
+                        // Always upscale smaller images to the baseline max height.
+                        if (baselineMaxNaturalHeight > 0 && img.naturalHeight > 0 && img.naturalHeight < baselineMaxNaturalHeight) {
                             img.dataset.scaled = 'true';
-                            img.style.setProperty('width', baselineMaxNaturalWidth + 'px', 'important');
                             img.style.setProperty('height', baselineMaxNaturalHeight + 'px', 'important');
-                            img.style.setProperty('object-fit', 'none', 'important');
-                            img.style.setProperty('object-position', 'center', 'important');
+                            img.style.setProperty('width', 'auto', 'important');
+                            img.style.setProperty('max-width', baselineMaxNaturalWidth + 'px', 'important');
+                            img.style.removeProperty('object-fit');
                         } else {
-                            // Scale smaller images up to the baseline height.
-                            img.style.removeProperty('object-position');
-                            if (baselineMaxNaturalHeight > 0 && img.naturalHeight > 0 && img.naturalHeight < baselineMaxNaturalHeight) {
-                                img.dataset.scaled = 'true';
-                                img.style.setProperty('height', baselineMaxNaturalHeight + 'px', 'important');
-                                img.style.setProperty('width', 'auto', 'important');
-                                img.style.setProperty('max-width', baselineMaxNaturalWidth + 'px', 'important');
-                                img.style.removeProperty('object-fit');
-                            } else {
-                                img.style.removeProperty('width');
-                                img.style.removeProperty('height');
-                                img.style.removeProperty('object-fit');
-                                img.style.removeProperty('max-width');
-                                delete img.dataset.scaled;
-                            }
+                            img.style.removeProperty('width');
+                            img.style.removeProperty('height');
+                            img.style.removeProperty('object-fit');
+                            img.style.removeProperty('max-width');
+                            delete img.dataset.scaled;
                         }
                     } else {
                         img.dataset.scaled = 'true';
@@ -775,31 +751,29 @@
                             img.style.removeProperty('max-width');
                             img.style.removeProperty('max-height');
 
-                            if (!scaleSmallerImagesEnabled) {
-                                // Keep natural size, but align by placing into a fixed-size box.
+                            const box = img.closest('.screenshot-comparison__image-container');
+                            if (box && box.dataset.ptpScaleBox === 'true') {
+                                box.style.removeProperty('width');
+                                box.style.removeProperty('height');
+                                box.style.removeProperty('display');
+                                box.style.removeProperty('text-align');
+                                delete box.dataset.ptpScaleBox;
+                            }
+
+                            // Scale smaller images up to the row max height.
+                            img.style.removeProperty('object-position');
+                            if (rowMaxNaturalHeight > 0 && img.naturalHeight > 0 && img.naturalHeight < rowMaxNaturalHeight) {
                                 img.dataset.scaled = 'true';
-                                img.style.setProperty('width', rowMaxNaturalWidth + 'px', 'important');
                                 img.style.setProperty('height', rowMaxNaturalHeight + 'px', 'important');
-                                img.style.setProperty('object-fit', 'none', 'important');
-                                img.style.setProperty('object-position', 'center', 'important');
-                                img.style.removeProperty('max-width');
-                                img.style.removeProperty('max-height');
+                                img.style.setProperty('width', 'auto', 'important');
+                                img.style.setProperty('max-width', rowMaxNaturalWidth + 'px', 'important');
+                                img.style.removeProperty('object-fit');
                             } else {
-                                // Scale smaller images up to the row max height.
-                                img.style.removeProperty('object-position');
-                                if (rowMaxNaturalHeight > 0 && img.naturalHeight > 0 && img.naturalHeight < rowMaxNaturalHeight) {
-                                    img.dataset.scaled = 'true';
-                                    img.style.setProperty('height', rowMaxNaturalHeight + 'px', 'important');
-                                    img.style.setProperty('width', 'auto', 'important');
-                                    img.style.setProperty('max-width', rowMaxNaturalWidth + 'px', 'important');
-                                    img.style.removeProperty('object-fit');
-                                } else {
-                                    img.style.removeProperty('width');
-                                    img.style.removeProperty('height');
-                                    img.style.removeProperty('object-fit');
-                                    img.style.removeProperty('max-width');
-                                    delete img.dataset.scaled;
-                                }
+                                img.style.removeProperty('width');
+                                img.style.removeProperty('height');
+                                img.style.removeProperty('object-fit');
+                                img.style.removeProperty('max-width');
+                                delete img.dataset.scaled;
                             }
                         });
                     });
