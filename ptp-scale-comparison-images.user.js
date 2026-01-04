@@ -20,6 +20,7 @@
     const DEFAULT_RESOLUTION = 'match-largest'; // 'auto' or one of the values in RESOLUTION_PRESETS
     const DEFAULT_LAZY_LOADING = true; // Set to true to enable lazy loading by default
     const DEFAULT_SCALE_SMALLER_IMAGES = true; // Only applies to match-largest mode
+    const DEFAULT_OLD_SCHOOL_DEFAULT = false;
     const DEBUGGING = false; // Set to true to enable debug logging for lazy loading
     const RESOLUTION_PRESETS = [
         { label: 'Auto (fit window)', value: 'auto' },
@@ -34,17 +35,20 @@
     let selectedPreset = DEFAULT_RESOLUTION;
     let lazyLoadingEnabled = DEFAULT_LAZY_LOADING;
     let scaleSmallerImagesEnabled = DEFAULT_SCALE_SMALLER_IMAGES;
+    let oldSchoolDefaultEnabled = DEFAULT_OLD_SCHOOL_DEFAULT;
 
     const SETTINGS_PREFIX = 'ptpScaleComparisonImages.';
     const SETTINGS_KEYS = {
         scaleEnabled: SETTINGS_PREFIX + 'scaleEnabled',
         selectedPreset: SETTINGS_PREFIX + 'selectedPreset',
         lazyLoadingEnabled: SETTINGS_PREFIX + 'lazyLoadingEnabled',
-        scaleSmallerImagesEnabled: SETTINGS_PREFIX + 'scaleSmallerImagesEnabled'
+        scaleSmallerImagesEnabled: SETTINGS_PREFIX + 'scaleSmallerImagesEnabled',
+        oldSchoolDefaultEnabled: SETTINGS_PREFIX + 'oldSchoolDefaultEnabled'
     };
 
     let originalScreenshotComparisonToggleShow = null;
     let lastComparisonArgs = null;
+    let hasAppliedOldSchoolDefault = false;
 
     function gmStorageAvailable() {
         return (typeof GM_getValue === 'function' && typeof GM_setValue === 'function');
@@ -86,6 +90,7 @@
         selectedPreset = normalizeSelectedPreset(getStoredValue(SETTINGS_KEYS.selectedPreset, DEFAULT_RESOLUTION));
         lazyLoadingEnabled = !!getStoredValue(SETTINGS_KEYS.lazyLoadingEnabled, DEFAULT_LAZY_LOADING);
         scaleSmallerImagesEnabled = !!getStoredValue(SETTINGS_KEYS.scaleSmallerImagesEnabled, DEFAULT_SCALE_SMALLER_IMAGES);
+        oldSchoolDefaultEnabled = !!getStoredValue(SETTINGS_KEYS.oldSchoolDefaultEnabled, DEFAULT_OLD_SCHOOL_DEFAULT);
     }
 
     function persistSettingsToStorage() {
@@ -93,6 +98,50 @@
         setStoredValue(SETTINGS_KEYS.selectedPreset, selectedPreset);
         setStoredValue(SETTINGS_KEYS.lazyLoadingEnabled, !!lazyLoadingEnabled);
         setStoredValue(SETTINGS_KEYS.scaleSmallerImagesEnabled, !!scaleSmallerImagesEnabled);
+        setStoredValue(SETTINGS_KEYS.oldSchoolDefaultEnabled, !!oldSchoolDefaultEnabled);
+    }
+
+    function withOldSchoolDefaultHandled(continuation) {
+        if (hasAppliedOldSchoolDefault) {
+            continuation(false);
+            return;
+        }
+
+        let tries = 0;
+        const maxTries = 40;
+        const delayMs = 25;
+
+        const tick = () => {
+            tries += 1;
+
+            const link = document.querySelector('.screenshot-comparison__old-school-toggler-container a');
+            if (link) {
+                const label = (link.textContent || '').trim().toLowerCase();
+                let toggled = false;
+
+                if (oldSchoolDefaultEnabled && label.includes('old school')) {
+                    link.click();
+                    toggled = true;
+                } else if (!oldSchoolDefaultEnabled && label.includes('new school')) {
+                    link.click();
+                    toggled = true;
+                }
+
+                hasAppliedOldSchoolDefault = true;
+                continuation(toggled);
+                return;
+            }
+
+            if (tries >= maxTries) {
+                hasAppliedOldSchoolDefault = true;
+                continuation(false);
+                return;
+            }
+
+            setTimeout(tick, delayMs);
+        };
+
+        tick();
     }
 
     loadSettingsFromStorage();
@@ -189,11 +238,13 @@
             const checkbox = box.querySelector('input[type="checkbox"][data-control="scale"]');
             const lazyCheckbox = box.querySelector('input[type="checkbox"][data-control="lazy"]');
             const scaleSmallerCheckbox = box.querySelector('input[type="checkbox"][data-control="scale-smaller"]');
+            const oldSchoolCheckbox = box.querySelector('input[type="checkbox"][data-control="old-school"]');
             const select = box.querySelector('select');
             const refreshButton = box.querySelector('button[data-control="refresh"]');
             if (checkbox) checkbox.checked = scaleEnabled;
             if (lazyCheckbox) lazyCheckbox.checked = lazyLoadingEnabled;
             if (scaleSmallerCheckbox) scaleSmallerCheckbox.checked = scaleSmallerImagesEnabled;
+            if (oldSchoolCheckbox) oldSchoolCheckbox.checked = oldSchoolDefaultEnabled;
             if (select && select.value !== selectedPreset) select.value = selectedPreset;
             if (refreshButton) refreshButton.disabled = !lastComparisonArgs;
             return box;
@@ -226,6 +277,14 @@
         scaleSmallerLabel.appendChild(scaleSmallerCheckbox);
         scaleSmallerLabel.appendChild(document.createTextNode('Scale smaller'));
 
+        const oldSchoolLabel = document.createElement('label');
+        const oldSchoolCheckbox = document.createElement('input');
+        oldSchoolCheckbox.type = 'checkbox';
+        oldSchoolCheckbox.checked = oldSchoolDefaultEnabled;
+        oldSchoolCheckbox.dataset.control = 'old-school';
+        oldSchoolLabel.appendChild(oldSchoolCheckbox);
+        oldSchoolLabel.appendChild(document.createTextNode('Old school default'));
+
         const select = document.createElement('select');
         RESOLUTION_PRESETS.forEach(preset => {
             const option = document.createElement('option');
@@ -244,6 +303,7 @@
         box.appendChild(label);
         box.appendChild(lazyLabel);
         box.appendChild(scaleSmallerLabel);
+        box.appendChild(oldSchoolLabel);
         box.appendChild(select);
         box.appendChild(refreshButton);
 
@@ -285,6 +345,12 @@
             if (scaleEnabled) {
                 scaleComparisonImages();
             }
+        });
+
+        oldSchoolCheckbox.addEventListener('change', () => {
+            oldSchoolDefaultEnabled = oldSchoolCheckbox.checked;
+            setStoredValue(SETTINGS_KEYS.oldSchoolDefaultEnabled, !!oldSchoolDefaultEnabled);
+            // This only auto-applies on the first comparison open after page load.
         });
 
         select.addEventListener('change', () => {
@@ -583,22 +649,28 @@
 
             lastComparisonArgs = { element, labels, urls };
 
-            // If lazy loading is enabled, we need to intercept before original function runs
-            if (lazyLoadingEnabled && scaleEnabled) {
-                // Call original function
-                originalToggleShow.call(this, element, labels, urls);
-                
-                // Immediately find the container and prepare for lazy loading
-                setTimeout(() => {
-                    const container = document.querySelector('.screenshot-comparison__container');
-                    if (container) {
-                        ensureControlBox(container);
-                        loadImagesLazy(container);
-                    }
-                }, 10);
-            } else {
-                // Call the original function
-                originalToggleShow.call(this, element, labels, urls);
+            // Call the original function
+            originalToggleShow.call(this, element, labels, urls);
+
+            // Only on the very first comparison open after page load, apply old-school preference.
+            // This must not run again on subsequent opens (including refresh/reopen).
+            withOldSchoolDefaultHandled((toggled) => {
+                if (toggled) {
+                    // If we flipped the UI mode, don't run scaling/lazy logic against a moving DOM.
+                    return;
+                }
+
+                // If lazy loading is enabled, we need to intercept and prepare for row-by-row load.
+                if (lazyLoadingEnabled && scaleEnabled) {
+                    setTimeout(() => {
+                        const container = document.querySelector('.screenshot-comparison__container');
+                        if (container) {
+                            ensureControlBox(container);
+                            loadImagesLazy(container);
+                        }
+                    }, 10);
+                    return;
+                }
 
                 // Wait for the DOM to update, then scale images
                 setTimeout(() => {
@@ -608,7 +680,7 @@
                 setTimeout(() => {
                     scaleComparisonImages();
                 }, 1000);
-            }
+            });
         };
     }
 
