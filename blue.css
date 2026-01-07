@@ -1,0 +1,5733 @@
+/* ==========================================================================
+   ++++++++++ [Blue Night Theme for PTP - by @PuNkFuSe] ++++++++++
+   ========================================================================== */
+/* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+   ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+   TABLE OF CONTENTS
+   ++++++++++++++++++++++++++++++++
+   1.0 - Reset CSS
+        1.1 - Normalize.css
+        1.2 - Custom Reset
+   2.0 - Typography
+   3.0 - Globals
+        3.1 - Inputs & Buttons
+        3.2 - Tables
+   4.0 - Utilities
+        4.1 - CSS Animation/Keyframes
+   5.0 - Header
+   6.0 - Body
+       6.1 - User Profile
+   7.0 - Footer
+   8.0 - Media Queries/Responsive Layout
+   ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
+
+/****************************************************************************
+1.0 - Reset CSS */
+/************************************************************************
+1.1 - Normalize.css (8.0.1) */
+html {
+  line-height: 1.15;
+  -webkit-text-size-adjust: 100%;
+  -ms-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  display: block;
+}
+
+h1 {
+  font-size: 2em;
+  margin: 0.67em 0;
+}
+
+hr {
+  box-sizing: content-box;
+  height: 0;
+  overflow: visible;
+}
+
+pre {
+  font-family: monospace, monospace;
+  font-size: 1em;
+}
+
+a {
+  background-color: transparent;
+}
+
+abbr[title] {
+  border-bottom: none;
+  text-decoration: underline;
+  -webkit-text-decoration: underline dotted;
+  text-decoration: underline dotted;
+}
+
+b,
+strong {
+  font-weight: 700;
+}
+
+code,
+kbd,
+samp {
+  font-family: monospace, monospace;
+  font-size: 1em;
+}
+
+small {
+  font-size: 80%;
+}
+
+sub,
+sup {
+  font-size: 75%;
+  line-height: 0;
+  position: relative;
+  vertical-align: baseline;
+}
+
+sub {
+  bottom: -0.25em;
+}
+
+sup {
+  top: -0.5em;
+}
+
+img {
+  border-style: none;
+}
+
+button,
+input,
+optgroup,
+select,
+textarea {
+  font-family: inherit;
+  font-size: 100%;
+  line-height: 1.15;
+  margin: 0;
+}
+
+button,
+input {
+  overflow: visible;
+}
+
+button,
+select {
+  text-transform: none;
+}
+
+button,
+[type="button"],
+[type="reset"],
+[type="submit"] {
+  -webkit-appearance: button;
+}
+
+button::-moz-focus-inner,
+[type="button"]::-moz-focus-inner,
+[type="reset"]::-moz-focus-inner,
+[type="submit"]::-moz-focus-inner {
+  border-style: none;
+  padding: 0;
+}
+
+button:-moz-focusring,
+[type="button"]:-moz-focusring,
+[type="reset"]:-moz-focusring,
+[type="submit"]:-moz-focusring {
+  outline: 1px dotted ButtonText;
+}
+
+fieldset {
+  padding: 0.35em 0.75em 0.625em;
+}
+
+legend {
+  box-sizing: border-box;
+  color: inherit;
+  display: table;
+  max-width: 100%;
+  padding: 0;
+  white-space: normal;
+}
+
+progress {
+  vertical-align: baseline;
+}
+
+textarea {
+  overflow: auto;
+}
+
+[type="checkbox"],
+[type="radio"] {
+  box-sizing: border-box;
+  padding: 0;
+}
+
+[type="number"]::-webkit-inner-spin-button,
+[type="number"]::-webkit-outer-spin-button {
+  height: auto;
+}
+
+[type="search"] {
+  -webkit-appearance: textfield;
+  outline-offset: -2px;
+}
+
+[type="search"]::-webkit-search-decoration {
+  -webkit-appearance: none;
+}
+
+::-webkit-file-upload-button {
+  -webkit-appearance: button;
+  font: inherit;
+}
+
+details {
+  display: block;
+}
+
+summary {
+  display: list-item;
+}
+
+template {
+  display: none;
+}
+
+[hidden] {
+  display: none;
+}
+
+/************************************************************************
+  1.2 - Custom Reset */
+*,
+:after,
+:before {
+  box-sizing: border-box;
+}
+
+hr {
+  display: block;
+  height: 1px;
+  border: 0;
+  border-top: 1px solid #ccc;
+  margin: 1em 0;
+  padding: 0;
+}
+
+pre {
+  margin: 0;
+}
+
+pre br {
+  display: none;
+  line-height: 0;
+}
+
+audio,
+canvas,
+iframe,
+img,
+svg,
+video {
+  vertical-align: middle;
+}
+
+fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+textarea {
+  resize: vertical;
+}
+
+.clearfix:before,
+.clearfix:after {
+  content: " ";
+  display: table;
+}
+
+.clearfix:after {
+  clear: both;
+}
+
+/****************************************************************************
+  2.0 - Typography */
+
+@font-face {
+  font-family: "Bebas Neue";
+  font-style: normal;
+  font-weight: 400;
+  src: local("Bebas Neue Regular"), local("BebasNeue-Regular"),
+    url("https://datfunc.github.io/ptp/assets/fonts/bebas-neue/bebas-neue-v1-latin-ext_latin-regular.woff2")
+      format("woff2"),
+    url("https://datfunc.github.io/ptp/assets/fonts/bebas-neue/bebas-neue-v1-latin-ext_latin-regular.woff")
+      format("woff");
+}
+
+@font-face {
+  font-family: "Open Sans";
+  font-style: normal;
+  font-weight: 300;
+  src: local("Open Sans Light"), local("OpenSans-Light"),
+    url("https://datfunc.github.io/ptp/assets/fonts/open-sans/open-sans-v17-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-300.woff2")
+      format("woff2"),
+    url("https://datfunc.github.io/ptp/assets/fonts/open-sans/open-sans-v17-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-300.woff")
+      format("woff");
+}
+
+@font-face {
+  font-family: "Open Sans";
+  font-style: italic;
+  font-weight: 300;
+  src: local("Open Sans Light Italic"), local("OpenSans-LightItalic"),
+    url("https://github.com/datFunc/ptp__blue-night-theme/blob/master/fonts/open-sans/open-sans-v17-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-300italic.woff2")
+      format("woff2"),
+    url("https://datfunc.github.io/ptp/assets/fonts/open-sans/open-sans-v17-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-300italic.woff")
+      format("woff");
+}
+
+@font-face {
+  font-family: "Open Sans";
+  font-style: normal;
+  font-weight: 400;
+  src: local("Open Sans Regular"), local("OpenSans-Regular"),
+    url("https://datfunc.github.io/ptp/assets/fonts/open-sans/open-sans-v17-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-regular.woff2")
+      format("woff2"),
+    url("https://datfunc.github.io/ptp/assets/fonts/open-sans/open-sans-v17-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-regular.woff")
+      format("woff");
+}
+
+@font-face {
+  font-family: "Open Sans";
+  font-style: italic;
+  font-weight: 400;
+  src: local("Open Sans Italic"), local("OpenSans-Italic"),
+    url("https://datfunc.github.io/ptp/assets/fonts/open-sans/open-sans-v17-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-italic.woff2")
+      format("woff2"),
+    url("https://datfunc.github.io/ptp/assets/fonts/open-sans/open-sans-v17-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-italic.woff")
+      format("woff");
+}
+
+@font-face {
+  font-family: "Open Sans";
+  font-style: normal;
+  font-weight: 600;
+  src: local("Open Sans SemiBold"), local("OpenSans-SemiBold"),
+    url("https://datfunc.github.io/ptp/assets/fonts/open-sans/open-sans-v17-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-600.woff2")
+      format("woff2"),
+    url("https://datfunc.github.io/ptp/assets/fonts/open-sans/open-sans-v17-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-600.woff")
+      format("woff");
+}
+
+@font-face {
+  font-family: "Open Sans";
+  font-style: italic;
+  font-weight: 600;
+  src: local("Open Sans SemiBold Italic"), local("OpenSans-SemiBoldItalic"),
+    url("https://datfunc.github.io/ptp/assets/fonts/open-sans/open-sans-v17-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-600italic.woff2")
+      format("woff2"),
+    url("https://datfunc.github.io/ptp/assets/fonts/open-sans/open-sans-v17-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-600italic.woff")
+      format("woff");
+}
+
+@font-face {
+  font-family: "Open Sans";
+  font-style: normal;
+  font-weight: 700;
+  src: local("Open Sans Bold"), local("OpenSans-Bold"),
+    url("https://datfunc.github.io/ptp/assets/fonts/open-sans/open-sans-v17-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-700.woff2")
+      format("woff2"),
+    url("https://datfunc.github.io/ptp/assets/fonts/open-sans/open-sans-v17-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-700.woff")
+      format("woff");
+}
+
+@font-face {
+  font-family: "Open Sans";
+  font-style: italic;
+  font-weight: 700;
+  src: local("Open Sans Bold Italic"), local("OpenSans-BoldItalic"),
+    url("https://datfunc.github.io/ptp/assets/fonts/open-sans/open-sans-v17-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-700italic.woff2")
+      format("woff2"),
+    url("https://datfunc.github.io/ptp/assets/fonts/open-sans/open-sans-v17-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-700italic.woff")
+      format("woff");
+}
+
+@font-face {
+  font-family: "Open Sans";
+  font-style: normal;
+  font-weight: 800;
+  src: local("Open Sans ExtraBold"), local("OpenSans-ExtraBold"),
+    url("https://datfunc.github.io/ptp/assets/fonts/open-sans/open-sans-v17-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-800.woff2")
+      format("woff2"),
+    url("https://datfunc.github.io/ptp/assets/fonts/open-sans/open-sans-v17-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-800.woff")
+      format("woff");
+}
+
+@font-face {
+  font-family: "Open Sans";
+  font-style: italic;
+  font-weight: 800;
+  src: local("Open Sans ExtraBold Italic"), local("OpenSans-ExtraBoldItalic"),
+    url("https://datfunc.github.io/ptp/assets/fonts/open-sans/open-sans-v17-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-800italic.woff2")
+      format("woff2"),
+    url("https://datfunc.github.io/ptp/assets/fonts/open-sans/open-sans-v17-vietnamese_latin-ext_latin_greek-ext_greek_cyrillic-ext_cyrillic-800italic.woff")
+      format("woff");
+}
+
+/* Note: Only used for the alt-header version */
+@font-face {
+  font-family: "Sequel Sans";
+  font-style: normal;
+  font-weight: 700;
+  src: local("Sequel Sans Bold Disp"), local("SequelSans-BoldDisp"),
+    url("https://datfunc.github.io/ptp/assets/fonts/sequel-sans/sequel-sans-bold-display.woff")
+      format("woff2"),
+    url("https://datfunc.github.io/ptp/assets/fonts/sequel-sans/sequel-sans-bold-display.woff2")
+      format("woff");
+}
+
+body {
+  color: #fff;
+  font-family: "Open Sans", Helvetica, Tahoma, Arial, sans-serif;
+  font-weight: 400;
+  font-size: 1rem;
+  line-height: normal;
+  word-wrap: break-word;
+}
+
+.page__title {
+  text-align: center;
+}
+
+.label {
+  font-weight: 700;
+  text-align: right;
+}
+
+.encoding-history-status--finished,
+.missing-torrent-status--exists,
+.torrent-info__reported {
+  font-weight: 700;
+}
+
+.missing-torrent-status--trumpable,
+.torrent-info__trumpable {
+  box-sizing: border-box;
+  display: inline-block;
+  font-weight: 700;
+  font-size: 0.6rem;
+  vertical-align: baseline;
+  color: #dfa02d;
+  background: rgba(223, 160, 45, 0.15) !important;
+  padding: 0.2rem 0.6rem;
+  border: none !important;
+  border-radius: 1rem;
+  transition: all 0.3s;
+}
+
+.torrent-info__trumpable:hover {
+  background: rgba(223, 160, 45, 0.25) !important;
+}
+
+.encoding-history-status--canceled,
+.bonus-point-history--sent .encoding-history-status--expired,
+.log__message--deleted,
+.no-seeders,
+.missing-torrent-status--missing,
+.torrent-info__reported {
+  color: #f44336;
+}
+
+.torrent-info__reported,
+.missing-torrent-status--missing,
+.missing-torrent-status--no-source,
+.missing-torrent-status--dead-source {
+  box-sizing: border-box;
+  display: inline-block;
+  font-weight: 700;
+  font-size: 0.6rem;
+  vertical-align: baseline;
+  color: #f05555;
+  background: rgba(240, 85, 85, 0.15) !important;
+  padding: 0.2rem 0.6rem;
+  border: none !important;
+  border-radius: 1rem;
+  transition: all 0.3s;
+}
+
+.torrent-info__reported:hover,
+.missing-torrent-status--no-source {
+  background: rgba(240, 85, 85, 0.25) !important;
+}
+
+.encoding-history-status--expired,
+.missing-torrent-status--missing,
+.torrent-info-link--user-downloaded,
+.torrent-info-link--user-snatched {
+  font-weight: 700;
+}
+
+.bonus-point-history--received,
+.log__message--uploaded,
+.missing-torrent-status--exists,
+.encoding-history-status--finished,
+.torrent-info-link--user-downloaded,
+.snatchlist-status--not-hnr,
+.snatchlist-status--seeding {
+  color: #418b00;
+}
+
+.torrent-info__download-modifier--free,
+.torrent-info__download-modifier--half,
+.torrent-info__download-modifier--neutral,
+.movie-page__torrent-reports-title,
+.movie-tooltip__rating__title {
+  font-weight: 700;
+}
+
+.torrent-info-link--user-snatched {
+  color: #4281da;
+}
+
+.torrent-info__download-modifier--free,
+.missing-torrent-status--exists {
+  box-sizing: border-box;
+  display: inline-block;
+  font-weight: 700;
+  font-size: 0.6rem;
+  vertical-align: baseline;
+  color: #55b160;
+  background: rgba(85, 177, 96, 0.15) !important;
+  padding: 0.2rem 0.6rem;
+  border: none !important;
+  border-radius: 1rem;
+  transition: all 0.3s;
+}
+
+.torrent-info__download-modifier--free:hover {
+  background: rgba(85, 177, 96, 0.25) !important;
+}
+
+#missing .missing-torrent-status--trumpable,
+#missing .torrent-info__trumpable,
+#missing .torrent-info__reported,
+#missing .missing-torrent-status--missing,
+#missing .missing-torrent-status--no-source,
+#missing .missing-torrent-status--dead-source,
+#missing .torrent-info__download-modifier--free,
+#missing .missing-torrent-status--exists {
+  display: table-cell;
+  border-radius: initial;
+  padding: 0.2rem 0.6rem !important;
+  vertical-align: middle;
+}
+
+.log__message--edited {
+  color: #949aac;
+}
+
+.form__label {
+  font-weight: 700;
+}
+
+#uploadtoken {
+  font-size: 0.65rem !important;
+}
+
+optgroup {
+  font-weight: 700;
+}
+
+.simple-tabs__link--active {
+  color: #fff !important;
+}
+
+.ratio-00,
+.snatchlist-status--hnr,
+.snatchlist-status--not-seeding {
+  color: #f44336;
+}
+
+.ratio-01 {
+  color: #ff1300;
+}
+
+.ratio-02 {
+  color: #ff1300;
+}
+
+.ratio-03 {
+  color: #ff2600;
+}
+
+.ratio-04 {
+  color: #ff4c00;
+}
+
+.ratio-05 {
+  color: #ff5e00;
+}
+
+.ratio-06,
+.snatchlist-status--removed-hnr {
+  color: #ff5e00;
+}
+
+.ratio-07 {
+  color: #ff7100;
+}
+
+.ratio-08 {
+  color: #ff9700;
+}
+
+.ratio-09 {
+  color: #fa0;
+}
+
+.ratio-10 {
+  color: #74c42e;
+}
+
+.ratio-20 {
+  color: #418b00;
+}
+
+.ratio-50 {
+  color: #418b00;
+}
+
+.ratio-infinite {
+  color: #418b00;
+}
+
+/****************************************************************************
+                                                                                                            3.0 - Globals */
+html.busy-cursor,
+html.busy-cursor * {
+  cursor: wait !important;
+}
+
+body {
+  background: #191d2a
+    url("https://datfunc.github.io/ptp/assets/imgs/body_bg.svg");
+  margin: 0 auto;
+}
+
+#wrapper {
+  display: block;
+  margin: 0 auto;
+}
+
+a {
+  text-decoration: none;
+  color: #a0a6b7;
+  border: none;
+  transition: all 0.3s;
+}
+
+a:hover {
+  text-decoration: none;
+  color: #fff;
+  border: none;
+}
+
+a[href*="report"]:hover {
+  color: #f05555;
+}
+
+.clearfix:after,
+.forum-post__heading:after,
+.grid:after,
+.huge-movie-list__movie:after,
+.poll__bar:after,
+.sidebar:after,
+.tabs__bar__list:after {
+  content: "";
+  display: table;
+  clear: both;
+}
+
+blockquote {
+  margin: 10px;
+  padding: 10px;
+  border: 1px dashed #4e556b;
+  border-radius: 5px;
+  background-color: #181c27;
+}
+
+.list > li {
+  margin-top: 2px;
+}
+
+.heading:first-child {
+  margin-top: 0;
+}
+
+p:first-child {
+  margin-top: 0;
+}
+
+p:last-child {
+  margin-bottom: 0;
+}
+
+mark {
+  background: #ff0;
+  color: #000;
+}
+
+figure {
+  margin: 1.5em 40px;
+}
+
+.alert:first-child {
+  margin-top: 0;
+}
+
+.alert:last-child {
+  margin-bottom: 0;
+}
+
+.site-debug {
+  margin-bottom: 15px;
+}
+
+.stylesheet-preview-container {
+  margin-top: 4px;
+  margin-bottom: 20px;
+}
+
+.lightbox {
+  position: fixed;
+  text-align: center;
+  top: 5%;
+  left: 5%;
+  width: 90%;
+  height: 90%;
+  padding: 0;
+  z-index: 1002;
+  overflow: auto;
+  outline: 0;
+}
+
+.lightbox__shroud {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(7, 11, 22, 0.9);
+  z-index: 1001;
+}
+
+body.lightbox__scroll-lock {
+  position: fixed;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+}
+
+.lightbox img {
+  max-width: 100%;
+  max-height: 100%;
+  display: block;
+  margin: 0 auto;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* qTip */
+.qtip {
+  position: absolute;
+  left: -28000px;
+  top: -28000px;
+  display: none;
+  max-width: 280px;
+  min-width: 50px;
+  font-size: 1.5px;
+  line-height: 12px;
+  border-width: 1px;
+  border-style: solid;
+}
+
+.qtip-content {
+  position: relative;
+  padding: 9px;
+  overflow: hidden;
+  text-align: left;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.qtip-content label {
+  display: block;
+}
+
+.qtip-shadow {
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.qtip:not(.ie9haxors) div.qtip-content,
+.qtip:not(.ie9haxors) div.qtip-titlebar {
+  -webkit-filter: none;
+  filter: none;
+  -ms-filter: none;
+}
+
+.qtip .qtip-tip {
+  margin: 0 auto;
+  overflow: hidden;
+  z-index: 10;
+}
+
+.qtip .qtip-tip,
+.qtip .qtip-tip * {
+  position: absolute;
+  color: #123456;
+  background: 0 0;
+  border: none dashed transparent;
+}
+
+.qtip .qtip-tip canvas {
+  top: 0;
+  left: 0;
+}
+
+.qtip-ptp {
+  background: #070b16;
+  background-color: rgba(7, 11, 22, 0.9);
+  line-height: normal !important;
+  max-width: none !important;
+  color: #fff;
+  border: 1px solid transparent !important;
+  border-radius: 5px;
+  border-style: solid;
+  border-width: 1px !important;
+}
+
+.light-youtube-embed {
+  display: inline-block;
+  position: relative;
+  width: 480px;
+  height: 360px;
+}
+
+.light-youtube-embed__image {
+  width: 480px;
+  height: 360px;
+}
+
+.light-youtube-embed::after,
+.light-youtube-embed:hover::after {
+  content: "";
+  position: absolute;
+  width: 56px;
+  height: 56px;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  margin: auto;
+  pointer-events: none;
+  background-image: url("https://datfunc.github.io/ptp/assets/icons/play-trailer.svg");
+}
+
+.light-youtube-embed:hover::after {
+  background-image: url("https://datfunc.github.io/ptp/assets/icons/yt_icon_rgb.svg");
+  max-width: 80px;
+}
+
+/* Modal */
+#simplemodal-overlay {
+  background-color: #000;
+  cursor: wait;
+}
+
+#simplemodal-overlay-pointer {
+  background-color: #000;
+  cursor: pointer;
+}
+
+#simplemodal-container a.modalCloseImg {
+  background: url("https://datfunc.github.io/ptp/assets/icons/close.svg")
+    no-repeat center center !important;
+  background-size: 26px !important;
+  max-width: 26px;
+  display: inline;
+  z-index: 3200;
+  position: absolute;
+  top: 0;
+  right: -8px;
+  cursor: pointer;
+}
+
+a[title="Close"] {
+  width: 26px !important;
+  height: 26px !important;
+  box-sizing: border-box !important;
+  padding-left: 26px !important;
+  background: url("https://datfunc.github.io/ptp/assets/icons/close.svg")
+    no-repeat center center !important;
+  background-size: contain !important;
+}
+
+a[title="Close"]:hover {
+  transform: scale(1.2);
+}
+
+/* BBCode */
+.bbcode-size-1 {
+  font-size: 0.75em;
+}
+
+.bbcode-size-2 {
+  font-size: 1em;
+}
+
+.bbcode-size-3 {
+  font-size: 1.25em;
+}
+
+.bbcode-size-4 {
+  font-size: 1.5em;
+}
+
+.bbcode-size-5 {
+  font-size: 1.75em;
+}
+
+.bbcode-size-6 {
+  font-size: 2em;
+}
+
+.bbcode-size-7 {
+  font-size: 2.25em;
+}
+
+.bbcode-size-8 {
+  font-size: 2.5em;
+}
+
+.bbcode-size-9 {
+  font-size: 2.75em;
+}
+
+.bbcode-size-10 {
+  font-size: 3em;
+}
+
+.bbcode__image {
+  max-width: 500px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.sidebar .bbcode__image {
+  max-width: 100%;
+}
+
+.bbcode-text-preview {
+  border: 1px solid #1e2233;
+  padding: 0.5em;
+}
+
+.bbcode-table-guard {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+}
+
+.bbcode-toolbar__button {
+  width: 24px;
+  height: 24px;
+  float: left;
+  border: none;
+  box-shadow: none;
+  margin-bottom: 10px;
+  opacity: 0.55;
+  transition: all 0.3s;
+}
+
+.bbcode-toolbar__button:hover {
+  opacity: 1;
+  transform: translateY(-0.1rem);
+}
+
+.form__input #Bbcode_Toolbar {
+  margin-top: 0.4rem;
+}
+
+/* BBCode Icons */
+.js-bbcode-toolbar__bold-button {
+  background: url("https://datfunc.github.io/ptp/assets/icons/toolbar/bold_alt.svg")
+    no-repeat;
+}
+
+.js-bbcode-toolbar__italic-button {
+  background: url("https://datfunc.github.io/ptp/assets/icons/toolbar/italic.svg")
+    no-repeat;
+}
+
+.js-bbcode-toolbar__underline-button {
+  background: url("https://datfunc.github.io/ptp/assets/icons/toolbar/underline.svg")
+    no-repeat;
+}
+
+.js-bbcode-toolbar__strikethrough-button {
+  background: url("https://datfunc.github.io/ptp/assets/icons/toolbar/strikethrough.svg")
+    no-repeat;
+}
+
+.js-bbcode-toolbar__link-button {
+  background: url("https://datfunc.github.io/ptp/assets/icons/toolbar/link.svg")
+    no-repeat;
+}
+
+.js-bbcode-toolbar__image-button {
+  background: url("https://datfunc.github.io/ptp/assets/icons/toolbar/image.svg")
+    no-repeat;
+}
+
+.js-bbcode-toolbar__hide-button {
+  background: url("https://datfunc.github.io/ptp/assets/icons/toolbar/hide.svg")
+    no-repeat;
+}
+
+.js-bbcode-toolbar__spoiler-button {
+  background: url("https://datfunc.github.io/ptp/assets/icons/toolbar/spoiler.svg")
+    no-repeat;
+}
+
+.js-bbcode-toolbar__quote-button {
+  background: url("https://datfunc.github.io/ptp/assets/icons/toolbar/quote.svg")
+    no-repeat;
+}
+
+.js-bbcode-toolbar__size-button {
+  background: url("https://datfunc.github.io/ptp/assets/icons/toolbar/font-size.svg")
+    no-repeat;
+}
+
+.js-bbcode-toolbar__color-button {
+  background: url("https://datfunc.github.io/ptp/assets/icons/toolbar/color.svg")
+    no-repeat;
+}
+
+.js-bbcode-toolbar__youtube-button {
+  background: url("https://datfunc.github.io/ptp/assets/icons/toolbar/vid-ut.svg")
+    no-repeat;
+}
+
+.js-bbcode-toolbar__mediainfo-button {
+  background: url("https://datfunc.github.io/ptp/assets/icons/toolbar/mediainfo.svg")
+    no-repeat;
+}
+
+.js-bbcode-toolbar__align-center-button {
+  background: url("https://datfunc.github.io/ptp/assets/icons/toolbar/align.svg")
+    no-repeat;
+}
+
+.js-bbcode-toolbar__align-right-button {
+  background: url("https://datfunc.github.io/ptp/assets/icons/toolbar/align-right.svg")
+    no-repeat;
+}
+
+.js-bbcode-toolbar__code-button {
+  background: url("https://datfunc.github.io/ptp/assets/icons/toolbar/code.svg")
+    no-repeat;
+}
+
+.js-bbcode-toolbar__list-button {
+  background: url("https://datfunc.github.io/ptp/assets/icons/toolbar/bullet-list.svg")
+    no-repeat;
+}
+
+.js-bbcode-toolbar__emoticon-button {
+  background: url("https://datfunc.github.io/ptp/assets/icons/toolbar/emojis.svg")
+    no-repeat;
+}
+
+.js-bbcode-toolbar__comparison-button {
+  background: url("https://datfunc.github.io/ptp/assets/icons/toolbar/compare.svg")
+    no-repeat;
+}
+
+.js-bbcode-toolbar__staff-button {
+  background: url("https://datfunc.github.io/ptp/assets/icons/toolbar/warning_alt.svg")
+    no-repeat;
+}
+
+a[title="BBCode help"] .bbcode-toolbar__button {
+  background: url("https://datfunc.github.io/ptp/assets/icons/toolbar/question.svg")
+    no-repeat;
+}
+
+.js-bbcode-toolbar__align-center-button,
+.js-bbcode-toolbar__align-right-button,
+.js-bbcode-toolbar__bold-button,
+.js-bbcode-toolbar__code-button,
+.js-bbcode-toolbar__color-button,
+.js-bbcode-toolbar__comparison-button,
+.js-bbcode-toolbar__emoticon-button,
+.js-bbcode-toolbar__hide-button,
+.js-bbcode-toolbar__image-button,
+.js-bbcode-toolbar__italic-button,
+.js-bbcode-toolbar__link-button,
+.js-bbcode-toolbar__list-button,
+.js-bbcode-toolbar__mediainfo-button,
+.js-bbcode-toolbar__quote-button,
+.js-bbcode-toolbar__size-button,
+.js-bbcode-toolbar__spoiler-button,
+.js-bbcode-toolbar__strikethrough-button,
+.js-bbcode-toolbar__underline-button,
+.js-bbcode-toolbar__youtube-button,
+.js-bbcode-toolbar__staff-button,
+a[title="BBCode help"] .bbcode-toolbar__button {
+  background-size: contain;
+  background-position: center center !important;
+  width: 12px !important;
+  height: 12px !important;
+  cursor: pointer;
+  margin-right: 0.5rem;
+}
+
+.bbcode-toolbar__size-popup-row {
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.bbcode-toolbar__size-popup-row:hover {
+  background: #2f3547;
+}
+
+.bbcode-toolbar__color-popup-color {
+  cursor: pointer;
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+}
+
+.bbcode-toolbar__color-popup-color:hover {
+  border: solid 2px #ff8040;
+}
+
+.bbcode-toolbar__emoticon-popup-item {
+  cursor: pointer;
+  display: inline-block;
+  border: none;
+  padding: 2px;
+  margin: 2px;
+  transition: all 0.3s;
+}
+
+.bbcode-toolbar__emoticon-popup-item:hover {
+  transform: scale(1.2);
+}
+
+/* BBCode Emojis */
+img[src*="smileys/angry.gif"],
+img[src*="smileys/biggrin.gif"],
+img[src*="smileys/blank.gif"],
+img[src*="smileys/blush.gif"],
+img[src*="smileys/cool.gif"],
+img[src*="smileys/creepy.gif"],
+img[src*="smileys/crom.gif"],
+img[src*="smileys/crying.gif"],
+img[src*="smileys/eyesright.gif"],
+img[src*="smileys/frown.gif"],
+img[src*="smileys/heart.gif"],
+img[src*="smileys/hmm.gif"],
+img[src*="smileys/laughing.gif"],
+img[src*="smileys/ninja.gif"],
+img[src*="smileys/no.gif"],
+img[src*="smileys/nod.gif"],
+img[src*="smileys/ohnoes.gif"],
+img[src*="smileys/ohshit.gif"],
+img[src*="smileys/omg.gif"],
+img[src*="smileys/paddle.gif"],
+img[src*="smileys/sad.gif"],
+img[src*="smileys/shifty.gif"],
+img[src*="smileys/sick.gif"],
+img[src*="smileys/smile.gif"],
+img[src*="smileys/sorry.gif"],
+img[src*="smileys/thanks.gif"],
+img[src*="smileys/tongue.gif"],
+img[src*="smileys/wave.gif"],
+img[src*="smileys/wink.gif"],
+img[src*="smileys/worried.gif"],
+img[src*="smileys/wtf.gif"],
+img[src*="smileys/wub.gif"] {
+  width: 16px !important;
+  height: 16px !important;
+  box-sizing: border-box !important;
+  padding-left: 20px !important;
+  background-size: contain !important;
+}
+
+img[src*="smileys/smile.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/smile.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/sad.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/sad.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/biggrin.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/big-grin.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/ohshit.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/oh-shit.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/tongue.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/tongue.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/blank.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/blank-straight-face.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/angry.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/angry.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/blush.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/blush.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/cool.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/cool.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/creepy.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/creepy.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/crying.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/crying.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/eyesright.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/eyes-right.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/frown.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/frown.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/hmm.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/hmm.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/laughing.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/laughing.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/ninja.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/ninja.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/no.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/no.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/nod.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/nod.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/ohnoes.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/oh-noes.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/omg.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/omg.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/shifty.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/shifty.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/sick.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/sick.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/wink.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/wink.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/worried.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/worried.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/wtf.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/wtf.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/wub.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/wub.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/paddle.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/paddle-alt.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/wave.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/wave-hug.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/heart.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/heart.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/thanks.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/thanks.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/crom.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/crom-thanks.svg")
+    no-repeat center center;
+}
+
+img[src*="smileys/sorry.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/emojis/sorry.svg")
+    no-repeat center center;
+}
+
+/* Forum Post Heading Icons */
+img[src="static/common/symbols/donor.png"],
+img[src="static/common/symbols/miner.png"],
+img[src*="static/common/symbols/badge_checker.png"],
+img[src*="static/common/symbols/badge_gpchecker.png"],
+img[src*="static/common/symbols/badge_floppy_base.png"],
+img[src*="static/common/symbols/badge_floppy_silver.png"],
+img[src*="static/common/symbols/badge_floppy_bronze.png"],
+img[src*="static/common/symbols/badge_floppy_gold.png"],
+img[src*="static/common/symbols/badge_floppy_diamond.png"] {
+  width: 13px;
+  height: 13px;
+  padding-left: 13px;
+}
+
+img[src="static/common/symbols/donor.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/donor.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/symbols/miner.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/miner-alt.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/symbols/badge_checker.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/badge-checker.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/symbols/badge_gpchecker.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/badge_gpchecker.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/symbols/filmclub.png"] {
+  width: 20px;
+  height: 20px;
+  padding-left: 20px;
+  background: url("https://datfunc.github.io/ptp/assets/icons/film-club-icon.svg")
+    no-repeat center center;
+}
+
+img[src*="static/common/symbols/badge_floppy_base.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/badge_base.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+img[src*="static/common/symbols/badge_floppy_silver.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/badge_silver.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+img[src*="static/common/symbols/badge_floppy_bronze.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/badge_bronze.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+img[src*="static/common/symbols/badge_floppy_gold.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/badge_gold.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+img[src*="static/common/symbols/badge_floppy_diamond.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/badge_diamond.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+img[src="static/common/symbols/encoder.png"],
+img[src*="static/common/quality.gif"],
+img[src*="static/common/symbols/encoder_gp.png"],
+img[src*="static/common/symbols/disabled.png"],
+img[src*="static/common/symbols/warned.png"] {
+  width: 12px;
+  height: 12px;
+  padding-left: 12px;
+}
+
+img[src="static/common/symbols/encoder.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/encoder.svg")
+    no-repeat center center;
+}
+
+img[src*="static/common/quality.gif"],
+img[src*="static/common/symbols/encoder_gp.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/gold-encode-checker.svg")
+    no-repeat center center;
+}
+
+img[src*="static/common/symbols/disabled.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/banned.svg")
+    no-repeat center center;
+}
+
+img[src*="static/common/symbols/warned.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/topic-sticky-unread.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/symbols/donor.png"],
+img[src="static/common/symbols/miner.png"],
+img[src*="static/common/symbols/badge_checker.png"],
+img[src*="static/common/symbols/badge_gpchecker.png"],
+img[src="static/common/symbols/filmclub.png"],
+img[src="static/common/symbols/encoder.png"],
+img[src*="static/common/quality.gif"],
+img[src*="static/common/symbols/encoder_gp.png"],
+img[src*="static/common/symbols/disabled.png"],
+img[src*="static/common/symbols/warned.png"] {
+  box-sizing: border-box;
+  background-size: contain;
+}
+
+.golden-popcorn-character {
+  display: inline-block;
+  margin: 0 auto;
+  text-indent: -3000px;
+  font: 0/0 Arial;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0);
+  width: 12px;
+  height: 12px;
+  background: url("https://datfunc.github.io/ptp/assets/icons/gold-encode-checker.svg")
+    no-repeat center center;
+  background-size: 12px;
+}
+
+/* Rank Icons */
+img[src*="static/common/symbols/Rank1.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/rank-1.svg")
+    no-repeat center center;
+}
+
+img[src*="static/common/symbols/Rank2.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/rank-2.svg")
+    no-repeat center center;
+}
+
+img[src*="static/common/symbols/Rank3.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/rank-3.svg")
+    no-repeat center center;
+}
+
+img[src*="static/common/symbols/Rank4.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/rank-4.svg")
+    no-repeat center center;
+}
+
+img[src*="static/common/symbols/Rank5.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/rank-5.svg")
+    no-repeat center center;
+}
+
+img[src*="static/common/symbols/Rank6.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/rank-6.svg")
+    no-repeat center center;
+}
+
+img[src*="static/common/symbols/Rank1.png"],
+img[src*="static/common/symbols/Rank2.png"],
+img[src*="static/common/symbols/Rank3.png"],
+img[src*="static/common/symbols/Rank4.png"],
+img[src*="static/common/symbols/Rank5.png"],
+img[src*="static/common/symbols/Rank6.png"] {
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  padding-left: 10px;
+  background-size: contain;
+}
+
+.forum-post__body img[src*="smileys/thanks.gif"] {
+  width: 40px !important;
+  height: 40px !important;
+  box-sizing: border-box !important;
+  padding-left: 40px !important;
+}
+
+img[src*="static/common/caticons/tv.png"],
+img[src*="static/common/caticons/movies.png"] {
+  width: 28px !important;
+  height: 28px !important;
+  box-sizing: border-box !important;
+  padding-left: 28px !important;
+  background-size: contain !important;
+  margin-top: 20px;
+}
+
+img[src*="static/common/caticons/tv.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/tv-icon.svg")
+    no-repeat center center;
+}
+
+img[src*="static/common/caticons/movies.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/post-topic-unread.svg")
+    no-repeat center center;
+}
+
+.staff-toolbar {
+  display: table;
+  margin-left: auto;
+  margin-right: auto;
+  margin-bottom: 5px;
+  padding: 6px;
+  text-align: center;
+  font-weight: 700;
+  background-color: #2f3547;
+}
+
+.staff-toolbar__link {
+  padding: 2px;
+}
+
+.staff-toolbar__link--important {
+  display: inline-block;
+  border-radius: 4px;
+  padding: 4px;
+  background-color: #ca2a43;
+  color: #fff;
+}
+
+.film-club-discuss-link {
+  text-align: center;
+  font-size: 0.71rem;
+  padding-top: 0.5em;
+}
+
+/************************************************************************
+  3.1 - Forms */
+.form--horizontal .form__label {
+  float: right;
+}
+
+.form__checkbox-label,
+.form__input,
+.form__radio-label {
+  padding-right: 0.9em;
+  margin-bottom: 0.5em;
+  font-size: 0.735rem !important;
+}
+
+.form__checkbox-label,
+.form__radio-label {
+  display: inline-block;
+}
+
+.form__checkbox-label--with-note,
+.form__radio-label--with-note {
+  margin-right: 0;
+  margin-bottom: 0;
+}
+
+.generic-form,
+.search-form {
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
+  margin-bottom: 15px;
+}
+
+.generic-form--narrow,
+.search-form--narrow {
+  max-width: 684px;
+}
+
+.generic-form--full-width {
+  width: 100%;
+}
+
+.search-form--toggleable {
+  margin-bottom: 0;
+}
+
+.toggleable-search-form__toggler-container {
+  text-align: center;
+}
+
+.toggleable-search-form__search-form {
+  margin-bottom: 15px;
+}
+
+.search-form__advanced-basic-toggler {
+  text-align: center;
+  padding-bottom: 8px;
+}
+
+.generic-form__footer,
+.search-form__footer {
+  border-top: 1px solid #3a4055;
+  padding-top: 8px;
+}
+
+.generic-form__footer--right-aligned,
+.search-form__footer--right-aligned {
+  text-align: right;
+}
+
+.generic-form__footer--no-border,
+.search-form__footer--no-border {
+  border-top-style: none;
+}
+
+.search-form__footer__results {
+  float: left;
+}
+
+/************************************************************************
+  3.1 - Inputs & Buttons */
+.input-group {
+  display: flex;
+}
+
+.input-group__field {
+  flex: 1;
+}
+
+input[type="checkbox"],
+input[type="radio"],
+select {
+  background: #191d2a;
+  border: 1px solid #3e414c;
+  color: #fff;
+}
+
+button,
+input[type="button"],
+input[type="reset"],
+input[type="submit"] {
+  -webkit-appearance: button;
+  cursor: pointer;
+  font-family: "Open Sans", Tahoma, Helvetica, sans-serif;
+  font-weight: 700;
+  background: #586279;
+  color: #fff;
+  border: 1px solid transparent;
+  padding: 0.4rem 1rem;
+  margin: 0.1rem;
+  border-radius: 5px;
+  line-height: 1;
+  transition: all 0.3s;
+}
+
+button,
+input[type="button"]:hover,
+input[type="reset"]:hover,
+input[type="submit"]:hover,
+button:focus,
+input[type="button"]:focus,
+input[type="reset"]:focus,
+input[type="submit"]:focus {
+  background: #4281da;
+  box-shadow: 0 0 40px #4281da;
+  outline: 0;
+}
+
+button:focus,
+input[type="button"]:focus,
+input[type="reset"]:focus,
+input[type="submit"]:focus {
+  border: 1px solid #88b4f3;
+  box-shadow: 0 0 40px #4281da;
+}
+
+input[type="checkbox"]:focus,
+input[type="radio"]:focus {
+  outline-color: #88b4f3;
+}
+
+#inbox label {
+  vertical-align: baseline;
+}
+
+#inbox #messageformtable tr td img {
+  margin: 0 2.5px;
+  vertical-align: middle;
+}
+
+#inbox input[type="submit"] {
+  margin: 0.55rem 0.15rem 0.55rem 0;
+}
+
+button[disabled],
+input[disabled] {
+  cursor: default;
+}
+
+button::-moz-focus-inner,
+input::-moz-focus-inner {
+  border: none;
+  padding: 0;
+}
+
+input[value="Delete"],
+input[value="Delete conversation"],
+input[value="Defriend"] {
+  background: #9c4e4e;
+}
+
+input[value="Delete"]:hover,
+input[value="Delete"]:focus,
+input[value="Delete conversation"]:hover,
+input[value="Delete conversation"]:focus,
+input[value="Defriend"]:hover,
+input[value="Defriend"]:focus {
+  background: #da4242;
+  box-shadow: 0 0 40px #da4242;
+}
+
+input[value="Delete"]:focus {
+  border: 1px solid #f57878;
+}
+
+button,
+input[type="button"],
+input[type="reset"],
+input[type="submit"],
+input[value="Delete"] {
+  font-size: inherit;
+  font-family: inherit;
+  padding: 0.5em 1em;
+}
+
+button:hover,
+input[type="button"]:hover,
+input[type="reset"]:hover,
+input[type="submit"]:hover,
+input[value="Delete"]:hover {
+  cursor: pointer;
+  -webkit-animation: jelly-effect 0.5s;
+  animation: jelly-effect 0.5s;
+}
+
+input,
+textarea {
+  border: 1px solid transparent;
+  border-radius: 5px;
+  transition: all 0.3s ease-in-out;
+}
+
+input {
+  line-height: normal;
+  background: #171d2a;
+  color: #fff;
+  font-size: 0.75rem;
+  padding-left: 0.4rem;
+  height: 28px;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  box-sizing: border-box;
+  padding: 0;
+  margin: -7px 2px;
+  vertical-align: inherit;
+  vertical-align: text-top;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  height: auto;
+}
+
+input[type="search"] {
+  -webkit-appearance: textfield;
+  box-sizing: content-box;
+}
+
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-decoration {
+  -webkit-appearance: none;
+}
+
+input[type="text"]:focus,
+textarea:focus {
+  outline: 0;
+  box-shadow: 0 0 40px #4281da;
+  border: 1px solid #3463a7;
+}
+
+input[value="Search log"] {
+  margin-top: 0.5rem;
+}
+
+textarea {
+  overflow: auto;
+  background: #191d2a;
+  border: none;
+  color: #fff;
+  padding: 0.8rem;
+}
+
+input,
+select,
+textarea {
+  border: 1px solid #3a4056;
+  background: #0b0d19;
+  padding: 0.2rem 0.4rem;
+  border-radius: 5px;
+}
+
+select,
+select option,
+select option:first-child {
+  color: #949aac;
+  padding: 0.3rem;
+}
+
+select:focus {
+  box-shadow: none;
+  outline: 0;
+}
+
+input[name="runtime"] {
+  width: 152px;
+  max-width: 152px;
+}
+
+select[name="checked"] ~ input[name="runtime"] {
+  margin-left: 0.66rem;
+}
+
+input::-webkit-input-placeholder,
+textarea::-webkit-input-placeholder {
+  color: #586278 !important;
+}
+
+input::-moz-placeholder,
+textarea::-moz-placeholder {
+  color: #586278 !important;
+}
+
+input:-ms-input-placeholder,
+textarea:-ms-input-placeholder {
+  color: #586278 !important;
+}
+
+input::-ms-input-placeholder,
+textarea::-ms-input-placeholder {
+  color: #586278 !important;
+}
+
+input::-webkit-input-placeholder,
+textarea::-webkit-input-placeholder {
+  color: #586278 !important;
+}
+
+input::-moz-placeholder,
+textarea::-moz-placeholder {
+  color: #586278 !important;
+}
+
+input:-ms-input-placeholder,
+textarea:-ms-input-placeholder {
+  color: #586278 !important;
+}
+
+input::-ms-input-placeholder,
+textarea::-ms-input-placeholder {
+  color: #586278 !important;
+}
+
+input::-webkit-input-placeholder,
+textarea::-webkit-input-placeholder {
+  color: #586278 !important;
+}
+
+input::-moz-placeholder,
+textarea::-moz-placeholder {
+  color: #586278 !important;
+}
+
+input:-ms-input-placeholder,
+textarea:-ms-input-placeholder {
+  color: #586278 !important;
+}
+
+input::-ms-input-placeholder,
+textarea::-ms-input-placeholder {
+  color: #586278 !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #586278 !important;
+}
+
+/* Chrome, Edge, and Safari */
+::placeholder {
+  color: #586278 !important;
+  opacity: 1;
+}
+
+/* Firefox */
+::-moz-placeholder {
+  color: #586278 !important;
+  opacity: 1;
+}
+
+/* Internet Explorer lol */
+:-ms-input-placeholder {
+  color: #586278 !important;
+}
+
+/* Validation */
+.bvalidator_errmsg {
+  display: none;
+  white-space: nowrap;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+  position: relative;
+  background: #d51111;
+  border: 3px solid #ddd;
+}
+
+.bvalidator_errmsg:after,
+.bvalidator_errmsg:before {
+  top: 100%;
+  border: solid transparent;
+  content: "";
+  height: 0;
+  width: 0;
+  position: absolute;
+  pointer-events: none;
+}
+
+.bvalidator_errmsg:after {
+  border-top-color: #d51111;
+  border-width: 8px;
+  left: 14px;
+  margin-left: -8px;
+}
+
+.bvalidator_errmsg:before {
+  border-top-color: #ddd;
+  border-width: 12px;
+  left: 14px;
+  margin-left: -12px;
+}
+
+.bvalidator_errmsg .bvalidator_close_icon {
+  margin-left: 5px;
+  margin-top: -2px;
+  font-family: Verdana, Geneva, sans-serif;
+  font-weight: 700;
+  color: #000;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.bvalidator_errmsg em {
+  display: none;
+}
+
+/* Custom Input Styling */
+@supports (-webkit-appearance: none) or (-moz-appearance: none) {
+  input[type="checkbox"],
+  input[type="radio"] {
+    --active: #0b0d19;
+    --active-inner: #fff;
+    --focus: 2px rgba(39, 94, 254, 0.3);
+    --border: #3a4055;
+    --border-hover: #4281da;
+    --background: #0a0e19;
+    --disabled: #f6f8ff;
+    --disabled-inner: #e1e6f9;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    height: 16px;
+    outline: none;
+    display: inline-block;
+    vertical-align: top;
+    position: relative;
+    margin: 0;
+    cursor: pointer;
+    border: 1px solid var(--bc, var(--border));
+    background: var(--b, var(--background));
+    transition: background 0.3s, border-color 0.3s, box-shadow 0.2s;
+  }
+
+  input[type="checkbox"]:after,
+  input[type="radio"]:after {
+    content: "";
+    display: block;
+    left: -1px;
+    top: -1px;
+    position: absolute;
+    transition: transform var(--d-t, 0.3s) var(--d-t-e, ease),
+      opacity var(--d-o, 0.2s);
+  }
+
+  input[type="checkbox"]:checked,
+  input[type="radio"]:checked {
+    --b: var(--active);
+    --bc: var(--active);
+    --d-o: 0.3s;
+    --d-t: 0.6s;
+    --d-t-e: cubic-bezier(0.2, 0.85, 0.32, 1.2);
+  }
+
+  input[type="checkbox"]:disabled,
+  input[type="radio"]:disabled {
+    --b: var(--disabled);
+    cursor: not-allowed;
+    opacity: 0.9;
+  }
+
+  input[type="checkbox"]:disabled:checked,
+  input[type="radio"]:disabled:checked {
+    --b: var(--disabled-inner);
+    --bc: var(--border);
+  }
+
+  input[type="checkbox"]:disabled + label,
+  input[type="radio"]:disabled + label {
+    cursor: not-allowed;
+  }
+
+  input[type="checkbox"]:hover:not(:checked):not(:disabled),
+  input[type="radio"]:hover:not(:checked):not(:disabled) {
+    --bc: var(--border-hover);
+  }
+
+  input[type="checkbox"]:focus,
+  input[type="radio"]:focus {
+    box-shadow: 0 0 0 var(--focus);
+  }
+
+  input[type="checkbox"]:not(.switch),
+  input[type="radio"]:not(.switch) {
+    width: 16px;
+  }
+
+  input[type="checkbox"]:not(.switch):after,
+  input[type="radio"]:not(.switch):after {
+    opacity: var(--o, 0);
+  }
+
+  input[type="checkbox"]:not(.switch):checked,
+  input[type="radio"]:not(.switch):checked {
+    --o: 1;
+  }
+
+  input[type="checkbox"] + label,
+  input[type="radio"] + label {
+    vertical-align: top;
+    cursor: pointer;
+  }
+
+  input[type="checkbox"]:not(.switch) {
+    border-radius: 5px;
+    vertical-align: middle;
+  }
+
+  input[type="checkbox"]:not(.switch):after {
+    width: 5px;
+    height: 9px;
+    border: 2px solid var(--active-inner);
+    border-top: 0;
+    border-left: 0;
+    left: 5px;
+    top: 2px;
+    transform: rotate(var(--r, 20deg));
+  }
+
+  input[type="checkbox"]:not(.switch):checked {
+    --r: 43deg;
+  }
+
+  input[type="checkbox"].switch {
+    width: 38px;
+    border-radius: 11px;
+  }
+
+  input[type="checkbox"].switch:after {
+    left: 2px;
+    top: 2px;
+    border-radius: 50%;
+    width: 15px;
+    height: 15px;
+    background: var(--ab, var(--border));
+    transform: translateX(var(--x, 0));
+  }
+
+  input[type="checkbox"].switch:checked {
+    --ab: var(--active-inner);
+    --x: 17px;
+  }
+
+  input[type="checkbox"].switch:disabled:not(:checked):after {
+    opacity: 0.6;
+  }
+
+  input[type="radio"] {
+    border-radius: 50%;
+  }
+
+  input[type="radio"]:after {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--active-inner);
+    opacity: 0;
+    transform: scale(var(--s, 0.7));
+  }
+
+  input[type="radio"]:checked {
+    --s: 0.5;
+  }
+}
+
+/************************************************************************
+  3.2 - Tables */
+.page__main-content {
+  background: #1e2333;
+  margin: 0 auto;
+  overflow: auto;
+  padding: 2.5rem;
+  font-size: 0.75rem;
+  border-top: none;
+  box-shadow: 0 0.6rem 2rem rgba(0, 0, 0, 0.6);
+}
+
+table {
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+td,
+th {
+  padding: 0;
+}
+
+th {
+  text-align: left;
+}
+
+.table {
+  width: 100%;
+  margin: 0 0 1em 0;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.table:last-child {
+  margin-bottom: 0;
+}
+
+.table > tbody > tr,
+.table > thead > tr {
+  background-color: #2f3546;
+  font-size: 0.75rem;
+}
+
+.table > tbody > tr > td,
+.table > tbody > tr > th,
+.table > tfoot > tr > td,
+.table > tfoot > tr > th,
+.table > thead > tr > td,
+.table > thead > tr > th {
+  line-height: 1.42857;
+}
+
+.table thead:first-child tr:first-child th {
+  border-top: 0 none;
+  padding-left: 0.4rem;
+}
+
+.table--bordered > tbody > tr > td,
+.table--bordered > tbody > tr > th,
+.table--bordered > tfoot > tr > td,
+.table--bordered > tfoot > tr > th,
+.table--bordered > thead > tr > td,
+.table--bordered > thead > tr > th {
+  padding: 0.4rem;
+  border: 1px solid #3a4056;
+}
+
+.table > tbody > tr {
+  border-left: 1px solid #3a4056;
+  border-right: 1px solid #3a4056;
+}
+
+.table--panel-like > thead > tr > td > a {
+  font-weight: 700;
+}
+
+.table--panel-like > thead > tr > td {
+  border: none;
+  font-weight: 700;
+}
+
+#index .table--panel-like > tbody > tr > td {
+  border-left: none;
+  border-right: none;
+  border-top: none;
+}
+
+.table > tbody > tr.inbox-message--unread > td {
+  background-color: #586179 !important;
+}
+
+.table--centered th {
+  text-align: center;
+}
+
+.table--no-border > tbody > tr > td,
+.table--no-border > tbody > tr > th,
+.table--no-border > tfoot > tr > td,
+.table--no-border > tfoot > tr > th,
+.table--no-border > thead > tr > td,
+.table--no-border > thead > tr > th {
+  border: none;
+}
+
+.table--striped > tbody > tr:nth-child(odd) > td,
+.table--striped > tbody > tr:nth-child(odd) > th,
+.table > tbody > tr.movie-page__torrent--highlighted {
+  background-color: #2f3547;
+}
+
+.table--panel-like > thead > tr {
+  background: rgba(7, 11, 22, 0.9);
+}
+
+.table--panel-like > thead > tr,
+.table--panel-like > thead > tr a {
+  color: #fff;
+}
+
+#torrents .main-column table thead tr a {
+  color: #a0a6b7 !important;
+}
+
+#torrents .main-column table thead tr a:hover {
+  color: #ffffff !important;
+}
+
+.table--panel-like > thead > tr > th {
+  padding: 4px;
+  font-size: 0.8rem;
+}
+
+.table--panel-like > thead > tr > th {
+  padding: 7px;
+}
+
+.table--panel-like > thead > tr > th:first-child {
+  border: none;
+  border-top-left-radius: 5px !important;
+}
+
+.table--panel-like > thead > tr > th:last-child {
+  border: none;
+  border-top-right-radius: 5px !important;
+}
+
+.table--inplace-sortable > thead > tr > th {
+  cursor: pointer;
+}
+
+.table--inplace-sortable:last-child {
+  margin-bottom: 1em;
+}
+
+.table > tbody > tr.basic-movie-list__details-row {
+  font-size: 0.75rem;
+}
+
+.table > tbody > tr.basic-movie-list__details-row,
+.table > tbody > tr.compact-movie-list__details-row--odd {
+  background-color: #1e2233;
+}
+
+.table > tbody > tr.release-name-movie-list__details-row {
+  background-color: #2f3546;
+}
+
+#top10 .table tr th,
+#top10 .table tr td {
+  text-align: left !important;
+}
+
+#forums .form__input tr[style="vertical-align: top;"] {
+  border: none;
+}
+
+#forums .form__input {
+  box-shadow: none;
+}
+
+.movie-page__actor-column {
+  text-align: left !important;
+  padding-left: 1rem !important;
+}
+
+#trumpable .release-name-movie-list__movie__release-name {
+  color: #ffffff;
+}
+
+#trumpable .release-name-movie-list__movie__release-name:hover {
+  color: #4281da;
+}
+
+.tabs__bar__list {
+  display: block;
+  margin-top: 0;
+  margin-bottom: 14px;
+  border-bottom: 1px solid #2f3446;
+  padding: 0;
+  list-style: none;
+}
+
+.tabs__bar__list--centered {
+  display: flex;
+  justify-content: center;
+}
+
+.tabs__bar__item {
+  display: block;
+  float: left;
+  margin-right: 4px;
+}
+
+.tabs__bar__item:first-child {
+  margin-left: 10px;
+}
+
+.tabs__bar__link,
+.tabs__bar__link:active,
+.tabs__bar__link:focus,
+.tabs__bar__link:hover {
+  display: block;
+  margin-top: 6px;
+  border: none;
+  border-radius: 4px 4px 0 0;
+  padding: 8px;
+  background-color: #2f3447;
+  outline: 0;
+}
+
+.tabs__bar__link--page-title-like {
+  font-size: 1em;
+  font-weight: 700;
+}
+
+.tabs__bar__item--active > .tabs__bar__link,
+.tabs__bar__item--active > .tabs__bar__link:active,
+.tabs__bar__item--active > .tabs__bar__link:focus,
+.tabs__bar__item--active > .tabs__bar__link:hover {
+  border: none;
+  background-color: rgba(7, 11, 22, 0.9);
+  color: #fff;
+}
+
+.tabs__bar__link:hover {
+  background-color: #444a63;
+}
+
+.tabs__panel {
+  display: none;
+}
+
+.tabs__panel--active {
+  display: block;
+}
+
+.torrent-info-link--user-seeding {
+  font-weight: 700;
+  color: #ffa10c;
+}
+
+.torrent-info-link--user-leeching {
+  font-weight: 700;
+  color: #ff3232;
+}
+
+.torrent-info-link--user-uploaded {
+  font-weight: 700;
+  color: #f432c9;
+}
+
+.l_movie {
+  color: #ffffff;
+}
+
+.l_movie:hover {
+  color: #4281da;
+}
+
+.tags {
+  color: #a0a6b7;
+}
+
+/* Search bar */
+.search-bar {
+  background: #2f3447;
+  font-size: 0.8rem;
+  padding: 0.6em;
+  margin-left: auto;
+  margin-right: auto;
+  margin-top: 0;
+  text-align: center;
+  border-top-right-radius: 10px;
+  border-top-left-radius: 10px;
+  border-bottom: 1px solid #3a4056;
+}
+
+.search-bar__search-field__input::-moz-placeholder {
+  color: #586278 !important;
+}
+
+.search-bar__search-field__input:-ms-input-placeholder {
+  color: #586278 !important;
+}
+
+.search-bar__search-field__input::-webkit-input-placeholder {
+  color: #586278 !important;
+}
+
+.search-bar__search-field__input::-ms-input-placeholder {
+  color: #586278 !important;
+}
+
+.search-bar__search-field__input::placeholder {
+  color: #586278 !important;
+}
+
+.search-bar__search-field,
+.search-bar__search-field__form,
+.search-bar__search-field__input {
+  display: inline;
+}
+
+.search-bar__list {
+  margin: 0 auto;
+  padding: 0;
+  display: flex;
+  justify-content: space-evenly;
+}
+
+.search-bar__list > * {
+  flex: 1;
+}
+
+.search-bar__list input {
+  width: 90%;
+}
+
+.search-bar__search-field {
+  margin: 0;
+  position: relative;
+}
+
+.search-bar__search-field__input {
+  position: relative;
+  top: 0;
+  background-color: #0b0e1a;
+  font-size: 0.8em;
+  color: #b5b5b5;
+  border: 1px solid #3a4056;
+  border-radius: 5px;
+  padding: 2px 3px;
+  text-align: center;
+  margin: 0.4rem;
+}
+
+.search-bar__results,
+.search-bar__results__list-item,
+.search-bar__results__link {
+  display: block;
+}
+
+.search-bar__results {
+  background-color: rgba(7, 11, 22, 0.9);
+  position: absolute;
+  left: 0;
+  width: 232px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  z-index: 1000;
+  border-radius: 5px;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.search-bar__results__list-item {
+  margin: 0;
+  padding: 0;
+  text-align: center;
+  font-size: 0.9em;
+  line-height: 15px;
+  border-bottom: 1px solid #2f3447;
+}
+
+.search-bar__results__list-item:last-of-type {
+  border-bottom: none;
+}
+
+.search-bar__results__link {
+  padding: 5px 8px;
+}
+
+.search-bar__results__link,
+.search-bar__results__link:hover {
+  color: #949aac;
+}
+
+.search-bar__results__list-item--is-highlighted > .search-bar__results__link,
+.search-bar__results__list-item--is-highlighted
+  > .search-bar__results__link:hover {
+  color: #fff;
+  background-color: #4281da;
+}
+
+#log input[type="checkbox"],
+#log select[name="limit"] {
+  vertical-align: text-top;
+  margin-left: 0.55rem;
+}
+
+#log select[name="limit"] {
+  position: relative;
+  top: -6px;
+  margin-right: 0.55rem;
+}
+
+.sidebar {
+  float: right;
+  width: 250px;
+}
+
+.sidebar-cover-image {
+  display: block;
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  border-radius: 5px;
+  cursor: pointer;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+  transition: all 0.3s;
+}
+
+#user .sidebar-cover-image[alt*="avatar"]:hover {
+  transform: scale(1);
+  cursor: initial;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+#user .panel:nth-of-type(1) .small-cover-movie-list__movie {
+  margin: 0 auto 0;
+}
+
+.release-name-movie-list__name {
+  font-size: 14px;
+}
+
+.release-name-movie-list__movie__release-category {
+  vertical-align: middle;
+  text-align: center;
+  background-color: #1e2233;
+}
+
+.release-name-movie-list__movie__release-category__link,
+.release-name-movie-list__movie__release-name,
+.release-name-movie-list__movie__new,
+.release-name-movie-list__movie__rating__title {
+  font-weight: 700;
+}
+
+.release-name-movie-list__movie__release-category__link {
+  white-space: nowrap;
+  font-size: 11px;
+  text-shadow: 1px 1px 1px rgba(5, 5, 5, 0.5);
+  margin-left: 3px;
+  margin-right: 3px;
+}
+
+.release-name-movie-list__movie__new {
+  font-size: 10px;
+  color: #4281da;
+  padding-left: 2px;
+  text-transform: uppercase;
+}
+
+.release-name-movie-list__movie__action-container {
+  float: right;
+}
+
+.release-name-movie-list__movie__ratings-and-tags {
+  padding-top: 2px;
+}
+
+.release-name-movie-list__movie__rating-container {
+  display: inline;
+  padding: 1px 4px;
+  margin-right: 4px;
+  background-color: #2f3446;
+}
+
+.release-name-movie-list__movie__tags {
+  padding: 2px;
+  font-style: italic;
+}
+
+.panel {
+  background-color: #2f3547;
+  border: none;
+  margin-bottom: 1em;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.panel__heading {
+  background-color: rgba(7, 11, 22, 0.9);
+  border: none;
+  padding: 7px;
+}
+
+.panel__heading__title,
+.panel__heading__title a {
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.panel .panel__body {
+  border: 1px solid #3a4056;
+}
+
+#last5t #last5-tab-control a {
+  color: #a0a6b7;
+}
+
+#last5t #last5-tab-control a:hover {
+  color: #ffffff;
+}
+
+.panel__heading img {
+  margin: 0 2.5px;
+}
+
+.panel__heading__toggler,
+.toggle {
+  float: right;
+  font-size: 0.75em;
+  font-weight: 400;
+  color: #a0a6b7 !important;
+}
+
+.panel__heading__toggler:hover,
+.toggle:hover {
+  color: #ffffff !important;
+}
+
+.panel,
+.panel__heading {
+  border-top-left-radius: 5px;
+  border-top-right-radius: 5px;
+}
+
+.panel__body,
+.panel tbody {
+  padding: 0.75rem 1rem;
+}
+
+.main-column {
+  margin: 0 255px 10px 0;
+  width: 715px;
+  overflow: hidden;
+}
+
+#messageformtable .username {
+  margin-right: 2px;
+}
+
+/* Movie List */
+.cover-movie-list__container {
+  margin-top: 1.5rem;
+}
+
+.small-cover-movie-list__movie {
+  position: relative;
+  margin: 0 auto 1.5rem;
+}
+
+.small-cover-movie-list__movie__link {
+  width: 147px;
+  height: 220px;
+  display: block;
+  border-radius: 5px;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.small-cover-movie-list__movie__link--smaller {
+  width: 140px;
+  height: 214px;
+  border-radius: 5px;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.small-cover-movie-list__movie__link--seen::after {
+  content: "";
+  position: absolute;
+  right: 5px;
+  top: 5px;
+  background-image: url("https://datfunc.github.io/ptp/assets/icons/seen.svg");
+  background-size: cover;
+  width: 20px;
+  height: 20px;
+}
+
+.small-cover-movie-list__movie__title {
+  text-align: center;
+  margin-top: 5px;
+  margin-bottom: 15px;
+}
+
+.basic-movie-list__torrent__action__link:hover {
+  color: #4281da;
+}
+
+.basic-movie-list__details-row {
+  vertical-align: top;
+}
+
+.basic-movie-list__movie__cover {
+  width: 116px;
+  border-radius: 5px;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+  transition: all 0.3s;
+}
+
+.basic-movie-list__movie__cover-link {
+  position: relative;
+  display: block;
+}
+
+.basic-movie-list__movie__cover-link--seen::after {
+  content: "";
+  position: absolute;
+  right: 3px;
+  top: 3px;
+  background-image: url("https://datfunc.github.io/ptp/assets/icons/seen.svg");
+  background-size: cover;
+  width: 20px;
+  height: 20px;
+}
+
+.basic-movie-list__movie__category-icon {
+  width: 28px;
+  height: 28px;
+}
+
+.basic-movie-list__number {
+  text-align: center;
+  font-weight: 700;
+}
+
+.basic-movie-list__movie__new,
+.basic-movie-list__movie__title-row {
+  font-weight: 700;
+}
+
+.basic-movie-list__movie__title {
+  color: #fff;
+}
+
+.basic-movie-list__movie__new,
+.basic-movie-list__movie__title:hover {
+  color: #4281da;
+}
+
+.basic-movie-list__movie__new {
+  visibility: hidden;
+  display: inline;
+}
+
+.basic-movie-list__movie__new:before {
+  visibility: visible;
+  content: "New";
+  box-sizing: border-box;
+  display: inline-block;
+  font-weight: 700;
+  font-size: 0.6rem;
+  vertical-align: baseline;
+  color: #4281da;
+  background: rgba(66, 129, 218, 0.15);
+  padding: 0.2rem 0.6rem;
+  border-radius: 1rem;
+  margin-bottom: 0.1rem;
+  transition: all 0.3s;
+}
+
+.basic-movie-list__movie__new:hover:before {
+  background: rgba(66, 129, 218, 0.25);
+  color: #4281da;
+}
+
+.basic-movie-list__movie__bookmark {
+  float: right;
+}
+
+.basic-movie-list__movie__ratings-and-tags {
+  padding-top: 2px;
+}
+
+.basic-movie-list__movie__rating-container {
+  background-color: #2f3446;
+  display: inline-block;
+  padding: 1px 4px;
+  margin: 0.1rem 0 0;
+  border: 1px solid #3a4055;
+  border-radius: 2.5px;
+  transition: all 0.3s;
+}
+
+.basic-movie-list__movie__rating-container:hover {
+  background-color: #3c4258;
+  border: 1px solid #474e69;
+}
+
+.basic-movie-list__movie__rating__title,
+.basic-movie-list__movie__rating__rating,
+.basic-torrent-list__movie__torrent-opener-link,
+.basic-movie-list__torrent-edition__main {
+  font-weight: 700;
+}
+
+.basic-movie-list__torrent-edition {
+  background-color: #3a4055;
+}
+
+.basic-movie-list__movie__rating__title a {
+  color: #ffffff;
+}
+
+.basic-movie-list__movie__tags {
+  padding: 2px;
+  font-style: italic;
+}
+
+.basic-torrent-list__movie__torrent-opener-link {
+  font-style: normal;
+  padding-left: 5px;
+}
+
+.basic-torrent-list__movie__additional-info {
+  margin-top: 15px;
+}
+
+.basic-movie-list__torrent-row {
+  height: 1em;
+}
+
+.basic-movie-list__torrent__action {
+  float: right;
+}
+
+.cover-movie-list {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0 auto;
+  justify-content: space-evenly;
+}
+
+.cover-movie-list div:not(.cover-movie-list__movie) {
+  display: none;
+}
+
+.cover-movie-list__movie__undercover,
+.cover-movie-list__movie__undercover > * {
+  display: block !important;
+  text-align: center;
+}
+
+.cover-movie-list__movie__title-row,
+.cover-movie-list__movie__rating-and-tags {
+  padding-bottom: 0 !important;
+  margin: 0 !important;
+}
+
+.cover-movie-list__movie__title-row {
+  margin-bottom: 6px !important;
+}
+
+.cover-movie-list__movie {
+  position: relative;
+  width: auto;
+  max-width: 190px;
+  height: auto;
+  margin: 22px 12px;
+  text-align: center;
+}
+
+.cover-movie-list--narrow > .cover-movie-list__movie {
+  max-width: 168px;
+  margin: 0 25px 25px;
+}
+
+.cover-movie-list__movie__cover-link {
+  display: block;
+  width: 190px;
+  height: 296px;
+  border-radius: 5px;
+  box-shadow: 0 0.5rem 1rem rgba(7, 11, 22, 0.55);
+  transition-timing-function: cubic-bezier(0.68, -0.55, 0.27, 1.55);
+  transition: all 0.3s;
+  margin: 0 auto 0.8rem;
+}
+
+.cover-movie-list__movie__undercover {
+  padding: 0;
+  background: 0 0;
+  border-radius: 0 0 6px 6px;
+}
+
+.cover-movie-list__movie__title,
+.cover-movie-list__movie__new,
+.cover-movie-list__movie__rating {
+  font-weight: 700;
+}
+
+.cover-movie-list__movie__title-row,
+.cover-movie-list__movie__rating-and-tags {
+  color: #fff;
+  text-align: center;
+  vertical-align: super;
+  display: block;
+  margin: 0 auto 0.4rem;
+}
+
+.cover-movie-list__movie__title {
+  color: #ffffff;
+  display: inline-block;
+  max-width: 140px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cover-movie-list__movie__new,
+.cover-movie-list__movie__title:hover {
+  color: #4281da;
+}
+
+.cover-movie-list__movie__new {
+  font-size: 10px;
+  padding-left: 2px;
+  text-transform: uppercase;
+  display: inline-block;
+  vertical-align: super;
+}
+
+.cover-movie-list__movie__rating {
+  box-sizing: border-box;
+  background-color: #2f3446;
+  color: #ffffff;
+  display: inline-block;
+  padding: 1px 6px;
+  margin-right: 0.3rem;
+  border: 1px solid #3a4055;
+  border-radius: 5px;
+}
+
+.cover-movie-list__movie__rating:hover {
+  background-color: #3c4258;
+  border: 1px solid #474e69;
+}
+
+.cover-movie-list__movie__cover-link--seen::after {
+  content: "";
+  position: absolute;
+  right: -20px;
+  top: 5px;
+  background-image: url("https://datfunc.github.io/ptp/assets/icons/seen.svg");
+  background-size: cover;
+  width: 20px;
+  height: 20px;
+}
+
+span.cover-movie-list__movie__year {
+  display: inline-block;
+  vertical-align: super;
+  margin-left: 0.1rem;
+}
+
+#artist .cover-movie-list__movie__cover-link--seen::after,
+#bookmarks .cover-movie-list__movie__cover-link--seen::after,
+#collages .cover-movie-list__movie__cover-link--seen::after {
+  right: -40px;
+}
+
+.huge-movie-list__movie {
+  background-color: #2f3546;
+  border: none;
+  margin-bottom: 30px;
+}
+
+.huge-movie-list__movie:not(:first-child) {
+  margin-top: 15px;
+}
+
+.huge-movie-list__movie__cover {
+  position: relative;
+  float: left;
+  width: 256px;
+}
+
+.huge-movie-list__movie__cover__link {
+  display: block;
+  height: 360px;
+  width: 256px;
+  border-radius: 5px;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.huge-movie-list__movie__cover__link--seen::after {
+  content: "";
+  position: absolute;
+  right: 3px;
+  top: 3px;
+  background-image: url("https://datfunc.github.io/ptp/assets/icons/seen.svg");
+  background-size: cover;
+  width: 20px;
+  height: 20px;
+}
+
+.huge-movie-list__movie__details {
+  margin-left: 256px;
+  position: relative;
+  padding: 10px 10px 0 10px;
+}
+
+.huge-movie-list__movie__title {
+  font-size: 1.5em;
+  font-weight: 700;
+  color: #fff;
+}
+
+.huge-movie-list__movie__new,
+.huge-movie-list__movie__title:hover {
+  color: #4281da;
+}
+
+.huge-movie-list__movie__year {
+  font-size: 1.4em;
+}
+
+.huge-movie-list__movie__new {
+  font-size: 10px;
+  font-weight: 700;
+  padding-left: 2px;
+  text-transform: uppercase;
+}
+
+.huge-movie-list__movie__tag-list {
+  font-size: 1em;
+  font-style: italic;
+  margin-top: 2px;
+}
+
+.huge-movie-list__movie__additional-info {
+  margin-top: 15px;
+}
+
+.huge-movie-list__movie__director-list {
+  font-size: 1em;
+}
+
+.huge-movie-list__movie__ratings-and-synopsis {
+  margin-top: 25px;
+}
+
+.huge-movie-list__movie__ratings-and-synopsis > tbody > tr > td {
+  background-color: #181c27;
+  border: none;
+}
+
+.huge-movie-list__movie__ratings {
+  width: 130px;
+  margin: auto;
+}
+
+.huge-movie-list__movie__ratings__icon-column {
+  padding: 1px 6px 1px 5px;
+}
+
+.huge-movie-list__movie__ratings__votes-column {
+  padding: 1px 2px 1px 2px;
+}
+
+.huge-movie-list__movie__ratings img[src*="static/common/ratings/x1_imdb.png"] {
+  width: 42px;
+  height: 42px;
+  box-sizing: border-box;
+  padding-left: 42px;
+  background: url("https://datfunc.github.io/ptp/assets/icons/imdb-logo.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+.huge-movie-list__movie__ratings
+  img[src*="static/common/ratings/x2_metacritic.png"],
+.huge-movie-list__movie__ratings
+  img[src*="static/common/ratings/x3_tomatoes.png"],
+.huge-movie-list__movie__ratings img[src*="static/common/ratings/x4_ptp.png"] {
+  width: 32px;
+  height: 32px;
+  box-sizing: border-box;
+  padding-left: 32px;
+}
+
+.huge-movie-list__movie__ratings
+  img[src*="static/common/ratings/x2_metacritic.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/metacritic-logo.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+.huge-movie-list__movie__ratings
+  img[src*="static/common/ratings/x3_tomatoes.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/rt_alt.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+.huge-movie-list__movie__ratings img[src*="static/common/ratings/x4_ptp.png"],
+img[src="static/common/ratings/x4_ptp.png"] {
+  width: 28px !important;
+  height: 28px !important;
+  box-sizing: border-box;
+  padding-left: 28px !important;
+  background: url("https://datfunc.github.io/ptp/assets/icons/popcorn-colored.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+.huge-movie-list__movie__synopsis {
+  padding: 5px;
+  font-size: 1.2em;
+}
+
+.huge-movie-list__movie__action-row {
+  margin-top: 10px;
+  font-size: 1.2em;
+}
+
+.huge-movie-list__movie__torrent-summary {
+  margin-top: 25px;
+}
+
+.large-torrent-list-group-opener {
+  background: url("images/show.png") no-repeat center center;
+  width: 28px;
+  height: 28px;
+}
+
+.large-torrent-list-group-opener__link {
+  display: block;
+  width: 28px;
+  height: 28px;
+  border: none;
+}
+
+.basic-movie-list__movie__cover-link--seen,
+.cover-movie-list__movie__cover-link--seen,
+.huge-movie-list__movie__cover__link--seen,
+.small-cover-movie-list__movie__link--seen {
+  opacity: 0.75;
+  background-color: rgba(24, 28, 42, 0.4) !important;
+  background-blend-mode: darken;
+}
+
+.basic-movie-list__movie__cover-link--seen:hover,
+.cover-movie-list__movie__cover-link--seen:hover,
+.huge-movie-list__movie__cover__link--seen:hover,
+.small-cover-movie-list__movie__link--seen:hover {
+  opacity: 1;
+  background-color: none !important;
+  background-blend-mode: initial;
+}
+
+.basic-movie-list__movie__cover:hover,
+.cover-movie-list__movie__cover-link:hover,
+.huge-movie-list__movie__cover__link:hover,
+.small-cover-movie-list__movie__link:hover,
+.small-cover-movie-list__movie__link--smaller:hover,
+.sidebar-cover-image:hover,
+.user-recommendation__image:hover,
+.last5-movies__link:hover {
+  transform: scale(1.04);
+  box-shadow: 0 0 40px #31517d;
+}
+
+.basic-movie-list__movie__cover:hover,
+.cover-movie-list__movie__cover-link:hover,
+.huge-movie-list__movie__cover__link:hover,
+.small-cover-movie-list__movie__link:hover,
+.small-cover-movie-list__movie__link--smaller:hover,
+.sidebar-cover-image:hover,
+.user-recommendation__image:hover,
+.last5-movies__link:hover {
+  box-shadow: 0 0 40px #31517d;
+}
+
+/* Torrents table icons */
+#browse_settings,
+img[src="static/common/symbols/settings.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/settings.svg")
+    no-repeat center center;
+  transition: all 2s ease-in-out;
+}
+
+#browse_settings:hover,
+img[src="static/common/symbols/settings.png"]:hover {
+  transform: rotate(360deg);
+  -webkit-filter: invert(0) sepia(0) saturate(1) hue-rotate(0) brightness(5);
+  filter: invert(0) sepia(0) saturate(1) hue-rotate(0) brightness(5);
+}
+
+img[title="Time"],
+img[src="static/common/time.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/time.svg")
+    no-repeat center center;
+}
+
+img[title="Snatches"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/snatched.svg")
+    no-repeat center center;
+}
+
+img[title="Seeders"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/arrow-up-white.svg")
+    no-repeat center center;
+}
+
+img[title="Leechers"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/arrow-down-white.svg")
+    no-repeat center center;
+}
+
+#browse_settings,
+img[src="static/common/symbols/settings.png"],
+img[title="Time"],
+img[src="static/common/time.png"],
+img[title="Snatches"],
+img[title="Seeders"],
+img[title="Leechers"] {
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  padding-left: 14px;
+  background-size: contain;
+}
+
+#bprate img[src="static/common/time.png"] {
+  display: block;
+  margin: 0 auto;
+}
+
+/* Torrent Single Table */
+.movie-page__torrent__panel {
+  background-color: #181c27;
+  margin: 10px;
+  padding: 10px;
+  border: 1px dashed #4a4e5b;
+  border-radius: 5px;
+}
+
+img[src="static/common/symbols/uploader.png"] {
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  padding-left: 12px;
+  background: url("https://datfunc.github.io/ptp/assets/icons/arrow-up.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+.movie-page__torrent__panel img {
+  margin-left: 0.3rem;
+  vertical-align: baseline;
+}
+
+.movie-page__torrent-report-container {
+  margin-top: 8px;
+  background-color: #1d2333;
+}
+
+.movie-page__torrent-report-date-and-reason {
+  padding: 5px;
+  border-bottom: 1px dotted #666;
+}
+
+.movie-page__torrent-report-description {
+  padding: 5px 1rem;
+}
+
+.movie-page__torrent-report-staff-comment {
+  padding: 5px 1rem;
+  border-top: 1px dotted #666;
+  background-color: #1e1e1e;
+}
+
+.release-description-preview {
+  background-color: #242a3c;
+  padding: 10px;
+  border: 1px solid #3d4356;
+}
+
+.screenshot-comparison__container {
+  position: fixed;
+  overflow: auto;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: #000;
+  text-align: center;
+  z-index: 99;
+  display: block;
+  margin: 0 auto;
+}
+
+.screenshot-comparison__row {
+  position: relative;
+  left: 0;
+  top: 0;
+}
+
+.screenshot-comparison__image-container {
+  display: inline-block;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+}
+
+.screenshot-comparison__image {
+  border: 4px solid #4281da;
+}
+
+.screenshot-comparison__label {
+  position: fixed;
+  top: 0;
+  z-index: 2000;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  text-shadow: 0 0 4px #000, 0 0 4px #000, 0 0 4px #000, 0 0 4px #000;
+}
+
+.screenshot-comparison__old-school-toggler-container {
+  margin: 20px;
+}
+
+.screenshot-comparison__help {
+  display: inline-block;
+  margin-bottom: 20px;
+  max-width: 800px;
+  color: #fff;
+  text-align: left;
+}
+
+.screenshot-comparison__old-school-image {
+  width: 20%;
+}
+
+.movie-page__trailer {
+  margin-bottom: 14px;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.movie-page__actor-column {
+  width: 180px;
+  text-align: right;
+}
+
+.movie-tooltip__title-row {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.movie-tooltip__title {
+  color: #fff;
+}
+
+.movie-tooltip__director-list {
+  margin-top: 3px;
+}
+
+.movie-tooltip__ratings {
+  margin: 3px 0 3px 0;
+}
+
+.movie-tooltip__rating-container {
+  background-color: #2f3446;
+  display: inline;
+  margin-right: 4px;
+  padding: 1px 4px;
+  border: 1px solid #3a4055;
+  border-radius: 0.25rem;
+}
+
+.movie-tooltip__rating__title > a,
+.movie-tooltip__tag,
+.movie-tooltip__rating__rating {
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.movie-tooltip__rating__title > a:hover,
+.movie-tooltip__tag:hover {
+  text-decoration: none;
+  color: #fff;
+}
+
+.movie-tooltip__additional-info {
+  margin-top: 10px;
+}
+
+.movie-tooltip__trailer {
+  position: relative;
+  margin-top: 10px;
+  width: 150px;
+  height: 120px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.movie-tooltip__trailer:hover {
+  opacity: 0.75;
+}
+
+.movie-tooltip__trailer__image {
+  max-width: 100%;
+  border: none;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  width: 100%;
+  border: 1px solid #3a4055;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.movie-tooltip__trailer__play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+  width: 50px;
+  height: 50px;
+  box-sizing: border-box;
+  padding-left: 50px;
+  background: url("https://datfunc.github.io/ptp/assets/icons/play-trailer.svg")
+    no-repeat center center;
+  background-size: contain;
+  opacity: 0.75;
+  transition: all 0.3s;
+}
+
+.movie-tooltip__trailer:hover .movie-tooltip__trailer__play {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1.1);
+}
+
+.movie-tooltip__synopsis {
+  margin-top: 10px;
+  line-height: 1rem;
+}
+
+.movie-tooltip__torrents {
+  margin-top: 10px;
+}
+
+.movie-tooltip__action-row {
+  margin-top: 5px;
+  padding-top: 10px;
+  padding-bottom: 4px;
+  font-weight: 700;
+  border-top: 1px solid #2f3347;
+}
+
+.mediainfo {
+  margin: 0;
+  width: auto;
+}
+
+.mediainfo > tbody > tr,
+.mediainfo__section > tbody > tr {
+  background-color: #242a3c;
+  vertical-align: top;
+}
+
+.mediainfo > tbody > tr > td {
+  border: 1px solid #3d4356;
+  padding: 5px;
+}
+
+.mediainfo__section {
+  margin: 0;
+  width: 100%;
+  border-top: 1px solid #3d4356;
+  border-collapse: collapse;
+}
+
+.mediainfo__section__caption {
+  font-weight: 700;
+}
+
+.mediainfo__section > tbody > td {
+  border: none;
+  padding: 2px;
+}
+
+.mediainfo--in-release-description {
+  width: 100%;
+}
+
+.mediainfo--in-release-description .mediainfo__section > tbody > tr,
+.mediainfo--in-release-description > tbody > tr {
+  background-color: #242a3c;
+  border-top: 1px solid #3d4356;
+}
+
+.torrent_table img[src="static/common/check.png"],
+img[src*="static/common/check.png"],
+.torrent_table img[src="static/common/x.png"],
+img[src*="static/common/x.png"] {
+  width: 12px !important;
+  height: 12px !important;
+  box-sizing: border-box;
+  padding-left: 12px !important;
+  background-size: cover !important;
+}
+
+.torrent_table img[src="static/common/check.png"],
+img[src*="static/common/check.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/badge-checker.svg")
+    no-repeat center center;
+}
+
+.torrent_table img[src="static/common/x.png"],
+img[src*="static/common/x.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/not-approved_alt.svg")
+    no-repeat center center;
+  margin-right: 1px;
+}
+
+img[src="static/common/Poppy1.png"] {
+  width: 70px;
+  height: 70px;
+  box-sizing: border-box;
+  padding-left: 70px;
+  background: url("https://datfunc.github.io/ptp/assets/icons/poppy.svg")
+    no-repeat center center;
+  background-size: contain;
+  margin-right: 10px;
+}
+
+.forum-post__movie-vote {
+  color: #ffffff;
+  background: #1e2233 !important;
+  padding: 0.2rem;
+}
+
+.forum-post__movie-vote img {
+  width: 16px !important;
+  height: 16px !important;
+  box-sizing: border-box;
+  padding-left: 20px !important;
+  background: url("https://datfunc.github.io/ptp/assets/icons/popcorn-colored.svg")
+    no-repeat center center;
+  background-size: contain;
+  margin-right: 0.2rem;
+}
+
+/* Spoiler Tag */
+span.spoiler a {
+  color: black;
+}
+
+span.spoiler img {
+  visibility: hidden;
+}
+
+span.spoiler-show a {
+  color: #a0a6b7;
+}
+
+span.spoiler-show a:hover {
+  color: #ffffff;
+}
+
+span.spoiler ul {
+  background-color: black;
+}
+
+span.spoiler-show a:hover {
+  color: #fff;
+}
+
+span.spoiler-show img {
+  visibility: visible;
+}
+
+span.spoiler:hover,
+span.spoiler-show * {
+  background-color: transparent !important;
+}
+
+#movie-ratings-table #imdb-title-link img {
+  background: url("https://datfunc.github.io/ptp/assets/icons/imdb-logo.svg")
+    no-repeat center center;
+  width: 64px !important;
+  height: 64px !important;
+}
+
+#movie-ratings-table img[src="static/common/ratings/x2_metacritic.png"],
+#movie-ratings-table img[src="static/common/ratings/x4_ptp.png"],
+#movie-ratings-table #imdb-title-link img {
+  width: 42px !important;
+  height: 42px !important;
+  padding-left: 48px;
+}
+
+#movie-ratings-table img[src="static/common/ratings/x2_metacritic.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/metacritic-logo.svg")
+    no-repeat center center;
+}
+
+#movie-ratings-table img[src="static/common/ratings/x4_ptp.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/popcorn-colored.svg")
+    no-repeat center center;
+}
+
+#movie-ratings-table img[src="static/common/ratings/x3_tomatoes.png"],
+img[title="Rotten Tomatoes"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/rt_alt.svg")
+    no-repeat center center;
+}
+
+#movie-ratings-table #imdb-title-link img,
+#movie-ratings-table img[src="static/common/ratings/x2_metacritic.png"],
+#movie-ratings-table img[src="static/common/ratings/x3_tomatoes.png"],
+img[title="Rotten Tomatoes"],
+#movie-ratings-table img[src="static/common/ratings/x4_ptp.png"] {
+  box-sizing: border-box;
+  background-size: contain;
+}
+
+#movie-ratings-table #imdb-title-link img {
+  width: 35px !important;
+  height: 35px !important;
+  padding-left: 54px;
+}
+
+#movie-ratings-table img[src="static/common/ratings/x4_ptp.png"] {
+  width: 42px !important;
+  height: 42px !important;
+  padding-left: 64px !important;
+}
+
+#movie-ratings-table img[src="static/common/ratings/x3_tomatoes.png"],
+img[title="Rotten Tomatoes"] {
+  width: 64px !important;
+  height: 64px !important;
+  padding-left: 64px;
+}
+
+.star-rating-container {
+  display: inline-block;
+  padding-right: 5px;
+  margin: 10px 0 0;
+  cursor: pointer;
+}
+
+.star-rating {
+  display: inline-block;
+  width: 170px;
+  height: 17px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: url("https://datfunc.github.io/ptp/assets/icons/star-rating.svg");
+  background-size: 17px;
+  background-position: left center;
+  background-repeat: repeat-x;
+  cursor: pointer;
+}
+
+.star-rating,
+.star-rating--popup-starter,
+.star-rating-container,
+.star-rating-container--big {
+  transition: all 0.3s;
+}
+
+.star-rating--popup-starter:hover {
+  transform: scale(1.1);
+}
+
+.star-rating--with-inline-rating-display {
+  vertical-align: middle;
+}
+
+.star-rating--voting-disabled {
+  cursor: default;
+}
+
+.star-rating__current-user,
+.star-rating__site {
+  display: block;
+  position: absolute;
+  float: left;
+  width: 170px;
+  height: 20px;
+  padding: 0;
+  margin: 0;
+  text-decoration: none;
+  text-indent: -9000px;
+  font-size: 1px;
+  z-index: 20;
+}
+
+.star-rating__current-user {
+  height: 17px;
+  background: url("https://datfunc.github.io/ptp/assets/icons/star-rating-user.svg");
+  background-size: 17px;
+  background-position: left center;
+  background-repeat: repeat-x;
+  z-index: 19;
+}
+
+.star-rating__site {
+  height: 17px !important;
+  background: url("https://datfunc.github.io/ptp/assets/icons/star-rating-site.svg");
+  background-size: 17px;
+  background-position: left center;
+  background-repeat: repeat-x;
+  z-index: 18;
+}
+
+.star-rating__inline-rating-display {
+  margin-left: 10px;
+}
+
+.star-rating--big,
+.star-rating__current-user--big {
+  width: 300px;
+  height: 30px;
+}
+
+.star-rating--big {
+  background: url("https://datfunc.github.io/ptp/assets/icons/star-rating-big.svg");
+  background-size: 30px;
+  background-position: left center;
+  background-repeat: repeat-x;
+}
+
+.star-rating__current-user--big {
+  background: url("https://datfunc.github.io/ptp/assets/icons/star-rating-user-big.svg");
+  background-size: 30px;
+  background-position: left center;
+  background-repeat: repeat-x;
+}
+
+.star-rating-container--big {
+  padding: 4px;
+  cursor: pointer;
+}
+
+.user-recommendation {
+  display: flex;
+  align-items: flex-start;
+}
+
+.user-recommendation:not(:first-child) {
+  margin-top: 10px;
+}
+
+.user-recommendation__image-container {
+  margin-right: 10px;
+}
+
+.user-recommendation__image {
+  max-width: 64px;
+  border-radius: 5px;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+  transition: all 0.3s;
+}
+
+.last5-movies__link {
+  border-radius: 5px !important;
+}
+
+.user-recommendation__body {
+  flex: 1;
+}
+
+.wiki__diff--added {
+  color: green;
+  background: #dfd;
+  text-decoration: none;
+}
+
+.wiki__diff--deleted {
+  color: #f44336;
+  background: #fdd;
+  text-decoration: none;
+}
+
+/* Flags/Subs Icons */
+.languageselector li {
+  margin-bottom: 0.25em;
+}
+
+img[src="static/common/flags/none.png"],
+img[src="static/common/flags/usa.gif"],
+img[src="static/common/flags/usa_f.gif"],
+img[src="static/common/flags/usa_i.gif"],
+img[src="static/common/flags/spain.gif"],
+img[src="static/common/flags/france.gif"],
+img[src="static/common/flags/arabic.gif"],
+img[src="static/common/flags/pt_br.png"],
+img[src="static/common/flags/bulgaria.png"],
+img[src="static/common/flags/china.gif"],
+img[src="static/common/flags/croatia.gif"],
+img[src="static/common/flags/czech.png"],
+img[src="static/common/flags/denmark.gif"],
+img[src="static/common/flags/netherlands.gif"],
+img[src="static/common/flags/estonia.png"],
+img[src="static/common/flags/finland.gif"],
+img[src="static/common/flags/germany.gif"],
+img[src="static/common/flags/greece.gif"],
+img[src="static/common/flags/hebrew.png"],
+img[src="static/common/flags/hindi.png"],
+img[src="static/common/flags/hungary.gif"],
+img[src="static/common/flags/icelandic.png"],
+img[src="static/common/flags/indonesian.png"],
+img[src="static/common/flags/italy.gif"],
+img[src="static/common/flags/japan.gif"],
+img[src="static/common/flags/south_korea.gif"],
+img[src="static/common/flags/latvia.png"],
+img[src="static/common/flags/lithuania.png"],
+img[src="static/common/flags/norway.gif"],
+img[src="static/common/flags/iran.png"],
+img[src="static/common/flags/poland.gif"],
+img[src="static/common/flags/portugal.gif"],
+img[src="static/common/flags/romania.gif"],
+img[src="static/common/flags/russia.gif"],
+img[src="static/common/flags/serbia.png"],
+img[src="static/common/flags/slovak.png"],
+img[src="static/common/flags/slovenia.png"],
+img[src="static/common/flags/sweden.gif"],
+img[src="static/common/flags/thailand.gif"],
+img[src="static/common/flags/turkey.gif"],
+img[src="static/common/flags/ukraine.png"],
+img[src="static/common/flags/vietnam.gif"] {
+  width: 20px;
+  height: 20px;
+  box-sizing: border-box;
+  padding-left: 20px;
+  background-size: contain !important;
+  vertical-align: bottom;
+}
+
+img[src="static/common/flags/none.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/no-subs.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/usa.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/usa.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/usa_f.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/usa_f.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/usa_i.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/usa_i.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/spain.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/spain.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/france.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/france.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/arabic.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/uae.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/pt_br.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/brazil.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/bulgaria.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/bulgaria.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/china.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/china.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/croatia.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/croatia.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/czech.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/czech-republic.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/denmark.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/denmark.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/netherlands.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/netherlands.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/estonia.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/estonia.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/finland.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/finland.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/germany.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/germany.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/greece.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/greece.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/hebrew.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/israel.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/hindi.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/india.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/hungary.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/hungary.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/icelandic.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/iceland.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/indonesian.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/indonesia.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/italy.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/italy.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/japan.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/japan.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/south_korea.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/south-korea.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/latvia.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/latvia.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/lithuania.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/lithuania.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/norway.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/norway.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/iran.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/iran.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/poland.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/poland.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/portugal.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/portugal.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/romania.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/romania.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/russia.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/russia.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/serbia.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/serbia.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/slovak.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/slovakia.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/slovenia.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/slovenia.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/sweden.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/sweden.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/thailand.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/thailand.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/turkey.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/turkey.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/ukraine.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/ukraine.svg")
+    no-repeat center center;
+}
+
+img[src="static/common/flags/vietnam.gif"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/flags/vietnam.svg")
+    no-repeat center center;
+}
+
+/* Last 5 Movies */
+.last5-movies {
+  padding: 1em 0 1em 0;
+  font-size: 8pt;
+}
+
+.last5-movies__table {
+  margin: 0;
+  width: 100%;
+}
+
+.last5-movies__table > tbody > tr > td {
+  padding: 0 10px;
+}
+
+.last5-movies__link {
+  display: inline-block;
+  width: 106px;
+  height: 150px;
+  margin-bottom: 5px;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+  border-radius: 5px;
+}
+
+.last5-movies__show-all-row {
+  text-align: right;
+}
+
+.last5-movies__show-all-link {
+  display: inline-block;
+  margin-top: 8px;
+}
+
+/* Forum table */
+.forum-post {
+  background-color: #2f3546;
+  border: none;
+  border-top-left-radius: 5px;
+  border-top-right-radius: 5px;
+  margin-bottom: 10px;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.forum-post--unread {
+  border: 1px solid #4281da;
+}
+
+.forum-post--is-reply {
+  margin-top: 2rem;
+}
+
+.forum-post__id--staff-post {
+  color: #4281da;
+}
+
+.forum-post--heading-only {
+  margin-bottom: 0;
+}
+
+.forum-post__heading {
+  background-color: rgba(7, 11, 22, 0.9);
+  padding: 7px;
+  border-top-left-radius: 5px;
+  border-top-right-radius: 5px;
+}
+
+.forum-post__heading .l_movie,
+.forum-post__heading .username,
+.panel .username {
+  color: #fff;
+  margin-right: 2px;
+  font-weight: 700;
+}
+
+.forum-post__heading .time {
+  color: #949aac;
+}
+
+.forum-post__heading img,
+.panel .username + img {
+   margin: 0 2.5px;
+   position: relative;
+   top: -2px;
+}
+
+.forum-post__avatar-and-body {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+  border: 1px solid #3a4056;
+}
+
+.forum-post__avatar {
+  display: table-cell;
+  position: relative;
+  border-right: 1px solid #3a4056;
+  padding: 5px;
+  width: 161px;
+}
+
+.forum-post__avatar__image {
+  display: block;
+  width: auto;
+  max-width: 150px;
+  height: auto;
+  max-height: 400px;
+  border-radius: 5px;
+}
+
+img[alt="Default avatar"] {
+  width: 150px;
+  height: 150px;
+  box-sizing: border-box;
+  padding-left: 150px;
+  background: url("https://datfunc.github.io/ptp/assets/imgs/defualt_avatar_colored.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+/* Friends Page */
+#friends .panel form {
+  margin-bottom: 0.4rem;
+  border-bottom: 1px solid #3a4056;
+}
+
+#friends .panel form span,
+#friends .panel input:last-of-type {
+  margin-bottom: 0.5rem;
+}
+
+#friends .panel form .username,
+#friends .panel form img {
+  margin: 0 2.5px;
+}
+
+#friends .panel form img,
+#friends .panel form a {
+  vertical-align: unset;
+}
+
+#friends .panel form img[alt="Default avatar"] {
+  width: 50px;
+  height: 50px;
+  padding-left: 50px;
+}
+
+#friends .panel input[type="submit"] {
+  width: 78px;
+  margin-bottom: 0.2rem;
+}
+
+#friends textarea {
+  margin-right: 0.5rem;
+  width: 96%;
+}
+
+#friends .forum_post td[colspan="3"] span:nth-child(1),
+#friends .forum_post td[colspan="3"] span:nth-child(2) {
+  float: none !important;
+}
+
+#friends .forum_post td[colspan="3"] span:nth-child(1) {
+  display: inline-block;
+  margin-bottom: 0.1rem;
+}
+
+#friends .forum_post .time {
+  display: block !important;
+  margin: 0 0.2rem 0.5rem !important;
+  font-size: 0.65rem;
+}
+
+#friends .forum_post .time:before {
+  content: "";
+  background: url("https://datfunc.github.io/ptp/assets/icons/time.svg")
+    no-repeat center center;
+  background-size: 10px !important;
+  width: 10px !important;
+  height: 10px !important;
+  display: inline-block;
+  margin-right: 0.15rem;
+}
+
+.forum-post__body {
+  display: table-cell;
+  vertical-align: top;
+  padding: 10px;
+}
+
+.forum-post__edited {
+  margin-top: 20px;
+  font-style: italic;
+  color: #949aac;
+}
+
+.forum-post__textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.forum-post--is-previewing .forum-post__preview {
+  padding-bottom: 20px;
+}
+
+.forum-post__heading .username {
+  position: relative;
+  padding-bottom: 0.1rem;
+}
+
+.forum-post__heading .username:before {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: #4281da;
+  transform-origin: center;
+  transform: scaleX(0);
+  transition: transform 0.3s ease;
+}
+
+.forum-post__heading .username:hover:before {
+  transform-origin: center;
+  transform: scaleX(1);
+}
+
+/* Forum table icons */
+.forum-topic--is-read,
+.forum-topic--is-unread,
+.forum-topic--is-read-locked-sticky,
+.forum-topic--is-read-sticky,
+.forum-topic--is-read-locked,
+img[src="static/forums/locked_read.png"],
+.forum-topic--is-unread-locked-sticky,
+.forum-topic--is-unread-sticky {
+  width: 30px;
+  height: 30px;
+  box-sizing: border-box;
+  padding-left: 30px;
+}
+
+.forum-topic--is-read {
+  display: inline-block;
+  width: 11px !important;
+  padding: 11px !important;
+  background: url("https://datfunc.github.io/ptp/assets/icons/post-topic-read.svg")
+    no-repeat left center;
+  background-size: contain;
+}
+
+.forum-topic--is-unread {
+  display: inline-block;
+  width: 11px !important;
+  padding: 11px !important;
+  background: url("https://datfunc.github.io/ptp/assets/icons/post-topic-unread.svg")
+    no-repeat left center;
+  background-size: contain;
+}
+
+.forum-topic--is-read-locked-sticky {
+  display: inline-block;
+  width: 10px !important;
+  padding: 10px !important;
+  background: url("https://datfunc.github.io/ptp/assets/icons/topic-locked-read.svg")
+    no-repeat left center;
+  background-size: contain;
+}
+
+.forum-topic--is-read-sticky {
+  display: inline-block;
+  width: 10px !important;
+  padding: 10px !important;
+  background: url("https://datfunc.github.io/ptp/assets/icons/topic-sticky-read.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+.forum-topic--is-read-locked,
+img[src="static/forums/locked_read.png"] {
+  background: url("https://datfunc.github.io/ptp/assets/icons/topic-locked-read.svg")
+    no-repeat left center;
+  background-size: contain;
+}
+
+#collages img[src="static/forums/locked_read.png"] {
+  width: 13px;
+  height: 13px;
+  padding-left: 13px;
+}
+
+.forum-topic--is-unread-locked-sticky {
+  display: inline-block;
+  width: 10px !important;
+  padding: 10px !important;
+  background: url("https://datfunc.github.io/ptp/assets/icons/topic-locked-unread.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+.forum-topic--is-unread-sticky {
+  display: inline-block;
+  width: 9px;
+  padding: 9px !important;
+  background: url("https://datfunc.github.io/ptp/assets/icons/topic-sticky-unread.svg")
+    no-repeat center center;
+  background-size: contain !important;
+}
+
+.forum-topic--is-unread-locked {
+  width: 32px;
+  height: 32px;
+  background: url("https://datfunc.github.io/ptp/assets/icons/topic-locked-unread.svg")
+    no-repeat center center;
+  background-size: contain;
+  -webkit-background-size: contain;
+}
+
+.forum-topic__new {
+  color: #4281da;
+}
+
+.forum-topic__go-to-last-read {
+  float: left;
+  width: 15px;
+  height: 15px;
+  box-sizing: border-box;
+  padding-left: 15px;
+  background: url("https://datfunc.github.io/ptp/assets/icons/arrow-right.svg")
+    no-repeat center center;
+  background-size: contain;
+  margin-left: 5px;
+}
+
+.forum-topic__go-to-last-read:hover {
+  transform: translate(3px);
+  -webkit-filter: invert(0) sepia(0) saturate(1) hue-rotate(0) brightness(5);
+  filter: invert(0) sepia(0) saturate(1) hue-rotate(0) brightness(5);
+}
+
+.view_post {
+  width: 12px !important;
+  height: 12px !important;
+  box-sizing: border-box;
+  padding-left: 12px;
+  background: url("https://datfunc.github.io/ptp/assets/icons/view-post.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+.view_post:hover {
+  -webkit-filter: invert(0) sepia(0) saturate(1) hue-rotate(0) brightness(5);
+  filter: invert(0) sepia(0) saturate(1) hue-rotate(0) brightness(5);
+}
+
+.poll__title {
+  display: inline-block;
+  margin-bottom: 10px;
+  font-weight: 700;
+}
+
+.poll__list {
+  list-style: none outside none;
+  padding-left: 0;
+  margin-top: 0;
+}
+
+.poll__option--blank {
+  margin-top: 1em;
+}
+
+.poll__bar {
+  margin-bottom: 0.75em;
+  background: #1e2233;
+}
+
+.poll__bar--no-margin {
+  margin-bottom: 0;
+}
+
+.poll__bar__left {
+  background-position: center center;
+}
+
+.poll__bar__left,
+.poll__bar__right {
+  background-repeat: no-repeat;
+  width: 2px;
+}
+
+.poll__bar__left,
+.poll__bar__center,
+.poll__bar__right {
+  float: left;
+  background: #4281da;
+  height: 9px;
+  margin: 0;
+  padding: 0;
+}
+
+/****************************************************************************
+  4.0 - Utilities */
+.hidden {
+  display: none;
+}
+
+.text--left {
+  background: #191d2a;
+  border: 1px solid #3e414c;
+  color: #fff;
+  text-align: left !important;
+}
+
+.text--center {
+  text-align: center !important;
+}
+
+.text--right {
+  text-align: right !important;
+}
+
+.nobr {
+  white-space: nowrap;
+}
+
+.grid {
+  margin-left: -1em;
+}
+
+.grid__item {
+  float: left;
+  padding-left: 1em;
+}
+
+.grid-u-1 {
+  width: 100%;
+}
+
+.grid-u-1-3 {
+  width: 33.3%;
+}
+
+.grid-u-1-10 {
+  width: 10%;
+}
+
+.grid-u-2-10 {
+  width: 20%;
+}
+
+.grid-u-3-10 {
+  width: 30%;
+}
+
+.grid-u-4-10 {
+  width: 40%;
+}
+
+.grid-u-5-10 {
+  width: 50%;
+}
+
+.grid-u-6-10 {
+  width: 60%;
+}
+
+.grid-u-7-10 {
+  width: 70%;
+}
+
+.grid-u-8-10 {
+  width: 80%;
+}
+
+.grid-u-9-10 {
+  width: 90%;
+}
+
+.grid-offset-u-1-10 {
+  margin-left: 10%;
+}
+
+.grid-offset-u-2-10 {
+  margin-left: 20%;
+}
+
+.grid-offset-u-3-10 {
+  margin-left: 30%;
+}
+
+.grid-offset-u-4-10 {
+  margin-left: 40%;
+}
+
+.grid-offset-u-5-10 {
+  margin-left: 50%;
+}
+
+.grid-offset-u-6-10 {
+  margin-left: 60%;
+}
+
+.grid-offset-u-7-10 {
+  margin-left: 70%;
+}
+
+.grid-offset-u-8-10 {
+  margin-left: 80%;
+}
+
+.grid-offset-u-9-10 {
+  margin-left: 90%;
+}
+
+.list {
+  margin: 0 0 1em 0;
+}
+
+.list:last-child {
+  margin-bottom: 0;
+}
+
+.list--unstyled {
+  list-style: none outside none;
+  padding-left: 0;
+}
+
+.list--max-count9 {
+  padding-left: 1em;
+}
+
+.list--max-count99 {
+  padding-left: 2em;
+}
+
+.list--max-count999 {
+  padding-left: 3em;
+}
+
+.list--max-count9999 {
+  padding-left: 4em;
+}
+
+.list--bulleted {
+  list-style-type: disc;
+}
+
+.list--sublist {
+  margin-bottom: 0;
+}
+
+.list--small-padding {
+  padding-left: 2em;
+}
+
+.list--form-column {
+  float: left;
+  margin-top: 0;
+  margin-bottom: 0;
+  margin-right: 1.5em;
+}
+
+.list--inline {
+  padding-left: 0;
+  list-style: none;
+}
+
+.list--inline > li {
+  display: inline-block;
+  padding-right: 5px;
+  padding-left: 5px;
+}
+
+.list--inline > li:first-child {
+  padding-left: 0;
+}
+
+.list--inline-full-width {
+  display: table;
+  width: 100%;
+  text-align: center;
+}
+
+.list--inline-full-width > li {
+  display: table-cell;
+}
+
+.preformatted-text--scrolled {
+  white-space: pre;
+  overflow-x: auto;
+  word-wrap: normal;
+}
+
+.table--no-border {
+  border: none;
+}
+
+.table--no-margin {
+  margin-bottom: 0;
+}
+
+.panel--no-margin {
+  margin-bottom: 0;
+}
+
+.table__background-color--alternative {
+  background-color: #2f3547 !important;
+}
+
+.heading--no-margin {
+  margin: 0;
+}
+
+.heading--small-bottom-margin {
+  margin-bottom: 0.25em;
+}
+
+.alert--centered-content {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.alert,
+.alert-bar,
+.alert--warning,
+.alert--error {
+  max-width: 576px;
+  padding: 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: center;
+  border-radius: 4px;
+  background: url("https://datfunc.github.io/ptp/assets/icons/topic-sticky-unread.svg")
+      no-repeat 20px center,
+    rgba(7, 11, 22, 0.65);
+  background-size: 20px;
+  border: none;
+  margin: 1rem auto 1rem;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+@supports ((-webkit-backdrop-filter: none) or (backdrop-filter: none)) {
+  .alert,
+  .alert-bar,
+  .alert--warning,
+  .alert--error {
+    -webkit-backdrop-filter: blur(10px) !important;
+    backdrop-filter: blur(10px) !important;
+    background: url("https://datfunc.github.io/ptp/assets/icons/topic-sticky-unread.svg")
+        no-repeat 20px center,
+      rgba(7, 11, 22, 0.65);
+    background-size: 20px;
+  }
+}
+
+.alert a,
+.alert-bar a,
+.alert--warning a,
+.alert--error a {
+  color: #a0a6b7;
+}
+
+.alert a:hover,
+.alert-bar a:hover,
+.alert--warning a:hover,
+.alert--error a:hover {
+  color: #ffffff;
+}
+
+.linkbox {
+  text-align: center;
+  margin: 5px 5px 10px 5px;
+  font-size: 0.75rem;
+}
+
+.linkbox__link--current {
+  font-weight: 700;
+}
+
+/****************************************************************************
+  4.1 CSS Animation/Keyframes */
+@-webkit-keyframes jelly-effect {
+  0%,
+  100% {
+    transform: scale(1, 1);
+  }
+
+  25% {
+    transform: scale(0.9, 1.1);
+  }
+
+  50% {
+    transform: scale(1.1, 0.9);
+  }
+
+  75% {
+    transform: scale(0.95, 1.05);
+  }
+}
+
+@keyframes jelly-effect {
+  0%,
+  100% {
+    transform: scale(1, 1);
+  }
+
+  25% {
+    transform: scale(0.9, 1.1);
+  }
+
+  50% {
+    transform: scale(1.1, 0.9);
+  }
+
+  75% {
+    transform: scale(0.95, 1.05);
+  }
+}
+
+@keyframes flickerAnimation {
+  0% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+@-webkit-keyframes flickerAnimation {
+  0% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+/****************************************************************************
+  5.0 - Header */
+/****************************************************************************
+
+  /* User Info Bar */
+.user-info-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: auto;
+  background-color: rgba(7, 11, 22, 0.9);
+  padding: 0.5rem 0;
+  margin: 0 auto;
+  text-align: center;
+  color: #fff;
+  z-index: 20;
+  font-size: 0.75rem;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.user-info-bar__text--hnr {
+  color: #ff2600;
+}
+
+.user-info-bar__link {
+  text-decoration: none;
+  color: #949aac;
+  transition: all 0.3s;
+}
+
+.user-info-bar__item--drop-down-menu-opener a:hover,
+#nav_more .user-info-bar__link:hover:after {
+  transition: all 0.3s;
+}
+
+#nav_more .user-info-bar__link:after {
+  content: "\25be";
+  color: #949aac;
+  padding-left: 0.2rem;
+}
+
+.user-info-bar__link:hover,
+#nav_more .user-info-bar__link:hover:after {
+  text-decoration: none;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.user-info-bar__link--important {
+  font-weight: 700;
+}
+
+.user-info-bar__link--highlighted {
+  color: #fff;
+  font-weight: 700;
+}
+
+.user-info-bar__link--highlighted::after {
+  content: " \2022";
+  color: #96c72c;
+  text-shadow: 0 0 4px #79f725, 0 0 10px #25ef61, 0 0 20px #5dec32,
+    0 0 30px #32ec40, 0 0 40px #5dec32, 0 0 55px #5dec32, 0 0 75px #5dec32;
+  -webkit-animation: flickerAnimation 3s infinite;
+  animation: flickerAnimation 3s infinite;
+}
+
+.user-info-bar__link--donations-behind {
+  color: #ff2600;
+}
+
+.user-info-bar__list {
+  display: inline;
+  margin: 0;
+  padding: 0;
+}
+
+.user-info-bar__item {
+  position: relative;
+  display: inline;
+  vertical-align: middle;
+  margin: 0 1px;
+  padding: 0;
+  line-height: 20px;
+}
+
+.user-info-bar__drop-down-menu {
+  background-color: rgba(7, 11, 22, 0.9);
+  visibility: hidden;
+  position: absolute;
+  z-index: 10;
+  left: auto;
+  right: 0;
+  padding: 0;
+  margin: 0;
+  border-bottom-left-radius: 5px;
+  border-bottom-right-radius: 5px;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.user-info-bar__drop-down-menu__item {
+  display: block;
+  float: none;
+  border-bottom: 1px solid #2f3447;
+}
+
+.user-info-bar__drop-down-menu__item:last-of-type {
+  border-bottom: none;
+}
+
+.user-info-bar__item--drop-down-menu-opener:hover
+  > .user-info-bar__drop-down-menu {
+  visibility: visible;
+  top: 100%;
+}
+
+.user-info-bar__item--drop-down-menu-opener a {
+  color: #949aac;
+  transition: all 0s;
+}
+
+.user-info-bar__drop-down-menu__link {
+  text-align: left;
+  text-decoration: none;
+  padding: 0.4em 1.5em;
+  display: block;
+  position: relative;
+  white-space: nowrap;
+}
+
+.user-info-bar__drop-down-menu__link:hover {
+  text-decoration: none;
+  color: #fff;
+  background-color: #4281da;
+}
+
+#nav_more:hover {
+  cursor: pointer;
+}
+
+/* Main Menu */
+.main-menu {
+  background-color: rgba(7, 11, 22, 0.9);
+  width: 100%;
+  height: 28px;
+  margin: 5px auto 10px auto;
+  font-size: 10pt;
+  text-align: left;
+  z-index: 7;
+  border-radius: 5px;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.main-menu__list {
+  padding: 5px 0 0 0;
+  text-align: center;
+}
+
+.main-menu__item {
+  display: inline;
+  padding: 1%;
+  margin: 0;
+  text-align: center;
+  font-size: 12px;
+}
+
+.main-menu__link {
+  padding: 0.5em;
+  color: #949aac;
+  position: relative;
+}
+
+.main-menu__link:before {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: #4281da;
+  transform-origin: center;
+  transform: scaleX(0);
+  transition: transform 0.3s ease;
+}
+
+.main-menu__link:hover:before {
+  transform-origin: center;
+  transform: scaleX(1);
+}
+
+.main-menu__link:hover,
+.user-info-bar__link:hover {
+  color: #ffffff;
+}
+
+@supports ((-webkit-backdrop-filter: none) or (backdrop-filter: none)) {
+  .qtip-ptp,
+  .lightbox__shroud,
+  .main-menu,
+  .search-bar__results,
+  .user-info-bar {
+    -webkit-backdrop-filter: blur(10px) !important;
+    backdrop-filter: blur(10px) !important;
+    background-color: rgba(7, 11, 22, 0.65) !important;
+  }
+}
+
+/* Site Logo */
+.site-logo {
+  position: relative;
+  top: 0;
+  width: 100%;
+  max-width: -webkit-fit-content;
+  max-width: -moz-fit-content;
+  max-width: fit-content;
+  height: auto;
+  margin: 0 auto -1.4rem;
+}
+
+.site-logo__link:after {
+  font-family: "Sequel Sans", Helvetica, Tahoma, Geneva, sans-serif;
+  content: "passthepopcorn";
+  display: block;
+  margin: -0.5rem auto 3rem;
+  font-size: 5.5rem;
+  text-align: center !important;
+  background-color: #4281da;
+  background-image: linear-gradient(
+    90deg,
+    #e66534 4%,
+    #e69734 19%,
+    #e2d956 39%,
+    #62e080 60%,
+    #d195cb 80%,
+    #e646dd 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  -webkit-filter: brightness(110%);
+  filter: brightness(110%);
+  text-shadow: 0 0 15px rgba(230, 101, 52, 0.55);
+  transition: all 0.3s;
+}
+
+.site-logo__link:hover:after {
+  text-shadow: 0 0 25px rgba(230, 101, 52, 0.72);
+  -webkit-filter: brightness(120%);
+  filter: brightness(120%);
+}
+
+.site-logo__link {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: 2.5rem;
+  border: none;
+}
+
+.site-logo,
+.site-logo__link,
+.site-logo__link:after {
+  word-wrap: normal;
+  white-space: nowrap;
+}
+
+/****************************************************************************
+  6.0 - Body */
+/************************************************************************
+  6.1 - User Profile */
+
+/* Awards */
+img[src="static/common/stars/AwardRating.png"] {
+  width: 17px;
+  height: 17px;
+  box-sizing: border-box;
+  padding-left: 17px;
+  background: url("https://datfunc.github.io/ptp/assets/icons/popcorn-colored.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+img[src="static/common/stars/NoAwardRating.png"] {
+  width: 17px;
+  height: 17px;
+  box-sizing: border-box;
+  padding-left: 17px;
+  background: url("https://datfunc.github.io/ptp/assets/icons/popcorn-uncolored.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+img[src="static/common/stars/AwardUploads.png"] {
+  width: 17px;
+  height: 17px;
+  box-sizing: border-box;
+  padding-left: 17px;
+  background: url("https://datfunc.github.io/ptp/assets/icons/arrow-up.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+img[src="static/common/stars/AwardMetaUploads.png"] {
+  width: 17px;
+  height: 17px;
+  box-sizing: border-box;
+  padding-left: 17px;
+  background: url("https://datfunc.github.io/ptp/assets/icons/arrow-up-met.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+img[src="static/common/stars/NoAwardUploads.png"] {
+  width: 17px;
+  height: 17px;
+  box-sizing: border-box;
+  padding-left: 17px;
+  background: url("https://datfunc.github.io/ptp/assets/icons/arrow-up-uncolored.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+img[src="static/common/stars/AwardDownloads.png"] {
+  width: 17px;
+  height: 17px;
+  box-sizing: border-box;
+  padding-left: 17px;
+  background: url("https://datfunc.github.io/ptp/assets/icons/arrow-down.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+img[src="static/common/stars/AwardMetaDownloads.png"] {
+  width: 17px;
+  height: 17px;
+  box-sizing: border-box;
+  padding-left: 17px;
+  background: url("https://datfunc.github.io/ptp/assets/icons/arrow-down-met.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+img[src="static/common/stars/NoAwardDownloads.png"] {
+  width: 17px;
+  height: 17px;
+  box-sizing: border-box;
+  padding-left: 17px;
+  background: url("https://datfunc.github.io/ptp/assets/icons/arrow-down-uncolored.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+img[src="static/common/stars/AwardData Transfer.png"] {
+  width: 17px;
+  height: 17px;
+  box-sizing: border-box;
+  padding-left: 17px;
+  background: url("https://datfunc.github.io/ptp/assets/icons/two-way-arrows.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+img[src="static/common/stars/AwardMetaData Transfer.png"] {
+  width: 17px;
+  height: 17px;
+  box-sizing: border-box;
+  padding-left: 17px;
+  background: url("https://datfunc.github.io/ptp/assets/icons/two-way-arrows-met.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+img[src="static/common/stars/NoAwardData Transfer.png"] {
+  width: 17px;
+  height: 17px;
+  box-sizing: border-box;
+  padding-left: 17px;
+  background: url("https://datfunc.github.io/ptp/assets/icons/two-way-arrows-uncolored.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+img[src="static/common/stars/AwardRequests.png"] {
+  width: 17px;
+  height: 17px;
+  box-sizing: border-box;
+  padding-left: 17px;
+  background: url("https://datfunc.github.io/ptp/assets/icons/requests-meta-colored.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+img[src="static/common/stars/AwardMetaRequests.png"] {
+  width: 17px;
+  height: 17px;
+  box-sizing: border-box;
+  padding-left: 17px;
+  background: url("https://datfunc.github.io/ptp/assets/icons/requests-meta-met.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+img[src="static/common/stars/NoAwardRequests.png"] {
+  width: 17px;
+  height: 17px;
+  box-sizing: border-box;
+  padding-left: 17px;
+  background: url("https://datfunc.github.io/ptp/assets/icons/requests-meta-uncolored.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+img[src="static/common/stars/AwardChat.png"] {
+  width: 17px;
+  height: 17px;
+  box-sizing: border-box;
+  padding-left: 17px;
+  background: url("https://datfunc.github.io/ptp/assets/icons/chat-colored.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+img[src="static/common/stars/AwardMetaChat.png"] {
+  width: 17px;
+  height: 17px;
+  box-sizing: border-box;
+  padding-left: 17px;
+  background: url("https://datfunc.github.io/ptp/assets/icons/chat-met.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+img[src="static/common/stars/NoAwardChat.png"] {
+  width: 17px;
+  height: 17px;
+  box-sizing: border-box;
+  padding-left: 17px;
+  background: url("https://datfunc.github.io/ptp/assets/icons/chat-uncolored.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+img[src="static/common/stars/NoAwardMeta Awards.png"] {
+  width: 17px;
+  height: 17px;
+  box-sizing: border-box;
+  padding-left: 17px;
+  background: url("https://datfunc.github.io/ptp/assets/icons/star-uncolored.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+img[src="static/common/stars/AwardMetaMeta Awards1.png"] {
+  width: 17px;
+  height: 17px;
+  box-sizing: border-box;
+  padding-left: 17px;
+  background: url("https://datfunc.github.io/ptp/assets/icons/star-colored.svg")
+    no-repeat center center;
+  background-size: contain;
+}
+
+/* Stats */
+.highcharts-container .highcharts-background {
+  fill: #1f2333;
+}
+
+.highcharts-grid-line,
+.highcharts-crosshair,
+.highcharts-axis path {
+  stroke: #3a4055;
+}
+
+#ratings th {
+  background: #0c0e1b;
+  border: none;
+}
+
+#ratings th:nth-child(1) {
+  border-top-left-radius: 5px;
+}
+
+#ratings th:nth-child(2) {
+  border-top-right-radius: 5px;
+  border-left: 1px solid #3a4055;
+}
+
+#ratings .panel__body td {
+  padding: 0.4rem;
+}
+
+#ratings .panel__body tr td {
+  text-align: left;
+}
+
+/************************************************************************
+  7.0 - Footer */
+/*****************************************************************************/
+
+.pagination {
+  margin: 5px;
+  text-align: center;
+  color: #a0a6b7;
+}
+
+.pagination--top {
+  margin-bottom: 1rem;
+}
+
+.pagination--bottom {
+  margin-top: 1rem;
+}
+
+.pagination__current-page,
+.pagination__link {
+  font-weight: 700;
+  font-size: 0.75rem;
+}
+
+.pagination__current-page {
+  color: #a0a6b7;
+  opacity: 0.4;
+}
+
+.pagination__current-page:hover {
+  cursor: not-allowed;
+}
+
+.footer {
+  text-align: center;
+  margin: 1rem;
+  font-size: 0.7rem;
+  display: block;
+  margin: 1.5rem auto 1.5rem;
+}
+
+.footer__disclaimer {
+  display: block;
+  margin: 0 auto;
+  width: 90%;
+  margin-bottom: 10px;
+  text-align: center;
+}
+
+.footer__load {
+  color: #a0a6b7;
+  font-size: 0.65rem;
+}
+
+/************************************************************************
+      8.0 - Media Queries */
+
+body {
+  width: 100%;
+  padding-right: 15px;
+  padding-left: 15px;
+  margin-right: auto;
+  margin-left: auto;
+}
+
+#torrents-movie-view {
+  width: 100%;
+  padding-right: 15px;
+  padding-left: 15px;
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.torrent_table {
+  position: relative;
+  width: 100%;
+  padding-right: 15px;
+  padding-left: 15px;
+  flex: 0 0 100%;
+  max-width: 100%;
+}
+
+.user-info-bar {
+  width: 100%;
+  padding-right: 5px;
+  padding-left: 5px;
+  flex: 0 0 100%;
+  max-width: 100%;
+}
+
+.main-menu {
+  position: relative;
+  width: 100%;
+  padding-right: 15px;
+  padding-left: 15px;
+  flex: 0 0 100%;
+  max-width: 100%;
+}
+
+.small-cover-movie-list__container {
+  display: flex;
+  flex-wrap: wrap;
+  margin-right: -15px;
+  margin-left: -15px;
+  justify-content: flex-start;
+}
+
+@media (min-width: 576px) {
+  body,
+  #torrents-movie-view {
+    max-width: 540px;
+  }
+
+  .last_poster {
+    display: none;
+  }
+
+  .sidebar-cover-image {
+    max-width: 50%;
+  }
+}
+
+@media (min-width: 768px) {
+  body,
+  #torrents-movie-view {
+    max-width: 720px;
+  }
+
+  .last_poster {
+    display: none;
+  }
+
+  .sidebar-cover-image {
+    max-width: 45%;
+  }
+}
+
+@media (min-width: 992px) {
+  body,
+  #torrents-movie-view {
+    max-width: 960px;
+  }
+
+  .main-column {
+    flex: 0 0 75%;
+    max-width: 75%;
+  }
+
+  .sidebar {
+    flex: 0 0 25%;
+    max-width: 25%;
+  }
+
+  .sidebar-cover-image {
+    max-width: 100%;
+  }
+
+  .last_poster {
+    display: inline-block;
+  }
+
+  .cover-movie-list__movie__cover-link--seen::after {
+    right: 7px;
+  }
+
+  #artist .cover-movie-list__movie__cover-link--seen::after,
+  #bookmarks .cover-movie-list__movie__cover-link--seen::after,
+  #collages .cover-movie-list__movie__cover-link--seen::after {
+    right: -15px;
+  }
+}
+
+@media (min-width: 1200px) {
+  body,
+  #torrents-movie-view {
+    max-width: 1140px;
+  }
+
+  .main-column {
+    flex: 0 0 75%;
+    max-width: 75%;
+  }
+
+  .sidebar {
+    flex: 0 0 25%;
+    max-width: 25%;
+  }
+
+  .sidebar-cover-image {
+    max-width: 100%;
+  }
+
+  .last_poster {
+    display: inline-block;
+  }
+
+  .small-cover-movie-list__movie__link--smaller {
+    width: 140px;
+    height: 214px;
+  }
+
+  .cover-movie-list__movie__cover-link--seen::after {
+    right: 7px;
+  }
+
+  #artist .cover-movie-list__movie__cover-link--seen::after,
+  #bookmarks .cover-movie-list__movie__cover-link--seen::after,
+  #collages .cover-movie-list__movie__cover-link--seen::after {
+    right: -15px;
+  }
+}
+
+@media (min-width: 2048px) {
+  body,
+  #torrents-movie-view {
+    max-width: 1440px;
+  }
+
+  #top10 .cover-movie-list {
+    justify-content: center;
+  }
+
+  .cover-movie-list__movie {
+    margin: 22px 42px;
+  }
+
+  #top10 .cover-movie-list__movie {
+    margin: 22px 24px;
+  }
+
+  .small-cover-movie-list__movie__link--smaller {
+    width: 171px;
+    height: 256px;
+  }
+
+  .cover-movie-list__movie__cover-link--seen::after {
+    right: 5px;
+  }
+
+  #artist .cover-movie-list__movie__cover-link--seen::after,
+  #bookmarks .cover-movie-list__movie__cover-link--seen::after,
+  #collages .cover-movie-list__movie__cover-link--seen::after {
+    right: -15px;
+  }
+}
+
+@media (min-width: 3840px) {
+  body,
+  #torrents-movie-view {
+    max-width: 1600px;
+  }
+
+  .cover-movie-list__movie,
+  .cover-movie-list__movie__cover-link {
+    width: 356px;
+    height: auto;
+  }
+
+  .cover-movie-list__movie__cover-link {
+    height: 524px;
+  }
+
+  .small-cover-movie-list__movie__link--smaller {
+    width: 261px;
+    height: 364px;
+  }
+}
+
+#wrapper {
+  display: flex;
+  flex-wrap: wrap;
+  margin-right: -15px;
+  margin-left: -15px;
+}
+
+#content {
+  flex: 0 0 100%;
+  max-width: 100%;
+  position: relative;
+  width: 100%;
+  padding-right: 15px;
+  padding-left: 15px;
+}
+
+.header {
+  position: relative;
+  width: 100%;
+  padding-right: 0;
+  padding-left: 0;
+  flex: 0 0 100%;
+  max-width: 100%;
+}
+
+.main-column,
+.sidebar {
+  position: relative;
+  width: 100%;
+  padding-right: 15px;
+  padding-left: 15px;
+}
+
+@media (max-width: 576px) {
+  /* Main */
+  .site-logo__link:after {
+    font-size: 4rem;
+    margin-top: 4.6rem;
+  }
+
+  .main-menu__link {
+    font-size: 0.65rem;
+    padding: 0;
+  }
+
+  .user-info-bar ul,
+  .user-info-bar .user-info-bar__link {
+    font-size: 0.7rem;
+  }
+
+  .user-info-bar ul {
+    padding-left: 0;
+  }
+
+  /* Forums */
+  #forums .last_poster {
+    display: none;
+  }
+
+  .table--panel-like > thead > tr > th,
+  .table > tbody > tr,
+  .table > thead > tr {
+    font-size: 0.7rem;
+  }
+
+  .generic-form--narrow,
+  .search-form--narrow {
+    max-width: 80%;
+  }
+
+  .sidebar-cover-image {
+    max-width: 50%;
+  }
+
+  .small-cover-movie-list__movie__link--smaller {
+    width: 186px;
+    height: 286px;
+  }
+}
+
+.forum-post--sticky {
+    border: 1px solid #4281da;
+    box-shadow: 0 0 40px rgba(66, 129, 218, .24);
+    background: #191d2a url("https://datfunc.github.io/ptp/assets/imgs/body_bg.svg") top center;
+    background-size: cover;
+}
+
+.sticky_post {
+    color: #4281da;
+}
