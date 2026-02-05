@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Scale Comparison Images
-// @version      1.9.5
+// @version      1.9.6
 // @description  Scales screenshot comparison images to fit within the browser window
 // @author       Audionut
 // @match        https://passthepopcorn.me/*
@@ -45,7 +45,9 @@
 
     let originalScreenshotComparisonToggleShow = null;
     let lastComparisonArgs = null;
-    let hasAppliedOldSchoolDefault = false;
+    const handledOldSchoolComparisonContainers = new WeakSet();
+    const processingOldSchoolComparisonContainers = new WeakSet();
+    const openedOldSchoolComparisonKeys = new Set();
 
     function gmStorageAvailable() {
         return (typeof GM_getValue === 'function' && typeof GM_setValue === 'function');
@@ -96,12 +98,7 @@
         setStoredValue(SETTINGS_KEYS.oldSchoolDefaultEnabled, !!oldSchoolDefaultEnabled);
     }
 
-    function withOldSchoolDefaultHandled(continuation) {
-        if (hasAppliedOldSchoolDefault) {
-            continuation(false);
-            return;
-        }
-
+    function processOldSchoolToggler(container, preference, done) {
         let tries = 0;
         const maxTries = 40;
         const delayMs = 25;
@@ -109,27 +106,28 @@
         const tick = () => {
             tries += 1;
 
-            const link = document.querySelector('.screenshot-comparison__old-school-toggler-container a');
+            const link = container.querySelector('.screenshot-comparison__old-school-toggler-container a');
             if (link) {
                 const label = (link.textContent || '').trim().toLowerCase();
                 let toggled = false;
+                let isOldSchool = label.includes('new school');
 
-                if (oldSchoolDefaultEnabled && label.includes('old school')) {
+                if (preference === 'old-school' && label.includes('old school')) {
                     link.click();
                     toggled = true;
-                } else if (!oldSchoolDefaultEnabled && label.includes('new school')) {
+                    isOldSchool = true;
+                } else if (preference === 'new-school' && label.includes('new school')) {
                     link.click();
                     toggled = true;
+                    isOldSchool = false;
                 }
 
-                hasAppliedOldSchoolDefault = true;
-                continuation(toggled);
+                done({ toggled, isOldSchool });
                 return;
             }
 
             if (tries >= maxTries) {
-                hasAppliedOldSchoolDefault = true;
-                continuation(false);
+                done({ toggled: false, isOldSchool: false });
                 return;
             }
 
@@ -137,6 +135,47 @@
         };
 
         tick();
+    }
+
+    function clearOldSchoolState(container) {
+        handledOldSchoolComparisonContainers.delete(container);
+        processingOldSchoolComparisonContainers.delete(container);
+    }
+
+    function withOldSchoolDefaultHandled(preference, continuation) {
+        const comparisonContainers = Array.from(document.querySelectorAll('.screenshot-comparison__container'))
+            .filter(container => !handledOldSchoolComparisonContainers.has(container) && !processingOldSchoolComparisonContainers.has(container));
+
+        if (comparisonContainers.length === 0) {
+            continuation({ toggled: false, openedOldSchool: false });
+            return;
+        }
+
+        let pending = comparisonContainers.length;
+        let toggledAny = false;
+        let openedOldSchool = false;
+
+        comparisonContainers.forEach(container => {
+            processingOldSchoolComparisonContainers.add(container);
+            processOldSchoolToggler(container, preference, ({ toggled, isOldSchool }) => {
+                processingOldSchoolComparisonContainers.delete(container);
+                handledOldSchoolComparisonContainers.add(container);
+                toggledAny = toggledAny || toggled;
+                openedOldSchool = openedOldSchool || isOldSchool;
+                pending -= 1;
+                if (pending === 0) {
+                    continuation({ toggled: toggledAny, openedOldSchool });
+                }
+            });
+        });
+    }
+
+    function getComparisonKey(labels, urls) {
+        try {
+            return JSON.stringify({ labels, urls });
+        } catch (_) {
+            return String(labels) + '|' + String(urls);
+        }
     }
 
     loadSettingsFromStorage();
@@ -323,7 +362,7 @@
         oldSchoolCheckbox.addEventListener('change', () => {
             oldSchoolDefaultEnabled = oldSchoolCheckbox.checked;
             setStoredValue(SETTINGS_KEYS.oldSchoolDefaultEnabled, !!oldSchoolDefaultEnabled);
-            // This only auto-applies on the first comparison open after page load.
+            // This only auto-applies the first time each comparison set is opened.
         });
 
         select.addEventListener('change', () => {
@@ -628,9 +667,18 @@
             // Call the original function
             originalToggleShow.call(this, element, labels, urls);
 
-            // Only on the very first comparison open after page load, apply old-school preference.
-            // This must not run again on subsequent opens (including refresh/reopen).
-            withOldSchoolDefaultHandled((toggled) => {
+            const comparisonKey = getComparisonKey(labels, urls);
+            const shouldApplyOldSchoolDefault = oldSchoolDefaultEnabled && !openedOldSchoolComparisonKeys.has(comparisonKey);
+            const preference = oldSchoolDefaultEnabled
+                ? (shouldApplyOldSchoolDefault ? 'old-school' : 'none')
+                : 'new-school';
+
+            // Apply old-school default per comparison set only once.
+            withOldSchoolDefaultHandled(preference, ({ toggled, openedOldSchool }) => {
+                if (openedOldSchool) {
+                    openedOldSchoolComparisonKeys.add(comparisonKey);
+                }
+
                 if (toggled) {
                     // If we flipped the UI mode, don't run scaling/lazy logic against a moving DOM.
                     return;
@@ -826,6 +874,15 @@
                     } else if (node.querySelector && node.querySelector('.screenshot-comparison__container')) {
                         setTimeout(() => scaleComparisonImages(), 50);
                         setTimeout(() => scaleComparisonImages(), 200);
+                    }
+                }
+            });
+            mutation.removedNodes.forEach((node) => {
+                if (node.nodeType === 1) {
+                    if (node.classList && node.classList.contains('screenshot-comparison__container')) {
+                        clearOldSchoolState(node);
+                    } else if (node.querySelector) {
+                        node.querySelectorAll('.screenshot-comparison__container').forEach(clearOldSchoolState);
                     }
                 }
             });
