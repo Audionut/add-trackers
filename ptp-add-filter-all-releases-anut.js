@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.5.7-A
+// @version      4.5.8-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -1849,6 +1849,31 @@ function toUnixTime(dateString) {
             GM_config.save();  // Save the changes
         }
 
+        const parseJsonResponse = (response, tracker) => {
+            const rawText = response?.responseText ?? '';
+            const contentTypeMatch = (response?.responseHeaders || '').match(/content-type: ?([^;]+)/i);
+            const contentType = contentTypeMatch ? contentTypeMatch[1].toLowerCase() : '';
+
+            if (contentType && !contentType.includes('json')) {
+                if (debug) {
+                    console.warn(`Non-JSON response from ${tracker} (${contentType})`, rawText.slice(0, 200));
+                }
+            }
+
+            try {
+                return JSON.parse(rawText);
+            } catch (error) {
+                const startsWithHtml = rawText.trim().startsWith('<');
+                if (startsWithHtml) {
+                    console.warn(`HTML response received from ${tracker}. Login or access may be required.`);
+                }
+                if (debug) {
+                    console.warn(`Failed to parse JSON from ${tracker}`, rawText.slice(0, 200));
+                }
+                return null;
+            }
+        };
+
         const post_json = async (post_query_url, tracker, postData, timeout = timer) => {
             const headersMapping = {
                 'ANT': {
@@ -1955,16 +1980,20 @@ function toUnixTime(dateString) {
                 });
             }).then(response => {
                 if (response.status === 200) {
-                    return JSON.parse(response.responseText);
+                    const parsed = parseJsonResponse(response, tracker);
+                    if (!parsed && tracker === 'TL') {
+                        displayAlert('TL returned a non-JSON response. Check login or rate limits.');
+                    }
+                    return parsed;
                 } else if (response.status === 401) {
-                    const jsonResponse = JSON.parse(response.responseText);
+                    const jsonResponse = parseJsonResponse(response, tracker);
                     console.log(`raw response from ${tracker}`, response.responseText);
-                    if (tracker === 'RTF' && jsonResponse.error && jsonResponse.message === "Invalid API token") {
+                    if (tracker === 'RTF' && jsonResponse && jsonResponse.error && jsonResponse.message === "Invalid API token") {
                         displayAlert("Something went wrong with RTF API token");
                     }
                     return { status: 'REAUTH_NEEDED' };
                 } else if (response.status === 404) {
-                    const jsonResponse = JSON.parse(response.responseText);
+                    const jsonResponse = parseJsonResponse(response, tracker);
                     if (debug) {
                         console.log(`raw response from ${tracker}`, response.responseText);
                     }
@@ -6543,19 +6572,29 @@ function toUnixTime(dateString) {
                     GM_xmlhttpRequest({
                         method: "GET",
                         url: url,
+                        timeout: 10000,
                         onload: function(response) {
-                            const data = JSON.parse(response.responseText);
-                            console.log(data);
-                            if (data && data.results && data.results.bindings.length > 0) {
-                                const tvdbId = data.results.bindings[0].tvdbID.value;
-                                GM_setValue(`tvdb_id_${imdb_Id}`, tvdbId);
-                                resolve(tvdbId);
-                            } else {
+                            try {
+                                const data = JSON.parse(response.responseText);
+                                console.log(data);
+                                if (data && data.results && data.results.bindings.length > 0) {
+                                    const tvdbId = data.results.bindings[0].tvdbID.value;
+                                    GM_setValue(`tvdb_id_${imdb_Id}`, tvdbId);
+                                    resolve(tvdbId);
+                                } else {
+                                    resolve(null);
+                                }
+                            } catch (error) {
+                                console.log('Failed to parse TVDB ID response from Wikidata.', error);
                                 resolve(null);
                             }
                         },
                         onerror: function() {
                             console.log('Failed to fetch TVDB ID from Wikidata.');
+                            resolve(null);
+                        },
+                        ontimeout: function() {
+                            console.log('TVDB ID request to Wikidata timed out.');
                             resolve(null);
                         }
                     });
@@ -6567,32 +6606,40 @@ function toUnixTime(dateString) {
         async function getTvmazeId(imdb_Id) {
             let tvmazeId = await GM_getValue(`tvmaze_id_${imdb_Id}`);
             if (tvmazeId) {
-                return tvmazeId
+                return tvmazeId;
             } else {
-              const tvmazeUrl = `https://api.tvmaze.com/lookup/shows?imdb=${imdb_Id}`;
+                const tvmazeUrl = `https://api.tvmaze.com/lookup/shows?imdb=${imdb_Id}`;
 
-              // Parse TVmaze response
-              function parseTvmazeResponse(response) {
-                  const data = JSON.parse(response.responseText);
-                  if (data && data.id) {
-                      GM_setValue(`tvmaze_id_${imdb_Id}`, data.id);
-                      return tvmazeId
-                  } else {
-                      return
-                  }
-              }
-
-              // Fetch TV show information from TVmaze
-              return new Promise((resolve, reject) => {
-                  GM_xmlhttpRequest({
-                      method: "GET",
-                      url: tvmazeUrl,
-                      timeout: 10000,
-                      onload: parseTvmazeResponse,
-                      onerror: () => console.error("Failed to fetch TVmaze data."),
-                  });
-              });
-          }
+                return new Promise((resolve) => {
+                    GM_xmlhttpRequest({
+                        method: "GET",
+                        url: tvmazeUrl,
+                        timeout: 10000,
+                        onload: function(response) {
+                            try {
+                                const data = JSON.parse(response.responseText);
+                                if (data && data.id) {
+                                    GM_setValue(`tvmaze_id_${imdb_Id}`, data.id);
+                                    resolve(data.id);
+                                } else {
+                                    resolve(null);
+                                }
+                            } catch (error) {
+                                console.error("Failed to parse TVmaze data.", error);
+                                resolve(null);
+                            }
+                        },
+                        onerror: function() {
+                            console.error("Failed to fetch TVmaze data.");
+                            resolve(null);
+                        },
+                        ontimeout: function() {
+                            console.error("TVmaze request timed out.");
+                            resolve(null);
+                        }
+                    });
+                });
+            }
         }
 
         const mainFunc = async () => {
