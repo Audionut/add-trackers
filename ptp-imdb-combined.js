@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.2.0
+// @version      1.2.1
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -1605,7 +1605,7 @@ function handleResetAll() {
 
         var newPanel = document.createElement('div');
         newPanel.className = 'panel';
-        newPanel.id = 'similar_movies';
+        newPanel.id = 'more_like_this';
         var panelHeading = document.createElement('div');
         panelHeading.className = 'panel__heading';
         var title = document.createElement('span');
@@ -2246,6 +2246,15 @@ function handleResetAll() {
         heading.className = 'panel__heading';
         heading.style.cursor = 'pointer';
         heading.innerHTML = `<span class="panel__heading__title">${getIMDbLabelHTML('Alternate Versions')}</span>`;
+
+        const imdbDisplay = document.createElement('a');
+        imdbDisplay.title = 'IMDB Url';
+        imdbDisplay.href = `https://www.imdb.com/title/${imdbId}/alternateversions`;
+        imdbDisplay.target = '_blank';
+        imdbDisplay.textContent = 'IMDb Url';
+        imdbDisplay.style.cssText = 'margin-left: 5px;';
+        imdbDisplay.addEventListener('click', (event) => event.stopPropagation());
+        heading.appendChild(imdbDisplay);
         panel.appendChild(heading);
 
         // Panel body (toggle display based on option)
