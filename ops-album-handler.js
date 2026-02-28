@@ -9,6 +9,7 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
+// @require      https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js
 // @downloadURL  https://github.com/Audionut/add-trackers/raw/main/ops-album-fl-proxy-queue.user.js
 // @updateURL    https://github.com/Audionut/add-trackers/raw/main/ops-album-fl-proxy-queue.user.js
 // @icon         https://orpheus.network/favicon.ico
@@ -18,6 +19,7 @@
     'use strict';
 
     const EVENT_NAME = 'OPSaddREDreleasescomplete';
+    const RED_CACHE_EVENT_NAME = 'OPSaddREDartistcachedata';
     const KEY_BASE_URL = 'OPS_FL_PROXY_BASE_URL';
     const KEY_TOKEN = 'OPS_FL_PROXY_TOKEN';
     const KEY_SAVE_PATH = 'OPS_FL_PROXY_SAVE_PATH';
@@ -26,8 +28,10 @@
     const KEY_RED_CATEGORY = 'OPS_FL_PROXY_RED_CATEGORY';
     const KEY_RED_TAGS = 'OPS_FL_PROXY_RED_TAGS';
     const KEY_RED_API_KEY = 'OPS_FL_PROXY_RED_API_KEY';
+    const KEY_RED_USER_ID = 'OPS_FL_PROXY_RED_USER_ID';
     const KEY_RED_PAUSED = 'OPS_FL_PROXY_RED_PAUSED';
     const KEY_RED_SKIP_CHECKING = 'OPS_FL_PROXY_RED_SKIP_CHECKING';
+    const KEY_RED_SEEDED_TORRENTS_CACHE = 'OPS_FL_PROXY_RED_SEEDED_TORRENTS_CACHE';
     const KEY_PAUSED = 'OPS_FL_PROXY_PAUSED';
     const KEY_INSTANCE_ID = 'OPS_FL_PROXY_INSTANCE_ID';
     const KEY_WAIT_EVENT = 'OPS_FL_PROXY_WAIT_EVENT';
@@ -44,6 +48,12 @@
     const KEY_POLL_MAX_MINUTES = 'OPS_FL_PROXY_POLL_MAX_MINUTES';
     const REDACTED_VALUE = '<REDACTED>';
     const DOWNLOAD_STATUS_POLL_INTERVAL_MS = 5000;
+    const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+    const RED_API_MIN_INTERVAL_MS = 1500;
+
+    let redApiThrottleChain = Promise.resolve();
+    let lastRedApiRequestAt = 0;
+    const redArtistCacheByKey = new Map();
 
     const MATCH_TIE_BREAKER_OPTIONS = [
         { value: 'seeders', label: 'Seeder count' },
@@ -110,6 +120,7 @@
         redCategory: '',
         redTags: '',
         redApiKey: '',
+        redUserId: '',
         redPaused: '',
         redSkipChecking: true,
         paused: '',
@@ -232,6 +243,7 @@
             redCategory: String(GM_getValue(KEY_RED_CATEGORY, DEFAULTS.redCategory)).trim(),
             redTags: String(GM_getValue(KEY_RED_TAGS, DEFAULTS.redTags)).trim(),
             redApiKey: String(GM_getValue(KEY_RED_API_KEY, DEFAULTS.redApiKey)).trim(),
+            redUserId: String(GM_getValue(KEY_RED_USER_ID, DEFAULTS.redUserId)).trim(),
             redPaused: sanitizePausedState(GM_getValue(KEY_RED_PAUSED, DEFAULTS.redPaused)),
             redSkipChecking: sanitizeBooleanFlag(GM_getValue(KEY_RED_SKIP_CHECKING, DEFAULTS.redSkipChecking), DEFAULTS.redSkipChecking),
             paused: sanitizePausedState(GM_getValue(KEY_PAUSED, DEFAULTS.paused)),
@@ -259,6 +271,7 @@
         GM_setValue(KEY_RED_CATEGORY, String(config.redCategory ?? '').trim());
         GM_setValue(KEY_RED_TAGS, String(config.redTags ?? '').trim());
         GM_setValue(KEY_RED_API_KEY, String(config.redApiKey ?? '').trim());
+        GM_setValue(KEY_RED_USER_ID, String(config.redUserId ?? '').trim());
         GM_setValue(KEY_RED_PAUSED, sanitizePausedState(config.redPaused));
         GM_setValue(KEY_RED_SKIP_CHECKING, sanitizeBooleanFlag(config.redSkipChecking, DEFAULTS.redSkipChecking));
         GM_setValue(KEY_PAUSED, sanitizePausedState(config.paused));
@@ -320,6 +333,447 @@
         setSentReleasesCache(allCache);
     }
 
+    function normalizeLooseText(value) {
+        return String(value || '')
+            .trim()
+            .toLowerCase()
+            .replace(/\s+/g, ' ');
+    }
+
+    function normalizeArtistCacheKeyPart(value) {
+        return String(value || '')
+            .trim()
+            .replace(/\s+/g, ' ');
+    }
+
+    function getRedArtistLegacyCacheKey(artistName) {
+        return `RED_${normalizeArtistCacheKeyPart(artistName)}`;
+    }
+
+    function getRedArtistCanonicalCacheKey(artistName) {
+        return `RED_CANON_${normalizeLooseText(artistName)}`;
+    }
+
+    function normalizeNumericId(value) {
+        const raw = String(value ?? '').trim();
+        if (!/^\d+$/.test(raw)) return '';
+
+        const parsed = Number.parseInt(raw, 10);
+        return Number.isFinite(parsed) && parsed > 0 ? String(parsed) : '';
+    }
+
+    function registerTransferredRedArtistCache(payload, sourceLabel = 'event') {
+        if (!payload || typeof payload !== 'object') return;
+
+        const artistName = String(payload.artistName || '').trim();
+        const data = payload.data;
+        if (!artistName || !data || typeof data !== 'object') {
+            return;
+        }
+
+        const legacyKey = getRedArtistLegacyCacheKey(artistName);
+        const canonicalKey = getRedArtistCanonicalCacheKey(artistName);
+        const payloadKey = String(payload.cacheKey || '').trim();
+        const keys = new Set([legacyKey, canonicalKey]);
+        if (payloadKey) keys.add(payloadKey);
+
+        for (const key of keys) {
+            redArtistCacheByKey.set(key, data);
+        }
+
+        console.log(`[OPS Album Handler] Registered transferred RED artist cache for "${artistName}" via ${sourceLabel}; key(s): ${Array.from(keys).join(', ')}`);
+    }
+
+    function parseJsonString(value, fallback = null) {
+        if (!value || typeof value !== 'string') return fallback;
+        try {
+            return JSON.parse(value);
+        } catch {
+            return fallback;
+        }
+    }
+
+    function sleep(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    function runWithRedApiRateLimit(task) {
+        const run = async () => {
+            const elapsed = Date.now() - lastRedApiRequestAt;
+            const waitMs = RED_API_MIN_INTERVAL_MS - elapsed;
+            if (waitMs > 0) {
+                await sleep(waitMs);
+            }
+
+            try {
+                return await task();
+            } finally {
+                lastRedApiRequestAt = Date.now();
+            }
+        };
+
+        const resultPromise = redApiThrottleChain.then(run, run);
+        redApiThrottleChain = resultPromise.then(() => undefined, () => undefined);
+        return resultPromise;
+    }
+
+    function getRedSeededCacheRecord() {
+        const parsed = parseJsonString(GM_getValue(KEY_RED_SEEDED_TORRENTS_CACHE, ''), null);
+        if (!parsed || typeof parsed !== 'object') return null;
+
+        const timestamp = Number(parsed.timestamp || 0);
+        if (!Number.isFinite(timestamp) || timestamp <= 0) return null;
+
+        const data = Array.isArray(parsed.data) ? parsed.data : [];
+        return { timestamp, data };
+    }
+
+    function getWeeklyRedSeededCache() {
+        const record = getRedSeededCacheRecord();
+        if (!record) return null;
+
+        if (Date.now() - record.timestamp > WEEK_MS) {
+            return null;
+        }
+
+        return record.data;
+    }
+
+    function getStaleRedSeededCache() {
+        const record = getRedSeededCacheRecord();
+        return record ? record.data : null;
+    }
+
+    function setWeeklyRedSeededCache(data) {
+        GM_setValue(KEY_RED_SEEDED_TORRENTS_CACHE, JSON.stringify({
+            timestamp: Date.now(),
+            data: Array.isArray(data) ? data : []
+        }));
+    }
+
+    function requestRedUserTorrentsPage(url, redApiKey, attempt = 0) {
+        return new Promise((resolve, reject) => {
+            runWithRedApiRateLimit(() => new Promise((resolveRequest, rejectRequest) => {
+                GM_xmlhttpRequest({
+                    url,
+                    method: 'GET',
+                    anonymous: false,
+                    headers: {
+                        Authorization: redApiKey,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    onload: async (response) => {
+                        if (response.status >= 200 && response.status < 300) {
+                            const parsed = parseJsonString(response.responseText, null);
+                            if (!parsed || parsed.status !== 'success' || !parsed.response) {
+                                rejectRequest(new Error('RED user_torrents response was not successful.'));
+                                return;
+                            }
+
+                            resolveRequest(Array.isArray(parsed.response.seeding) ? parsed.response.seeding : []);
+                            return;
+                        }
+
+                        if (response.status === 429 && attempt < 2) {
+                            await sleep(RED_API_MIN_INTERVAL_MS);
+                            try {
+                                const retryResult = await requestRedUserTorrentsPage(url, redApiKey, attempt + 1);
+                                resolveRequest(retryResult);
+                            } catch (retryError) {
+                                rejectRequest(retryError);
+                            }
+                            return;
+                        }
+
+                        const parsedError = parseJsonString(response.responseText, null);
+                        const errorText = parsedError?.error || parsedError?.status || '';
+                        const suffix = errorText ? ` (${errorText})` : '';
+                        rejectRequest(new Error(`RED user_torrents request failed: HTTP ${response.status}${suffix}`));
+                    },
+                    onerror: () => rejectRequest(new Error('RED user_torrents request failed due to network error.'))
+                });
+            })).then(resolve).catch(reject);
+        });
+    }
+
+    async function fetchRedUserTorrentsPage(redApiKey, redUserId, limit, offset) {
+        const pageLimit = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Number(limit) : 1000;
+        const url = `https://redacted.sh/ajax.php?action=user_torrents&id=${encodeURIComponent(redUserId)}&type=seeding&limit=${encodeURIComponent(pageLimit)}&offset=${encodeURIComponent(offset)}`;
+        const authHeader = String(redApiKey || '').trim();
+        if (!authHeader) {
+            throw new Error('Missing RED API key for user_torrents request.');
+        }
+
+        return requestRedUserTorrentsPage(url, authHeader);
+    }
+
+    async function fetchAllRedSeededTorrents(config) {
+        const redApiKey = getRedApiKey(config);
+        const redUserId = String(config?.redUserId || '').trim();
+        if (!redApiKey || !redUserId) {
+            return [];
+        }
+
+        const perPage = 1000;
+        let offset = 0;
+        const all = [];
+
+        while (true) {
+            const page = await fetchRedUserTorrentsPage(redApiKey, redUserId, perPage, offset);
+            all.push(...page);
+            if (page.length < perPage) break;
+            offset += perPage;
+        }
+
+        return all;
+    }
+
+    async function getWeeklyRedSeededTorrents(config) {
+        const cached = getWeeklyRedSeededCache();
+        if (cached) return cached;
+
+        try {
+            const fetched = await fetchAllRedSeededTorrents(config);
+            setWeeklyRedSeededCache(fetched);
+            return fetched;
+        } catch (error) {
+            const stale = getStaleRedSeededCache();
+            if (stale && stale.length > 0) {
+                console.warn('[OPS Album Handler] RED seeded refresh failed; using stale cached seeded torrents.', error);
+                return stale;
+            }
+            throw error;
+        }
+    }
+
+    function getRedArtistCacheData(artistName) {
+        if (typeof LZString === 'undefined' || typeof LZString.decompress !== 'function') {
+            console.warn('[OPS Album Handler] LZString is unavailable; cannot read RED artist cache.');
+            return null;
+        }
+
+        const legacyKey = getRedArtistLegacyCacheKey(artistName);
+        const canonicalKey = getRedArtistCanonicalCacheKey(artistName);
+        const keyCandidates = canonicalKey === legacyKey
+            ? [legacyKey]
+            : [canonicalKey, legacyKey];
+
+        console.log(`[OPS Album Handler] RED artist cache lookup for "${artistName}": trying key(s): ${keyCandidates.join(', ')}`);
+
+        for (const key of keyCandidates) {
+            const transferred = redArtistCacheByKey.get(key);
+            if (transferred && typeof transferred === 'object') {
+                console.log(`[OPS Album Handler] RED artist cache hit key=${key} via transferred event data.`);
+                return transferred;
+            }
+        }
+
+        for (const key of keyCandidates) {
+            const compressed = GM_getValue(key, null);
+            if (!compressed || typeof compressed !== 'string') {
+                console.log(`[OPS Album Handler] RED artist cache miss for key=${key}.`);
+                continue;
+            }
+
+            const decompressed = LZString.decompress(compressed);
+            if (!decompressed) {
+                console.warn(`[OPS Album Handler] RED artist cache key=${key} exists but failed decompression.`);
+                continue;
+            }
+
+            const parsed = parseJsonString(decompressed, null);
+            if (!parsed || typeof parsed !== 'object') {
+                console.warn(`[OPS Album Handler] RED artist cache key=${key} exists but JSON parse failed.`);
+                continue;
+            }
+
+            if (key === legacyKey && canonicalKey !== legacyKey) {
+                GM_setValue(canonicalKey, compressed);
+                console.log(`[OPS Album Handler] RED artist cache found via legacy key=${legacyKey}; backfilled canonical key=${canonicalKey}.`);
+            }
+
+            console.log(`[OPS Album Handler] RED artist cache hit key=${key}.`);
+
+            return parsed.data || null;
+        }
+
+        console.warn(`[OPS Album Handler] RED artist cache not found for "${artistName}". Checked key(s): ${keyCandidates.join(', ')}`);
+
+        return null;
+    }
+
+    function compareQualityRanks(a, b) {
+        if (!a || !b) return 0;
+        if (a.mediaRank !== b.mediaRank) return a.mediaRank - b.mediaRank;
+        if (a.formatRank !== b.formatRank) return a.formatRank - b.formatRank;
+        return a.bitrateRank - b.bitrateRank;
+    }
+
+    function isSeededQualitySameOrBetter(seededRank, candidateRank) {
+        return compareQualityRanks(seededRank, candidateRank) <= 0;
+    }
+
+    function buildRedArtistTorrentIndexes(artistCacheData, selectionConfig) {
+        const byTorrentId = new Map();
+        const byGroupId = new Map();
+        const groups = Array.isArray(artistCacheData?.response?.torrentgroup)
+            ? artistCacheData.response.torrentgroup
+            : [];
+
+        for (const group of groups) {
+            const groupId = normalizeNumericId(group?.groupId || group?.id || '');
+            const groupNameNormalized = normalizeLooseText(group?.groupName || group?.name || '');
+            const torrents = Array.isArray(group?.torrent) ? group.torrent : [];
+
+            for (const torrent of torrents) {
+                const torrentId = normalizeNumericId(torrent?.id || torrent?.torrentId || '');
+                const mediaKey = getMediaKey(torrent?.media || '');
+                const formatKey = getFormatKey(torrent?.format || '');
+                const bitrateKey = getBitrateKey(torrent?.encoding || '');
+                if (!mediaKey || !formatKey || !bitrateKey) continue;
+
+                const mediaRank = selectionConfig.mediaRankMap.get(mediaKey);
+                const formatRank = selectionConfig.formatRankMap.get(formatKey);
+                const bitrateRank = selectionConfig.bitrateRankMap.get(bitrateKey);
+                if (!mediaRank || !formatRank || !bitrateRank) continue;
+
+                const quality = {
+                    mediaRank,
+                    formatRank,
+                    bitrateRank,
+                    mediaKey,
+                    formatKey,
+                    bitrateKey,
+                    groupId,
+                    groupNameNormalized
+                };
+
+                if (torrentId) {
+                    byTorrentId.set(torrentId, quality);
+                }
+
+                if (groupId) {
+                    if (!byGroupId.has(groupId)) {
+                        byGroupId.set(groupId, []);
+                    }
+                    byGroupId.get(groupId).push(quality);
+                }
+            }
+        }
+
+        return { byTorrentId, byGroupId };
+    }
+
+    function chooseBestSeededFromGroup(groupCandidates, seededName) {
+        if (!Array.isArray(groupCandidates) || groupCandidates.length === 0) return null;
+
+        const seededNameNormalized = normalizeLooseText(seededName || '');
+        const sameNameCandidates = seededNameNormalized
+            ? groupCandidates.filter((candidate) => candidate.groupNameNormalized === seededNameNormalized)
+            : [];
+        const source = sameNameCandidates.length > 0 ? sameNameCandidates : groupCandidates;
+
+        return source.reduce((best, current) => {
+            if (!best) return current;
+            return compareQualityRanks(current, best) < 0 ? current : best;
+        }, null);
+    }
+
+    function resolveSeededQualityFromEntry(seeded, selectionConfig) {
+        if (!seeded || typeof seeded !== 'object') return null;
+
+        const groupId = normalizeNumericId(
+            seeded.groupId
+            || seeded.groupID
+            || seeded.groupid
+            || seeded.group_id
+            || seeded.group?.id
+            || ''
+        );
+        if (!groupId) return null;
+
+        const mediaKey = getMediaKey(seeded.media || seeded.remasterMedia || seeded.releaseMedia || '');
+        const formatKey = getFormatKey(seeded.format || seeded.codec || seeded.container || '');
+        const bitrateKey = getBitrateKey(seeded.encoding || seeded.bitrate || seeded.quality || '');
+        if (!mediaKey || !formatKey || !bitrateKey) return null;
+
+        const mediaRank = selectionConfig.mediaRankMap.get(mediaKey);
+        const formatRank = selectionConfig.formatRankMap.get(formatKey);
+        const bitrateRank = selectionConfig.bitrateRankMap.get(bitrateKey);
+        if (!mediaRank || !formatRank || !bitrateRank) return null;
+
+        return {
+            groupId,
+            mediaRank,
+            formatRank,
+            bitrateRank,
+            mediaKey,
+            formatKey,
+            bitrateKey
+        };
+    }
+
+    function buildRedSeededQualityIndexes(artistName, seededTorrents, selectionConfig) {
+        const byGroupId = new Map();
+        const byTorrentId = new Map();
+        const cacheData = getRedArtistCacheData(artistName);
+        const indexes = cacheData
+            ? buildRedArtistTorrentIndexes(cacheData, selectionConfig)
+            : { byTorrentId: new Map(), byGroupId: new Map() };
+        const targetArtistNormalized = normalizeLooseText(artistName);
+
+        for (const seeded of seededTorrents) {
+            if (!seeded || typeof seeded !== 'object') continue;
+
+            const seededArtistName = String(seeded.artistName || '').trim();
+            if (seededArtistName && normalizeLooseText(seededArtistName) !== targetArtistNormalized) continue;
+
+            const seededTorrentId = normalizeNumericId(seeded.torrentId || seeded.id || '');
+            const seededGroupId = normalizeNumericId(seeded.groupId || seeded.groupID || seeded.groupid || seeded.group_id || '');
+            const seededGroupName = String(seeded.name || '').trim();
+
+            let resolved = seededTorrentId ? indexes.byTorrentId.get(seededTorrentId) : null;
+            if (!resolved && seededGroupId) {
+                resolved = chooseBestSeededFromGroup(indexes.byGroupId.get(seededGroupId), seededGroupName);
+            }
+
+            if (!resolved) {
+                resolved = resolveSeededQualityFromEntry(seeded, selectionConfig);
+            }
+
+            if (!resolved || !resolved.groupId) continue;
+
+            if (seededTorrentId) {
+                const existingByTorrent = byTorrentId.get(seededTorrentId);
+                if (!existingByTorrent || compareQualityRanks(resolved, existingByTorrent) < 0) {
+                    byTorrentId.set(seededTorrentId, {
+                        groupId: resolved.groupId,
+                        mediaRank: resolved.mediaRank,
+                        formatRank: resolved.formatRank,
+                        bitrateRank: resolved.bitrateRank,
+                        mediaKey: resolved.mediaKey,
+                        formatKey: resolved.formatKey,
+                        bitrateKey: resolved.bitrateKey
+                    });
+                }
+            }
+
+            const existing = byGroupId.get(resolved.groupId);
+            if (!existing || compareQualityRanks(resolved, existing) < 0) {
+                byGroupId.set(resolved.groupId, {
+                    mediaRank: resolved.mediaRank,
+                    formatRank: resolved.formatRank,
+                    bitrateRank: resolved.bitrateRank,
+                    mediaKey: resolved.mediaKey,
+                    formatKey: resolved.formatKey,
+                    bitrateKey: resolved.bitrateKey
+                });
+            }
+        }
+
+        return { byGroupId, byTorrentId };
+    }
+
     function makeReleaseCacheKey(entry) {
         return `ops_torrent_${entry.torrentId}`;
     }
@@ -358,6 +812,7 @@
             redCategory: current.redCategory,
             redTags: current.redTags,
             redApiKey: current.redApiKey,
+            redUserId: current.redUserId,
             redPaused: current.redPaused,
             redSkipChecking: current.redSkipChecking,
             paused: sanitizePausedState(paused),
@@ -486,19 +941,19 @@
             const href = String(detailsLink.getAttribute('href') || '').trim();
             const queryMatch = href.match(/[?&]torrentid=(\d+)/i);
             if (queryMatch) {
-                return queryMatch[1];
+                return normalizeNumericId(queryMatch[1]);
             }
 
             const hashMatch = href.match(/#torrent(\d+)/i);
             if (hashMatch) {
-                return hashMatch[1];
+                return normalizeNumericId(hashMatch[1]);
             }
         }
 
         const dlLink = matchRow.querySelector('a.dl-link[data-id]');
         if (dlLink) {
-            const id = String(dlLink.getAttribute('data-id') || '').trim();
-            if (/^\d+$/.test(id)) {
+            const id = normalizeNumericId(dlLink.getAttribute('data-id') || '');
+            if (id) {
                 return id;
             }
         }
@@ -517,7 +972,7 @@
         const href = String(detailsLink.getAttribute('href') || '').trim();
         const groupMatch = href.match(/[?&]id=(\d+)/i);
         if (groupMatch) {
-            return groupMatch[1];
+            return normalizeNumericId(groupMatch[1]);
         }
 
         return '';
@@ -645,6 +1100,7 @@
         const groupMetaByGroup = new Map();
         const candidatesByGroup = new Map();
         const excludedSnatchedGroups = new Set();
+        const excludedSeededGroups = new Set();
         let currentHeaderGroupId = null;
 
         for (const row of albumRows) {
@@ -747,6 +1203,29 @@
             const bitrateRank = selectionConfig.bitrateRankMap.get(bitrateKey);
             if (!mediaRank || !formatRank || !bitrateRank) {
                 continue;
+            }
+
+            if (requireRedMatch && selectionConfig.redSeededBestByGroup instanceof Map) {
+                const normalizedRedTorrentId = normalizeNumericId(redTorrentId);
+                const normalizedRedGroupId = normalizeNumericId(redGroupId);
+                const bestSeededByTorrent = normalizedRedTorrentId && selectionConfig.redSeededBestByTorrentId instanceof Map
+                    ? selectionConfig.redSeededBestByTorrentId.get(normalizedRedTorrentId)
+                    : null;
+                const bestSeededQuality = bestSeededByTorrent
+                    || (normalizedRedGroupId ? selectionConfig.redSeededBestByGroup.get(normalizedRedGroupId) : null);
+
+                if (bestSeededQuality && isSeededQualitySameOrBetter(bestSeededQuality, { mediaRank, formatRank, bitrateRank })) {
+                    if (!excludedSeededGroups.has(groupId)) {
+                        const seededReleaseType = `${getMediaLabel(bestSeededQuality.mediaKey)} / ${getFormatLabel(bestSeededQuality.formatKey)} / ${getBitrateLabel(bestSeededQuality.bitrateKey)}`;
+                        const seededReason = bestSeededByTorrent
+                            ? `redTorrentId=${normalizedRedTorrentId}`
+                            : `redGroupId=${normalizedRedGroupId || 'n/a'}`;
+                        console.log(`[OPS Album Handler] Skipping groupId=${groupId} (${seededReason}) because RED already has a seeded same-or-better release (${seededReleaseType}).`);
+                        excludedSeededGroups.add(groupId);
+                    }
+                    candidatesByGroup.delete(groupId);
+                    continue;
+                }
             }
 
             const seeders = parseSeeders(row);
@@ -1437,37 +1916,42 @@
 
             const downloadUrl = `https://redacted.sh/ajax.php?action=download&id=${torrentId}&usetoken=0`;
             console.log(`[OPS Album Handler][RED] Downloading RED torrent file via API: ${downloadUrl}`);
-            GM_xmlhttpRequest({
-                url: downloadUrl,
-                method: 'GET',
-                headers: { Authorization: redApiKey },
-                responseType: 'blob',
-                onload: (response) => {
-                    if (response.status >= 200 && response.status < 300) {
-                        const responseHeaders = String(response.responseHeaders || '');
-                        const contentTypeHeader = responseHeaders.match(/content-type:\s*([^\r\n;]+)/i);
-                        const contentType = String(contentTypeHeader?.[1] || '').trim().toLowerCase();
-                        const blob = response.response;
+            runWithRedApiRateLimit(() => new Promise((resolveRequest, rejectRequest) => {
+                GM_xmlhttpRequest({
+                    url: downloadUrl,
+                    method: 'GET',
+                    headers: {
+                        Authorization: redApiKey,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    responseType: 'blob',
+                    onload: (response) => {
+                        if (response.status >= 200 && response.status < 300) {
+                            const responseHeaders = String(response.responseHeaders || '');
+                            const contentTypeHeader = responseHeaders.match(/content-type:\s*([^\r\n;]+)/i);
+                            const contentType = String(contentTypeHeader?.[1] || '').trim().toLowerCase();
+                            const blob = response.response;
 
-                        if (contentType.includes('application/x-bittorrent') && blob instanceof Blob) {
-                            resolve({
-                                blob,
-                                fileName: `red_${torrentId}.torrent`
-                            });
+                            if (contentType.includes('application/x-bittorrent') && blob instanceof Blob) {
+                                resolveRequest({
+                                    blob,
+                                    fileName: `red_${torrentId}.torrent`
+                                });
+                                return;
+                            }
+
+                            const apiError = parseRedApiError(String(response.responseText || ''));
+                            rejectRequest(new Error(apiError || `RED download API did not return a torrent file for redTorrentId=${torrentId}.`));
                             return;
                         }
 
                         const apiError = parseRedApiError(String(response.responseText || ''));
-                        reject(new Error(apiError || `RED download API did not return a torrent file for redTorrentId=${torrentId}.`));
-                        return;
-                    }
-
-                    const apiError = parseRedApiError(String(response.responseText || ''));
-                    console.error(`[OPS Album Handler][RED] Failed RED download API for redTorrentId=${torrentId} (status=${response.status}).`);
-                    reject(new Error(apiError || `Failed to download RED torrent file (status ${response.status}).`));
-                },
-                onerror: (error) => reject(error)
-            });
+                        console.error(`[OPS Album Handler][RED] Failed RED download API for redTorrentId=${torrentId} (status=${response.status}).`);
+                        rejectRequest(new Error(apiError || `Failed to download RED torrent file (status ${response.status}).`));
+                    },
+                    onerror: (error) => rejectRequest(error)
+                });
+            })).then(resolve).catch(reject);
         });
     }
 
@@ -1827,6 +2311,7 @@
         const displayRedCategory = config.redCategory || '';
         const displayRedTags = config.redTags || '';
         const displayRedApiKey = config.redApiKey ? REDACTED_VALUE : '';
+        const displayRedUserId = config.redUserId || '';
         const displayRedPaused = config.redPaused || '';
         const displayRedSkipChecking = Boolean(config.redSkipChecking);
         const displayPaused = config.paused || '';
@@ -1917,6 +2402,7 @@
                                 <label>RED category: <input type="text" id="ops-fl-proxy-red-category" value="${escapeHtml(displayRedCategory)}" style="min-width:120px;"></label>
                                 <label>RED tags: <input type="text" id="ops-fl-proxy-red-tags" value="${escapeHtml(displayRedTags)}" style="min-width:180px;"></label>
                                 <label>RED API key: <input type="text" id="ops-fl-proxy-red-api-key" value="${escapeHtml(displayRedApiKey)}" style="min-width:260px;"></label>
+                                <label>RED user id: <input type="number" id="ops-fl-proxy-red-user-id" value="${escapeHtml(displayRedUserId)}" min="1" step="1" style="width:110px;"></label>
                                 <label>RED paused: <select id="ops-fl-proxy-red-paused"><option value="" ${displayRedPaused === '' ? 'selected' : ''}>use OPS/default</option><option value="true" ${displayRedPaused === 'true' ? 'selected' : ''}>true</option><option value="false" ${displayRedPaused === 'false' ? 'selected' : ''}>false</option></select></label>
                                 <label><input type="checkbox" id="ops-fl-proxy-red-skip-checking" ${displayRedSkipChecking ? 'checked' : ''}> RED skip recheck (skip_checking=true)</label>
                             </div>
@@ -2014,6 +2500,7 @@
                     redCategory: String(panel.querySelector('#ops-fl-proxy-red-category')?.value || '').trim(),
                     redTags: String(panel.querySelector('#ops-fl-proxy-red-tags')?.value || '').trim(),
                     redApiKey: resolveSensitiveValue('#ops-fl-proxy-red-api-key', config.redApiKey),
+                    redUserId: String(panel.querySelector('#ops-fl-proxy-red-user-id')?.value || '').trim(),
                     redPaused: sanitizePausedState(panel.querySelector('#ops-fl-proxy-red-paused')?.value || ''),
                     redSkipChecking: Boolean(panel.querySelector('#ops-fl-proxy-red-skip-checking')?.checked),
                     paused: sanitizePausedState(panel.querySelector('#ops-fl-proxy-paused')?.value || ''),
@@ -2271,7 +2758,9 @@
             bitrateRankMap,
             mediaEnabled: config.mediaEnabled,
             formatEnabled: config.formatEnabled,
-            bitrateEnabled: config.bitrateEnabled
+            bitrateEnabled: config.bitrateEnabled,
+            redSeededBestByGroup: new Map(),
+            redSeededBestByTorrentId: new Map()
         };
         const requireRedMatch = Boolean(config.waitEvent);
         const targetSectionId = sanitizeTargetSectionId(config.targetSectionId);
@@ -2283,6 +2772,23 @@
         if (sectionRows.length === 0) {
             console.warn(`[OPS Album FL Proxy Queue] No rows found under #${targetSectionId}.`);
             return;
+        }
+
+        if (requireRedMatch) {
+            const redApiKey = getRedApiKey(config);
+            if (!redApiKey || !config.redUserId) {
+                console.warn('[OPS Album FL Proxy Queue] waitEvent mode enabled but RED seeded checks are disabled because RED API key and/or RED user id are missing.');
+            } else {
+                try {
+                    const seededTorrents = await getWeeklyRedSeededTorrents(config);
+                    const seededIndexes = buildRedSeededQualityIndexes(artistName, seededTorrents, selectionConfig);
+                    selectionConfig.redSeededBestByGroup = seededIndexes.byGroupId;
+                    selectionConfig.redSeededBestByTorrentId = seededIndexes.byTorrentId;
+                    console.log(`[OPS Album FL Proxy Queue] Loaded RED seeded quality data for ${selectionConfig.redSeededBestByGroup.size} group(s) and ${selectionConfig.redSeededBestByTorrentId.size} torrent(s) from weekly cache/source.`);
+                } catch (error) {
+                    console.warn('[OPS Album FL Proxy Queue] Failed to load RED seeded torrents; continuing without RED seeded exclusion.', error);
+                }
+            }
         }
 
         const candidatesByGroup = collectCandidatesByGroup(sectionRows, selectionConfig, requireRedMatch);
@@ -2312,9 +2818,16 @@
 
     renderControlPanel();
 
+    document.addEventListener(RED_CACHE_EVENT_NAME, (event) => {
+        registerTransferredRedArtistCache(event?.detail, RED_CACHE_EVENT_NAME);
+    });
+
     const config = getConfig();
     if (config.waitEvent) {
-        document.addEventListener(EVENT_NAME, () => startOnce('event'), { once: true });
+        document.addEventListener(EVENT_NAME, (event) => {
+            registerTransferredRedArtistCache(event?.detail?.redArtistCache, `${EVENT_NAME}.detail`);
+            startOnce('event');
+        }, { once: true });
         console.log('[OPS Album FL Proxy Queue] Waiting for OPSaddREDreleasescomplete event.');
         return;
     }

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OPS/RED - add releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.2.4
+// @version      1.2.5
 // @description  Add releases to/from RED/OPS
 // @author       Audionut
 // @match        https://orpheus.network/torrents.php?id=*
@@ -124,6 +124,8 @@
     const CACHE_EXPIRY_TIME = CACHE_EXPIRY_DAYS * 24 * 60 * 60 * 1000; // Convert days to milliseconds
     const isArtistPage = window.location.href.includes('artist.php?id=');
     const showOPSLabel = GM_getValue('showOPSLabel', true);
+    const RED_CACHE_EVENT_NAME = 'OPSaddREDartistcachedata';
+    let latestRedArtistCachePayload = null;
     // Function to extract artist name from the page header
     function extractArtistData() {
         let artistLink = document.querySelector('.header h2 a[href*="artist.php?id="]');
@@ -219,6 +221,25 @@
         return null;
     };
 
+    const emitRedArtistCachePayload = (artistName, cacheKey, data, source) => {
+        if (!data || typeof data !== 'object') return;
+
+        const payload = {
+            artistName: String(artistName || '').trim(),
+            cacheKey: String(cacheKey || '').trim(),
+            data,
+            source: String(source || '').trim() || 'unknown',
+            timestamp: Date.now()
+        };
+
+        latestRedArtistCachePayload = payload;
+
+        const event = new CustomEvent(RED_CACHE_EVENT_NAME, {
+            detail: payload
+        });
+        document.dispatchEvent(event);
+    };
+
     // Function to send OPS API request with caching (now using artist ID)
     const opsApiRequest = (artistName) => {
         //console.log("Artist Name being used for OPS API:", artistName);
@@ -262,6 +283,7 @@
 
         if (cachedData) {
             console.log('RED API data from cache:', cachedData);
+            emitRedArtistCachePayload(artistName, cacheKey, cachedData, 'cache-hit');
             return Promise.resolve(cachedData);
         }
         //console.log(`RED API URL: ${redApiUrl}${encodeURIComponent(artistName)}`);
@@ -278,6 +300,7 @@
                         const responseJson = JSON.parse(res.responseText);
                         console.log("RED API response:", responseJson);
                         setCache(cacheKey, responseJson);
+                        emitRedArtistCachePayload(artistName, cacheKey, responseJson, 'api-fetch');
                         resolve(responseJson);
                     } else {
                         reject(new Error(`RED API Error: HTTP ${res.status}`));
@@ -368,7 +391,11 @@
             });
         });
 
-        const event = new CustomEvent('OPSaddREDreleasescomplete');
+        const event = new CustomEvent('OPSaddREDreleasescomplete', {
+            detail: {
+                redArtistCache: latestRedArtistCachePayload
+            }
+        });
         document.dispatchEvent(event);
         if (searchingHeader) {
             searchingHeader.remove();
