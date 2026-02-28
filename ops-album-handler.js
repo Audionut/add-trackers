@@ -1515,7 +1515,7 @@
         const displaySavePath = config.savePath ? REDACTED_VALUE : '';
         const displayCategory = config.category || '';
         const displayTags = config.tags || '';
-        const displayTrackerAnnounceUrl = config.trackerAnnounceUrl || '';
+        const displayTrackerAnnounceUrl = config.trackerAnnounceUrl ? REDACTED_VALUE : '';
         const displayPaused = config.paused || '';
         const displayInstanceId = config.instanceId || '';
         const displayPollMaxMinutes = sanitizePollMaxMinutes(config.pollMaxMinutes);
@@ -1592,7 +1592,7 @@
                             <label>savePath: <input type="text" id="ops-fl-proxy-save-path" value="${escapeHtml(displaySavePath)}" style="min-width:220px;"></label>
                             <label>category: <input type="text" id="ops-fl-proxy-category" value="${escapeHtml(displayCategory)}" style="min-width:120px;"></label>
                             <label>tags: <input type="text" id="ops-fl-proxy-tags" value="${escapeHtml(displayTags)}" style="min-width:180px;"></label>
-                            <label>tracker announce URL: <input type="text" id="ops-fl-proxy-tracker-announce-url" value="${escapeHtml(displayTrackerAnnounceUrl)}" style="min-width:320px;"></label>
+                            <label>OPS announce URL: <input type="text" id="ops-fl-proxy-tracker-announce-url" value="${escapeHtml(displayTrackerAnnounceUrl)}" style="min-width:320px;"></label>
                             <label>paused: <select id="ops-fl-proxy-paused"><option value="" ${displayPaused === '' ? 'selected' : ''}>omit</option><option value="true" ${displayPaused === 'true' ? 'selected' : ''}>true</option><option value="false" ${displayPaused === 'false' ? 'selected' : ''}>false</option></select></label>
                             <label>instanceId: <input type="number" id="ops-fl-proxy-instance-id" value="${escapeHtml(displayInstanceId)}" min="0" step="1" style="width:90px;"></label>
                             <label>Max poll time (minutes): <input type="number" id="ops-fl-proxy-poll-max-minutes" value="${escapeHtml(displayPollMaxMinutes)}" min="1" step="1" style="width:90px;"></label>
@@ -1688,7 +1688,7 @@
                     savePath: resolveSensitiveValue('#ops-fl-proxy-save-path', config.savePath),
                     category: String(panel.querySelector('#ops-fl-proxy-category')?.value || '').trim(),
                     tags: String(panel.querySelector('#ops-fl-proxy-tags')?.value || '').trim(),
-                    trackerAnnounceUrl: String(panel.querySelector('#ops-fl-proxy-tracker-announce-url')?.value || '').trim(),
+                    trackerAnnounceUrl: resolveSensitiveValue('#ops-fl-proxy-tracker-announce-url', config.trackerAnnounceUrl),
                     paused: sanitizePausedState(panel.querySelector('#ops-fl-proxy-paused')?.value || ''),
                     instanceId: sanitizeInstanceId(panel.querySelector('#ops-fl-proxy-instance-id')?.value || ''),
                     pollMaxMinutes: sanitizePollMaxMinutes(panel.querySelector('#ops-fl-proxy-poll-max-minutes')?.value || DEFAULTS.pollMaxMinutes),
