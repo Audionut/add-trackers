@@ -35,6 +35,7 @@
     const KEY_PAUSED = 'OPS_FL_PROXY_PAUSED';
     const KEY_INSTANCE_ID = 'OPS_FL_PROXY_INSTANCE_ID';
     const KEY_WAIT_EVENT = 'OPS_FL_PROXY_WAIT_EVENT';
+    const KEY_INCLUDE_NO_RED_MATCH = 'OPS_FL_PROXY_INCLUDE_NO_RED_MATCH';
     const KEY_MEDIA_ORDER = 'OPS_FL_PROXY_MEDIA_ORDER';
     const KEY_MEDIA_ENABLED = 'OPS_FL_PROXY_MEDIA_ENABLED';
     const KEY_FORMAT_ORDER = 'OPS_FL_PROXY_FORMAT_ORDER';
@@ -126,6 +127,7 @@
         paused: '',
         instanceId: '',
         waitEvent: true,
+        includeNoRedMatch: false,
         targetSectionId: 'torrents_album',
         pollMaxMinutes: 10,
         matchTieBreaker: 'seeders',
@@ -249,6 +251,7 @@
             paused: sanitizePausedState(GM_getValue(KEY_PAUSED, DEFAULTS.paused)),
             instanceId: sanitizeInstanceId(GM_getValue(KEY_INSTANCE_ID, DEFAULTS.instanceId)),
             waitEvent: sanitizeBooleanFlag(GM_getValue(KEY_WAIT_EVENT, DEFAULTS.waitEvent), DEFAULTS.waitEvent),
+            includeNoRedMatch: sanitizeBooleanFlag(GM_getValue(KEY_INCLUDE_NO_RED_MATCH, DEFAULTS.includeNoRedMatch), DEFAULTS.includeNoRedMatch),
             targetSectionId: sanitizeTargetSectionId(GM_getValue(KEY_TARGET_SECTION_ID, DEFAULTS.targetSectionId)),
             pollMaxMinutes: sanitizePollMaxMinutes(GM_getValue(KEY_POLL_MAX_MINUTES, DEFAULTS.pollMaxMinutes)),
             matchTieBreaker: sanitizeMatchTieBreaker(GM_getValue(KEY_MATCH_TIE_BREAKER, DEFAULTS.matchTieBreaker)),
@@ -277,6 +280,7 @@
         GM_setValue(KEY_PAUSED, sanitizePausedState(config.paused));
         GM_setValue(KEY_INSTANCE_ID, sanitizeInstanceId(config.instanceId));
         GM_setValue(KEY_WAIT_EVENT, sanitizeBooleanFlag(config.waitEvent, DEFAULTS.waitEvent));
+        GM_setValue(KEY_INCLUDE_NO_RED_MATCH, sanitizeBooleanFlag(config.includeNoRedMatch, DEFAULTS.includeNoRedMatch));
         GM_setValue(KEY_TARGET_SECTION_ID, sanitizeTargetSectionId(config.targetSectionId));
         GM_setValue(KEY_POLL_MAX_MINUTES, sanitizePollMaxMinutes(config.pollMaxMinutes));
         GM_setValue(KEY_MATCH_TIE_BREAKER, sanitizeMatchTieBreaker(config.matchTieBreaker));
@@ -818,6 +822,7 @@
             paused: sanitizePausedState(paused),
             instanceId: sanitizeInstanceId(instanceId),
             waitEvent,
+            includeNoRedMatch: current.includeNoRedMatch,
             targetSectionId: current.targetSectionId,
             pollMaxMinutes: current.pollMaxMinutes,
             matchTieBreaker: current.matchTieBreaker,
@@ -1099,6 +1104,8 @@
         const editionInfoByGroup = new Map();
         const groupMetaByGroup = new Map();
         const candidatesByGroup = new Map();
+        const unmatchedCandidatesByGroup = new Map();
+        const hasMatchedCandidateByGroup = new Set();
         const excludedSnatchedGroups = new Set();
         const excludedSeededGroups = new Set();
         let currentHeaderGroupId = null;
@@ -1142,6 +1149,8 @@
             if (hasSnatchedLabel(row)) {
                 excludedSnatchedGroups.add(groupId);
                 candidatesByGroup.delete(groupId);
+                unmatchedCandidatesByGroup.delete(groupId);
+                hasMatchedCandidateByGroup.delete(groupId);
                 console.log(`[OPS Album Handler] Skipping groupId=${groupId} because it contains a Snatched release.`);
                 continue;
             }
@@ -1150,22 +1159,22 @@
                 continue;
             }
 
+            const matchRow = requireRedMatch ? document.getElementById(`${row.id}_match`) : null;
+            let hasExactRedMatch = false;
             if (requireRedMatch) {
-                const matchRow = document.getElementById(`${row.id}_match`);
-                if (!matchRow || !matchRow.classList.contains('exact_match_row')) {
-                    continue;
+                if (matchRow && matchRow.classList.contains('exact_match_row')) {
+                    const opsFileCount = parseFileCount(row);
+                    const redFileCount = parseFileCount(matchRow);
+                    hasExactRedMatch = opsFileCount !== null && redFileCount !== null && opsFileCount === redFileCount;
                 }
 
-                const opsFileCount = parseFileCount(row);
-                const redFileCount = parseFileCount(matchRow);
-                if (opsFileCount === null || redFileCount === null || opsFileCount !== redFileCount) {
+                if (!hasExactRedMatch && !selectionConfig.includeNoRedMatch) {
                     continue;
                 }
             }
 
-            const matchRow = requireRedMatch ? document.getElementById(`${row.id}_match`) : null;
-            const redTorrentId = requireRedMatch ? getRedTorrentIdFromMatchRow(matchRow) : '';
-            const redGroupId = requireRedMatch ? getRedGroupIdFromMatchRow(matchRow) : '';
+            const redTorrentId = requireRedMatch && hasExactRedMatch ? getRedTorrentIdFromMatchRow(matchRow) : '';
+            const redGroupId = requireRedMatch && hasExactRedMatch ? getRedGroupIdFromMatchRow(matchRow) : '';
 
             const details = parseReleaseDetails(row);
             if (!details) {
@@ -1205,7 +1214,7 @@
                 continue;
             }
 
-            if (requireRedMatch && selectionConfig.redSeededBestByGroup instanceof Map) {
+            if (requireRedMatch && hasExactRedMatch && selectionConfig.redSeededBestByGroup instanceof Map) {
                 const normalizedRedTorrentId = normalizeNumericId(redTorrentId);
                 const normalizedRedGroupId = normalizeNumericId(redGroupId);
                 const bestSeededByTorrent = normalizedRedTorrentId && selectionConfig.redSeededBestByTorrentId instanceof Map
@@ -1224,6 +1233,8 @@
                         excludedSeededGroups.add(groupId);
                     }
                     candidatesByGroup.delete(groupId);
+                    unmatchedCandidatesByGroup.delete(groupId);
+                    hasMatchedCandidateByGroup.delete(groupId);
                     continue;
                 }
             }
@@ -1232,15 +1243,12 @@
             const sizeBytes = parseSizeBytes(row);
             const torrentId = row.id.replace('torrent', '');
 
-            if (!candidatesByGroup.has(groupId)) {
-                candidatesByGroup.set(groupId, []);
-            }
-
-            candidatesByGroup.get(groupId).push({
+            const candidateEntry = {
                 groupId,
                 torrentId,
                 redTorrentId,
                 redGroupId,
+                hasRedMatch: !requireRedMatch || hasExactRedMatch,
                 flTokenUrl,
                 mediaRank,
                 formatRank,
@@ -1253,7 +1261,30 @@
                 editionYear,
                 albumName: groupMetaByGroup.get(groupId)?.albumName || `Group ${groupId}`,
                 releaseType: `${details.releaseType}`
-            });
+            };
+
+            if (requireRedMatch && !hasExactRedMatch) {
+                if (!unmatchedCandidatesByGroup.has(groupId)) {
+                    unmatchedCandidatesByGroup.set(groupId, []);
+                }
+                unmatchedCandidatesByGroup.get(groupId).push(candidateEntry);
+                continue;
+            }
+
+            hasMatchedCandidateByGroup.add(groupId);
+            if (!candidatesByGroup.has(groupId)) {
+                candidatesByGroup.set(groupId, []);
+            }
+            candidatesByGroup.get(groupId).push(candidateEntry);
+        }
+
+        if (requireRedMatch && selectionConfig.includeNoRedMatch) {
+            for (const [groupId, groupCandidates] of unmatchedCandidatesByGroup.entries()) {
+                if (hasMatchedCandidateByGroup.has(groupId)) {
+                    continue;
+                }
+                candidatesByGroup.set(groupId, groupCandidates);
+            }
         }
 
         return candidatesByGroup;
@@ -2394,6 +2425,7 @@
                             <label>instanceId: <input type="number" id="ops-fl-proxy-instance-id" value="${escapeHtml(displayInstanceId)}" min="0" step="1" style="width:90px;"></label>
                             <label>Max poll time (minutes): <input type="number" id="ops-fl-proxy-poll-max-minutes" value="${escapeHtml(displayPollMaxMinutes)}" min="1" step="1" style="width:90px;"></label>
                             <label><input type="checkbox" id="ops-fl-proxy-wait-event" ${config.waitEvent ? 'checked' : ''}> Wait for ${EVENT_NAME}</label>
+                            <label><input type="checkbox" id="ops-fl-proxy-include-no-red-match" ${config.includeNoRedMatch ? 'checked' : ''}> Include groups with no RED match</label>
                         </div>
 
                         <details id="ops-fl-proxy-red-section" style="margin-top:8px;">
@@ -2507,6 +2539,7 @@
                     instanceId: sanitizeInstanceId(panel.querySelector('#ops-fl-proxy-instance-id')?.value || ''),
                     pollMaxMinutes: sanitizePollMaxMinutes(panel.querySelector('#ops-fl-proxy-poll-max-minutes')?.value || DEFAULTS.pollMaxMinutes),
                     waitEvent: Boolean(panel.querySelector('#ops-fl-proxy-wait-event')?.checked),
+                    includeNoRedMatch: Boolean(panel.querySelector('#ops-fl-proxy-include-no-red-match')?.checked),
                     targetSectionId: sanitizeTargetSectionId(panel.querySelector('#ops-fl-proxy-target-section')?.value || ''),
                     matchTieBreaker: sanitizeMatchTieBreaker(panel.querySelector('#ops-fl-proxy-match-tie-breaker')?.value || DEFAULTS.matchTieBreaker),
                     matchTieBreakerDirection: sanitizeMatchTieBreakerDirection(panel.querySelector('#ops-fl-proxy-match-tie-breaker-direction')?.value || DEFAULTS.matchTieBreakerDirection),
@@ -2596,19 +2629,28 @@
         previewTable.className = 'torrent_table grouped release_table m_table';
 
         const sentCache = getSentReleasesCacheForContext(contextKey);
-        const defaultSelectedCount = selected.filter((entry) => !sentCache[makeReleaseCacheKey(entry)]).length;
+        const defaultSelectedCount = selected.filter((entry) => {
+            const wasSent = Boolean(sentCache[makeReleaseCacheKey(entry)]);
+            const defaultUncheckedNoRedMatch = entry.hasRedMatch === false;
+            return !wasSent && !defaultUncheckedNoRedMatch;
+        }).length;
         const selectedByReleaseKey = new Map(selected.map((entry) => [makeReleaseCacheKey(entry), entry]));
 
         const rowsHtml = selected
             .map((entry) => {
                 const releaseKey = makeReleaseCacheKey(entry);
                 const wasSent = Boolean(sentCache[releaseKey]);
+                const defaultUncheckedNoRedMatch = entry.hasRedMatch === false;
+                const defaultChecked = !wasSent && !defaultUncheckedNoRedMatch;
+                const noRedMatchNote = defaultUncheckedNoRedMatch
+                    ? ' <strong class="torrent_label tl_notice">No matching RED torrent from this album group is available</strong>'
+                    : '';
 
                 return `
                 <tr class="torrent_row">
-                    <td class="center"><input type="checkbox" class="ops-fl-result-select" value="${escapeHtml(releaseKey)}" data-url="${escapeHtml(entry.flTokenUrl)}" ${wasSent ? '' : 'checked'} ${wasSent ? 'disabled' : ''}></td>
+                    <td class="center"><input type="checkbox" class="ops-fl-result-select" value="${escapeHtml(releaseKey)}" data-url="${escapeHtml(entry.flTokenUrl)}" ${defaultChecked ? 'checked' : ''} ${wasSent ? 'disabled' : ''}></td>
                     <td class="td_info">${escapeHtml(entry.albumName)}</td>
-                    <td class="td_info">${escapeHtml(entry.releaseType)} (${escapeHtml(getMediaLabel(entry.mediaKey))} / ${escapeHtml(getFormatLabel(entry.formatKey))} / ${escapeHtml(getBitrateLabel(entry.bitrateKey))})${wasSent ? ' <strong class="torrent_label tl_notice">Already sent</strong>' : ''}</td>
+                    <td class="td_info">${escapeHtml(entry.releaseType)} (${escapeHtml(getMediaLabel(entry.mediaKey))} / ${escapeHtml(getFormatLabel(entry.formatKey))} / ${escapeHtml(getBitrateLabel(entry.bitrateKey))})${wasSent ? ' <strong class="torrent_label tl_notice">Already sent</strong>' : ''}${noRedMatchNote}</td>
                     <td class="number_column m_td_right td_seeders">${entry.seeders}</td>
                 </tr>
             `;
@@ -2759,6 +2801,7 @@
             mediaEnabled: config.mediaEnabled,
             formatEnabled: config.formatEnabled,
             bitrateEnabled: config.bitrateEnabled,
+            includeNoRedMatch: Boolean(config.includeNoRedMatch),
             redSeededBestByGroup: new Map(),
             redSeededBestByTorrentId: new Map()
         };
