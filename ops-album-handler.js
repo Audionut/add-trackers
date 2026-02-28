@@ -25,9 +25,9 @@
     const KEY_TAGS = 'OPS_FL_PROXY_TAGS';
     const KEY_RED_CATEGORY = 'OPS_FL_PROXY_RED_CATEGORY';
     const KEY_RED_TAGS = 'OPS_FL_PROXY_RED_TAGS';
+    const KEY_RED_API_KEY = 'OPS_FL_PROXY_RED_API_KEY';
     const KEY_RED_PAUSED = 'OPS_FL_PROXY_RED_PAUSED';
     const KEY_RED_SKIP_CHECKING = 'OPS_FL_PROXY_RED_SKIP_CHECKING';
-    const KEY_TRACKER_ANNOUNCE_URL = 'OPS_FL_PROXY_TRACKER_ANNOUNCE_URL';
     const KEY_PAUSED = 'OPS_FL_PROXY_PAUSED';
     const KEY_INSTANCE_ID = 'OPS_FL_PROXY_INSTANCE_ID';
     const KEY_WAIT_EVENT = 'OPS_FL_PROXY_WAIT_EVENT';
@@ -109,9 +109,9 @@
         tags: '',
         redCategory: '',
         redTags: '',
+        redApiKey: '',
         redPaused: '',
         redSkipChecking: true,
-        trackerAnnounceUrl: '',
         paused: '',
         instanceId: '',
         waitEvent: true,
@@ -219,9 +219,9 @@
             tags: String(GM_getValue(KEY_TAGS, DEFAULTS.tags)).trim(),
             redCategory: String(GM_getValue(KEY_RED_CATEGORY, DEFAULTS.redCategory)).trim(),
             redTags: String(GM_getValue(KEY_RED_TAGS, DEFAULTS.redTags)).trim(),
+            redApiKey: String(GM_getValue(KEY_RED_API_KEY, DEFAULTS.redApiKey)).trim(),
             redPaused: sanitizePausedState(GM_getValue(KEY_RED_PAUSED, DEFAULTS.redPaused)),
             redSkipChecking: Boolean(GM_getValue(KEY_RED_SKIP_CHECKING, DEFAULTS.redSkipChecking)),
-            trackerAnnounceUrl: String(GM_getValue(KEY_TRACKER_ANNOUNCE_URL, DEFAULTS.trackerAnnounceUrl)).trim(),
             paused: sanitizePausedState(GM_getValue(KEY_PAUSED, DEFAULTS.paused)),
             instanceId: sanitizeInstanceId(GM_getValue(KEY_INSTANCE_ID, DEFAULTS.instanceId)),
             waitEvent: Boolean(GM_getValue(KEY_WAIT_EVENT, DEFAULTS.waitEvent)),
@@ -246,9 +246,9 @@
         GM_setValue(KEY_TAGS, String(config.tags ?? '').trim());
         GM_setValue(KEY_RED_CATEGORY, String(config.redCategory ?? '').trim());
         GM_setValue(KEY_RED_TAGS, String(config.redTags ?? '').trim());
+        GM_setValue(KEY_RED_API_KEY, String(config.redApiKey ?? '').trim());
         GM_setValue(KEY_RED_PAUSED, sanitizePausedState(config.redPaused));
         GM_setValue(KEY_RED_SKIP_CHECKING, Boolean(config.redSkipChecking));
-        GM_setValue(KEY_TRACKER_ANNOUNCE_URL, String(config.trackerAnnounceUrl ?? '').trim());
         GM_setValue(KEY_PAUSED, sanitizePausedState(config.paused));
         GM_setValue(KEY_INSTANCE_ID, sanitizeInstanceId(config.instanceId));
         GM_setValue(KEY_WAIT_EVENT, config.waitEvent);
@@ -345,9 +345,9 @@
             tags: String(tags).trim(),
             redCategory: current.redCategory,
             redTags: current.redTags,
+            redApiKey: current.redApiKey,
             redPaused: current.redPaused,
             redSkipChecking: current.redSkipChecking,
-            trackerAnnounceUrl: current.trackerAnnounceUrl,
             paused: sanitizePausedState(paused),
             instanceId: sanitizeInstanceId(instanceId),
             waitEvent,
@@ -489,6 +489,23 @@
             if (/^\d+$/.test(id)) {
                 return id;
             }
+        }
+
+        return '';
+    }
+
+    function getRedGroupIdFromMatchRow(matchRow) {
+        if (!matchRow) return '';
+
+        const detailsLink = matchRow.querySelector('a[href*="redacted.sh/torrents.php"]');
+        if (!detailsLink) {
+            return '';
+        }
+
+        const href = String(detailsLink.getAttribute('href') || '').trim();
+        const groupMatch = href.match(/[?&]id=(\d+)/i);
+        if (groupMatch) {
+            return groupMatch[1];
         }
 
         return '';
@@ -659,6 +676,7 @@
 
             const matchRow = requireRedMatch ? document.getElementById(`${row.id}_match`) : null;
             const redTorrentId = requireRedMatch ? getRedTorrentIdFromMatchRow(matchRow) : '';
+            const redGroupId = requireRedMatch ? getRedGroupIdFromMatchRow(matchRow) : '';
 
             const details = parseReleaseDetails(row);
             if (!details) {
@@ -710,6 +728,7 @@
                 groupId,
                 torrentId,
                 redTorrentId,
+                redGroupId,
                 flTokenUrl,
                 mediaRank,
                 formatRank,
@@ -890,6 +909,92 @@
         return postToProxyWithOptions(config, urls, {});
     }
 
+    function postTorrentFilesToProxyWithOptions(config, torrentFiles, extraFields, options) {
+        return new Promise((resolve, reject) => {
+            const token = String(config.token || '').trim();
+            if (!token) {
+                reject(new Error('Missing proxy token. Set qUI token in settings.'));
+                return;
+            }
+
+            const proxyUrls = buildProxyCandidateUrls(config.baseUrl, token);
+            if (proxyUrls.length === 0) {
+                reject(new Error('Missing proxy base URL or token. Set qUI base URL and token in settings.'));
+                return;
+            }
+
+            if (!Array.isArray(torrentFiles) || torrentFiles.length === 0) {
+                reject(new Error('No torrent files provided for upload.'));
+                return;
+            }
+
+            const includeDefaultFields = options?.includeDefaultFields !== false;
+            const buildFormData = () => {
+                const formData = new FormData();
+
+                torrentFiles.forEach((torrentFile, index) => {
+                    const blob = torrentFile?.blob;
+                    if (!blob) {
+                        return;
+                    }
+                    const fileName = String(torrentFile.fileName || `upload_${index + 1}.torrent`);
+                    formData.append('torrents', blob, fileName);
+                });
+
+                if (includeDefaultFields && config.savePath) {
+                    formData.append('savepath', config.savePath);
+                }
+                if (includeDefaultFields && config.category) {
+                    formData.append('category', config.category);
+                }
+                if (includeDefaultFields && config.tags) {
+                    formData.append('tags', config.tags);
+                }
+                if (includeDefaultFields && config.paused) {
+                    formData.append('paused', config.paused);
+                }
+
+                if (extraFields && typeof extraFields === 'object') {
+                    Object.entries(extraFields).forEach(([key, value]) => {
+                        if (value === undefined || value === null || value === '') {
+                            return;
+                        }
+                        formData.append(key, String(value));
+                    });
+                }
+
+                return formData;
+            };
+
+            const tryPost = (endpointIndex) => {
+                const proxyUrl = proxyUrls[endpointIndex];
+                const formData = buildFormData();
+
+                GM_xmlhttpRequest({
+                    url: proxyUrl,
+                    method: 'POST',
+                    data: formData,
+                    onload: (response) => {
+                        if (response.status >= 200 && response.status < 300) {
+                            resolve(response);
+                            return;
+                        }
+
+                        if ((response.status === 401 || response.status === 403 || response.status === 404) && endpointIndex < proxyUrls.length - 1) {
+                            tryPost(endpointIndex + 1);
+                            return;
+                        }
+
+                        reject(new Error(`Proxy torrent upload failed with status ${response.status} at ${proxyUrl}: ${response.responseText || ''}`));
+                    },
+                    onerror: (error) => reject(error)
+                });
+            };
+
+            tryPost(0);
+        });
+    }
+
     function buildProxySearchCandidateUrls(baseUrl, tokenValue) {
         const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
         if (!normalizedBaseUrl) return [];
@@ -946,10 +1051,6 @@
 
         if (quiFilters.tags && quiFilters.tags.length > 0) {
             queryParts.push(`tag=${encodeURIComponent(quiFilters.tags.join(','))}`);
-        }
-
-        if (quiFilters.trackers && quiFilters.trackers.length > 0) {
-            queryParts.push(`tracker=${encodeURIComponent(quiFilters.trackers.join(','))}`);
         }
 
         return `${qbtProxySearchBaseUrl}?${queryParts.join('&')}`;
@@ -1036,21 +1137,57 @@
         return 0;
     }
 
-    function extractTorrentIdFromComment(commentValue) {
+    function extractTorrentIdsFromComment(commentValue) {
         const text = String(commentValue || '').trim();
-        if (!text) return '';
+        if (!text) return [];
+
+        const found = new Set();
+
+        const queryIdPattern = /[?&](?:torrentid|id)=(\d+)/ig;
+        let queryMatch;
+        while ((queryMatch = queryIdPattern.exec(text)) !== null) {
+            if (queryMatch[1]) {
+                found.add(queryMatch[1]);
+            }
+        }
 
         const directMatch = text.match(/[?&]torrentid=(\d+)/i);
         if (directMatch) {
-            return directMatch[1];
+            found.add(directMatch[1]);
         }
 
-        const pathMatch = text.match(/\/torrent\/?(\d+)/i);
-        if (pathMatch) {
-            return pathMatch[1];
+        const torrentPathPattern = /\/torrents?\/?(\d+)/ig;
+        let pathMatch;
+        while ((pathMatch = torrentPathPattern.exec(text)) !== null) {
+            if (pathMatch[1]) {
+                found.add(pathMatch[1]);
+            }
         }
 
-        return '';
+        return Array.from(found);
+    }
+
+    function commentContainsTorrentId(commentValue, torrentId) {
+        const target = String(torrentId || '').trim();
+        if (!target) return false;
+
+        const rawComment = String(commentValue || '');
+        if (!rawComment) return false;
+
+        if (rawComment.includes(target)) {
+            return true;
+        }
+
+        try {
+            const decoded = decodeURIComponent(rawComment);
+            if (decoded.includes(target)) {
+                return true;
+            }
+        } catch {
+            // ignore decode failures and continue to structured parsing fallback
+        }
+
+        return extractTorrentIdsFromComment(rawComment).includes(target);
     }
 
     function pickBestSearchResult(results, albumName, torrentId) {
@@ -1060,10 +1197,16 @@
 
         const targetTorrentId = String(torrentId || '').trim();
         if (targetTorrentId) {
-            const byCommentTorrentId = results.find((item) => extractTorrentIdFromComment(item?.comment) === targetTorrentId);
-            if (byCommentTorrentId) {
-                return byCommentTorrentId;
+            const commentIdsByResult = results.map((item) => ({
+                item,
+                name: String(item?.name || '').trim(),
+                ids: extractTorrentIdsFromComment(item?.comment)
+            }));
+            const byCommentTorrentId = commentIdsByResult.find((entry) => commentContainsTorrentId(entry.item?.comment, targetTorrentId));
+            if (!byCommentTorrentId) {
+                console.warn(`[OPS Album Handler][qUI] Search returned ${results.length} result(s) but no comment ID match for torrentId=${targetTorrentId} (album="${String(albumName || '').trim()}"). Extracted IDs: ${JSON.stringify(commentIdsByResult.slice(0, 10))}`);
             }
+            return byCommentTorrentId ? byCommentTorrentId.item : null;
         }
 
         const normalizedAlbum = String(albumName || '').trim().toLowerCase();
@@ -1225,23 +1368,91 @@
         return state === 'stalledup' || state === 'seeding';
     }
 
-    function getRedDownloadUrl(redTorrentId) {
-        const id = String(redTorrentId || '').trim();
-        if (!/^\d+$/.test(id)) return '';
-        return `https://redacted.sh/ajax.php?action=download&id=${id}`;
+    function getRedApiKey(config) {
+        return String(config?.redApiKey || GM_getValue('RED_API_KEY', '') || '').trim();
+    }
+
+    function parseRedApiError(responseText) {
+        try {
+            const parsed = JSON.parse(responseText || '{}');
+            const status = String(parsed?.status || '').trim().toLowerCase();
+            const error = String(parsed?.error || parsed?.response || '').trim();
+            if (status === 'failure' && error) {
+                return error;
+            }
+            if (error) {
+                return error;
+            }
+        } catch {
+            // ignore parse failures and fall back to generic error handling
+        }
+        return '';
+    }
+
+    function downloadRedTorrentFile(redTorrentId, config) {
+        return new Promise((resolve, reject) => {
+            const torrentId = String(redTorrentId || '').trim();
+            if (!/^\d+$/.test(torrentId)) {
+                reject(new Error('Invalid RED torrent id.'));
+                return;
+            }
+
+            const redApiKey = getRedApiKey(config);
+            if (!redApiKey) {
+                reject(new Error('Missing RED_API_KEY in userscript storage (set in OPS/RED add releases script).'));
+                return;
+            }
+
+            const downloadUrl = `https://redacted.sh/ajax.php?action=download&id=${torrentId}&usetoken=0`;
+            console.log(`[OPS Album Handler][RED] Downloading RED torrent file via API: ${downloadUrl}`);
+            GM_xmlhttpRequest({
+                url: downloadUrl,
+                method: 'GET',
+                headers: { Authorization: redApiKey },
+                responseType: 'blob',
+                onload: (response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        const responseHeaders = String(response.responseHeaders || '');
+                        const contentTypeHeader = responseHeaders.match(/content-type:\s*([^\r\n;]+)/i);
+                        const contentType = String(contentTypeHeader?.[1] || '').trim().toLowerCase();
+                        const blob = response.response;
+
+                        if (contentType.includes('application/x-bittorrent') && blob instanceof Blob) {
+                            resolve({
+                                blob,
+                                fileName: `red_${torrentId}.torrent`
+                            });
+                            return;
+                        }
+
+                        const apiError = parseRedApiError(String(response.responseText || ''));
+                        reject(new Error(apiError || `RED download API did not return a torrent file for redTorrentId=${torrentId}.`));
+                        return;
+                    }
+
+                    const apiError = parseRedApiError(String(response.responseText || ''));
+                    console.error(`[OPS Album Handler][RED] Failed RED download API for redTorrentId=${torrentId} (status=${response.status}).`);
+                    reject(new Error(apiError || `Failed to download RED torrent file (status ${response.status}).`));
+                },
+                onerror: (error) => reject(error)
+            });
+        });
     }
 
     async function addRedTorrentToProxy(config, item) {
-        const redDownloadUrl = getRedDownloadUrl(item.redTorrentId);
-        if (!redDownloadUrl) {
+        const redTorrentId = String(item.redTorrentId || '').trim();
+        if (!redTorrentId) {
             throw new Error('Missing RED torrent id for auto-add.');
         }
+
+        console.log(`[OPS Album Handler][RED] Preparing RED API-backed add for album="${item.albumName}" opsTorrentId=${item.torrentId} redTorrentId=${redTorrentId}.`);
 
         const redCategory = String(config.redCategory || '').trim() || String(config.category || '').trim();
         const redTags = String(config.redTags || '').trim() || String(config.tags || '').trim();
         const redPaused = sanitizePausedState(config.redPaused) || sanitizePausedState(config.paused);
 
         const extraFields = {
+            savepath: String(config.savePath || '').trim(),
             category: redCategory,
             tags: redTags,
             paused: redPaused
@@ -1251,11 +1462,14 @@
             extraFields.skip_checking = 'true';
         }
 
-        await postToProxyWithOptions(config, [redDownloadUrl], {
+        const redTorrentFile = await downloadRedTorrentFile(redTorrentId, config);
+        console.log(`[OPS Album Handler][RED] Downloaded RED torrent file via API for redTorrentId=${redTorrentId}; uploading file to qUI.`);
+        await postTorrentFilesToProxyWithOptions(config, [redTorrentFile], {
             ...extraFields
         }, {
             includeDefaultFields: false
         });
+        console.log(`[OPS Album Handler][RED] qUI accepted RED file upload for redTorrentId=${redTorrentId}.`);
     }
 
     async function pollDownloadStatusesOnce() {
@@ -1269,7 +1483,7 @@
 
         downloadStatusPollState.isPolling = true;
 
-        const { config, quiFilters, items, enableRedHandling } = downloadStatusPollState;
+        const { config, quiFilters, redQuiFilters, items, enableRedHandling } = downloadStatusPollState;
 
         try {
             for (const item of items) {
@@ -1290,6 +1504,7 @@
                 if (!bestResult) {
                     item.state = 'not_found';
                     item.lastUpdate = 'No matching qUI search results yet.';
+                    console.warn(`[OPS Album Handler][OPS] No qUI comment match for opsTorrentId=${item.torrentId} (album="${item.albumName}").`);
                     continue;
                 }
 
@@ -1307,6 +1522,7 @@
                     };
 
                     if (item.redTorrentId && existingRedStatus.addStatus === 'waiting' && isReadyForRedAdd(item)) {
+                        console.log(`[OPS Album Handler][RED] Trigger condition met for redTorrentId=${item.redTorrentId} (ops progress=${item.progressPercent.toFixed(1)}%, state=${item.state}).`);
                         existingRedStatus.addStatus = 'adding';
                         existingRedStatus.lastUpdate = 'Submitting RED torrent to qUI with skip_checking=true...';
                         redStatusByReleaseKey.set(item.releaseKey, existingRedStatus);
@@ -1334,9 +1550,10 @@
 
                             let redResult = null;
                             for (const term of redSearchTerms) {
-                                const redResults = await queryProxyTorrentSearch(config, term, quiFilters);
+                                const redResults = await queryProxyTorrentSearch(config, term, redQuiFilters);
                                 redResult = pickBestSearchResult(redResults, item.albumName, item.redTorrentId);
                                 if (redResult) {
+                                    console.log(`[OPS Album Handler][RED] Tracking match found for redTorrentId=${item.redTorrentId}: state=${String(redResult.state || 'unknown')}, progress=${normalizeTorrentProgress(redResult).toFixed(1)}%, name="${String(redResult.name || '')}".`);
                                     break;
                                 }
                             }
@@ -1346,6 +1563,7 @@
                                 redStatus.progressPercent = normalizeTorrentProgress(redResult);
                                 redStatus.lastUpdate = String(redResult.name || 'Matched');
                             } else {
+                                console.warn(`[OPS Album Handler][RED] No qUI comment match for redTorrentId=${item.redTorrentId} (album="${item.albumName}").`);
                                 redStatus.lastUpdate = 'Submitted, waiting for qUI search visibility.';
                             }
 
@@ -1439,15 +1657,22 @@
             categories: config.category ? [config.category] : [],
             excludeCategories: [],
             tags: parseCommaSeparatedList(config.tags),
-            excludeTags: [],
-            trackers: config.trackerAnnounceUrl ? [String(config.trackerAnnounceUrl).trim()] : [],
-            excludeTrackers: []
+            excludeTags: []
+        };
+        const redQuiFilters = {
+            status: [],
+            excludeStatus: ['unregistered', 'tracker_down'],
+            categories: config.redCategory ? [config.redCategory] : (config.category ? [config.category] : []),
+            excludeCategories: [],
+            tags: parseCommaSeparatedList(config.redTags || config.tags),
+            excludeTags: []
         };
 
         downloadStatusPollState = {
             config,
             items,
             quiFilters,
+            redQuiFilters,
             enableRedHandling,
             startedAt: Date.now(),
             maxMinutes,
@@ -1568,9 +1793,9 @@
         const displayTags = config.tags || '';
         const displayRedCategory = config.redCategory || '';
         const displayRedTags = config.redTags || '';
+        const displayRedApiKey = config.redApiKey ? REDACTED_VALUE : '';
         const displayRedPaused = config.redPaused || '';
         const displayRedSkipChecking = Boolean(config.redSkipChecking);
-        const displayTrackerAnnounceUrl = config.trackerAnnounceUrl ? REDACTED_VALUE : '';
         const displayPaused = config.paused || '';
         const displayInstanceId = config.instanceId || '';
         const displayPollMaxMinutes = sanitizePollMaxMinutes(config.pollMaxMinutes);
@@ -1647,7 +1872,6 @@
                             <label>savePath: <input type="text" id="ops-fl-proxy-save-path" value="${escapeHtml(displaySavePath)}" style="min-width:220px;"></label>
                             <label>category: <input type="text" id="ops-fl-proxy-category" value="${escapeHtml(displayCategory)}" style="min-width:120px;"></label>
                             <label>tags: <input type="text" id="ops-fl-proxy-tags" value="${escapeHtml(displayTags)}" style="min-width:180px;"></label>
-                            <label>OPS announce URL: <input type="text" id="ops-fl-proxy-tracker-announce-url" value="${escapeHtml(displayTrackerAnnounceUrl)}" style="min-width:320px;"></label>
                             <label>paused: <select id="ops-fl-proxy-paused"><option value="" ${displayPaused === '' ? 'selected' : ''}>omit</option><option value="true" ${displayPaused === 'true' ? 'selected' : ''}>true</option><option value="false" ${displayPaused === 'false' ? 'selected' : ''}>false</option></select></label>
                             <label>instanceId: <input type="number" id="ops-fl-proxy-instance-id" value="${escapeHtml(displayInstanceId)}" min="0" step="1" style="width:90px;"></label>
                             <label>Max poll time (minutes): <input type="number" id="ops-fl-proxy-poll-max-minutes" value="${escapeHtml(displayPollMaxMinutes)}" min="1" step="1" style="width:90px;"></label>
@@ -1659,6 +1883,7 @@
                             <div style="margin-top:8px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
                                 <label>RED category: <input type="text" id="ops-fl-proxy-red-category" value="${escapeHtml(displayRedCategory)}" style="min-width:120px;"></label>
                                 <label>RED tags: <input type="text" id="ops-fl-proxy-red-tags" value="${escapeHtml(displayRedTags)}" style="min-width:180px;"></label>
+                                <label>RED API key: <input type="text" id="ops-fl-proxy-red-api-key" value="${escapeHtml(displayRedApiKey)}" style="min-width:260px;"></label>
                                 <label>RED paused: <select id="ops-fl-proxy-red-paused"><option value="" ${displayRedPaused === '' ? 'selected' : ''}>use OPS/default</option><option value="true" ${displayRedPaused === 'true' ? 'selected' : ''}>true</option><option value="false" ${displayRedPaused === 'false' ? 'selected' : ''}>false</option></select></label>
                                 <label><input type="checkbox" id="ops-fl-proxy-red-skip-checking" ${displayRedSkipChecking ? 'checked' : ''}> RED skip recheck (skip_checking=true)</label>
                             </div>
@@ -1755,9 +1980,9 @@
                     tags: String(panel.querySelector('#ops-fl-proxy-tags')?.value || '').trim(),
                     redCategory: String(panel.querySelector('#ops-fl-proxy-red-category')?.value || '').trim(),
                     redTags: String(panel.querySelector('#ops-fl-proxy-red-tags')?.value || '').trim(),
+                    redApiKey: resolveSensitiveValue('#ops-fl-proxy-red-api-key', config.redApiKey),
                     redPaused: sanitizePausedState(panel.querySelector('#ops-fl-proxy-red-paused')?.value || ''),
                     redSkipChecking: Boolean(panel.querySelector('#ops-fl-proxy-red-skip-checking')?.checked),
-                    trackerAnnounceUrl: resolveSensitiveValue('#ops-fl-proxy-tracker-announce-url', config.trackerAnnounceUrl),
                     paused: sanitizePausedState(panel.querySelector('#ops-fl-proxy-paused')?.value || ''),
                     instanceId: sanitizeInstanceId(panel.querySelector('#ops-fl-proxy-instance-id')?.value || ''),
                     pollMaxMinutes: sanitizePollMaxMinutes(panel.querySelector('#ops-fl-proxy-poll-max-minutes')?.value || DEFAULTS.pollMaxMinutes),
@@ -1980,7 +2205,8 @@
                             albumName: releaseMeta.albumName,
                             artistName: releaseMeta.artistName || getArtistNameFromPage(),
                             torrentId: releaseMeta.torrentId,
-                            redTorrentId: releaseMeta.redTorrentId
+                            redTorrentId: releaseMeta.redTorrentId,
+                            redGroupId: releaseMeta.redGroupId
                         };
                     })
                     .filter(Boolean);
