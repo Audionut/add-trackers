@@ -5,7 +5,6 @@
 // @description  Queue best matching OPS album FL torrents to local proxy after OPS/RED matching completes
 // @author       Audionut
 // @match        https://orpheus.network/artist.php?id=*
-// @match        https://redacted.sh/artist.php?id=*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -27,10 +26,8 @@
     const KEY_RED_CATEGORY = 'OPS_FL_PROXY_RED_CATEGORY';
     const KEY_RED_TAGS = 'OPS_FL_PROXY_RED_TAGS';
     const KEY_RED_API_KEY = 'OPS_FL_PROXY_RED_API_KEY';
-    const KEY_OPS_API_KEY = 'OPS_FL_PROXY_OPS_API_KEY';
     const KEY_RED_PAUSED = 'OPS_FL_PROXY_RED_PAUSED';
     const KEY_RED_SKIP_CHECKING = 'OPS_FL_PROXY_RED_SKIP_CHECKING';
-    const KEY_OPS_SKIP_CHECKING = 'OPS_FL_PROXY_OPS_SKIP_CHECKING';
     const KEY_PAUSED = 'OPS_FL_PROXY_PAUSED';
     const KEY_INSTANCE_ID = 'OPS_FL_PROXY_INSTANCE_ID';
     const KEY_WAIT_EVENT = 'OPS_FL_PROXY_WAIT_EVENT';
@@ -45,7 +42,6 @@
     const KEY_MATCH_TIE_BREAKER = 'OPS_FL_PROXY_MATCH_TIE_BREAKER';
     const KEY_MATCH_TIE_BREAKER_DIRECTION = 'OPS_FL_PROXY_MATCH_TIE_BREAKER_DIRECTION';
     const KEY_POLL_MAX_MINUTES = 'OPS_FL_PROXY_POLL_MAX_MINUTES';
-    const KEY_OPS_USE_TOKEN = 'OPS_FL_PROXY_OPS_USE_TOKEN';
     const REDACTED_VALUE = '<REDACTED>';
     const DOWNLOAD_STATUS_POLL_INTERVAL_MS = 5000;
 
@@ -65,7 +61,7 @@
         { key: 'WEB', label: 'WEB' },
         { key: 'Vinyl', label: 'Vinyl' },
         { key: 'DVD', label: 'DVD' },
-        { key: 'Blu-Ray', label: 'Blu-Ray' },
+        { key: 'BD', label: 'BD' },
         { key: 'Soundboard', label: 'Soundboard' },
         { key: 'SACD', label: 'SACD' },
         { key: 'DAT', label: 'DAT' },
@@ -79,7 +75,6 @@
         { key: 'AAC', label: 'AAC' },
         { key: 'AC3', label: 'AC3' },
         { key: 'DTS', label: 'DTS' },
-        { key: 'DSD', label: 'DSD' },
         { key: 'perfectflac', label: 'Perfect FLACs' }
     ];
 
@@ -98,10 +93,6 @@
         { key: '64', label: '64' },
         { key: 'APS (VBR)', label: 'APS (VBR)' },
         { key: 'APX (VBR)', label: 'APX (VBR)' },
-        { key: 'DSD64', label: 'DSD64' },
-        { key: 'DSD128', label: 'DSD128' },
-        { key: 'DSD256', label: 'DSD256' },
-        { key: 'DSD512', label: 'DSD512' },
         { key: 'q8.x (VBR)', label: 'q8.x (VBR)' },
         { key: 'Other', label: 'Other' }
     ];
@@ -119,10 +110,8 @@
         redCategory: '',
         redTags: '',
         redApiKey: '',
-        opsApiKey: '',
         redPaused: '',
         redSkipChecking: true,
-        opsSkipChecking: false,
         paused: '',
         instanceId: '',
         waitEvent: true,
@@ -133,16 +122,12 @@
         mediaOrder: DEFAULT_MEDIA_ORDER,
         formatOrder: DEFAULT_FORMAT_ORDER,
         bitrateOrder: DEFAULT_BITRATE_ORDER,
-        opsUseToken: true,
         mediaEnabled: Object.fromEntries(DEFAULT_MEDIA_ORDER.map((key) => [key, true])),
         formatEnabled: Object.fromEntries(DEFAULT_FORMAT_ORDER.map((key) => [key, true])),
         bitrateEnabled: Object.fromEntries(DEFAULT_BITRATE_ORDER.map((key) => [key, true]))
     };
 
-    const IS_OPS_HOST = globalThis.location.hostname.includes('orpheus.network');
-    const IS_RED_HOST = globalThis.location.hostname.includes('redacted.sh');
-
-    if (!(IS_OPS_HOST || IS_RED_HOST) || !globalThis.location.href.includes('/artist.php?id=')) {
+    if (!globalThis.location.hostname.includes('orpheus.network') || !globalThis.location.href.includes('/artist.php?id=')) {
         return;
     }
 
@@ -247,16 +232,13 @@
             redCategory: String(GM_getValue(KEY_RED_CATEGORY, DEFAULTS.redCategory)).trim(),
             redTags: String(GM_getValue(KEY_RED_TAGS, DEFAULTS.redTags)).trim(),
             redApiKey: String(GM_getValue(KEY_RED_API_KEY, DEFAULTS.redApiKey)).trim(),
-            opsApiKey: String(GM_getValue(KEY_OPS_API_KEY, DEFAULTS.opsApiKey)).trim(),
             redPaused: sanitizePausedState(GM_getValue(KEY_RED_PAUSED, DEFAULTS.redPaused)),
             redSkipChecking: sanitizeBooleanFlag(GM_getValue(KEY_RED_SKIP_CHECKING, DEFAULTS.redSkipChecking), DEFAULTS.redSkipChecking),
-            opsSkipChecking: sanitizeBooleanFlag(GM_getValue(KEY_OPS_SKIP_CHECKING, DEFAULTS.opsSkipChecking), DEFAULTS.opsSkipChecking),
             paused: sanitizePausedState(GM_getValue(KEY_PAUSED, DEFAULTS.paused)),
             instanceId: sanitizeInstanceId(GM_getValue(KEY_INSTANCE_ID, DEFAULTS.instanceId)),
             waitEvent: sanitizeBooleanFlag(GM_getValue(KEY_WAIT_EVENT, DEFAULTS.waitEvent), DEFAULTS.waitEvent),
             targetSectionId: sanitizeTargetSectionId(GM_getValue(KEY_TARGET_SECTION_ID, DEFAULTS.targetSectionId)),
             pollMaxMinutes: sanitizePollMaxMinutes(GM_getValue(KEY_POLL_MAX_MINUTES, DEFAULTS.pollMaxMinutes)),
-            opsUseToken: sanitizeBooleanFlag(GM_getValue(KEY_OPS_USE_TOKEN, DEFAULTS.opsUseToken), DEFAULTS.opsUseToken),
             matchTieBreaker: sanitizeMatchTieBreaker(GM_getValue(KEY_MATCH_TIE_BREAKER, DEFAULTS.matchTieBreaker)),
             matchTieBreakerDirection: sanitizeMatchTieBreakerDirection(GM_getValue(KEY_MATCH_TIE_BREAKER_DIRECTION, DEFAULTS.matchTieBreakerDirection)),
             mediaOrder: sanitizeOrder(parsedMediaOrder, DEFAULT_MEDIA_ORDER),
@@ -277,16 +259,13 @@
         GM_setValue(KEY_RED_CATEGORY, String(config.redCategory ?? '').trim());
         GM_setValue(KEY_RED_TAGS, String(config.redTags ?? '').trim());
         GM_setValue(KEY_RED_API_KEY, String(config.redApiKey ?? '').trim());
-        GM_setValue(KEY_OPS_API_KEY, String(config.opsApiKey ?? '').trim());
         GM_setValue(KEY_RED_PAUSED, sanitizePausedState(config.redPaused));
         GM_setValue(KEY_RED_SKIP_CHECKING, sanitizeBooleanFlag(config.redSkipChecking, DEFAULTS.redSkipChecking));
-        GM_setValue(KEY_OPS_SKIP_CHECKING, sanitizeBooleanFlag(config.opsSkipChecking, DEFAULTS.opsSkipChecking));
         GM_setValue(KEY_PAUSED, sanitizePausedState(config.paused));
         GM_setValue(KEY_INSTANCE_ID, sanitizeInstanceId(config.instanceId));
         GM_setValue(KEY_WAIT_EVENT, sanitizeBooleanFlag(config.waitEvent, DEFAULTS.waitEvent));
         GM_setValue(KEY_TARGET_SECTION_ID, sanitizeTargetSectionId(config.targetSectionId));
         GM_setValue(KEY_POLL_MAX_MINUTES, sanitizePollMaxMinutes(config.pollMaxMinutes));
-        GM_setValue(KEY_OPS_USE_TOKEN, sanitizeBooleanFlag(config.opsUseToken, DEFAULTS.opsUseToken));
         GM_setValue(KEY_MATCH_TIE_BREAKER, sanitizeMatchTieBreaker(config.matchTieBreaker));
         GM_setValue(KEY_MATCH_TIE_BREAKER_DIRECTION, sanitizeMatchTieBreakerDirection(config.matchTieBreakerDirection));
         GM_setValue(KEY_MEDIA_ORDER, JSON.stringify(sanitizeOrder(config.mediaOrder, DEFAULT_MEDIA_ORDER)));
@@ -353,9 +332,6 @@
         const token = prompt('Proxy token (appended to URL path)', current.token);
         if (token === null) return;
 
-        const opsApiKey = prompt('OPS API key (optional)', current.opsApiKey);
-        if (opsApiKey === null) return;
-
         const savePath = prompt('Proxy savePath (optional)', current.savePath);
         if (savePath === null) return;
 
@@ -382,16 +358,13 @@
             redCategory: current.redCategory,
             redTags: current.redTags,
             redApiKey: current.redApiKey,
-            opsApiKey: String(opsApiKey).trim(),
             redPaused: current.redPaused,
             redSkipChecking: current.redSkipChecking,
-            opsSkipChecking: current.opsSkipChecking,
             paused: sanitizePausedState(paused),
             instanceId: sanitizeInstanceId(instanceId),
             waitEvent,
             targetSectionId: current.targetSectionId,
             pollMaxMinutes: current.pollMaxMinutes,
-            opsUseToken: current.opsUseToken,
             matchTieBreaker: current.matchTieBreaker,
             matchTieBreakerDirection: current.matchTieBreakerDirection,
             mediaOrder: current.mediaOrder,
@@ -472,12 +445,6 @@
         if (albumAnchor && albumAnchor.textContent) {
             return albumAnchor.textContent.trim();
         }
-
-        const redAlbumAnchor = headerRow.querySelector('.group_info strong a[href*="torrents.php?id="]');
-        if (redAlbumAnchor && redAlbumAnchor.textContent) {
-            return redAlbumAnchor.textContent.trim();
-        }
-
         return `Group ${getGroupIdFromClasses(headerRow) || ''}`.trim();
     }
 
@@ -492,7 +459,7 @@
         for (const selector of candidates) {
             const value = String(document.querySelector(selector)?.textContent || '').trim();
             if (value) {
-                return value.replace(/\s+::\s+(Orpheus|Redacted).*$/i, '').trim();
+                return value.replace(/\s+::\s+Orpheus.*$/i, '').trim();
             }
         }
 
@@ -556,63 +523,10 @@
         return '';
     }
 
-    function getOpsTorrentIdFromMatchRow(matchRow) {
-        if (!matchRow) return '';
-
-        const detailsLink = matchRow.querySelector('a[href*="orpheus.network/torrents.php"]');
-        if (detailsLink) {
-            const href = String(detailsLink.getAttribute('href') || '').trim();
-            const queryMatch = href.match(/[?&]torrentid=(\d+)/i);
-            if (queryMatch) {
-                return queryMatch[1];
-            }
-
-            const hashMatch = href.match(/#torrent(\d+)/i);
-            if (hashMatch) {
-                return hashMatch[1];
-            }
-        }
-
-        const dlLink = matchRow.querySelector('a.dl-link[data-id]');
-        if (dlLink) {
-            const id = String(dlLink.getAttribute('data-id') || '').trim();
-            if (/^\d+$/.test(id)) {
-                return id;
-            }
-        }
-
-        return '';
-    }
-
-    function extractGroupIdFromRow(row) {
-        if (!row) return null;
-
-        const groupLink = row.querySelector('a[href*="torrents.php?id="]');
-        if (groupLink) {
-            const href = String(groupLink.getAttribute('href') || '').trim();
-            const queryMatch = href.match(/[?&]id=(\d+)/i);
-            if (queryMatch) {
-                return queryMatch[1];
-            }
-        }
-
-        const rowId = String(row.id || '').trim();
-        const idMatch = rowId.match(/(?:^|_)(\d+)$/);
-        if (idMatch) {
-            return idMatch[1];
-        }
-
-        return null;
-    }
-
     function getSectionRows(sectionId) {
         const sectionHeader = document.querySelector(`tr.colhead_dark#${sectionId}`);
         if (!sectionHeader) {
-            const sectionTable = document.querySelector(`table#${sectionId}.torrent_table.grouped.release_table`);
-            if (!sectionTable) {
-                return [];
-            }
-            return Array.from(sectionTable.querySelectorAll('tr'));
+            return [];
         }
 
         const rows = [];
@@ -631,33 +545,31 @@
     }
 
     function parseReleaseDetails(torrentRow) {
-        const links = Array.from(torrentRow.querySelectorAll('td.td_info a, td.big_info a'));
+        const links = Array.from(torrentRow.querySelectorAll('td.td_info a'));
         const detailsAnchor = links.find((link) => /\[[^\]]+\]/.test(link.textContent || ''));
-        const detailsText = detailsAnchor
-            ? String(detailsAnchor.textContent || '').trim()
-            : String(torrentRow.querySelector('td.td_info, td.big_info')?.textContent || '').trim();
-        const bracketMatch = detailsText.match(/\[([^\]]+)\]/);
-        const sourceText = bracketMatch ? bracketMatch[1] : detailsText;
+        if (!detailsAnchor) return null;
 
-        const parts = sourceText
-            .split('/')
-            .map((part) => part.replace(/^[\[\]\-\s]+|[\[\]\-\s]+$/g, '').trim())
-            .filter(Boolean);
+        const text = detailsAnchor.textContent || '';
+        const bracketMatch = text.match(/\[([^\]]+)\]/);
+        if (!bracketMatch) return null;
+
+        const parts = bracketMatch[1].split('/').map((part) => part.trim());
         if (parts.length < 3) return null;
 
-        const media = parts[0];
+        const media = parts[0].toUpperCase();
         const format = parts[1];
-        const encoding = parts[2];
-        const releaseType = `${media} / ${format} / ${encoding}`;
+        const encoding = parts[2].toLowerCase();
+        const releaseType = `${parts[0]} / ${format} / ${parts[2]}`;
 
         return { media, format, encoding, releaseType };
     }
 
-    function buildOpsDownloadUrl(torrentId, useToken) {
-        const normalizedId = String(torrentId || '').trim();
-        if (!/^\d+$/.test(normalizedId)) return '';
-        const useTokenValue = useToken ? '1' : '0';
-        return `https://orpheus.network/ajax.php?action=download&id=${normalizedId}&usetoken=${useTokenValue}`;
+    function extractFlTokenLink(torrentRow) {
+        const flAnchor = torrentRow.querySelector('a[href*="action=download"][href*="usetoken=1"]');
+        if (!flAnchor) return null;
+        const href = flAnchor.getAttribute('href');
+        if (!href) return null;
+        return new URL(href, globalThis.location.origin).href;
     }
 
     function parseSeeders(torrentRow) {
@@ -667,16 +579,13 @@
         return Number.isFinite(value) ? value : 0;
     }
 
-    function hasSnatchedOrSeedingLabel(torrentRow) {
+    function hasSnatchedLabel(torrentRow) {
         if (!torrentRow) return false;
 
-        const labelNodes = Array.from(torrentRow.querySelectorAll('strong.torrent_label'));
-        if (labelNodes.length === 0) return false;
+        const snatchedBadge = torrentRow.querySelector('strong.torrent_label.tl_snatched');
+        if (!snatchedBadge) return false;
 
-        return labelNodes.some((node) => {
-            const text = String(node.textContent || '').trim();
-            return /snatched!?/i.test(text) || /seeding!?/i.test(text);
-        });
+        return /snatched!?/i.test(String(snatchedBadge.textContent || '').trim());
     }
 
     function parseFileCount(torrentRow) {
@@ -715,7 +624,6 @@
 
     function getMediaKey(media) {
         const normalized = String(media || '').trim().toLowerCase();
-        if (normalized === 'bd') return 'Blu-Ray';
         const hit = MEDIA_OPTIONS.find((option) => option.key.toLowerCase() === normalized);
         return hit ? hit.key : null;
     }
@@ -740,10 +648,10 @@
         let currentHeaderGroupId = null;
 
         for (const row of albumRows) {
-            const groupId = getGroupIdFromClasses(row) || extractGroupIdFromRow(row) || currentHeaderGroupId;
+            const groupId = getGroupIdFromClasses(row) || currentHeaderGroupId;
 
-            if (Array.from(row.classList).some((c) => /^groupid_\d+_header$/.test(c)) || (row.classList.contains('group') && row.classList.contains('discog'))) {
-                currentHeaderGroupId = groupId || currentHeaderGroupId;
+            if (Array.from(row.classList).some((c) => /^groupid_\d+_header$/.test(c))) {
+                currentHeaderGroupId = getGroupIdFromClasses(row) || currentHeaderGroupId;
                 if (currentHeaderGroupId) {
                     groupMetaByGroup.set(currentHeaderGroupId, {
                         albumName: extractAlbumName(row)
@@ -775,10 +683,10 @@
                 continue;
             }
 
-            if (hasSnatchedOrSeedingLabel(row)) {
+            if (hasSnatchedLabel(row)) {
                 excludedSnatchedGroups.add(groupId);
                 candidatesByGroup.delete(groupId);
-                console.log(`[OPS Album Handler] Skipping groupId=${groupId} because it contains a Snatched/Seeding release.`);
+                console.log(`[OPS Album Handler] Skipping groupId=${groupId} because it contains a Snatched release.`);
                 continue;
             }
 
@@ -794,25 +702,22 @@
 
                 const opsFileCount = parseFileCount(row);
                 const redFileCount = parseFileCount(matchRow);
-                if (!IS_RED_HOST && (opsFileCount === null || redFileCount === null || opsFileCount !== redFileCount)) {
+                if (opsFileCount === null || redFileCount === null || opsFileCount !== redFileCount) {
                     continue;
                 }
             }
 
             const matchRow = requireRedMatch ? document.getElementById(`${row.id}_match`) : null;
-            const redTorrentId = IS_OPS_HOST && requireRedMatch ? getRedTorrentIdFromMatchRow(matchRow) : '';
-            const redGroupId = IS_OPS_HOST && requireRedMatch ? getRedGroupIdFromMatchRow(matchRow) : '';
-            const opsTorrentId = IS_RED_HOST
-                ? (requireRedMatch ? getOpsTorrentIdFromMatchRow(matchRow) : '')
-                : row.id.replace('torrent', '');
+            const redTorrentId = requireRedMatch ? getRedTorrentIdFromMatchRow(matchRow) : '';
+            const redGroupId = requireRedMatch ? getRedGroupIdFromMatchRow(matchRow) : '';
 
             const details = parseReleaseDetails(row);
             if (!details) {
                 continue;
             }
 
-            const opsDownloadUrl = buildOpsDownloadUrl(opsTorrentId, selectionConfig.opsUseToken);
-            if (!opsDownloadUrl) {
+            const flTokenUrl = extractFlTokenLink(row);
+            if (!flTokenUrl) {
                 continue;
             }
 
@@ -854,10 +759,10 @@
 
             candidatesByGroup.get(groupId).push({
                 groupId,
-                torrentId: opsTorrentId,
+                torrentId,
                 redTorrentId,
                 redGroupId,
-                flTokenUrl: opsDownloadUrl,
+                flTokenUrl,
                 mediaRank,
                 formatRank,
                 bitrateRank,
@@ -1034,11 +939,7 @@
     }
 
     function postToProxy(config, urls) {
-        const extraFields = {};
-        if (config.opsSkipChecking === true) {
-            extraFields.skip_checking = 'true';
-        }
-        return postToProxyWithOptions(config, urls, extraFields);
+        return postToProxyWithOptions(config, urls, {});
     }
 
     function postTorrentFilesToProxyWithOptions(config, torrentFiles, extraFields, options) {
@@ -1750,7 +1651,7 @@
             lastUpdate: 'Waiting for first poll...'
         }));
 
-        const enableRedHandling = Boolean(config.waitEvent) && IS_OPS_HOST;
+        const enableRedHandling = Boolean(config.waitEvent);
         redStatusByReleaseKey = enableRedHandling
             ? new Map(items.map((item) => [
                 item.releaseKey,
@@ -1818,8 +1719,6 @@
     function getDiscogTableAnchor() {
         const discog = document.getElementById('discog_table');
         if (!discog) return null;
-        const albumsTable = discog.querySelector('table#torrents_album.torrent_table.grouped.release_table');
-        if (albumsTable) return albumsTable;
         return discog.querySelector('table.torrent_table.grouped.release_table.m_table');
     }
 
@@ -1928,15 +1827,11 @@
         const displayRedCategory = config.redCategory || '';
         const displayRedTags = config.redTags || '';
         const displayRedApiKey = config.redApiKey ? REDACTED_VALUE : '';
-        const displayOpsApiKey = config.opsApiKey ? REDACTED_VALUE : '';
         const displayRedPaused = config.redPaused || '';
         const displayRedSkipChecking = Boolean(config.redSkipChecking);
         const displayPaused = config.paused || '';
-        const displayOpsSkipChecking = Boolean(config.opsSkipChecking);
         const displayInstanceId = config.instanceId || '';
         const displayPollMaxMinutes = sanitizePollMaxMinutes(config.pollMaxMinutes);
-        const displayOpsUseToken = Boolean(config.opsUseToken);
-        const redSettingsOpenAttr = IS_RED_HOST ? 'open' : '';
 
         const mediaRows = MEDIA_OPTIONS
             .map((option) => {
@@ -1998,75 +1893,68 @@
         panel.innerHTML = `
             <summary><strong>OPS Album Handler</strong></summary>
             <div style="margin-top:10px;">
-                <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:8px;">
-                    <label>Target release type: <select id="ops-fl-proxy-target-section">${releaseTypeOptionsHtml}</select></label>
-                    <label>Candidate tie-breaker: <select id="ops-fl-proxy-match-tie-breaker">${tieBreakerOptionsHtml}</select></label>
-                    <label>Tie-breaker direction: <select id="ops-fl-proxy-match-tie-breaker-direction">${tieBreakerDirectionOptionsHtml}</select></label>
-                    <label>Max poll time (minutes): <input type="number" id="ops-fl-proxy-poll-max-minutes" value="${escapeHtml(displayPollMaxMinutes)}" min="1" step="1" style="width:90px;"></label>
-                    <label><input type="checkbox" id="ops-fl-proxy-wait-event" ${config.waitEvent ? 'checked' : ''}> Wait for ${EVENT_NAME}</label>
-                </div>
+                <details id="ops-fl-proxy-settings-section">
+                    <summary><strong>Config / Settings</strong></summary>
+                    <div style="margin-top:10px;">
+                        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:8px;">
+                            <label>Target release type: <select id="ops-fl-proxy-target-section">${releaseTypeOptionsHtml}</select></label>
+                            <label>Candidate tie-breaker: <select id="ops-fl-proxy-match-tie-breaker">${tieBreakerOptionsHtml}</select></label>
+                            <label>Tie-breaker direction: <select id="ops-fl-proxy-match-tie-breaker-direction">${tieBreakerDirectionOptionsHtml}</select></label>
+                            <label>qUI base URL: <input type="text" id="ops-fl-proxy-base-url" value="${escapeHtml(displayBaseUrl)}" style="min-width:220px;"></label>
+                            <label>Token: <input type="text" id="ops-fl-proxy-token" value="${escapeHtml(displayToken)}" style="min-width:220px;"></label>
+                            <label>savePath: <input type="text" id="ops-fl-proxy-save-path" value="${escapeHtml(displaySavePath)}" style="min-width:220px;"></label>
+                            <label>category: <input type="text" id="ops-fl-proxy-category" value="${escapeHtml(displayCategory)}" style="min-width:120px;"></label>
+                            <label>tags: <input type="text" id="ops-fl-proxy-tags" value="${escapeHtml(displayTags)}" style="min-width:180px;"></label>
+                            <label>paused: <select id="ops-fl-proxy-paused"><option value="" ${displayPaused === '' ? 'selected' : ''}>omit</option><option value="true" ${displayPaused === 'true' ? 'selected' : ''}>true</option><option value="false" ${displayPaused === 'false' ? 'selected' : ''}>false</option></select></label>
+                            <label>instanceId: <input type="number" id="ops-fl-proxy-instance-id" value="${escapeHtml(displayInstanceId)}" min="0" step="1" style="width:90px;"></label>
+                            <label>Max poll time (minutes): <input type="number" id="ops-fl-proxy-poll-max-minutes" value="${escapeHtml(displayPollMaxMinutes)}" min="1" step="1" style="width:90px;"></label>
+                            <label><input type="checkbox" id="ops-fl-proxy-wait-event" ${config.waitEvent ? 'checked' : ''}> Wait for ${EVENT_NAME}</label>
+                        </div>
 
-                <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:8px;">
-                    <label>qUI base URL: <input type="text" id="ops-fl-proxy-base-url" value="${escapeHtml(displayBaseUrl)}" style="min-width:220px;"></label>
-                    <label>Token: <input type="text" id="ops-fl-proxy-token" value="${escapeHtml(displayToken)}" style="min-width:220px;"></label>
-                    <label>savePath: <input type="text" id="ops-fl-proxy-save-path" value="${escapeHtml(displaySavePath)}" style="min-width:220px;"></label>
-                    <label>instanceId: <input type="number" id="ops-fl-proxy-instance-id" value="${escapeHtml(displayInstanceId)}" min="0" step="1" style="width:90px;"></label>
-                </div>
+                        <details id="ops-fl-proxy-red-section" style="margin-top:8px;">
+                            <summary><strong>RED Torrent Add Settings</strong></summary>
+                            <div style="margin-top:8px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                                <label>RED category: <input type="text" id="ops-fl-proxy-red-category" value="${escapeHtml(displayRedCategory)}" style="min-width:120px;"></label>
+                                <label>RED tags: <input type="text" id="ops-fl-proxy-red-tags" value="${escapeHtml(displayRedTags)}" style="min-width:180px;"></label>
+                                <label>RED API key: <input type="text" id="ops-fl-proxy-red-api-key" value="${escapeHtml(displayRedApiKey)}" style="min-width:260px;"></label>
+                                <label>RED paused: <select id="ops-fl-proxy-red-paused"><option value="" ${displayRedPaused === '' ? 'selected' : ''}>use OPS/default</option><option value="true" ${displayRedPaused === 'true' ? 'selected' : ''}>true</option><option value="false" ${displayRedPaused === 'false' ? 'selected' : ''}>false</option></select></label>
+                                <label><input type="checkbox" id="ops-fl-proxy-red-skip-checking" ${displayRedSkipChecking ? 'checked' : ''}> RED skip recheck (skip_checking=true)</label>
+                            </div>
+                        </details>
 
-                <details id="ops-fl-proxy-red-section" ${redSettingsOpenAttr}>
-                    <summary><strong>RED Torrent Add Settings</strong></summary>
-                    <div style="margin-top:8px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-                        <label>RED category: <input type="text" id="ops-fl-proxy-red-category" value="${escapeHtml(displayRedCategory)}" style="min-width:120px;"></label>
-                        <label>RED tags: <input type="text" id="ops-fl-proxy-red-tags" value="${escapeHtml(displayRedTags)}" style="min-width:180px;"></label>
-                        <label>RED API key: <input type="text" id="ops-fl-proxy-red-api-key" value="${escapeHtml(displayRedApiKey)}" style="min-width:260px;"></label>
-                        <label>RED paused: <select id="ops-fl-proxy-red-paused"><option value="" ${displayRedPaused === '' ? 'selected' : ''}>use OPS/default</option><option value="true" ${displayRedPaused === 'true' ? 'selected' : ''}>true</option><option value="false" ${displayRedPaused === 'false' ? 'selected' : ''}>false</option></select></label>
-                        <label><input type="checkbox" id="ops-fl-proxy-red-skip-checking" ${displayRedSkipChecking ? 'checked' : ''}> RED skip recheck (skip_checking=true)</label>
+                        <details id="ops-fl-proxy-media-section">
+                            <summary><strong>Media Priority (first)</strong></summary>
+                            <table style="margin-top:8px;">
+                                <tr><td style="padding:3px 8px 3px 0;"><strong>Use</strong></td><td style="padding:3px 8px 3px 0;"><strong>Media</strong></td><td><strong>Rank</strong></td></tr>
+                                ${mediaRows}
+                            </table>
+                        </details>
+
+                        <details id="ops-fl-proxy-format-section" style="margin-top:8px;">
+                            <summary><strong>Format Priority (within selected media)</strong></summary>
+                            <table style="margin-top:8px;">
+                                <tr><td style="padding:3px 8px 3px 0;"><strong>Use</strong></td><td style="padding:3px 8px 3px 0;"><strong>Format</strong></td><td><strong>Rank</strong></td></tr>
+                                ${formatRows}
+                            </table>
+                        </details>
+
+                        <details id="ops-fl-proxy-bitrate-section" style="margin-top:8px;">
+                            <summary><strong>Bitrate Priority (within selected media/format)</strong></summary>
+                            <table style="margin-top:8px;">
+                                <tr><td style="padding:3px 8px 3px 0;"><strong>Use</strong></td><td style="padding:3px 8px 3px 0;"><strong>Bitrate</strong></td><td><strong>Rank</strong></td></tr>
+                                ${bitrateRows}
+                            </table>
+                        </details>
+
+                        <div style="margin-top:10px; display:flex; gap:8px; align-items:center;">
+                            <button type="button" id="ops-fl-proxy-save-config">Save settings</button>
+                            <button type="button" id="ops-fl-proxy-rescan">Rescan now</button>
+                            <button type="button" id="ops-fl-proxy-reset-priority">Reset media/format/bitrate priorities</button>
+                            <button type="button" id="ops-fl-proxy-reset-sent-cache">Reset sent cache (artist/type)</button>
+                            <span id="ops-fl-proxy-config-status"></span>
+                        </div>
                     </div>
                 </details>
-
-                <details id="ops-fl-proxy-ops-section" style="margin-top:8px;">
-                    <summary><strong>OPS-specific Settings</strong></summary>
-                    <div style="margin-top:8px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-                        <label>OPS category: <input type="text" id="ops-fl-proxy-category" value="${escapeHtml(displayCategory)}" style="min-width:120px;"></label>
-                        <label>OPS tags: <input type="text" id="ops-fl-proxy-tags" value="${escapeHtml(displayTags)}" style="min-width:180px;"></label>
-                        <label>OPS paused: <select id="ops-fl-proxy-paused"><option value="" ${displayPaused === '' ? 'selected' : ''}>omit</option><option value="true" ${displayPaused === 'true' ? 'selected' : ''}>true</option><option value="false" ${displayPaused === 'false' ? 'selected' : ''}>false</option></select></label>
-                        <label>OPS API key: <input type="text" id="ops-fl-proxy-ops-api-key" value="${escapeHtml(displayOpsApiKey)}" style="min-width:260px;"></label>
-                        <label><input type="checkbox" id="ops-fl-proxy-ops-use-token" ${displayOpsUseToken ? 'checked' : ''}> OPS download uses token by default</label>
-                        <label><input type="checkbox" id="ops-fl-proxy-ops-skip-checking" ${displayOpsSkipChecking ? 'checked' : ''}> OPS skip recheck (skip_checking=true)</label>
-                    </div>
-                </details>
-
-                <details id="ops-fl-proxy-media-section" style="margin-top:8px;">
-                    <summary><strong>Media Priority (first)</strong></summary>
-                    <table style="margin-top:8px;">
-                        <tr><td style="padding:3px 8px 3px 0;"><strong>Use</strong></td><td style="padding:3px 8px 3px 0;"><strong>Media</strong></td><td><strong>Rank</strong></td></tr>
-                        ${mediaRows}
-                    </table>
-                </details>
-
-                <details id="ops-fl-proxy-format-section" style="margin-top:8px;">
-                    <summary><strong>Format Priority (within selected media)</strong></summary>
-                    <table style="margin-top:8px;">
-                        <tr><td style="padding:3px 8px 3px 0;"><strong>Use</strong></td><td style="padding:3px 8px 3px 0;"><strong>Format</strong></td><td><strong>Rank</strong></td></tr>
-                        ${formatRows}
-                    </table>
-                </details>
-
-                <details id="ops-fl-proxy-bitrate-section" style="margin-top:8px;">
-                    <summary><strong>Bitrate Priority (within selected media/format)</strong></summary>
-                    <table style="margin-top:8px;">
-                        <tr><td style="padding:3px 8px 3px 0;"><strong>Use</strong></td><td style="padding:3px 8px 3px 0;"><strong>Bitrate</strong></td><td><strong>Rank</strong></td></tr>
-                        ${bitrateRows}
-                    </table>
-                </details>
-
-                <div style="margin-top:10px; display:flex; gap:8px; align-items:center;">
-                    <button type="button" id="ops-fl-proxy-save-config">Save settings</button>
-                    <button type="button" id="ops-fl-proxy-rescan">Rescan now</button>
-                    <button type="button" id="ops-fl-proxy-reset-priority">Reset media/format/bitrate priorities</button>
-                    <button type="button" id="ops-fl-proxy-reset-sent-cache">Reset sent cache (artist/type)</button>
-                    <span id="ops-fl-proxy-config-status"></span>
-                </div>
                 <div id="ops-fl-proxy-preview-container" style="margin-top:12px;"></div>
             </div>
         `;
@@ -2123,18 +2011,15 @@
                     savePath: resolveSensitiveValue('#ops-fl-proxy-save-path', config.savePath),
                     category: String(panel.querySelector('#ops-fl-proxy-category')?.value || '').trim(),
                     tags: String(panel.querySelector('#ops-fl-proxy-tags')?.value || '').trim(),
-                    opsApiKey: resolveSensitiveValue('#ops-fl-proxy-ops-api-key', config.opsApiKey),
                     redCategory: String(panel.querySelector('#ops-fl-proxy-red-category')?.value || '').trim(),
                     redTags: String(panel.querySelector('#ops-fl-proxy-red-tags')?.value || '').trim(),
                     redApiKey: resolveSensitiveValue('#ops-fl-proxy-red-api-key', config.redApiKey),
                     redPaused: sanitizePausedState(panel.querySelector('#ops-fl-proxy-red-paused')?.value || ''),
                     redSkipChecking: Boolean(panel.querySelector('#ops-fl-proxy-red-skip-checking')?.checked),
-                    opsSkipChecking: Boolean(panel.querySelector('#ops-fl-proxy-ops-skip-checking')?.checked),
                     paused: sanitizePausedState(panel.querySelector('#ops-fl-proxy-paused')?.value || ''),
                     instanceId: sanitizeInstanceId(panel.querySelector('#ops-fl-proxy-instance-id')?.value || ''),
                     pollMaxMinutes: sanitizePollMaxMinutes(panel.querySelector('#ops-fl-proxy-poll-max-minutes')?.value || DEFAULTS.pollMaxMinutes),
                     waitEvent: Boolean(panel.querySelector('#ops-fl-proxy-wait-event')?.checked),
-                    opsUseToken: Boolean(panel.querySelector('#ops-fl-proxy-ops-use-token')?.checked),
                     targetSectionId: sanitizeTargetSectionId(panel.querySelector('#ops-fl-proxy-target-section')?.value || ''),
                     matchTieBreaker: sanitizeMatchTieBreaker(panel.querySelector('#ops-fl-proxy-match-tie-breaker')?.value || DEFAULTS.matchTieBreaker),
                     matchTieBreakerDirection: sanitizeMatchTieBreakerDirection(panel.querySelector('#ops-fl-proxy-match-tie-breaker-direction')?.value || DEFAULTS.matchTieBreakerDirection),
@@ -2384,7 +2269,6 @@
             mediaRankMap,
             formatRankMap,
             bitrateRankMap,
-            opsUseToken: config.opsUseToken,
             mediaEnabled: config.mediaEnabled,
             formatEnabled: config.formatEnabled,
             bitrateEnabled: config.bitrateEnabled
@@ -2403,7 +2287,7 @@
 
         const candidatesByGroup = collectCandidatesByGroup(sectionRows, selectionConfig, requireRedMatch);
         if (candidatesByGroup.size === 0) {
-            console.log(`[OPS Album FL Proxy Queue] No eligible candidates found (${requireRedMatch ? `requires ${IS_RED_HOST ? 'OPS match row' : 'RED match + file count match'}` : 'standalone mode'} + enabled media/format/bitrate filters).`);
+            console.log(`[OPS Album FL Proxy Queue] No eligible candidates found (${requireRedMatch ? 'requires RED match + file count match' : 'OPS-only mode'} + OPS FL token link + enabled media/format/bitrate filters).`);
             return;
         }
 
