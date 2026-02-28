@@ -10,8 +10,8 @@
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
 // @require      https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js
-// @downloadURL  https://github.com/Audionut/add-trackers/raw/main/ops-album-fl-proxy-queue.user.js
-// @updateURL    https://github.com/Audionut/add-trackers/raw/main/ops-album-fl-proxy-queue.user.js
+// @downloadURL  https://github.com/Audionut/add-trackers/raw/main/ops-album-handler.user.js
+// @updateURL    https://github.com/Audionut/add-trackers/raw/main/ops-album-handler.user.js
 // @icon         https://orpheus.network/favicon.ico
 // ==/UserScript==
 
