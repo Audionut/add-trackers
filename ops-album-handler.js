@@ -1033,9 +1033,8 @@
         return urls;
     }
 
-    function buildProxySearchUrl(qbtProxySearchBaseUrl, searchTerm, quiFilters) {
+    function buildProxySearchUrl(qbtProxySearchBaseUrl, quiFilters) {
         const queryParts = [
-            `search=${encodeURIComponent(searchTerm)}`,
             'sort=added_on',
             'reverse=true',
             'limit=100'
@@ -1071,7 +1070,7 @@
         }
     }
 
-    function queryProxyTorrentSearch(config, searchTerm, quiFilters) {
+    function queryProxyTorrentSearch(config, quiFilters) {
         return new Promise((resolve, reject) => {
             const token = String(config.token || '').trim();
             if (!token) {
@@ -1089,7 +1088,7 @@
 
             const tryGet = (endpointIndex) => {
                 const searchBaseUrl = proxyUrls[endpointIndex];
-                const url = buildProxySearchUrl(searchBaseUrl, searchTerm, quiFilters);
+                const url = buildProxySearchUrl(searchBaseUrl, quiFilters);
                 attemptedUrls.push(url);
                 console.log(`[OPS Album FL Proxy Queue] Searching qBittorrent via proxy: ${url}`);
 
@@ -1487,19 +1486,8 @@
 
         try {
             for (const item of items) {
-                const searchTerms = [
-                    `${item.artistName} ${item.albumName}`.trim(),
-                    String(item.albumName || '').trim()
-                ].filter(Boolean);
-
-                let bestResult = null;
-                for (const term of searchTerms) {
-                    const results = await queryProxyTorrentSearch(config, term, quiFilters);
-                    bestResult = pickBestSearchResult(results, item.albumName, item.torrentId);
-                    if (bestResult) {
-                        break;
-                    }
-                }
+                const results = await queryProxyTorrentSearch(config, quiFilters);
+                const bestResult = pickBestSearchResult(results, item.albumName, item.torrentId);
 
                 if (!bestResult) {
                     item.state = 'not_found';
@@ -1543,19 +1531,11 @@
                     if (item.redTorrentId) {
                         const redStatus = redStatusByReleaseKey.get(item.releaseKey);
                         if (redStatus && redStatus.addStatus === 'submitted') {
-                            const redSearchTerms = [
-                                `${item.artistName} ${item.albumName}`.trim(),
-                                String(item.albumName || '').trim()
-                            ].filter(Boolean);
+                            const redResults = await queryProxyTorrentSearch(config, redQuiFilters);
+                            const redResult = pickBestSearchResult(redResults, item.albumName, item.redTorrentId);
 
-                            let redResult = null;
-                            for (const term of redSearchTerms) {
-                                const redResults = await queryProxyTorrentSearch(config, term, redQuiFilters);
-                                redResult = pickBestSearchResult(redResults, item.albumName, item.redTorrentId);
-                                if (redResult) {
-                                    console.log(`[OPS Album Handler][RED] Tracking match found for redTorrentId=${item.redTorrentId}: state=${String(redResult.state || 'unknown')}, progress=${normalizeTorrentProgress(redResult).toFixed(1)}%, name="${String(redResult.name || '')}".`);
-                                    break;
-                                }
+                            if (redResult) {
+                                console.log(`[OPS Album Handler][RED] Tracking match found for redTorrentId=${item.redTorrentId}: state=${String(redResult.state || 'unknown')}, progress=${normalizeTorrentProgress(redResult).toFixed(1)}%, name="${String(redResult.name || '')}".`);
                             }
 
                             if (redResult) {
