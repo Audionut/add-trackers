@@ -23,6 +23,10 @@
     const KEY_SAVE_PATH = 'OPS_FL_PROXY_SAVE_PATH';
     const KEY_CATEGORY = 'OPS_FL_PROXY_CATEGORY';
     const KEY_TAGS = 'OPS_FL_PROXY_TAGS';
+    const KEY_RED_CATEGORY = 'OPS_FL_PROXY_RED_CATEGORY';
+    const KEY_RED_TAGS = 'OPS_FL_PROXY_RED_TAGS';
+    const KEY_RED_PAUSED = 'OPS_FL_PROXY_RED_PAUSED';
+    const KEY_RED_SKIP_CHECKING = 'OPS_FL_PROXY_RED_SKIP_CHECKING';
     const KEY_TRACKER_ANNOUNCE_URL = 'OPS_FL_PROXY_TRACKER_ANNOUNCE_URL';
     const KEY_PAUSED = 'OPS_FL_PROXY_PAUSED';
     const KEY_INSTANCE_ID = 'OPS_FL_PROXY_INSTANCE_ID';
@@ -103,6 +107,10 @@
         savePath: '',
         category: '',
         tags: '',
+        redCategory: '',
+        redTags: '',
+        redPaused: '',
+        redSkipChecking: true,
         trackerAnnounceUrl: '',
         paused: '',
         instanceId: '',
@@ -209,6 +217,10 @@
             savePath: String(GM_getValue(KEY_SAVE_PATH, DEFAULTS.savePath)).trim(),
             category: String(GM_getValue(KEY_CATEGORY, DEFAULTS.category)).trim(),
             tags: String(GM_getValue(KEY_TAGS, DEFAULTS.tags)).trim(),
+            redCategory: String(GM_getValue(KEY_RED_CATEGORY, DEFAULTS.redCategory)).trim(),
+            redTags: String(GM_getValue(KEY_RED_TAGS, DEFAULTS.redTags)).trim(),
+            redPaused: sanitizePausedState(GM_getValue(KEY_RED_PAUSED, DEFAULTS.redPaused)),
+            redSkipChecking: Boolean(GM_getValue(KEY_RED_SKIP_CHECKING, DEFAULTS.redSkipChecking)),
             trackerAnnounceUrl: String(GM_getValue(KEY_TRACKER_ANNOUNCE_URL, DEFAULTS.trackerAnnounceUrl)).trim(),
             paused: sanitizePausedState(GM_getValue(KEY_PAUSED, DEFAULTS.paused)),
             instanceId: sanitizeInstanceId(GM_getValue(KEY_INSTANCE_ID, DEFAULTS.instanceId)),
@@ -232,6 +244,10 @@
         GM_setValue(KEY_SAVE_PATH, config.savePath);
         GM_setValue(KEY_CATEGORY, String(config.category ?? '').trim());
         GM_setValue(KEY_TAGS, String(config.tags ?? '').trim());
+        GM_setValue(KEY_RED_CATEGORY, String(config.redCategory ?? '').trim());
+        GM_setValue(KEY_RED_TAGS, String(config.redTags ?? '').trim());
+        GM_setValue(KEY_RED_PAUSED, sanitizePausedState(config.redPaused));
+        GM_setValue(KEY_RED_SKIP_CHECKING, Boolean(config.redSkipChecking));
         GM_setValue(KEY_TRACKER_ANNOUNCE_URL, String(config.trackerAnnounceUrl ?? '').trim());
         GM_setValue(KEY_PAUSED, sanitizePausedState(config.paused));
         GM_setValue(KEY_INSTANCE_ID, sanitizeInstanceId(config.instanceId));
@@ -327,10 +343,16 @@
             savePath: String(savePath).trim(),
             category: String(category).trim(),
             tags: String(tags).trim(),
+            redCategory: current.redCategory,
+            redTags: current.redTags,
+            redPaused: current.redPaused,
+            redSkipChecking: current.redSkipChecking,
+            trackerAnnounceUrl: current.trackerAnnounceUrl,
             paused: sanitizePausedState(paused),
             instanceId: sanitizeInstanceId(instanceId),
             waitEvent,
             targetSectionId: current.targetSectionId,
+            pollMaxMinutes: current.pollMaxMinutes,
             matchTieBreaker: current.matchTieBreaker,
             matchTieBreakerDirection: current.matchTieBreakerDirection,
             mediaOrder: current.mediaOrder,
@@ -341,7 +363,8 @@
             bitrateEnabled: current.bitrateEnabled
         });
 
-        alert('OPS Album FL Proxy Queue settings saved.');
+        alert('OPS Album FL Proxy Queue settings saved. Reloading page...');
+        globalThis.location.reload();
     }
 
     GM_registerMenuCommand('Configure OPS Album FL Proxy Queue', configureSettings);
@@ -634,8 +657,8 @@
                 }
             }
 
-            const matchRow = document.getElementById(`${row.id}_match`);
-            const redTorrentId = getRedTorrentIdFromMatchRow(matchRow);
+            const matchRow = requireRedMatch ? document.getElementById(`${row.id}_match`) : null;
+            const redTorrentId = requireRedMatch ? getRedTorrentIdFromMatchRow(matchRow) : '';
 
             const details = parseReleaseDetails(row);
             if (!details) {
@@ -782,7 +805,7 @@
         return urls;
     }
 
-    function postToProxyWithOptions(config, urls, extraFields) {
+    function postToProxyWithOptions(config, urls, extraFields, options) {
         return new Promise((resolve, reject) => {
             const token = String(config.token || '').trim();
             if (!token) {
@@ -796,18 +819,19 @@
                 return;
             }
 
+            const includeDefaultFields = options?.includeDefaultFields !== false;
             const formData = new FormData();
             formData.append('urls', urls.join('\n'));
-            if (config.savePath) {
+            if (includeDefaultFields && config.savePath) {
                 formData.append('savepath', config.savePath);
             }
-            if (config.category) {
+            if (includeDefaultFields && config.category) {
                 formData.append('category', config.category);
             }
-            if (config.tags) {
+            if (includeDefaultFields && config.tags) {
                 formData.append('tags', config.tags);
             }
-            if (config.paused) {
+            if (includeDefaultFields && config.paused) {
                 formData.append('paused', config.paused);
             }
 
@@ -1135,6 +1159,11 @@
     }
 
     function renderRedStatusPanel(state) {
+        if (!state?.enableRedHandling) {
+            removeExistingRedStatusPanel();
+            return;
+        }
+
         const previewContainer = document.getElementById('ops-fl-proxy-preview-container');
         if (!previewContainer) {
             return;
@@ -1208,8 +1237,24 @@
             throw new Error('Missing RED torrent id for auto-add.');
         }
 
+        const redCategory = String(config.redCategory || '').trim() || String(config.category || '').trim();
+        const redTags = String(config.redTags || '').trim() || String(config.tags || '').trim();
+        const redPaused = sanitizePausedState(config.redPaused) || sanitizePausedState(config.paused);
+
+        const extraFields = {
+            category: redCategory,
+            tags: redTags,
+            paused: redPaused
+        };
+
+        if (config.redSkipChecking !== false) {
+            extraFields.skip_checking = 'true';
+        }
+
         await postToProxyWithOptions(config, [redDownloadUrl], {
-            skip_checking: 'true'
+            ...extraFields
+        }, {
+            includeDefaultFields: false
         });
     }
 
@@ -1224,7 +1269,7 @@
 
         downloadStatusPollState.isPolling = true;
 
-        const { config, quiFilters, items } = downloadStatusPollState;
+        const { config, quiFilters, items, enableRedHandling } = downloadStatusPollState;
 
         try {
             for (const item of items) {
@@ -1253,57 +1298,59 @@
                 item.state = String(bestResult.state || 'unknown');
                 item.lastUpdate = String(bestResult.name || 'Matched');
 
-                const existingRedStatus = redStatusByReleaseKey.get(item.releaseKey) || {
-                    addStatus: item.redTorrentId ? 'waiting' : 'not_available',
-                    qbtState: '-',
-                    progressPercent: 0,
-                    lastUpdate: item.redTorrentId ? 'Waiting for OPS completion condition.' : 'No matching RED torrent id.'
-                };
+                if (enableRedHandling) {
+                    const existingRedStatus = redStatusByReleaseKey.get(item.releaseKey) || {
+                        addStatus: item.redTorrentId ? 'waiting' : 'not_available',
+                        qbtState: '-',
+                        progressPercent: 0,
+                        lastUpdate: item.redTorrentId ? 'Waiting for OPS completion condition.' : 'No matching RED torrent id.'
+                    };
 
-                if (item.redTorrentId && existingRedStatus.addStatus === 'waiting' && isReadyForRedAdd(item)) {
-                    existingRedStatus.addStatus = 'adding';
-                    existingRedStatus.lastUpdate = 'Submitting RED torrent to qUI with skip_checking=true...';
-                    redStatusByReleaseKey.set(item.releaseKey, existingRedStatus);
-                    renderRedStatusPanel(downloadStatusPollState);
+                    if (item.redTorrentId && existingRedStatus.addStatus === 'waiting' && isReadyForRedAdd(item)) {
+                        existingRedStatus.addStatus = 'adding';
+                        existingRedStatus.lastUpdate = 'Submitting RED torrent to qUI with skip_checking=true...';
+                        redStatusByReleaseKey.set(item.releaseKey, existingRedStatus);
+                        renderRedStatusPanel(downloadStatusPollState);
 
-                    try {
-                        await addRedTorrentToProxy(config, item);
-                        existingRedStatus.addStatus = 'submitted';
-                        existingRedStatus.lastUpdate = 'Submitted to qUI.';
-                    } catch (error) {
-                        existingRedStatus.addStatus = 'failed';
-                        existingRedStatus.lastUpdate = error && error.message ? error.message : 'RED add request failed';
+                        try {
+                            await addRedTorrentToProxy(config, item);
+                            existingRedStatus.addStatus = 'submitted';
+                            existingRedStatus.lastUpdate = 'Submitted to qUI.';
+                        } catch (error) {
+                            existingRedStatus.addStatus = 'failed';
+                            existingRedStatus.lastUpdate = error && error.message ? error.message : 'RED add request failed';
+                        }
+
+                        redStatusByReleaseKey.set(item.releaseKey, existingRedStatus);
                     }
 
-                    redStatusByReleaseKey.set(item.releaseKey, existingRedStatus);
-                }
+                    if (item.redTorrentId) {
+                        const redStatus = redStatusByReleaseKey.get(item.releaseKey);
+                        if (redStatus && redStatus.addStatus === 'submitted') {
+                            const redSearchTerms = [
+                                `${item.artistName} ${item.albumName}`.trim(),
+                                String(item.albumName || '').trim()
+                            ].filter(Boolean);
 
-                if (item.redTorrentId) {
-                    const redStatus = redStatusByReleaseKey.get(item.releaseKey);
-                    if (redStatus && redStatus.addStatus === 'submitted') {
-                        const redSearchTerms = [
-                            `${item.artistName} ${item.albumName}`.trim(),
-                            String(item.albumName || '').trim()
-                        ].filter(Boolean);
-
-                        let redResult = null;
-                        for (const term of redSearchTerms) {
-                            const redResults = await queryProxyTorrentSearch(config, term, quiFilters);
-                            redResult = pickBestSearchResult(redResults, item.albumName, item.redTorrentId);
-                            if (redResult) {
-                                break;
+                            let redResult = null;
+                            for (const term of redSearchTerms) {
+                                const redResults = await queryProxyTorrentSearch(config, term, quiFilters);
+                                redResult = pickBestSearchResult(redResults, item.albumName, item.redTorrentId);
+                                if (redResult) {
+                                    break;
+                                }
                             }
-                        }
 
-                        if (redResult) {
-                            redStatus.qbtState = String(redResult.state || 'unknown');
-                            redStatus.progressPercent = normalizeTorrentProgress(redResult);
-                            redStatus.lastUpdate = String(redResult.name || 'Matched');
-                        } else {
-                            redStatus.lastUpdate = 'Submitted, waiting for qUI search visibility.';
-                        }
+                            if (redResult) {
+                                redStatus.qbtState = String(redResult.state || 'unknown');
+                                redStatus.progressPercent = normalizeTorrentProgress(redResult);
+                                redStatus.lastUpdate = String(redResult.name || 'Matched');
+                            } else {
+                                redStatus.lastUpdate = 'Submitted, waiting for qUI search visibility.';
+                            }
 
-                        redStatusByReleaseKey.set(item.releaseKey, redStatus);
+                            redStatusByReleaseKey.set(item.releaseKey, redStatus);
+                        }
                     }
                 }
             }
@@ -1316,7 +1363,7 @@
                     return false;
                 }
 
-                if (!item.redTorrentId) {
+                if (!enableRedHandling || !item.redTorrentId) {
                     return true;
                 }
 
@@ -1373,15 +1420,18 @@
             lastUpdate: 'Waiting for first poll...'
         }));
 
-        redStatusByReleaseKey = new Map(items.map((item) => [
-            item.releaseKey,
-            {
-                addStatus: item.redTorrentId ? 'waiting' : 'not_available',
-                qbtState: '-',
-                progressPercent: 0,
-                lastUpdate: item.redTorrentId ? 'Waiting for OPS completion condition.' : 'No matching RED torrent id.'
-            }
-        ]));
+        const enableRedHandling = Boolean(config.waitEvent);
+        redStatusByReleaseKey = enableRedHandling
+            ? new Map(items.map((item) => [
+                item.releaseKey,
+                {
+                    addStatus: item.redTorrentId ? 'waiting' : 'not_available',
+                    qbtState: '-',
+                    progressPercent: 0,
+                    lastUpdate: item.redTorrentId ? 'Waiting for OPS completion condition.' : 'No matching RED torrent id.'
+                }
+            ]))
+            : new Map();
 
         const quiFilters = {
             status: [],
@@ -1398,6 +1448,7 @@
             config,
             items,
             quiFilters,
+            enableRedHandling,
             startedAt: Date.now(),
             maxMinutes,
             statusLabel: 'Starting...'
@@ -1515,6 +1566,10 @@
         const displaySavePath = config.savePath ? REDACTED_VALUE : '';
         const displayCategory = config.category || '';
         const displayTags = config.tags || '';
+        const displayRedCategory = config.redCategory || '';
+        const displayRedTags = config.redTags || '';
+        const displayRedPaused = config.redPaused || '';
+        const displayRedSkipChecking = Boolean(config.redSkipChecking);
         const displayTrackerAnnounceUrl = config.trackerAnnounceUrl ? REDACTED_VALUE : '';
         const displayPaused = config.paused || '';
         const displayInstanceId = config.instanceId || '';
@@ -1598,6 +1653,16 @@
                             <label>Max poll time (minutes): <input type="number" id="ops-fl-proxy-poll-max-minutes" value="${escapeHtml(displayPollMaxMinutes)}" min="1" step="1" style="width:90px;"></label>
                             <label><input type="checkbox" id="ops-fl-proxy-wait-event" ${config.waitEvent ? 'checked' : ''}> Wait for ${EVENT_NAME}</label>
                         </div>
+
+                        <details id="ops-fl-proxy-red-section" style="margin-top:8px;">
+                            <summary><strong>RED Torrent Add Settings</strong></summary>
+                            <div style="margin-top:8px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                                <label>RED category: <input type="text" id="ops-fl-proxy-red-category" value="${escapeHtml(displayRedCategory)}" style="min-width:120px;"></label>
+                                <label>RED tags: <input type="text" id="ops-fl-proxy-red-tags" value="${escapeHtml(displayRedTags)}" style="min-width:180px;"></label>
+                                <label>RED paused: <select id="ops-fl-proxy-red-paused"><option value="" ${displayRedPaused === '' ? 'selected' : ''}>use OPS/default</option><option value="true" ${displayRedPaused === 'true' ? 'selected' : ''}>true</option><option value="false" ${displayRedPaused === 'false' ? 'selected' : ''}>false</option></select></label>
+                                <label><input type="checkbox" id="ops-fl-proxy-red-skip-checking" ${displayRedSkipChecking ? 'checked' : ''}> RED skip recheck (skip_checking=true)</label>
+                            </div>
+                        </details>
 
                         <details id="ops-fl-proxy-media-section">
                             <summary><strong>Media Priority (first)</strong></summary>
@@ -1688,6 +1753,10 @@
                     savePath: resolveSensitiveValue('#ops-fl-proxy-save-path', config.savePath),
                     category: String(panel.querySelector('#ops-fl-proxy-category')?.value || '').trim(),
                     tags: String(panel.querySelector('#ops-fl-proxy-tags')?.value || '').trim(),
+                    redCategory: String(panel.querySelector('#ops-fl-proxy-red-category')?.value || '').trim(),
+                    redTags: String(panel.querySelector('#ops-fl-proxy-red-tags')?.value || '').trim(),
+                    redPaused: sanitizePausedState(panel.querySelector('#ops-fl-proxy-red-paused')?.value || ''),
+                    redSkipChecking: Boolean(panel.querySelector('#ops-fl-proxy-red-skip-checking')?.checked),
                     trackerAnnounceUrl: resolveSensitiveValue('#ops-fl-proxy-tracker-announce-url', config.trackerAnnounceUrl),
                     paused: sanitizePausedState(panel.querySelector('#ops-fl-proxy-paused')?.value || ''),
                     instanceId: sanitizeInstanceId(panel.querySelector('#ops-fl-proxy-instance-id')?.value || ''),
@@ -1706,6 +1775,7 @@
 
                 setConfig(newConfig);
                 status.textContent = 'Saved.';
+                globalThis.location.reload();
             });
         }
 
