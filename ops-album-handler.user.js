@@ -36,6 +36,7 @@
     const KEY_INSTANCE_ID = 'OPS_FL_PROXY_INSTANCE_ID';
     const KEY_WAIT_EVENT = 'OPS_FL_PROXY_WAIT_EVENT';
     const KEY_INCLUDE_NO_RED_MATCH = 'OPS_FL_PROXY_INCLUDE_NO_RED_MATCH';
+    const KEY_ALLOW_NORMAL_DOWNLOAD_FALLBACK = 'OPS_FL_PROXY_ALLOW_NORMAL_DOWNLOAD_FALLBACK';
     const KEY_MEDIA_ORDER = 'OPS_FL_PROXY_MEDIA_ORDER';
     const KEY_MEDIA_ENABLED = 'OPS_FL_PROXY_MEDIA_ENABLED';
     const KEY_FORMAT_ORDER = 'OPS_FL_PROXY_FORMAT_ORDER';
@@ -128,6 +129,7 @@
         instanceId: '',
         waitEvent: true,
         includeNoRedMatch: false,
+        allowNormalDownloadFallback: false,
         targetSectionId: 'torrents_album',
         pollMaxMinutes: 10,
         matchTieBreaker: 'seeders',
@@ -252,6 +254,7 @@
             instanceId: sanitizeInstanceId(GM_getValue(KEY_INSTANCE_ID, DEFAULTS.instanceId)),
             waitEvent: sanitizeBooleanFlag(GM_getValue(KEY_WAIT_EVENT, DEFAULTS.waitEvent), DEFAULTS.waitEvent),
             includeNoRedMatch: sanitizeBooleanFlag(GM_getValue(KEY_INCLUDE_NO_RED_MATCH, DEFAULTS.includeNoRedMatch), DEFAULTS.includeNoRedMatch),
+            allowNormalDownloadFallback: sanitizeBooleanFlag(GM_getValue(KEY_ALLOW_NORMAL_DOWNLOAD_FALLBACK, DEFAULTS.allowNormalDownloadFallback), DEFAULTS.allowNormalDownloadFallback),
             targetSectionId: sanitizeTargetSectionId(GM_getValue(KEY_TARGET_SECTION_ID, DEFAULTS.targetSectionId)),
             pollMaxMinutes: sanitizePollMaxMinutes(GM_getValue(KEY_POLL_MAX_MINUTES, DEFAULTS.pollMaxMinutes)),
             matchTieBreaker: sanitizeMatchTieBreaker(GM_getValue(KEY_MATCH_TIE_BREAKER, DEFAULTS.matchTieBreaker)),
@@ -281,6 +284,7 @@
         GM_setValue(KEY_INSTANCE_ID, sanitizeInstanceId(config.instanceId));
         GM_setValue(KEY_WAIT_EVENT, sanitizeBooleanFlag(config.waitEvent, DEFAULTS.waitEvent));
         GM_setValue(KEY_INCLUDE_NO_RED_MATCH, sanitizeBooleanFlag(config.includeNoRedMatch, DEFAULTS.includeNoRedMatch));
+        GM_setValue(KEY_ALLOW_NORMAL_DOWNLOAD_FALLBACK, sanitizeBooleanFlag(config.allowNormalDownloadFallback, DEFAULTS.allowNormalDownloadFallback));
         GM_setValue(KEY_TARGET_SECTION_ID, sanitizeTargetSectionId(config.targetSectionId));
         GM_setValue(KEY_POLL_MAX_MINUTES, sanitizePollMaxMinutes(config.pollMaxMinutes));
         GM_setValue(KEY_MATCH_TIE_BREAKER, sanitizeMatchTieBreaker(config.matchTieBreaker));
@@ -823,6 +827,7 @@
             instanceId: sanitizeInstanceId(instanceId),
             waitEvent,
             includeNoRedMatch: current.includeNoRedMatch,
+            allowNormalDownloadFallback: current.allowNormalDownloadFallback,
             targetSectionId: current.targetSectionId,
             pollMaxMinutes: current.pollMaxMinutes,
             matchTieBreaker: current.matchTieBreaker,
@@ -1024,12 +1029,62 @@
         return { media, format, encoding, releaseType };
     }
 
-    function extractFlTokenLink(torrentRow) {
-        const flAnchor = torrentRow.querySelector('a[href*="action=download"][href*="usetoken=1"]');
-        if (!flAnchor) return null;
-        const href = flAnchor.getAttribute('href');
-        if (!href) return null;
-        return new URL(href, globalThis.location.origin).href;
+    function toAbsoluteUrl(href) {
+        const value = String(href || '').trim();
+        if (!value) return '';
+        return new URL(value, globalThis.location.origin).href;
+    }
+
+    function getNormalDownloadUrlFromFlTokenUrl(flTokenUrl) {
+        const absolute = toAbsoluteUrl(flTokenUrl);
+        if (!absolute) return '';
+
+        try {
+            const url = new URL(absolute);
+            url.searchParams.delete('usetoken');
+            return url.href;
+        } catch {
+            return '';
+        }
+    }
+
+    function extractDownloadLinks(torrentRow) {
+        const downloadAnchors = Array.from(torrentRow.querySelectorAll('a[href*="action=download"]'));
+        let flTokenUrl = '';
+        let normalDownloadUrl = '';
+
+        for (const anchor of downloadAnchors) {
+            const absoluteHref = toAbsoluteUrl(anchor.getAttribute('href'));
+            if (!absoluteHref) continue;
+
+            if (/([?&])usetoken=1(?:[&#]|$)/i.test(absoluteHref)) {
+                if (!flTokenUrl) {
+                    flTokenUrl = absoluteHref;
+                }
+                continue;
+            }
+
+            if (!normalDownloadUrl) {
+                normalDownloadUrl = absoluteHref;
+            }
+        }
+
+        if (!normalDownloadUrl && flTokenUrl) {
+            normalDownloadUrl = getNormalDownloadUrlFromFlTokenUrl(flTokenUrl);
+        }
+
+        return { flTokenUrl, normalDownloadUrl };
+    }
+
+    function isInsufficientFlTokenError(error) {
+        const message = String(error?.message || error || '').toLowerCase();
+        if (!message) return false;
+
+        return (
+            /(not enough|insufficient|no enough)\s+.*token/.test(message)
+            || /you (do not|don't) have enough tokens/.test(message)
+            || /freeleech\s*token/.test(message)
+        );
     }
 
     function parseSeeders(torrentRow) {
@@ -1181,7 +1236,8 @@
                 continue;
             }
 
-            const flTokenUrl = extractFlTokenLink(row);
+            const downloadLinks = extractDownloadLinks(row);
+            const flTokenUrl = downloadLinks.flTokenUrl;
             if (!flTokenUrl) {
                 continue;
             }
@@ -1250,6 +1306,7 @@
                 redGroupId,
                 hasRedMatch: !requireRedMatch || hasExactRedMatch,
                 flTokenUrl,
+                normalDownloadUrl: downloadLinks.normalDownloadUrl,
                 mediaRank,
                 formatRank,
                 bitrateRank,
@@ -2426,6 +2483,7 @@
                             <label>Max poll time (minutes): <input type="number" id="ops-fl-proxy-poll-max-minutes" value="${escapeHtml(displayPollMaxMinutes)}" min="1" step="1" style="width:90px;"></label>
                             <label><input type="checkbox" id="ops-fl-proxy-wait-event" ${config.waitEvent ? 'checked' : ''}> Wait for ${EVENT_NAME}</label>
                             <label><input type="checkbox" id="ops-fl-proxy-include-no-red-match" ${config.includeNoRedMatch ? 'checked' : ''}> Include groups with no RED match</label>
+                            <label><input type="checkbox" id="ops-fl-proxy-normal-download-fallback" ${config.allowNormalDownloadFallback ? 'checked' : ''}> Fallback to normal OPS download when FL tokens fail</label>
                         </div>
 
                         <details id="ops-fl-proxy-red-section" style="margin-top:8px;">
@@ -2540,6 +2598,7 @@
                     pollMaxMinutes: sanitizePollMaxMinutes(panel.querySelector('#ops-fl-proxy-poll-max-minutes')?.value || DEFAULTS.pollMaxMinutes),
                     waitEvent: Boolean(panel.querySelector('#ops-fl-proxy-wait-event')?.checked),
                     includeNoRedMatch: Boolean(panel.querySelector('#ops-fl-proxy-include-no-red-match')?.checked),
+                    allowNormalDownloadFallback: Boolean(panel.querySelector('#ops-fl-proxy-normal-download-fallback')?.checked),
                     targetSectionId: sanitizeTargetSectionId(panel.querySelector('#ops-fl-proxy-target-section')?.value || ''),
                     matchTieBreaker: sanitizeMatchTieBreaker(panel.querySelector('#ops-fl-proxy-match-tie-breaker')?.value || DEFAULTS.matchTieBreaker),
                     matchTieBreakerDirection: sanitizeMatchTieBreakerDirection(panel.querySelector('#ops-fl-proxy-match-tie-breaker-direction')?.value || DEFAULTS.matchTieBreakerDirection),
@@ -2716,16 +2775,31 @@
             const selectedCheckboxes = Array.from(previewTable.querySelectorAll('.ops-fl-result-select:checked'));
             const sentCacheLatest = getSentReleasesCacheForContext(contextKey);
             const releasesToSend = selectedCheckboxes
-                .map((checkbox) => ({
-                    releaseKey: checkbox.value,
-                    url: checkbox.dataset.url || ''
-                }))
-                .filter((item) => item.url)
+                .map((checkbox) => {
+                    const releaseKey = checkbox.value;
+                    const releaseMeta = selectedByReleaseKey.get(releaseKey);
+                    if (!releaseMeta) return null;
+
+                    const flTokenUrl = String(releaseMeta.flTokenUrl || checkbox.dataset.url || '').trim();
+                    const normalDownloadUrl = String(
+                        releaseMeta.normalDownloadUrl
+                        || getNormalDownloadUrlFromFlTokenUrl(flTokenUrl)
+                        || ''
+                    ).trim();
+
+                    if (!flTokenUrl) return null;
+                    return {
+                        releaseKey,
+                        flTokenUrl,
+                        normalDownloadUrl
+                    };
+                })
+                .filter(Boolean)
                 .filter((item) => !sentCacheLatest[item.releaseKey]);
 
-            const urls = Array.from(new Set(releasesToSend.map((item) => item.url)));
-            if (urls.length === 0) {
-                status.textContent = 'No new selected FL token URLs to submit.';
+            const flUrls = Array.from(new Set(releasesToSend.map((item) => item.flTokenUrl).filter(Boolean)));
+            if (flUrls.length === 0) {
+                status.textContent = 'No new selected download URLs to submit.';
                 return;
             }
 
@@ -2738,9 +2812,42 @@
             status.textContent = 'Sending...';
 
             try {
-                await postToProxy(config, urls);
+                let releasesSubmitted = releasesToSend.map((item) => ({
+                    releaseKey: item.releaseKey,
+                    url: item.flTokenUrl
+                }));
+                let usedNormalFallback = false;
+
+                try {
+                    await postToProxy(config, flUrls);
+                } catch (error) {
+                    if (!isInsufficientFlTokenError(error)) {
+                        throw error;
+                    }
+
+                    if (!config.allowNormalDownloadFallback) {
+                        throw new Error('OPS FL token download failed due to insufficient tokens. Enable fallback to normal OPS download in settings to continue.');
+                    }
+
+                    const fallbackReleases = releasesToSend
+                        .map((item) => ({
+                            releaseKey: item.releaseKey,
+                            url: item.normalDownloadUrl
+                        }))
+                        .filter((item) => item.url);
+                    const fallbackUrls = Array.from(new Set(fallbackReleases.map((item) => item.url)));
+                    if (fallbackUrls.length === 0) {
+                        throw new Error('OPS FL token download failed and no normal OPS download URLs were found for fallback.');
+                    }
+
+                    await postToProxy(config, fallbackUrls);
+                    releasesSubmitted = fallbackReleases;
+                    usedNormalFallback = true;
+                    console.warn('[OPS Album FL Proxy Queue] FL token submission failed due to insufficient tokens; submitted normal OPS download URLs via fallback.');
+                }
+
                 const updatedCache = getSentReleasesCacheForContext(contextKey);
-                releasesToSend.forEach((item) => {
+                releasesSubmitted.forEach((item) => {
                     updatedCache[item.releaseKey] = {
                         timestamp: Date.now(),
                         url: item.url
@@ -2748,7 +2855,7 @@
                 });
                 setSentReleasesCacheForContext(contextKey, updatedCache);
 
-                const submittedKeys = new Set(releasesToSend.map((item) => item.releaseKey));
+                const submittedKeys = new Set(releasesSubmitted.map((item) => item.releaseKey));
                 const checkboxes = Array.from(previewTable.querySelectorAll('.ops-fl-result-select'));
                 checkboxes.forEach((checkbox) => {
                     if (submittedKeys.has(checkbox.value)) {
@@ -2757,7 +2864,7 @@
                     }
                 });
 
-                const trackedItems = releasesToSend
+                const trackedItems = releasesSubmitted
                     .map((item) => {
                         const releaseMeta = selectedByReleaseKey.get(item.releaseKey);
                         if (!releaseMeta) return null;
@@ -2777,8 +2884,11 @@
                     startDownloadStatusPolling(config, trackedItems);
                 }
 
-                status.textContent = `Submitted ${urls.length} URLs.`;
-                console.log(`[OPS Album FL Proxy Queue] Submitted ${urls.length} FL token URLs to proxy.`);
+                const submittedUrlCount = Array.from(new Set(releasesSubmitted.map((item) => item.url))).length;
+                status.textContent = usedNormalFallback
+                    ? `Submitted ${submittedUrlCount} URLs (fallback to normal OPS download used).`
+                    : `Submitted ${submittedUrlCount} URLs.`;
+                console.log(`[OPS Album FL Proxy Queue] Submitted ${submittedUrlCount} OPS download URL(s) to proxy.`);
             } catch (error) {
                 status.textContent = `Failed: ${error && error.message ? error.message : 'request error'}`;
                 console.error('[OPS Album FL Proxy Queue] Proxy submit failed:', error);
