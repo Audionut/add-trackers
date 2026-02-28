@@ -194,6 +194,18 @@
         return '';
     }
 
+    function sanitizeBooleanFlag(value, defaultValue) {
+        if (typeof value === 'boolean') return value;
+        if (typeof value === 'number') return value !== 0;
+
+        const normalized = String(value ?? '').trim().toLowerCase();
+        if (!normalized) return Boolean(defaultValue);
+        if (normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on') return true;
+        if (normalized === 'false' || normalized === '0' || normalized === 'no' || normalized === 'off') return false;
+
+        return Boolean(defaultValue);
+    }
+
     function sanitizePollMaxMinutes(value) {
         const parsed = Number(value);
         if (!Number.isFinite(parsed)) return DEFAULTS.pollMaxMinutes;
@@ -221,10 +233,10 @@
             redTags: String(GM_getValue(KEY_RED_TAGS, DEFAULTS.redTags)).trim(),
             redApiKey: String(GM_getValue(KEY_RED_API_KEY, DEFAULTS.redApiKey)).trim(),
             redPaused: sanitizePausedState(GM_getValue(KEY_RED_PAUSED, DEFAULTS.redPaused)),
-            redSkipChecking: Boolean(GM_getValue(KEY_RED_SKIP_CHECKING, DEFAULTS.redSkipChecking)),
+            redSkipChecking: sanitizeBooleanFlag(GM_getValue(KEY_RED_SKIP_CHECKING, DEFAULTS.redSkipChecking), DEFAULTS.redSkipChecking),
             paused: sanitizePausedState(GM_getValue(KEY_PAUSED, DEFAULTS.paused)),
             instanceId: sanitizeInstanceId(GM_getValue(KEY_INSTANCE_ID, DEFAULTS.instanceId)),
-            waitEvent: Boolean(GM_getValue(KEY_WAIT_EVENT, DEFAULTS.waitEvent)),
+            waitEvent: sanitizeBooleanFlag(GM_getValue(KEY_WAIT_EVENT, DEFAULTS.waitEvent), DEFAULTS.waitEvent),
             targetSectionId: sanitizeTargetSectionId(GM_getValue(KEY_TARGET_SECTION_ID, DEFAULTS.targetSectionId)),
             pollMaxMinutes: sanitizePollMaxMinutes(GM_getValue(KEY_POLL_MAX_MINUTES, DEFAULTS.pollMaxMinutes)),
             matchTieBreaker: sanitizeMatchTieBreaker(GM_getValue(KEY_MATCH_TIE_BREAKER, DEFAULTS.matchTieBreaker)),
@@ -248,10 +260,10 @@
         GM_setValue(KEY_RED_TAGS, String(config.redTags ?? '').trim());
         GM_setValue(KEY_RED_API_KEY, String(config.redApiKey ?? '').trim());
         GM_setValue(KEY_RED_PAUSED, sanitizePausedState(config.redPaused));
-        GM_setValue(KEY_RED_SKIP_CHECKING, Boolean(config.redSkipChecking));
+        GM_setValue(KEY_RED_SKIP_CHECKING, sanitizeBooleanFlag(config.redSkipChecking, DEFAULTS.redSkipChecking));
         GM_setValue(KEY_PAUSED, sanitizePausedState(config.paused));
         GM_setValue(KEY_INSTANCE_ID, sanitizeInstanceId(config.instanceId));
-        GM_setValue(KEY_WAIT_EVENT, config.waitEvent);
+        GM_setValue(KEY_WAIT_EVENT, sanitizeBooleanFlag(config.waitEvent, DEFAULTS.waitEvent));
         GM_setValue(KEY_TARGET_SECTION_ID, sanitizeTargetSectionId(config.targetSectionId));
         GM_setValue(KEY_POLL_MAX_MINUTES, sanitizePollMaxMinutes(config.pollMaxMinutes));
         GM_setValue(KEY_MATCH_TIE_BREAKER, sanitizeMatchTieBreaker(config.matchTieBreaker));
@@ -567,6 +579,15 @@
         return Number.isFinite(value) ? value : 0;
     }
 
+    function hasSnatchedLabel(torrentRow) {
+        if (!torrentRow) return false;
+
+        const snatchedBadge = torrentRow.querySelector('strong.torrent_label.tl_snatched');
+        if (!snatchedBadge) return false;
+
+        return /snatched!?/i.test(String(snatchedBadge.textContent || '').trim());
+    }
+
     function parseFileCount(torrentRow) {
         const fileCountCell = torrentRow.querySelector('.td_filecount');
         if (!fileCountCell) return null;
@@ -623,6 +644,7 @@
         const editionInfoByGroup = new Map();
         const groupMetaByGroup = new Map();
         const candidatesByGroup = new Map();
+        const excludedSnatchedGroups = new Set();
         let currentHeaderGroupId = null;
 
         for (const row of albumRows) {
@@ -654,6 +676,17 @@
             }
 
             if (!row.classList.contains('torrent_row')) {
+                continue;
+            }
+
+            if (excludedSnatchedGroups.has(groupId)) {
+                continue;
+            }
+
+            if (hasSnatchedLabel(row)) {
+                excludedSnatchedGroups.add(groupId);
+                candidatesByGroup.delete(groupId);
+                console.log(`[OPS Album Handler] Skipping groupId=${groupId} because it contains a Snatched release.`);
                 continue;
             }
 
@@ -1708,6 +1741,20 @@
         return [{ id: DEFAULTS.targetSectionId, label: 'Albums' }];
     }
 
+    function formatSectionIdLabel(sectionId) {
+        const raw = String(sectionId || '').trim();
+        if (!raw) return '';
+
+        const withoutPrefix = raw.replace(/^torrents_/i, '');
+        if (!withoutPrefix) return raw;
+
+        return withoutPrefix
+            .split('_')
+            .filter(Boolean)
+            .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+            .join(' ');
+    }
+
     function removeExistingPanel() {
         const existing = document.getElementById('ops-fl-proxy-config-panel');
         if (existing) {
@@ -1746,6 +1793,12 @@
 
         const config = getConfig();
         const releaseTypeOptions = getDiscogReleaseTypeOptions();
+        if (!releaseTypeOptions.some((option) => option.id === config.targetSectionId)) {
+            releaseTypeOptions.unshift({
+                id: config.targetSectionId,
+                label: `${formatSectionIdLabel(config.targetSectionId) || config.targetSectionId} (saved)`
+            });
+        }
         const availableSectionIds = new Set(releaseTypeOptions.map((option) => option.id));
         const selectedSectionId = availableSectionIds.has(config.targetSectionId)
             ? config.targetSectionId
