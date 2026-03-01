@@ -1,9 +1,11 @@
 // ==UserScript==
-// @name         PTP Seeded qUI Targets
+// @name         PTP Seeded qui Targets
 // @version      1.0
-// @description  Finds seeded PTP rows, compares compatible cross-seed rows against qUI, and lists missing targets.
+// @description  Finds seeded PTP rows, compares compatible cross-seed rows against qui, and lists missing targets.
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
+// @downloadURL  https://github.com/Audionut/add-trackers/raw/main/ptp-seeded-qui-targets.user.js
+// @updateURL    https://github.com/Audionut/add-trackers/raw/main/ptp-seeded-qui-targets.user.js
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -408,7 +410,7 @@
 
         body.innerHTML = `
             <details>
-                <summary><strong>qUI Config</strong></summary>
+                <summary><strong>qui Config</strong></summary>
                 <div style="margin-top:8px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
                     <label>Base URL: <input type="text" id="ptp-sqt-base-url" value="${escapeHtml(displayBaseUrl)}" style="min-width:240px;"></label>
                     <label>Token: <input type="text" id="ptp-sqt-token" value="${escapeHtml(displayToken)}" style="min-width:180px;"></label>
@@ -425,7 +427,7 @@
                 <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
                     <input type="submit" id="ptp-sqt-save" value="Save">
                     <input type="submit" id="ptp-sqt-refresh" value="Refresh">
-                    <input type="submit" id="ptp-sqt-test" value="Test qUI">
+                    <input type="submit" id="ptp-sqt-test" value="Test qui">
                     <span id="${STATUS_ID}"></span>
                 </div>
             </details>
@@ -540,12 +542,12 @@
             testBtn.addEventListener('click', async () => {
                 const config = gatherPanelConfig(panel, getConfig());
                 saveConfig(config);
-                setStatus('Testing qUI...');
+                setStatus('Testing qui...');
                 try {
                     const results = await queryQui(config);
-                    setStatus(`qUI OK (${results.length} torrents)`);
+                    setStatus(`qui OK (${results.length} torrents)`);
                 } catch (error) {
-                    setStatus(`qUI test failed: ${error.message || error}`, true);
+                    setStatus(`qui test failed: ${error.message || error}`, true);
                 }
             });
         }
@@ -572,7 +574,7 @@
         const wrapper = panel.querySelector('#ptp-sqt-discovered-savepaths');
         if (!wrapper) return;
         if (Array.isArray(discoveredSavePaths) && discoveredSavePaths.length > 0) {
-            wrapper.innerHTML = `<span style="opacity:0.85;">Discovered qUI save paths across results: ${escapeHtml(String(discoveredSavePaths.length))}. Section-specific selectors are shown under each seeded torrent section.</span>`;
+            wrapper.innerHTML = `<span style="opacity:0.85;">Discovered qui save paths across results: ${escapeHtml(String(discoveredSavePaths.length))}. Section-specific selectors are shown under each seeded torrent section.</span>`;
             return;
         }
         wrapper.innerHTML = '';
@@ -724,7 +726,7 @@
         entries.forEach(({ key }) => {
             const current = addJobs.get(key);
             if (!current) return;
-            current.status = 'Submitted. Waiting for qUI state...';
+            current.status = 'Submitted. Waiting for qui state...';
             current.updatedAt = Date.now();
             addJobs.set(key, current);
         });
@@ -827,7 +829,7 @@
         const mainEntry = withDownload.find((entry) => entry.key === selectedMainKey) || withDownload[0];
         const fanoutEntries = withDownload.filter((entry) => entry.key !== mainEntry.key);
 
-        seedAddJobs([mainEntry], 'Submitting main seed to qUI...');
+        seedAddJobs([mainEntry], 'Submitting main seed to qui...');
         renderFeedbackPanel();
         await postToQui(addConfig, [mainEntry.target.downloadUrl], { skipChecking: false });
         markAddJobsSubmitted([mainEntry]);
@@ -843,7 +845,7 @@
             return { mainCount: 1, fanoutCount: 0 };
         }
 
-        seedAddJobs(fanoutEntries, 'Submitting fan-out targets to qUI...');
+        seedAddJobs(fanoutEntries, 'Submitting fan-out targets to qui...');
         renderFeedbackPanel();
         await postToQui(addConfig, fanoutEntries.map((entry) => entry.target.downloadUrl), { skipChecking: true });
         markAddJobsSubmitted(fanoutEntries);
@@ -874,7 +876,7 @@
         const panel = document.getElementById(PANEL_ID);
         const config = panel ? gatherPanelConfig(panel, getConfig()) : getConfig();
         if (!config.baseUrl || !config.token) {
-            setStatus('Missing qUI base URL or token.', true);
+            setStatus('Missing qui base URL or token.', true);
             return;
         }
 
@@ -924,7 +926,7 @@
                     totalFanout += stagedResult.fanoutCount;
                     totalSubmitted += stagedResult.mainCount + stagedResult.fanoutCount;
                 } else {
-                    seedAddJobs(sectionEntries, 'Submitting to qUI...');
+                    seedAddJobs(sectionEntries, 'Submitting to qui...');
                     renderFeedbackPanel();
                     await postToQui(addConfig, sectionEntries.map((entry) => entry.target.downloadUrl));
                     markAddJobsSubmitted(sectionEntries);
@@ -940,14 +942,14 @@
                 setStatus(`Main seed added (${totalMain}), then fan-out added (${totalFanout}).`);
             } else {
                 const skipInfo = config.skipRecheck ? ' skip_recheck=ON' : ' skip_recheck=OFF';
-                setStatus(`Submitted ${totalSubmitted} selected target(s) to qUI.${skipInfo}`);
+                setStatus(`Submitted ${totalSubmitted} selected target(s) to qui.${skipInfo}`);
             }
         } catch (error) {
             setAddJobsError(withDownload, error);
             renderFeedbackPanel();
             setStatus(`Add failed: ${error?.message || error}`, true);
         } finally {
-            button.value = 'Add Selected to qUI';
+            button.value = 'Add Selected to qui';
             button.disabled = false;
             updateSelectionSummary();
         }
@@ -1131,13 +1133,13 @@
         return new Promise((resolve, reject) => {
             const token = String(config.token || '').trim();
             if (!token) {
-                reject(new Error('Missing qUI token.'));
+                reject(new Error('Missing qui token.'));
                 return;
             }
 
             const candidateUrls = buildProxySearchCandidateUrls(config.baseUrl, token);
             if (candidateUrls.length === 0) {
-                reject(new Error('Missing qUI base URL or token.'));
+                reject(new Error('Missing qui base URL or token.'));
                 return;
             }
 
@@ -1147,22 +1149,22 @@
                 const base = candidateUrls[index];
                 const url = buildProxySearchUrl(base, config, searchTerm);
                 attempted.push(url);
-                console.debug(`[PTP Seeded qUI Targets] qUI search request ${index + 1}/${candidateUrls.length}: ${url}`);
+                console.debug(`[PTP Seeded qui Targets] qui search request ${index + 1}/${candidateUrls.length}: ${url}`);
 
                 GM_xmlhttpRequest({
                     method: 'GET',
                     url,
                     onload: (response) => {
-                        console.debug(`[PTP Seeded qUI Targets] qUI response status=${response.status} for ${url}`);
+                        console.debug(`[PTP Seeded qui Targets] qui response status=${response.status} for ${url}`);
                         if (response.status >= 200 && response.status < 300) {
                             const parsedResults = parseQuiResults(response.responseText);
-                            console.debug(`[PTP Seeded qUI Targets] qUI results count=${parsedResults.length} (search filter only)`);
+                            console.debug(`[PTP Seeded qui Targets] qui results count=${parsedResults.length} (search filter only)`);
                             resolve(parsedResults);
                             return;
                         }
 
                         if ((response.status === 401 || response.status === 403 || response.status === 404) && index < candidateUrls.length - 1) {
-                            console.debug(`[PTP Seeded qUI Targets] Retrying next qUI endpoint after status ${response.status}.`);
+                            console.debug(`[PTP Seeded qui Targets] Retrying next qui endpoint after status ${response.status}.`);
                             tryRequest(index + 1);
                             return;
                         }
@@ -1170,7 +1172,7 @@
                         reject(new Error(`Search failed with ${response.status} (${attempted.join(' | ')})`));
                     },
                     onerror: () => {
-                        console.debug(`[PTP Seeded qUI Targets] qUI request transport error for ${url}`);
+                        console.debug(`[PTP Seeded qui Targets] qui request transport error for ${url}`);
                         if (index < candidateUrls.length - 1) {
                             tryRequest(index + 1);
                             return;
@@ -1188,13 +1190,13 @@
         return new Promise((resolve, reject) => {
             const token = String(config.token || '').trim();
             if (!token) {
-                reject(new Error('Missing qUI token.'));
+                reject(new Error('Missing qui token.'));
                 return;
             }
 
             const candidateUrls = buildProxyAddCandidateUrls(config.baseUrl, token);
             if (candidateUrls.length === 0) {
-                reject(new Error('Missing qUI base URL or token.'));
+                reject(new Error('Missing qui base URL or token.'));
                 return;
             }
 
@@ -1224,14 +1226,14 @@
             const tryPost = (index) => {
                 const url = candidateUrls[index];
                 attempted.push(url);
-                console.debug(`[PTP Seeded qUI Targets] qUI add request ${index + 1}/${candidateUrls.length}: ${url}`);
+                console.debug(`[PTP Seeded qui Targets] qui add request ${index + 1}/${candidateUrls.length}: ${url}`);
 
                 GM_xmlhttpRequest({
                     method: 'POST',
                     url,
                     data: formData,
                     onload: (response) => {
-                        console.debug(`[PTP Seeded qUI Targets] qUI add response status=${response.status} for ${url}`);
+                        console.debug(`[PTP Seeded qui Targets] qui add response status=${response.status} for ${url}`);
                         if (response.status >= 200 && response.status < 300) {
                             resolve(response);
                             return;
@@ -1478,7 +1480,7 @@
         }
 
         if (Number.isInteger(actualFileCount) && Number.isInteger(expectedFileCount) && actualFileCount !== expectedFileCount) {
-            notes.push(`file count mismatch (qUI ${expectedFileCount}, got ${actualFileCount})`);
+            notes.push(`file count mismatch (qui ${expectedFileCount}, got ${actualFileCount})`);
         }
 
         return notes;
@@ -1503,11 +1505,11 @@
         const notes = [];
 
         if (reportedType !== 'unknown' && seededType !== 'unknown' && reportedType !== seededType) {
-            notes.push(`type mismatch (seeded ${formatTypeLabel(seededType)}, qUI ${formatTypeLabel(reportedType)})`);
+            notes.push(`type mismatch (seeded ${formatTypeLabel(seededType)}, qui ${formatTypeLabel(reportedType)})`);
         }
 
         if (Number.isInteger(quiItem?.expectedFileCount) && Number.isInteger(seededMeta?.rowFileCount) && quiItem.expectedFileCount !== seededMeta.rowFileCount) {
-            notes.push(`file count mismatch (seeded ${seededMeta.rowFileCount}, qUI ${quiItem.expectedFileCount})`);
+            notes.push(`file count mismatch (seeded ${seededMeta.rowFileCount}, qui ${quiItem.expectedFileCount})`);
         }
 
         return notes;
@@ -2234,7 +2236,7 @@
             setStatus(`Quality-only check complete (${fallbackResult.mode}). Candidate sets: ${fallbackResult.results.length}, targets: ${totalTargets}`);
         } catch (err) {
             setStatus(`Quality-only check failed: ${err?.message || err}`, true);
-            console.debug('[PTP Seeded qUI Targets] runQualityUpgradeForComputedIndex error', err);
+            console.debug('[PTP Seeded qui Targets] runQualityUpgradeForComputedIndex error', err);
         }
     }
 
@@ -2677,7 +2679,7 @@
                 }
             }
         } catch (error) {
-            console.debug(`[PTP Seeded qUI Targets] Polling error: ${error?.message || error}`);
+            console.debug(`[PTP Seeded qui Targets] Polling error: ${error?.message || error}`);
         } finally {
             addPollInFlight = false;
             renderFeedbackPanel();
@@ -2702,7 +2704,7 @@
         }
         addPollStartedAt = 0;
         if (reason) {
-            console.debug(`[PTP Seeded qUI Targets] Polling stopped: ${reason}`);
+            console.debug(`[PTP Seeded qui Targets] Polling stopped: ${reason}`);
         }
     }
 
@@ -2983,7 +2985,7 @@
             const targetCount = filteredTargets.length;
             const fallbackLabel = entry.fallbackMode === 'staged-fallback'
                 ? 'No-seeded fallback (staged add mode)'
-                : (entry.fallbackMode === 'qui-seeded-fallback' ? 'No-seeded fallback (qUI release already seeded)' : 'Seeded mode');
+                : (entry.fallbackMode === 'qui-seeded-fallback' ? 'No-seeded fallback (qui release already seeded)' : 'Seeded mode');
             const baseMatch = entry.baseQuiMatch || null;
             const baseHost = baseMatch?.rowMeta?.trackerHost || '(unknown tracker)';
             const baseName = baseMatch?.quiItem?.name || baseMatch?.rowMeta?.releaseName || '';
@@ -2996,7 +2998,7 @@
                 return `<li>${escapeHtml(itemName)} — ${escapeHtml(itemHost)} | savePath: ${escapeHtml(itemSavePath)}${renderMismatchNotesInline(mismatchNotes)}</li>`;
             }).join('');
             const quiMatchesBlock = (entry.quiMatches || []).length > 0
-                ? `<div style="margin-top:6px;"><strong>Matching qUI targets:</strong> ${entry.quiMatches.length}</div><ul style="margin:6px 0 0 18px;">${quiMatchRows}</ul>`
+                ? `<div style="margin-top:6px;"><strong>Matching qui targets:</strong> ${entry.quiMatches.length}</div><ul style="margin:6px 0 0 18px;">${quiMatchRows}</ul>`
                 : '';
 
             const discoveredPathsForSection = collectSectionDiscoveredSavePaths(entry.quiMatches);
@@ -3022,7 +3024,7 @@
                 .join('');
 
             const discoveredSavePathBlock = showSavePathSelector
-                ? `<div style="margin-top:6px;"><label>Discovered qUI save paths: <select class="ptp-sqt-savepath-choice" data-sqt-section-key="${escapeHtml(sectionKey)}" style="min-width:320px; margin-left:6px;">${savePathOptionsHtml}</select></label></div>`
+                ? `<div style="margin-top:6px;"><label>Discovered qui save paths: <select class="ptp-sqt-savepath-choice" data-sqt-section-key="${escapeHtml(sectionKey)}" style="min-width:320px; margin-left:6px;">${savePathOptionsHtml}</select></label></div>`
                 : '';
 
             const sectionSourceSet = new Set();
@@ -3151,7 +3153,7 @@
                     ${quiMatchesBlock}
                     ${discoveredSavePathBlock}
                     ${mainSeedSourceBlock}
-                    <div style="margin-top:4px;">Compatible rows: ${compatibleCount} | qUI release matches: ${quiCount} | Missing targets: ${targetCount}</div>
+                    <div style="margin-top:4px;">Compatible rows: ${compatibleCount} | qui release matches: ${quiCount} | Missing targets: ${targetCount}</div>
                     <div style="margin-top:6px;"><strong>Targets to add:</strong></div>
                     <ul style="margin:6px 0 0 18px;">${targetRows}</ul>
                 </div>
@@ -3168,7 +3170,7 @@
         pruneSectionState(activeSectionKeys);
 
         const controls = targetByKey.size > 0
-            ? `<div class="box pad" style="margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;"><input type="submit" id="ptp-sqt-select-all" value="Select All"><input type="submit" id="ptp-sqt-select-none" value="Select None"><input type="submit" id="ptp-sqt-add-selected" value="Add Selected to qUI"><span id="ptp-sqt-selection-summary"></span></div>`
+            ? `<div class="box pad" style="margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;"><input type="submit" id="ptp-sqt-select-all" value="Select All"><input type="submit" id="ptp-sqt-select-none" value="Select None"><input type="submit" id="ptp-sqt-add-selected" value="Add Selected to qui"><span id="ptp-sqt-selection-summary"></span></div>`
             : '';
 
         container.innerHTML = `${sections}${controls}`;
@@ -3230,8 +3232,8 @@
                 fallbackResult = await computeNoSeedFallback(allRows, config, myToken, selectedPtpMeta);
             } catch (error) {
                 if (myToken !== refreshToken) return;
-                setStatus(`Fallback qUI error: ${error.message || error}`, true);
-                renderWaitingMessage(`Fallback qUI request failed: ${error.message || error}`);
+                setStatus(`Fallback qui error: ${error.message || error}`, true);
+                renderWaitingMessage(`Fallback qui request failed: ${error.message || error}`);
                 return;
             }
 
@@ -3249,15 +3251,15 @@
             return;
         }
 
-        setStatus('Searching qUI...');
+        setStatus('Searching qui...');
 
         let quiItemsByReleaseName;
         try {
             quiItemsByReleaseName = await buildQuiItemsBySeededReleaseName(allRows, seededRows, config, myToken, false);
         } catch (error) {
             if (myToken !== refreshToken) return;
-            setStatus(`qUI error: ${error.message || error}`, true);
-            renderWaitingMessage(`qUI request failed: ${error.message || error}`);
+            setStatus(`qui error: ${error.message || error}`, true);
+            renderWaitingMessage(`qui request failed: ${error.message || error}`);
             return;
         }
 
@@ -3275,19 +3277,19 @@
 
         const quiTorrentsTotal = Array.from(quiItemsByReleaseName.values()).reduce((sum, list) => sum + list.length, 0);
         const totalTargets = computed.reduce((sum, item) => sum + item.targets.length, 0);
-        setStatus(`Done. Seeded rows: ${seededRows.length}, qUI torrents: ${quiTorrentsTotal}, targets: ${totalTargets}`);
+        setStatus(`Done. Seeded rows: ${seededRows.length}, qui torrents: ${quiTorrentsTotal}, targets: ${totalTargets}`);
     }
 
     function installEventHooks() {
         document.addEventListener(EVENT_NAME, () => {
-            console.debug(`[PTP Seeded qUI Targets] Received ${EVENT_NAME}; creating panel and running match pass.`);
+            console.debug(`[PTP Seeded qui Targets] Received ${EVENT_NAME}; creating panel and running match pass.`);
             hasSeenEvent = true;
             runMatchingPass();
         });
     }
 
     function init() {
-        console.debug(`[PTP Seeded qUI Targets] Waiting for ${EVENT_NAME} before creating panel.`);
+        console.debug(`[PTP Seeded qui Targets] Waiting for ${EVENT_NAME} before creating panel.`);
         installEventHooks();
     }
 
