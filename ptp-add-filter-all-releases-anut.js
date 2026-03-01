@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.6.0-A
+// @version      4.6.1-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -1975,7 +1975,7 @@ function toUnixTime(dateString) {
                 GM_xmlhttpRequest({
                     url: post_query_url,
                     method: method,
-                    data: (tracker === 'YUS' || tracker === 'OTW' || tracker === 'HHD') ? new URLSearchParams(postData).toString() : JSON.stringify(postData),
+                    data: (tracker === 'YUS' || tracker === 'OTW' || tracker === 'HHD' || tracker === 'FL') ? new URLSearchParams(postData).toString() : JSON.stringify(postData),
                     headers: headers,
                     onload: (res) => {
                         clearTimeout(timer);
