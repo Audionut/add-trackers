@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.5.9-A
+// @version      4.6.0-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -1217,6 +1217,12 @@ function toUnixTime(dateString) {
                                     return tempText;
                                 };
                             let formatted = "";
+                            const filesValueRaw =
+                                torrent.querySelector('files')?.textContent
+                                || torrent.querySelector('attr[name="files"]')?.getAttribute('value')
+                                || torrent.querySelector('torznab\\:attr[name="files"]')?.getAttribute('value')
+                                || "";
+                            const mtvFilecount = Number.parseInt(filesValueRaw, 10);
                             if (improved_tags) {
                                 formatted = replaceFullStops(cleanTheText);
                                 if (groupText && groupText.includes("FraMeSToR")) {
@@ -1224,7 +1230,7 @@ function toUnixTime(dateString) {
                                         formatted = formatted.replace("DV", "DV HDR");
                                     }
                                 }
-                                let files = parseInt(torrent.querySelector('files').textContent);
+                                const files = Number.isFinite(mtvFilecount) ? mtvFilecount : 0;
 
                                 if (formatted.includes("BluRay") && (!isMiniSeriesFromSpan) && torrent_obj.size && files > 10) {
                                     const bdType = get_bd_type(torrent_obj.size);
@@ -1278,6 +1284,10 @@ function toUnixTime(dateString) {
                                     return null;
                                 }
                                 torrent_obj.time = time;
+                            }
+
+                            if (Number.isFinite(mtvFilecount)) {
+                                torrent_obj.filecount = mtvFilecount;
                             }
 
                             torrent_objs.push(torrent_obj);
@@ -2846,6 +2856,26 @@ function toUnixTime(dateString) {
                             // Additional processing for discounts and time
                             const discounted = d.freeleech === 1 ? "FL" : "None";
                             const time = toUnixTime(d.created_at);
+                            const folderName = String(d.folder_name ?? '').trim();
+                            const hasFolderName = folderName && folderName !== '/' && folderName !== '\\';
+                            const parsedFilesAsCount = Number.parseInt(
+                                typeof d.files === 'number' || typeof d.files === 'string' ? d.files : '',
+                                10
+                            );
+                            const parsedBhdFilecount = Number.parseInt(
+                                d.file_count ?? d.filecount ?? d.numfiles ?? d.num_files ?? '',
+                                10
+                            );
+
+                            const bhdFiles = hasFolderName
+                                ? [{ name: folderName, size: Number.parseInt(d.size, 10) || null }]
+                                : [];
+
+                            const bhdFilecount = Number.isFinite(parsedBhdFilecount)
+                                ? parsedBhdFilecount
+                                : (Number.isFinite(parsedFilesAsCount)
+                                    ? parsedFilesAsCount
+                                    : (hasFolderName ? 2 : 1));
 
                             if (isNaN(time)) {
                                 return null;
@@ -2875,6 +2905,8 @@ function toUnixTime(dateString) {
                                 year: d.year,
                                 type: d.type,
                                 time: time,
+                                files: bhdFiles,
+                                filecount: bhdFilecount,
                             };
 
                             // Call the second API to check the seeding status using info_hash
@@ -2957,6 +2989,12 @@ function toUnixTime(dateString) {
                             const baseURL = 'https://hdbits.org/download.php/';
                             const pageURL = 'https://hdbits.org/details.php?id=';
                             const torrent = d.filename;
+                            const normalizedFilename = String(d.filename || '').replace(/\.torrent$/i, '').trim();
+                            const parsedNumfiles = Number.parseInt(d.numfiles, 10);
+                            const hdbFilecount = Number.isFinite(parsedNumfiles) ? parsedNumfiles : null;
+                            const hdbFiles = normalizedFilename
+                                ? [{ name: normalizedFilename, size: Number.parseInt(d.size, 10) || null }]
+                                : [];
                             let releaseName = d.filename.replace(/\.torrent$/, "");
 
                             if (releaseName.length > 20) {
@@ -3067,6 +3105,8 @@ function toUnixTime(dateString) {
                                 groupId: groupText,
                                 time: time,
                                 tags: webtags,
+                                files: hdbFiles,
+                                filecount: hdbFilecount,
                             };
 
                             const mappedObj = {
@@ -3204,6 +3244,38 @@ function toUnixTime(dateString) {
                                     return null;
                                 }
 
+                                const nblFilesFromList = Array.isArray(d.file_list)
+                                    ? d.file_list.map((entry) => {
+                                        const name = String(entry || '').trim();
+                                        if (!name) return null;
+                                        return { name, size: null };
+                                    }).filter(Boolean)
+                                    : [];
+
+                                const nblFilesFromEncoded = nblFilesFromList.length === 0
+                                    ? String(d.files || '')
+                                        .split('|||')
+                                        .map((entry) => {
+                                            const trimmed = String(entry || '').trim();
+                                            if (!trimmed) return null;
+                                            const match = trimmed.match(/^(.*?)\{\{\{(\d+)\}\}\}$/);
+                                            if (match) {
+                                                return {
+                                                    name: String(match[1] || '').trim(),
+                                                    size: Number.parseInt(match[2], 10) || null
+                                                };
+                                            }
+                                            return { name: trimmed, size: null };
+                                        })
+                                        .filter((file) => file && file.name)
+                                    : [];
+
+                                const nblFiles = nblFilesFromList.length > 0 ? nblFilesFromList : nblFilesFromEncoded;
+                                const parsedNblFilecount = Number.parseInt(d.filecount ?? d.fileCount, 10);
+                                const nblFilecount = Number.isFinite(parsedNblFilecount)
+                                    ? parsedNblFilecount
+                                    : (nblFiles.length > 0 ? nblFiles.length : null);
+
                                 const torrentObj = {
                                     api_size: api_size,
                                     datasetRelease: originalInfoText,
@@ -3220,6 +3292,8 @@ function toUnixTime(dateString) {
                                     status: "default",
                                     groupId: groupText,
                                     time: time,
+                                    files: nblFiles,
+                                    filecount: nblFilecount,
                                 };
 
                                 // Map additional properties if necessary
@@ -3416,15 +3490,30 @@ function toUnixTime(dateString) {
 
                         let infoText = '';
                         const filesCount = d.fileCount;
+                        const parsedFilecount = Number.parseInt(filesCount, 10);
+                        const antFilecount = Number.isFinite(parsedFilecount) ? parsedFilecount : null;
+                        const antFiles = Array.isArray(d.files)
+                            ? d.files.map((file) => {
+                                    const name = String(file?.name || '').trim();
+                                    if (!name) return null;
+                                    const parsedSize = Number.parseInt(file?.size, 10);
+                                    return {
+                                            name,
+                                            size: Number.isFinite(parsedSize) ? parsedSize : null
+                                    };
+                            }).filter(Boolean)
+                            : [];
 
-                        if (filesCount === 1 && d.files && d.files.length > 0) {
-                          infoText = d.files[0].name;
-                          const lastDotIndex = infoText.lastIndexOf('.');
-                          if (lastDotIndex !== -1) {
-                            infoText = infoText.substring(0, lastDotIndex);
-                          }
+                        if (antFiles.length === 1) {
+                            infoText = antFiles[0].name;
+                        const lastDotIndex = infoText.lastIndexOf('.');
+                        if (lastDotIndex !== -1) {
+                                infoText = infoText.substring(0, lastDotIndex);
+                        }
                         } else if (d.fileName) {
-                          infoText = d.fileName.replace(/\.\d+\.torrent$/i, '.torrent').replace(/\.torrent$/i, '');
+                                infoText = d.fileName.replace(/\.\d+\.torrent$/i, '.torrent').replace(/\.torrent$/i, '');
+                        } else if (d.name) {
+                                infoText = String(d.name);
                         }
 
                         const inputTime = d.pubDate;
@@ -3436,30 +3525,32 @@ function toUnixTime(dateString) {
                         let download = d.link;
                         let cleanedLink = download.replace(/&amp;/g, '&');
 
-                            const torrentObj = {
-                                api_size: api_size,
-                                datasetRelease: infoText,
-                                size: size,
-                                info_text: infoText,
-                                tracker: tracker,
-                                site: tracker,
-                                snatch: d.grabs || 0,
-                                seed: d.seeders || 0,
-                                leech: d.leechers || 0,
-                                download_link: cleanedLink || "",
-                                torrent_page: d.guid || "",
-                                discount: "None",
-                                status: "default",
-                                groupId: d.releaseGroup,
-                                time: time,
-                            };
+                        const torrentObj = {
+                            api_size: api_size,
+                            datasetRelease: infoText,
+                            size: size,
+                            info_text: infoText,
+                            tracker: tracker,
+                            site: tracker,
+                            snatch: d.grabs || 0,
+                            seed: d.seeders || 0,
+                            leech: d.leechers || 0,
+                            download_link: cleanedLink || "",
+                            torrent_page: d.guid || "",
+                            discount: "None",
+                            status: "default",
+                            groupId: d.releaseGroup,
+                            time: time,
+                            filecount: antFilecount,
+                            files: antFiles,
+                        };
 
-                            // Map additional properties if necessary
-                            const mappedObj = {
-                                ...torrentObj,
-                                quality: get_torrent_quality(torrentObj),
-                            };
-                            return mappedObj;
+                        // Map additional properties if necessary
+                        const mappedObj = {
+                            ...torrentObj,
+                            quality: get_torrent_quality(torrentObj),
+                        };
+                        return mappedObj;
                     }).filter(obj => obj !== null); // Filter out any null objects
                 } catch (error) {
                     console.error("An error occurred while processing ANT tracker:", error);
@@ -3811,6 +3902,8 @@ function toUnixTime(dateString) {
                               } else {
                                   discount = "None";
                               }
+                              const parsedFilecount = Number.parseInt(d.files ?? d.fileCount ?? d.filecount, 10);
+                              const flFilecount = Number.isFinite(parsedFilecount) ? parsedFilecount : null;
 
                                   const torrentObj = {
                                       api_size: api_size,
@@ -3829,6 +3922,7 @@ function toUnixTime(dateString) {
                                       double_upload: d.doubleup === 1 ? true : false,
                                       groupId: groupText,
                                       time: time,
+                                      filecount: flFilecount,
                                   };
 
                                   // Map additional properties if necessary
@@ -4129,6 +4223,8 @@ function toUnixTime(dateString) {
                         // Convert size from bytes to MiB
                         const size = parseInt(d.size / (1024 * 1024));
                         const api_size = parseInt(d.size);
+                        const parsedFileCount = Number.parseInt(d.fileCount ?? d.filecount, 10);
+                        const filecount = Number.isFinite(parsedFileCount) ? parsedFileCount : null;
 
                         // Extract release time and validate
                         const inputTime = parseInt(d.groupTime); // AlphaRatio uses UNIX timestamps
@@ -4157,6 +4253,7 @@ function toUnixTime(dateString) {
                             discount: d.isFreeleech ? "Freeleech" : "None",
                             status: "default",
                             time: inputTime,
+                            filecount: filecount,
                         };
 
                         // Add additional properties if needed (e.g., quality determination)
@@ -4522,6 +4619,7 @@ function toUnixTime(dateString) {
                             region: element.attributes.region,
                             time: time,
                             images: imageUrls,
+                            files: files,
                         };
                         // Mapping additional properties and logging the final torrent objects
                         const mappedObj = { ...torrentObj, "quality": get_torrent_quality(torrentObj), "discount": get_api_discount(torrentObj.discount, torrentObj.refundable, tracker), "internal": get_api_internal(torrentObj.internal), "Featured": get_api_featured(torrentObj.featured) };
@@ -5147,6 +5245,26 @@ function toUnixTime(dateString) {
                         });
                     }
                 }
+
+                if (groupTorrent) {
+                    const files = Array.isArray(torrent.files) ? torrent.files : [];
+                    if (files.length > 0) {
+                        files.forEach(file => {
+                            const filePayload = JSON.stringify(file).replace(/"/g, '&quot;');
+                            newHtml += `<span class='files' title="${filePayload}"></span>`;
+                        });
+                    }
+
+                    const parsedFilecount = Number.parseInt(torrent.filecount, 10);
+                    const resolvedFilecount = Number.isFinite(parsedFilecount)
+                        ? parsedFilecount
+                        : (files.length > 0 ? files.length : null);
+
+                    if (resolvedFilecount !== null) {
+                        newHtml += `<span class='filecount' title="${resolvedFilecount}"></span>`;
+                    }
+                }
+
                 if (improved_tags) {
                     if (torrent.tags != null && torrent.tags != false) {
                         if (groupTorrent) {
