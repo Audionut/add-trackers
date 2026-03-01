@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.5.8-A
+// @version      4.5.9-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -836,7 +836,6 @@ function toUnixTime(dateString) {
                 (tracker === "YOINK") ||
                 (tracker === "RAS") ||
                 (tracker === "SP") ||
-                (tracker === "HHD") ||
                 (tracker === "LUME")
             )
                 return true;
@@ -861,7 +860,8 @@ function toUnixTime(dateString) {
               (tracker === "OPS") ||
               (tracker === "AR") ||
               (tracker === "YUS") ||
-              (tracker === "OTW")
+              (tracker === "OTW") ||
+              (tracker === "HHD")
               ) {
                 return true;
             } else {
@@ -1924,6 +1924,11 @@ function toUnixTime(dateString) {
                     'Accept': 'application/json',
                     'Authorization': `Bearer ${OTW_API_TOKEN}`,
                 },
+                'HHD': {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Accept': 'application/json',
+                    'Authorization': `Bearer ${HHD_API_TOKEN}`,
+                },
                 // Add more trackers and their headers as needed
             };
 
@@ -1947,6 +1952,7 @@ function toUnixTime(dateString) {
                 'AR': 'GET',
                 'YUS': 'GET',
                 'OTW': 'GET',
+                'HHD': 'GET',
             };
             const method = methodMapping[tracker] || 'POST';
 
@@ -1959,7 +1965,7 @@ function toUnixTime(dateString) {
                 GM_xmlhttpRequest({
                     url: post_query_url,
                     method: method,
-                    data: (tracker === 'YUS' || tracker === 'OTW') ? new URLSearchParams(postData).toString() : JSON.stringify(postData),
+                    data: (tracker === 'YUS' || tracker === 'OTW' || tracker === 'HHD') ? new URLSearchParams(postData).toString() : JSON.stringify(postData),
                     headers: headers,
                     onload: (res) => {
                         clearTimeout(timer);
@@ -2276,8 +2282,6 @@ function toUnixTime(dateString) {
                     api_query_url = "https://yoinked.org/api/torrents/filter";
                 } else if (tracker === "RAS") {
                     api_query_url = "https://rastastugan.org/api/torrents/filter";
-                } else if (tracker === "HHD") {
-                    api_query_url = "https://homiehelpdesk.net/api/torrents/filter";
                 } else if (tracker === "LUME") {
                     api_query_url = "https://luminarr.me/api/torrents/filter";
                 } else if (tracker === "TVV") {
@@ -2381,6 +2385,12 @@ function toUnixTime(dateString) {
                     post_query_url = `https://oldtoons.world/api/torrents/filter?imdbId=${imdb_id.split("tt")[1]}&perPage=100`;
                     postData = {
                         api_token: OTW_API_TOKEN
+                    };
+                }
+                else if (tracker === "HHD") {
+                    post_query_url = `https://homiehelpdesk.net/api/torrents/filter?imdbId=${imdb_id.split("tt")[1]}&perPage=100`;
+                    postData = {
+                        api_token: HHD_API_TOKEN
                     };
                 }
                 else if (tracker === "PTP") {
@@ -2546,7 +2556,7 @@ function toUnixTime(dateString) {
                                             console.log(`Data fetched successfully from ${tracker}`);
                                             resolve(get_post_torrent_objects(tracker, result));
                                         }
-                                    } else if (result && (tracker === "YUS" || tracker === "OTW")) {
+                                    } else if (result && (tracker === "YUS" || tracker === "OTW") || tracker === "HHD") {
                                         if (!result.data || result.data.length === 0) {
                                             console.log(`${tracker} reached successfully but no results were returned`);
                                             resolve([]);
@@ -5559,10 +5569,6 @@ function toUnixTime(dateString) {
                 });
             });
 
-            console.log("Finished adding releases for other scripts");
-            const event = new CustomEvent('PTPAddReleasesFromOtherTrackersComplete');
-            document.dispatchEvent(event);
-
             let reduced_trackers = get_reduced_trackers(doms);
             let reduced_discounts = get_reduced_discounts(doms);
             let reduced_qualities = get_reduced_qualities(doms);
@@ -5572,6 +5578,9 @@ function toUnixTime(dateString) {
                 // disable_highlight()
                 add_sort_listeners();
             }
+            console.log("Finished adding releases for other scripts");
+            const event = new CustomEvent('PTPAddReleasesFromOtherTrackersComplete');
+            document.dispatchEvent(event);
         };
 
         const insert_group = (quality, header_div) => {
