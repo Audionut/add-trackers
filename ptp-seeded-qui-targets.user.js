@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Seeded qui Targets
-// @version      1.1
+// @version      1.2
 // @description  Finds seeded PTP rows, compares compatible cross-seed rows against qui, and lists missing targets.
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -19,6 +19,8 @@
     const RESULTS_ID = 'ptp-seeded-qui-targets-results';
     const STATUS_ID = 'ptp-seeded-qui-targets-status';
     const FEEDBACK_ID = 'ptp-seeded-qui-targets-feedback';
+    const QUI_TITLE_LOOKUP_STATUS_ID = 'ptp-sqt-qui-title-lookup-status';
+    const QUI_TITLE_LOOKUP_RESULTS_ID = 'ptp-sqt-qui-title-lookup-results';
     const REDACTED_VALUE = '<REDACTED>';
 
     const KEYS = {
@@ -193,6 +195,229 @@
         const container = document.getElementById(RESULTS_ID);
         if (!container) return;
         container.innerHTML = `<div class="box pad" style="margin-top:8px;">${escapeHtml(reason)}</div>`;
+    }
+
+    function setQuiTitleLookupStatus(panel, text, isError = false) {
+        const status = panel?.querySelector(`#${QUI_TITLE_LOOKUP_STATUS_ID}`);
+        if (!status) return;
+        status.textContent = String(text || '');
+        status.style.color = isError ? '#ff8080' : '';
+    }
+
+    function cleanPageTitleForQuiSearch(value) {
+        return String(value || '')
+            .replace(/\s+by\s+.*$/i, ' ')
+            .replaceAll(/\[(?:18|19|20)\d{2}\]/g, ' ')
+            .replaceAll(/\((?:18|19|20)\d{2}\)/g, ' ')
+            .replaceAll(/\s+/g, ' ')
+            .trim();
+    }
+
+    function extractAkaSearchTermsFromPageTitle() {
+        const titleNode = document.querySelector('h2.page__title');
+        const rawTitle = String(titleNode?.textContent || '').replaceAll(/\s+/g, ' ').trim();
+        const cleaned = cleanPageTitleForQuiSearch(rawTitle);
+        if (!cleaned) {
+            return [];
+        }
+
+        const terms = [];
+        const seen = new Set();
+        const addTerm = (term) => {
+            const value = sanitizeQuiSearchTerm(cleanPageTitleForQuiSearch(term));
+            if (!value) return;
+            const key = value.toLowerCase();
+            if (seen.has(key)) return;
+            seen.add(key);
+            terms.push(value);
+        };
+
+        const akaRegex = /\s+AKA\s+/i;
+        const akaMatch = akaRegex.exec(cleaned);
+        if (akaMatch && Number.isInteger(akaMatch.index)) {
+            const index = akaMatch.index;
+            const beforeAka = cleaned.slice(0, index).trim();
+            const afterAka = cleaned.slice(index + akaMatch[0].length).trim();
+            addTerm(beforeAka);
+            addTerm(afterAka);
+        } else {
+            addTerm(cleaned);
+        }
+
+        return terms;
+    }
+
+    function buildQuiTitleResultDedupeKey(item) {
+        const hash = String(item?.hash || item?.infohash_v1 || item?.infohash || '').trim().toLowerCase();
+        if (hash) {
+            return `hash:${hash}`;
+        }
+        const name = String(item?.name || '').trim().toLowerCase();
+        const savePath = String(item?.save_path || item?.savepath || '').trim().toLowerCase();
+        return `name:${name}|path:${savePath}`;
+    }
+
+    function findNestedValueByKey(input, targetKey, depth = 0) {
+        if (depth > 4 || input == null) return '';
+
+        if (Array.isArray(input)) {
+            for (const entry of input) {
+                const nested = findNestedValueByKey(entry, targetKey, depth + 1);
+                if (nested) return nested;
+            }
+            return '';
+        }
+
+        if (typeof input !== 'object') {
+            return '';
+        }
+
+        const key = String(targetKey || '').trim().toLowerCase();
+        const entries = Object.entries(input);
+
+        for (const [entryKey, entryValue] of entries) {
+            if (String(entryKey || '').trim().toLowerCase() !== key) continue;
+            const value = String(entryValue ?? '').trim();
+            if (value) return value;
+        }
+
+        for (const [, entryValue] of entries) {
+            const nested = findNestedValueByKey(entryValue, targetKey, depth + 1);
+            if (nested) return nested;
+        }
+
+        return '';
+    }
+
+    function resolveQuiTitleLookupStatus(item) {
+        const trackerHealth = findNestedValueByKey(item, 'tracker_health');
+        if (trackerHealth) return trackerHealth;
+        return String(item?.state || item?.status || '').trim() || '(unknown)';
+    }
+
+    function resolveQuiTitleLookupTrackerDomain(item, normalized) {
+        const trackerValue = item?.tracker;
+        if (typeof trackerValue === 'string' && trackerValue.trim()) {
+            return safeHostFromUrl(trackerValue) || normalizeHost(trackerValue) || '(unknown)';
+        }
+
+        if (trackerValue && typeof trackerValue === 'object') {
+            const trackerUrl = String(trackerValue.url || trackerValue.announce || trackerValue.tracker || '').trim();
+            if (trackerUrl) {
+                return safeHostFromUrl(trackerUrl) || normalizeHost(trackerUrl) || '(unknown)';
+            }
+            const trackerHost = String(trackerValue.host || trackerValue.domain || '').trim();
+            if (trackerHost) {
+                return normalizeHost(trackerHost) || '(unknown)';
+            }
+        }
+
+        const siteValue = String(item?.site || '').trim();
+        if (siteValue) {
+            return safeHostFromUrl(siteValue) || normalizeHost(siteValue) || '(unknown)';
+        }
+
+        return String(normalized?.hosts?.[0] || '').trim() || '(unknown)';
+    }
+
+    function renderQuiTitleLookupResults(panel, terms, items) {
+        const container = panel?.querySelector(`#${QUI_TITLE_LOOKUP_RESULTS_ID}`);
+        if (!container) return;
+
+        const searchTerms = Array.isArray(terms) ? terms.filter(Boolean) : [];
+        const rows = Array.isArray(items) ? items : [];
+        const termsLine = searchTerms.length > 0
+            ? `<div style="margin-bottom:6px;"><strong>Search terms:</strong> ${escapeHtml(searchTerms.join(' | '))}</div>`
+            : '';
+
+        if (rows.length === 0) {
+            container.innerHTML = `<div class="box pad" style="margin-top:6px;">${termsLine}<div>No matching QUI torrents found for title lookup.</div></div>`;
+            return;
+        }
+
+        const tableRows = rows.map((item) => {
+            const normalized = normalizeQuiItem(item);
+            const name = normalized.name || '(unnamed torrent)';
+            const status = resolveQuiTitleLookupStatus(item);
+            const tracker = resolveQuiTitleLookupTrackerDomain(item, normalized);
+            const savePath = normalized.savePath || '(no save path)';
+            return `<tr><td style="padding:4px 6px; border-top:1px solid rgba(255,255,255,0.12);">${escapeHtml(name)}</td><td style="padding:4px 6px; border-top:1px solid rgba(255,255,255,0.12);">${escapeHtml(status)}</td><td style="padding:4px 6px; border-top:1px solid rgba(255,255,255,0.12);">${escapeHtml(tracker)}</td><td style="padding:4px 6px; border-top:1px solid rgba(255,255,255,0.12);">${escapeHtml(savePath)}</td></tr>`;
+        }).join('');
+
+        container.innerHTML = `
+            <div class="box pad" style="margin-top:6px;">
+                ${termsLine}
+                <div style="margin-bottom:6px;"><strong>QUI torrents:</strong> ${escapeHtml(String(rows.length))}</div>
+                <div style="overflow-x:auto;">
+                    <table style="width:100%; border-collapse:collapse;">
+                        <thead>
+                            <tr>
+                                <th style="text-align:left; padding:4px 6px;">Torrent Name</th>
+                                <th style="text-align:left; padding:4px 6px;">Status</th>
+                                <th style="text-align:left; padding:4px 6px;">Tracker</th>
+                                <th style="text-align:left; padding:4px 6px;">SavePath</th>
+                            </tr>
+                        </thead>
+                        <tbody>${tableRows}</tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    }
+
+    async function runQuiAkaTitleLookup(panel, options = {}) {
+        if (!panel) return;
+
+        const force = Boolean(options.force);
+        const terms = extractAkaSearchTermsFromPageTitle();
+        const signature = terms.join('||').toLowerCase();
+        const previousSignature = String(panel.dataset.sqtQuiTitleLookupSig || '');
+        if (!force && signature && previousSignature === signature) {
+            return;
+        }
+        panel.dataset.sqtQuiTitleLookupSig = signature;
+
+        if (terms.length === 0) {
+            setQuiTitleLookupStatus(panel, 'Title lookup skipped: no page title terms found.', true);
+            renderQuiTitleLookupResults(panel, [], []);
+            return;
+        }
+
+        const config = gatherPanelConfig(panel, getConfig());
+        if (!String(config.baseUrl || '').trim() || !String(config.token || '').trim()) {
+            setQuiTitleLookupStatus(panel, 'Title lookup unavailable: set qui Base URL and Token.', true);
+            renderQuiTitleLookupResults(panel, terms, []);
+            return;
+        }
+
+        setQuiTitleLookupStatus(panel, `Running QUI title lookup for ${terms.length} term(s)...`);
+
+        const settled = await Promise.allSettled(terms.map((term) => queryQui(config, term)));
+        const merged = [];
+        const seen = new Set();
+        const errors = [];
+
+        settled.forEach((result) => {
+            if (result.status !== 'fulfilled') {
+                errors.push(String(result.reason?.message || result.reason || 'Lookup failed'));
+                return;
+            }
+
+            result.value.forEach((item) => {
+                const key = buildQuiTitleResultDedupeKey(item);
+                if (seen.has(key)) return;
+                seen.add(key);
+                merged.push(item);
+            });
+        });
+
+        renderQuiTitleLookupResults(panel, terms, merged);
+        if (errors.length > 0) {
+            setQuiTitleLookupStatus(panel, `QUI title lookup partial: ${merged.length} result(s), ${errors.length} error(s).`, true);
+            return;
+        }
+
+        setQuiTitleLookupStatus(panel, `QUI title lookup complete (${merged.length} result(s)).`);
     }
 
     function sanitizeInstanceId(value) {
@@ -527,6 +752,14 @@
                     <label><input type="checkbox" id="ptp-sqt-staged-main-then-fanout" ${config.stagedMainThenFanout ? 'checked' : ''}> Stage main seed then fan-out</label>
                 </div>
             </details>
+            <details style="margin-top:8px;" open>
+                <summary><strong>QUI Title Lookup (AKA)</strong></summary>
+                <div style="margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                    <input type="submit" id="ptp-sqt-run-qui-title-lookup" value="Run title lookup">
+                    <span id="${QUI_TITLE_LOOKUP_STATUS_ID}"></span>
+                </div>
+                <div id="${QUI_TITLE_LOOKUP_RESULTS_ID}" style="margin-top:6px;"></div>
+            </details>
             <div id="${RESULTS_ID}" style="margin-top:10px;"></div>
             <div id="${FEEDBACK_ID}" style="margin-top:10px;"></div>
         `;
@@ -534,6 +767,9 @@
         heading.addEventListener('click', () => {
             const nextCollapsed = body.style.display !== 'none';
             applyPanelCollapsedState(nextCollapsed, true);
+            if (!nextCollapsed) {
+                runQuiAkaTitleLookup(panel, { force: false });
+            }
         });
 
         panel.append(heading, body);
@@ -548,6 +784,9 @@
         }
 
         wirePanelActions(panel);
+        if (body.style.display !== 'none') {
+            runQuiAkaTitleLookup(panel, { force: false });
+        }
         return panel;
     }
 
@@ -555,6 +794,7 @@
         const saveBtn = panel.querySelector('#ptp-sqt-save');
         const refreshBtn = panel.querySelector('#ptp-sqt-refresh');
         const testBtn = panel.querySelector('#ptp-sqt-test');
+        const quiTitleLookupBtn = panel.querySelector('#ptp-sqt-run-qui-title-lookup');
 
         if (saveBtn) {
             saveBtn.addEventListener('click', () => {
@@ -583,6 +823,12 @@
                 } catch (error) {
                     setStatus(`qui test failed: ${error.message || error}`, true);
                 }
+            });
+        }
+
+        if (quiTitleLookupBtn) {
+            quiTitleLookupBtn.addEventListener('click', async () => {
+                await runQuiAkaTitleLookup(panel, { force: true });
             });
         }
 
