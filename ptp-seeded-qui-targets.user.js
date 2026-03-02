@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Seeded qui Targets
-// @version      1.2
+// @version      1.3
 // @description  Finds seeded PTP rows, compares compatible cross-seed rows against qui, and lists missing targets.
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -21,6 +21,11 @@
     const FEEDBACK_ID = 'ptp-seeded-qui-targets-feedback';
     const QUI_TITLE_LOOKUP_STATUS_ID = 'ptp-sqt-qui-title-lookup-status';
     const QUI_TITLE_LOOKUP_RESULTS_ID = 'ptp-sqt-qui-title-lookup-results';
+    const QUI_TITLE_DELETE_SELECT_ALL_ID = 'ptp-sqt-qui-title-delete-select-all';
+    const QUI_TITLE_DELETE_SELECT_NONE_ID = 'ptp-sqt-qui-title-delete-select-none';
+    const QUI_TITLE_DELETE_BUTTON_ID = 'ptp-sqt-qui-title-delete-selected';
+    const QUI_TITLE_DELETE_CONTENT_ID = 'ptp-sqt-qui-title-delete-content';
+    const QUI_TITLE_DELETE_SUMMARY_ID = 'ptp-sqt-qui-title-delete-summary';
     const REDACTED_VALUE = '<REDACTED>';
 
     const KEYS = {
@@ -90,6 +95,8 @@
     let refreshToken = 0;
     const targetByKey = new Map();
     const targetSelectionState = new Map();
+    const quiTitleLookupDeleteByKey = new Map();
+    const quiTitleLookupDeleteSelectionState = new Map();
     const addJobs = new Map();
     let addPollTimer = null;
     let addPollInFlight = false;
@@ -324,6 +331,8 @@
         const container = panel?.querySelector(`#${QUI_TITLE_LOOKUP_RESULTS_ID}`);
         if (!container) return;
 
+        quiTitleLookupDeleteByKey.clear();
+
         const searchTerms = Array.isArray(terms) ? terms.filter(Boolean) : [];
         const rows = Array.isArray(items) ? items : [];
         const termsLine = searchTerms.length > 0
@@ -331,27 +340,62 @@
             : '';
 
         if (rows.length === 0) {
+            quiTitleLookupDeleteSelectionState.clear();
             container.innerHTML = `<div class="box pad" style="margin-top:6px;">${termsLine}<div>No matching QUI torrents found for title lookup.</div></div>`;
             return;
         }
 
-        const tableRows = rows.map((item) => {
+        const tableRows = rows.map((item, index) => {
             const normalized = normalizeQuiItem(item);
             const name = normalized.name || '(unnamed torrent)';
             const status = resolveQuiTitleLookupStatus(item);
             const tracker = resolveQuiTitleLookupTrackerDomain(item, normalized);
             const savePath = normalized.savePath || '(no save path)';
-            return `<tr><td style="padding:4px 6px; border-top:1px solid rgba(255,255,255,0.12);">${escapeHtml(name)}</td><td style="padding:4px 6px; border-top:1px solid rgba(255,255,255,0.12);">${escapeHtml(status)}</td><td style="padding:4px 6px; border-top:1px solid rgba(255,255,255,0.12);">${escapeHtml(tracker)}</td><td style="padding:4px 6px; border-top:1px solid rgba(255,255,255,0.12);">${escapeHtml(savePath)}</td></tr>`;
+            const hash = String(item?.hash || item?.infohash_v1 || item?.infohash || '').trim().toLowerCase();
+            const fallbackKey = `${tracker}::${savePath}::${name}`;
+            const rowKey = `title::${index + 1}::${hash || fallbackKey}`;
+
+            if (hash) {
+                quiTitleLookupDeleteByKey.set(rowKey, {
+                    key: rowKey,
+                    hash,
+                    name,
+                    tracker,
+                    savePath
+                });
+                if (!quiTitleLookupDeleteSelectionState.has(rowKey)) {
+                    quiTitleLookupDeleteSelectionState.set(rowKey, false);
+                }
+            }
+
+            const selectorCell = hash
+                ? `<input type="checkbox" data-sqt-qui-title-delete-key="${escapeHtml(rowKey)}" ${quiTitleLookupDeleteSelectionState.get(rowKey) === true ? 'checked' : ''}>`
+                : '<span style="opacity:0.8;">n/a</span>';
+
+            return `<tr><td style="padding:4px 6px; border-top:1px solid rgba(255,255,255,0.12); width:70px;">${selectorCell}</td><td style="padding:4px 6px; border-top:1px solid rgba(255,255,255,0.12);">${escapeHtml(name)}</td><td style="padding:4px 6px; border-top:1px solid rgba(255,255,255,0.12);">${escapeHtml(status)}</td><td style="padding:4px 6px; border-top:1px solid rgba(255,255,255,0.12);">${escapeHtml(tracker)}</td><td style="padding:4px 6px; border-top:1px solid rgba(255,255,255,0.12);">${escapeHtml(savePath)}</td></tr>`;
         }).join('');
+
+        const activeDeleteKeys = new Set(quiTitleLookupDeleteByKey.keys());
+        Array.from(quiTitleLookupDeleteSelectionState.keys()).forEach((key) => {
+            if (!activeDeleteKeys.has(key)) {
+                quiTitleLookupDeleteSelectionState.delete(key);
+            }
+        });
+
+        const deleteControls = quiTitleLookupDeleteByKey.size > 0
+            ? `<div style="margin-bottom:6px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;"><input type="submit" id="${QUI_TITLE_DELETE_SELECT_ALL_ID}" value="Select All"><input type="submit" id="${QUI_TITLE_DELETE_SELECT_NONE_ID}" value="Select None"><input type="submit" id="${QUI_TITLE_DELETE_BUTTON_ID}" value="Delete Selected QUI Torrents"><label><input type="checkbox" id="${QUI_TITLE_DELETE_CONTENT_ID}"> Delete content/files</label><span id="${QUI_TITLE_DELETE_SUMMARY_ID}"></span></div>`
+            : '';
 
         container.innerHTML = `
             <div class="box pad" style="margin-top:6px;">
                 ${termsLine}
                 <div style="margin-bottom:6px;"><strong>QUI torrents:</strong> ${escapeHtml(String(rows.length))}</div>
+                ${deleteControls}
                 <div style="overflow-x:auto;">
                     <table style="width:100%; border-collapse:collapse;">
                         <thead>
                             <tr>
+                                <th style="text-align:left; padding:4px 6px; width:70px;">Delete</th>
                                 <th style="text-align:left; padding:4px 6px;">Torrent Name</th>
                                 <th style="text-align:left; padding:4px 6px;">Status</th>
                                 <th style="text-align:left; padding:4px 6px;">Tracker</th>
@@ -363,6 +407,8 @@
                 </div>
             </div>
         `;
+
+        updateQuiTitleLookupDeleteSummary(panel);
     }
 
     async function runQuiAkaTitleLookup(panel, options = {}) {
@@ -849,6 +895,13 @@
             observeDiscoveredSavePathSelections(resultsContainer);
         }
 
+        const quiTitleLookupResults = panel.querySelector(`#${QUI_TITLE_LOOKUP_RESULTS_ID}`);
+        if (quiTitleLookupResults) {
+            quiTitleLookupResults.addEventListener('click', onQuiTitleLookupResultsClick);
+            quiTitleLookupResults.addEventListener('change', onQuiTitleLookupResultsChange);
+            quiTitleLookupResults.addEventListener('input', onQuiTitleLookupResultsChange);
+        }
+
         renderDiscoveredSavePathOptions(panel, getConfig());
         renderMainSeedSourceOptions(panel, [], getConfig());
     }
@@ -919,6 +972,7 @@
         if (addSelectedButton) {
             await addSelectedTargets(addSelectedButton);
         }
+
     }
 
     function onResultsChange(event) {
@@ -945,14 +999,16 @@
         }
 
         const checkbox = event.target?.closest?.('input[data-sqt-target-key]');
-        if (!checkbox) return;
-        const key = String(checkbox.dataset.sqtTargetKey || '').trim();
-        if (!key) return;
-        targetSelectionState.set(key, Boolean(checkbox.checked));
-        const panel = document.getElementById(PANEL_ID);
-        const sectionKey = String(targetByKey.get(key)?.sectionKey || '').trim();
-        refreshStageMainTargetKey(panel, sectionKey);
-        updateSelectionSummary();
+        if (checkbox) {
+            const key = String(checkbox.dataset.sqtTargetKey || '').trim();
+            if (!key) return;
+            targetSelectionState.set(key, Boolean(checkbox.checked));
+            const panel = document.getElementById(PANEL_ID);
+            const sectionKey = String(targetByKey.get(key)?.sectionKey || '').trim();
+            refreshStageMainTargetKey(panel, sectionKey);
+            updateSelectionSummary();
+        }
+
     }
 
     function syncTargetCheckboxesFromState() {
@@ -977,12 +1033,86 @@
     function updateSelectionSummary() {
         const summary = document.querySelector(`#${PANEL_ID} #ptp-sqt-selection-summary`);
         const addButton = document.querySelector(`#${PANEL_ID} #ptp-sqt-add-selected`);
-        if (!summary || !addButton) return;
 
-        const total = targetByKey.size;
-        const selectedCount = getSelectedTargetKeys().length;
-        summary.textContent = `${selectedCount}/${total} selected`;
-        addButton.disabled = selectedCount === 0;
+        if (summary && addButton) {
+            const total = targetByKey.size;
+            const selectedCount = getSelectedTargetKeys().length;
+            summary.textContent = `${selectedCount}/${total} add selected`;
+            addButton.disabled = selectedCount === 0;
+        }
+    }
+
+    function getSelectedQuiTitleLookupDeleteKeys() {
+        const selected = [];
+        quiTitleLookupDeleteByKey.forEach((_, key) => {
+            if (quiTitleLookupDeleteSelectionState.get(key) === true) {
+                selected.push(key);
+            }
+        });
+        return selected;
+    }
+
+    function syncQuiTitleLookupDeleteCheckboxesFromState() {
+        const panel = document.getElementById(PANEL_ID);
+        const container = panel?.querySelector(`#${QUI_TITLE_LOOKUP_RESULTS_ID}`);
+        if (!container) return;
+        const boxes = Array.from(container.querySelectorAll('input[data-sqt-qui-title-delete-key]'));
+        boxes.forEach((box) => {
+            const key = String(box.dataset.sqtQuiTitleDeleteKey || '').trim();
+            if (!key) return;
+            box.checked = quiTitleLookupDeleteSelectionState.get(key) === true;
+        });
+    }
+
+    function updateQuiTitleLookupDeleteSummary(panel) {
+        const scope = panel || document.getElementById(PANEL_ID);
+        const summary = scope?.querySelector(`#${QUI_TITLE_DELETE_SUMMARY_ID}`);
+        const button = scope?.querySelector(`#${QUI_TITLE_DELETE_BUTTON_ID}`);
+        if (!summary || !button) return;
+
+        const total = quiTitleLookupDeleteByKey.size;
+        const selectedCount = getSelectedQuiTitleLookupDeleteKeys().length;
+        summary.textContent = `${selectedCount}/${total} delete selected`;
+        button.disabled = selectedCount === 0;
+    }
+
+    async function onQuiTitleLookupResultsClick(event) {
+        const panel = document.getElementById(PANEL_ID);
+
+        const selectAll = event.target?.closest?.(`#${QUI_TITLE_DELETE_SELECT_ALL_ID}`);
+        if (selectAll) {
+            quiTitleLookupDeleteByKey.forEach((_, key) => {
+                quiTitleLookupDeleteSelectionState.set(key, true);
+            });
+            syncQuiTitleLookupDeleteCheckboxesFromState();
+            updateQuiTitleLookupDeleteSummary(panel);
+            return;
+        }
+
+        const selectNone = event.target?.closest?.(`#${QUI_TITLE_DELETE_SELECT_NONE_ID}`);
+        if (selectNone) {
+            quiTitleLookupDeleteByKey.forEach((_, key) => {
+                quiTitleLookupDeleteSelectionState.set(key, false);
+            });
+            syncQuiTitleLookupDeleteCheckboxesFromState();
+            updateQuiTitleLookupDeleteSummary(panel);
+            return;
+        }
+
+        const deleteButton = event.target?.closest?.(`#${QUI_TITLE_DELETE_BUTTON_ID}`);
+        if (deleteButton) {
+            await deleteSelectedQuiTitleLookupTorrents(deleteButton);
+        }
+    }
+
+    function onQuiTitleLookupResultsChange(event) {
+        const deleteCheckbox = event.target?.closest?.('input[data-sqt-qui-title-delete-key]');
+        if (!deleteCheckbox) return;
+        const deleteKey = String(deleteCheckbox.dataset.sqtQuiTitleDeleteKey || '').trim();
+        if (!deleteKey) return;
+        quiTitleLookupDeleteSelectionState.set(deleteKey, Boolean(deleteCheckbox.checked));
+        const panel = document.getElementById(PANEL_ID);
+        updateQuiTitleLookupDeleteSummary(panel);
     }
 
     function seedAddJobs(entries, statusText) {
@@ -1391,6 +1521,40 @@
         return urls;
     }
 
+    function buildProxyDeleteCandidateUrls(baseUrl, tokenValue) {
+        const normalizedBaseUrl = String(baseUrl || '').trim().replace(/\/+$/, '');
+        if (!normalizedBaseUrl) return [];
+
+        const token = sanitizeUrlToken(tokenValue);
+        if (!token) return [];
+
+        const urls = [];
+
+        if (/\/proxy\/[^/]+\/api\/v2\/torrents\/delete$/i.test(normalizedBaseUrl)) {
+            pushUniqueUrl(urls, normalizedBaseUrl);
+            return urls;
+        }
+
+        if (/\/proxy\/[^/]+$/i.test(normalizedBaseUrl)) {
+            pushUniqueUrl(urls, `${normalizedBaseUrl}/api/v2/torrents/delete`);
+            return urls;
+        }
+
+        if (/\/api\/v2$/i.test(normalizedBaseUrl)) {
+            pushUniqueUrl(urls, `${normalizedBaseUrl}/torrents/delete`);
+            return urls;
+        }
+
+        if (/\/api\/proxy\/[^/]+$/i.test(normalizedBaseUrl)) {
+            pushUniqueUrl(urls, `${normalizedBaseUrl}/api/v2/torrents/delete`);
+            return urls;
+        }
+
+        pushUniqueUrl(urls, `${normalizedBaseUrl}/proxy/${token}/api/v2/torrents/delete`);
+        pushUniqueUrl(urls, `${normalizedBaseUrl}/api/proxy/${token}/api/v2/torrents/delete`);
+        return urls;
+    }
+
     function buildProxySearchUrl(searchBaseUrl, config, searchTerm = '') {
         const normalizedSearch = sanitizeQuiSearchTerm(searchTerm);
         const queryParts = [
@@ -1543,6 +1707,145 @@
 
             tryPost(0);
         });
+    }
+
+    function deleteFromQui(config, hashes, deleteFiles) {
+        return new Promise((resolve, reject) => {
+            const token = String(config.token || '').trim();
+            if (!token) {
+                reject(new Error('Missing qui token.'));
+                return;
+            }
+
+            const candidateUrls = buildProxyDeleteCandidateUrls(config.baseUrl, token);
+            if (candidateUrls.length === 0) {
+                reject(new Error('Missing qui base URL or token.'));
+                return;
+            }
+
+            const normalizedHashes = Array.isArray(hashes)
+                ? hashes.map((hash) => String(hash || '').trim().toLowerCase()).filter(Boolean)
+                : [];
+
+            if (normalizedHashes.length === 0) {
+                reject(new Error('No QUI torrent hashes selected for delete.'));
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('hashes', normalizedHashes.join('|'));
+            formData.append('deleteFiles', deleteFiles ? 'true' : 'false');
+
+            const attempted = [];
+
+            const tryPost = (index) => {
+                const url = candidateUrls[index];
+                attempted.push(url);
+                console.debug(`[PTP Seeded qui Targets] qui delete request ${index + 1}/${candidateUrls.length}: ${url}`);
+
+                GM_xmlhttpRequest({
+                    method: 'POST',
+                    url,
+                    data: formData,
+                    onload: (response) => {
+                        console.debug(`[PTP Seeded qui Targets] qui delete response status=${response.status} for ${url}`);
+                        if (response.status >= 200 && response.status < 300) {
+                            resolve(response);
+                            return;
+                        }
+
+                        if ((response.status === 401 || response.status === 403 || response.status === 404) && index < candidateUrls.length - 1) {
+                            tryPost(index + 1);
+                            return;
+                        }
+
+                        reject(new Error(`Delete failed with ${response.status} (${attempted.join(' | ')})`));
+                    },
+                    onerror: () => {
+                        if (index < candidateUrls.length - 1) {
+                            tryPost(index + 1);
+                            return;
+                        }
+                        reject(new Error(`Delete request failed (${attempted.join(' | ')})`));
+                    }
+                });
+            };
+
+            tryPost(0);
+        });
+    }
+
+    async function deleteSelectedQuiTitleLookupTorrents(button) {
+        const selectedKeys = getSelectedQuiTitleLookupDeleteKeys();
+        if (selectedKeys.length === 0) {
+            setStatus('No matched QUI torrents selected for delete.');
+            return;
+        }
+
+        const selectedEntries = selectedKeys
+            .map((key) => ({ key, item: quiTitleLookupDeleteByKey.get(key) }))
+            .filter((entry) => Boolean(entry.item));
+        const hashes = selectedEntries
+            .map((entry) => String(entry.item.hash || '').trim().toLowerCase())
+            .filter(Boolean);
+
+        if (hashes.length === 0) {
+            setStatus('Selected QUI rows are missing torrent hashes; cannot delete.', true);
+            return;
+        }
+
+        const panel = document.getElementById(PANEL_ID);
+        const config = panel ? gatherPanelConfig(panel, getConfig()) : getConfig();
+        const deleteContent = Boolean(panel?.querySelector(`#${QUI_TITLE_DELETE_CONTENT_ID}`)?.checked);
+
+        if (!config.baseUrl || !config.token) {
+            setStatus('Missing qui base URL or token.', true);
+            return;
+        }
+
+        const confirmMessage = deleteContent
+            ? `Delete ${hashes.length} matched QUI torrent(s) and remove content files? This cannot be undone.`
+            : `Delete ${hashes.length} matched QUI torrent(s) from QUI?`;
+        const shouldProceed = typeof globalThis.confirm === 'function'
+            ? globalThis.confirm(confirmMessage)
+            : true;
+        if (!shouldProceed) {
+            setStatus('Delete cancelled.');
+            return;
+        }
+
+        button.disabled = true;
+        button.value = 'Deleting selected...';
+
+        try {
+            await deleteFromQui(config, hashes, deleteContent);
+            selectedKeys.forEach((key) => {
+                quiTitleLookupDeleteSelectionState.set(key, false);
+            });
+
+            if (panel) {
+                await runQuiAkaTitleLookup(panel, { force: true });
+                const remainingHashes = new Set(
+                    Array.from(quiTitleLookupDeleteByKey.values())
+                        .map((entry) => String(entry?.hash || '').trim().toLowerCase())
+                        .filter(Boolean)
+                );
+                const stillPresent = hashes.filter((hash) => remainingHashes.has(hash));
+                if (stillPresent.length === 0) {
+                    setStatus(`Deleted ${hashes.length} QUI title-lookup torrent(s). Fresh title lookup confirms removal.`);
+                } else {
+                    setStatus(`Delete completed, but fresh title lookup still shows ${stillPresent.length} torrent(s).`, true);
+                }
+            } else {
+                setStatus(`Deleted ${hashes.length} QUI title-lookup torrent(s). delete content: ${deleteContent ? 'ON' : 'OFF'}`);
+            }
+        } catch (error) {
+            setStatus(`Delete failed: ${error?.message || error}`, true);
+        } finally {
+            button.value = 'Delete Selected QUI Torrents';
+            button.disabled = false;
+            updateQuiTitleLookupDeleteSummary(panel);
+        }
     }
 
     function normalizeText(value) {
