@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Seeded qui Targets
-// @version      1.0
+// @version      1.1
 // @description  Finds seeded PTP rows, compares compatible cross-seed rows against qui, and lists missing targets.
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -103,6 +103,7 @@
     const stageMainTargetKeyBySection = new Map();
     const stageCandidateTargetKeysBySection = new Map();
     let stageMainObserver = null;
+    let discoveredSavePathObserver = null;
     let lastComputedResults = [];
     const POST_ADD_VERIFICATION_POLLS = 2;
     const POST_ADD_VERIFICATION_DELAY_MS = 1200;
@@ -320,6 +321,35 @@
         return initial;
     }
 
+    function syncDiscoveredSavePathSelections(scopeNode = null) {
+        const root = scopeNode || document;
+        const selectors = Array.from(root.querySelectorAll('.ptp-sqt-savepath-choice[data-sqt-section-key]'));
+        selectors.forEach((selector) => {
+            const sectionKey = String(selector.dataset.sqtSectionKey || '').trim();
+            if (!sectionKey) return;
+            const state = getSectionControlState(sectionKey);
+            state.selectedSavePath = String(selector.value || '').trim();
+            sectionControlState.set(sectionKey, state);
+        });
+    }
+
+    function observeDiscoveredSavePathSelections(resultsContainer) {
+        if (!resultsContainer) return;
+        if (discoveredSavePathObserver) {
+            discoveredSavePathObserver.disconnect();
+        }
+        discoveredSavePathObserver = new MutationObserver(() => {
+            syncDiscoveredSavePathSelections(resultsContainer);
+        });
+        discoveredSavePathObserver.observe(resultsContainer, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['selected', 'value']
+        });
+        syncDiscoveredSavePathSelections(resultsContainer);
+    }
+
     function pruneSectionState(activeSectionKeys) {
         sectionControlState.forEach((_, key) => {
             if (!activeSectionKeys.has(key)) {
@@ -357,6 +387,10 @@
         if (stageMainObserver) {
             stageMainObserver.disconnect();
             stageMainObserver = null;
+        }
+        if (discoveredSavePathObserver) {
+            discoveredSavePathObserver.disconnect();
+            discoveredSavePathObserver = null;
         }
         const existing = document.getElementById(PANEL_ID);
         if (existing) {
@@ -556,6 +590,7 @@
         if (resultsContainer) {
             resultsContainer.addEventListener('click', onResultsClick);
             resultsContainer.addEventListener('change', onResultsChange);
+            resultsContainer.addEventListener('input', onResultsChange);
 
             if (stageMainObserver) {
                 stageMainObserver.disconnect();
@@ -564,6 +599,8 @@
                 refreshStageMainTargetKey(panel);
             });
             stageMainObserver.observe(resultsContainer, { childList: true, subtree: true });
+
+            observeDiscoveredSavePathSelections(resultsContainer);
         }
 
         renderDiscoveredSavePathOptions(panel, getConfig());
@@ -874,6 +911,7 @@
         }
 
         const panel = document.getElementById(PANEL_ID);
+        syncDiscoveredSavePathSelections(panel);
         const config = panel ? gatherPanelConfig(panel, getConfig()) : getConfig();
         if (!config.baseUrl || !config.token) {
             setStatus('Missing qui base URL or token.', true);
@@ -910,7 +948,8 @@
                     .map((entry) => String(entry.target.baseSavePath || '').trim())
                     .filter(Boolean);
                 const uniqueBasePaths = Array.from(new Set(selectedBasePaths));
-                if (uniqueBasePaths.length === 1) {
+                const hasSectionSavePathSelector = Boolean(panel?.querySelector(`.ptp-sqt-savepath-choice[data-sqt-section-key="${sectionKey}"]`));
+                if (uniqueBasePaths.length === 1 && !hasSectionSavePathSelector) {
                     addConfig.savePath = uniqueBasePaths[0];
                 }
 
