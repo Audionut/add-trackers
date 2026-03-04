@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.2.1
+// @version      1.2.2
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -26,6 +26,7 @@ let SHOW_TECHNICAL_SPECIFICATIONS = true;
 let SHOW_BOX_OFFICE = true;
 let SHOW_AWARDS = true;
 let SHOW_SOUNDTRACKS = true;
+let SHOW_IMDB_TRAILERS = false;
 let CACHE_EXPIRY_DAYS = 7;
 let SHOW_ALTERNATE_VERSIONS = true;
 let ALTERNATE_VERSIONS_PANEL_OPEN = false;
@@ -57,6 +58,7 @@ const saveSettings = () => {
     GM.setValue('SHOW_BOX_OFFICE', SHOW_BOX_OFFICE);
     GM.setValue('SHOW_AWARDS', SHOW_AWARDS);
     GM.setValue('SHOW_SOUNDTRACKS', SHOW_SOUNDTRACKS);
+    GM.setValue('SHOW_IMDB_TRAILERS', SHOW_IMDB_TRAILERS);
     GM.setValue('CACHE_EXPIRY_DAYS', CACHE_EXPIRY_DAYS);
     GM.setValue('SHOW_ALTERNATE_VERSIONS', SHOW_ALTERNATE_VERSIONS);
     GM.setValue('ALTERNATE_VERSIONS_PANEL_OPEN', ALTERNATE_VERSIONS_PANEL_OPEN);
@@ -89,6 +91,7 @@ const loadSettings = async () => {
     SHOW_BOX_OFFICE = await GM.getValue('SHOW_BOX_OFFICE', true);
     SHOW_AWARDS = await GM.getValue('SHOW_AWARDS', true);
     SHOW_SOUNDTRACKS = await GM.getValue('SHOW_SOUNDTRACKS', true);
+    SHOW_IMDB_TRAILERS = await GM.getValue('SHOW_IMDB_TRAILERS', true);
     CACHE_EXPIRY_DAYS = await GM.getValue('CACHE_EXPIRY_DAYS', 14);
     SHOW_ALTERNATE_VERSIONS = await GM.getValue('SHOW_ALTERNATE_VERSIONS', true);
     ALTERNATE_VERSIONS_PANEL_OPEN = await GM.getValue('ALTERNATE_VERSIONS_PANEL_OPEN', false);
@@ -248,6 +251,11 @@ function showSettingsPanel() {
                         <label style="display: block; margin-bottom: 10px; cursor: pointer;">
                             <input type="checkbox" id="show-soundtracks" style="margin-right: 8px;">
                             <span>Soundtracks</span>
+                        </label>
+
+                        <label style="display: block; margin-bottom: 10px; cursor: pointer;">
+                            <input type="checkbox" id="show-imdb-trailers" style="margin-right: 8px;">
+                            <span>Replace Trailer with IMDb Video</span>
                         </label>
 
                         <label style="display: block; margin-bottom: 10px; cursor: pointer;">
@@ -552,6 +560,7 @@ function loadSettingsIntoForm() {
     document.getElementById('show-box-office').checked = SHOW_BOX_OFFICE;
     document.getElementById('show-awards').checked = SHOW_AWARDS;
     document.getElementById('show-soundtracks').checked = SHOW_SOUNDTRACKS;
+    document.getElementById('show-imdb-trailers').checked = SHOW_IMDB_TRAILERS;
     document.getElementById('show-cast-photos').checked = SHOW_CAST_PHOTOS;
     document.getElementById('disable-custom-colors').checked = DISABLE_CUSTOM_COLORS;
     document.getElementById('cast-filter-type').value = CAST_FILTER_TYPE;
@@ -584,6 +593,7 @@ function saveSettingsFromForm() {
     SHOW_BOX_OFFICE = document.getElementById('show-box-office').checked;
     SHOW_AWARDS = document.getElementById('show-awards').checked;
     SHOW_SOUNDTRACKS = document.getElementById('show-soundtracks').checked;
+    SHOW_IMDB_TRAILERS = document.getElementById('show-imdb-trailers').checked;
     SHOW_CAST_PHOTOS = document.getElementById('show-cast-photos').checked;
     DISABLE_CUSTOM_COLORS = document.getElementById('disable-custom-colors').checked;
     CAST_FILTER_TYPE = document.getElementById('cast-filter-type').value;
@@ -636,6 +646,7 @@ function handleResetAll() {
         SHOW_BOX_OFFICE = true;
         SHOW_AWARDS = true;
         SHOW_SOUNDTRACKS = true;
+        SHOW_IMDB_TRAILERS = true;
         CACHE_EXPIRY_DAYS = 7;
         SHOW_ALTERNATE_VERSIONS = true;
         ALTERNATE_VERSIONS_PANEL_OPEN = false;
@@ -804,6 +815,278 @@ function handleResetAll() {
             }
         }
         return null;
+    };
+
+    const fetchIMDbGraphQL = async (query, variables = {}) => {
+        const url = `https://api.graphql.imdb.com/`;
+        const payload = {
+            query,
+            variables
+        };
+
+        return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: "POST",
+                url,
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                data: JSON.stringify(payload),
+                onload: function (response) {
+                    if (response.status >= 200 && response.status < 300) {
+                        try {
+                            const parsedResponse = JSON.parse(response.responseText);
+                            resolve(parsedResponse);
+                        } catch (error) {
+                            reject(error);
+                        }
+                    } else {
+                        const responseSnippet = (response.responseText || '').slice(0, 500);
+                        reject(new Error(`Failed IMDb GraphQL request with status ${response.status}: ${responseSnippet}`));
+                    }
+                },
+                onerror: function () {
+                    reject(new Error("IMDb GraphQL request error"));
+                }
+            });
+        });
+    };
+
+    const isValidIMDbMp4Url = (url) => {
+        if (!url || typeof url !== 'string') return false;
+        return /https:\/\/imdb-video\.media-imdb\.com\/.+\.mp4(?:$|\?)/i.test(url);
+    };
+
+    const rankMp4Candidates = (candidates) => {
+        return [...candidates].sort((left, right) => {
+            const leftArea = (left.width || 0) * (left.height || 0);
+            const rightArea = (right.width || 0) * (right.height || 0);
+            if (rightArea !== leftArea) return rightArea - leftArea;
+
+            const leftBitrate = left.bitrate || 0;
+            const rightBitrate = right.bitrate || 0;
+            return rightBitrate - leftBitrate;
+        });
+    };
+
+    const selectBestMp4 = (video) => {
+        const candidates = [];
+
+        const appendCandidates = (items = []) => {
+            items.forEach((item) => {
+                const itemUrl = typeof item === 'string'
+                    ? item
+                    : (item && typeof item.url === 'string' ? item.url : null);
+
+                if (!itemUrl || !isValidIMDbMp4Url(itemUrl)) {
+                    return;
+                }
+
+                candidates.push({
+                    url: itemUrl,
+                    width: (item && typeof item === 'object' && item.width) ? item.width : 0,
+                    height: (item && typeof item === 'object' && item.height) ? item.height : 0,
+                    bitrate: (item && typeof item === 'object' && item.bitrate) ? item.bitrate : 0
+                });
+            });
+        };
+
+        appendCandidates(video.playbackURLs);
+        appendCandidates(video.previewURLs);
+
+        if (candidates.length === 0) {
+            return null;
+        }
+
+        const best = rankMp4Candidates(candidates)[0];
+        return {
+            url: best.url,
+            width: best.width,
+            height: best.height,
+            bitrate: best.bitrate
+        };
+    };
+
+    const normalizeIMDbVideo = (video) => {
+        const bestMp4 = selectBestMp4(video);
+        if (!bestMp4) return null;
+
+        const contentTypeLabel = video.contentType && video.contentType.displayName && video.contentType.displayName.value
+            ? video.contentType.displayName.value
+            : 'Video';
+
+        return {
+            id: video.id,
+            title: (video.name && video.name.value) ? video.name.value : 'IMDb Video',
+            contentTypeLabel,
+            runtimeSeconds: (video.runtime && typeof video.runtime.value === 'number') ? video.runtime.value : null,
+            bestMp4
+        };
+    };
+
+    const compareNormalizedVideoQuality = (left, right) => {
+        const leftArea = (left.bestMp4.width || 0) * (left.bestMp4.height || 0);
+        const rightArea = (right.bestMp4.width || 0) * (right.bestMp4.height || 0);
+        if (rightArea !== leftArea) return rightArea - leftArea;
+
+        const leftBitrate = left.bestMp4.bitrate || 0;
+        const rightBitrate = right.bestMp4.bitrate || 0;
+        return rightBitrate - leftBitrate;
+    };
+
+    const fetchIMDbTrailerData = async (imdbId) => {
+        const cacheKey = `imdb_video_data_${imdbId}`;
+
+        const cachedTrailerData = await getCache(cacheKey);
+        if (cachedTrailerData && Array.isArray(cachedTrailerData.videos) && cachedTrailerData.defaultVideoId) {
+            return cachedTrailerData;
+        }
+
+        try {
+            const titleVideoIdsQuery = `
+                query {
+                    title(id: ${JSON.stringify(imdbId)}) {
+                        id
+                        latestTrailer { id }
+                        primaryVideos(first: 20) {
+                            edges { node { id } }
+                        }
+                        videoStrip(first: 20) {
+                            edges { node { id } }
+                        }
+                    }
+                }
+            `;
+
+            const titleVideoResponse = await fetchIMDbGraphQL(titleVideoIdsQuery);
+            const titleNode = titleVideoResponse && titleVideoResponse.data ? titleVideoResponse.data.title : null;
+            if (!titleNode) {
+                return null;
+            }
+
+            const latestTrailerId = titleNode.latestTrailer && titleNode.latestTrailer.id ? titleNode.latestTrailer.id : null;
+            const allVideoIds = [];
+            if (latestTrailerId) {
+                allVideoIds.push(latestTrailerId);
+            }
+
+            const primaryVideoEdges = titleNode.primaryVideos && titleNode.primaryVideos.edges ? titleNode.primaryVideos.edges : [];
+            primaryVideoEdges.forEach((edge) => {
+                const id = edge && edge.node ? edge.node.id : null;
+                if (id) allVideoIds.push(id);
+            });
+
+            const videoStripEdges = titleNode.videoStrip && titleNode.videoStrip.edges ? titleNode.videoStrip.edges : [];
+            videoStripEdges.forEach((edge) => {
+                const id = edge && edge.node ? edge.node.id : null;
+                if (id) allVideoIds.push(id);
+            });
+
+            const uniqueVideoIds = [...new Set(allVideoIds)];
+            if (uniqueVideoIds.length === 0) {
+                return null;
+            }
+
+            const videoQueries = [
+                `
+                    query {
+                        videos(ids: ${JSON.stringify(uniqueVideoIds)}) {
+                            id
+                            name { value }
+                            contentType { id displayName { value } }
+                            runtime { value }
+                            previewURLs { url }
+                            playbackURLs { url }
+                        }
+                    }
+                `,
+                `
+                    query {
+                        videos(ids: ${JSON.stringify(uniqueVideoIds)}) {
+                            id
+                            name { value }
+                            contentType { id displayName { value } }
+                            runtime { value }
+                            playbackURLs { url }
+                            previewURLs { url }
+                        }
+                    }
+                `,
+                `
+                    query {
+                        videos(ids: ${JSON.stringify(uniqueVideoIds)}) {
+                            id
+                            name { value }
+                            playbackURLs { url }
+                        }
+                    }
+                `
+            ];
+
+            let videosByIdsResponse = null;
+            let lastVideoQueryError = null;
+
+            for (const videoQuery of videoQueries) {
+                try {
+                    const response = await fetchIMDbGraphQL(videoQuery);
+                    const hasVideos = response && response.data && Array.isArray(response.data.videos);
+                    if (hasVideos) {
+                        videosByIdsResponse = response;
+                        break;
+                    }
+                } catch (queryError) {
+                    lastVideoQueryError = queryError;
+                }
+            }
+
+            if (!videosByIdsResponse) {
+                if (lastVideoQueryError) {
+                    throw lastVideoQueryError;
+                }
+                return null;
+            }
+
+            const rawVideos = videosByIdsResponse && videosByIdsResponse.data && Array.isArray(videosByIdsResponse.data.videos)
+                ? videosByIdsResponse.data.videos
+                : [];
+
+            const normalizedVideos = rawVideos.map(normalizeIMDbVideo).filter(Boolean);
+            if (normalizedVideos.length === 0) {
+                return null;
+            }
+
+            let defaultVideoId = null;
+            const latestTrailerVideo = latestTrailerId ? normalizedVideos.find(video => video.id === latestTrailerId) : null;
+            if (latestTrailerVideo) {
+                defaultVideoId = latestTrailerVideo.id;
+            } else {
+                const bestVideo = [...normalizedVideos].sort(compareNormalizedVideoQuality)[0];
+                defaultVideoId = bestVideo ? bestVideo.id : null;
+            }
+
+            const sortedVideos = [...normalizedVideos].sort((left, right) => {
+                if (left.id === defaultVideoId && right.id !== defaultVideoId) return -1;
+                if (right.id === defaultVideoId && left.id !== defaultVideoId) return 1;
+
+                const typeCompare = (left.contentTypeLabel || '').localeCompare(right.contentTypeLabel || '');
+                if (typeCompare !== 0) return typeCompare;
+
+                return (left.title || '').localeCompare(right.title || '');
+            });
+
+            const trailerData = {
+                imdbId,
+                latestTrailerId,
+                defaultVideoId,
+                videos: sortedVideos
+            };
+
+            await setCache(cacheKey, trailerData);
+            return trailerData;
+        } catch (error) {
+            console.error('Failed to fetch IMDb trailer data:', error);
+            return null;
+        }
     };
 
     // Function to fetch names from IMDb API with caching
@@ -2572,12 +2855,6 @@ function handleResetAll() {
 
     const displayCastPhotos = (titleData, idToNameMap, namePhotos) => {
         const credits = titleData.credits.edges;
-        console.log("[Credits Debug] Raw credits from API:", credits.length, "items");
-        console.log("[Credits Debug] First 5 credits:", credits.slice(0, 5).map(e => ({
-            id: e.node.name.id,
-            name: e.node.name.nameText.text,
-            category: e.node.category.text
-        })));
         
         if (!credits || credits.length === 0) {
             console.warn("No credits data found");
@@ -2592,21 +2869,14 @@ function handleResetAll() {
                 const category = edge.node.category.id.toLowerCase();
                 return category === 'actor' || category === 'actress';
             });
-            console.log("[Credits Debug] Filtered to actors only:", filteredCredits.length, "items");
         } else {
             console.log("[Credits Debug] Showing all credits (no filter applied)");
         }
-        console.log("[Credits Debug] First 5 filtered credits:", filteredCredits.slice(0, 5).map(e => ({
-            id: e.node.name.id,
-            name: e.node.name.nameText.text,
-            category: e.node.category.text
-        })));
 
         // Create a lookup map for namePhotos to improve performance
         // This preserves order since we're using the filteredCredits array order, not the namePhotos order
         const namePhotosMap = {};
         if (Array.isArray(namePhotos)) {
-            console.log("[Credits Debug] namePhotos is an array with", namePhotos.length, "items");
             namePhotos.forEach(name => {
                 if (name && name.id) {
                     namePhotosMap[name.id] = name;
@@ -2615,14 +2885,12 @@ function handleResetAll() {
         } else if (namePhotos) {
             // Handle case where namePhotos might be an object
             const namePhotosArray = Object.values(namePhotos);
-            console.log("[Credits Debug] namePhotos is an object with", namePhotosArray.length, "items");
             namePhotosArray.forEach(name => {
                 if (name && name.id) {
                     namePhotosMap[name.id] = name;
                 }
             });
         }
-        console.log("[Credits Debug] namePhotosMap created with", Object.keys(namePhotosMap).length, "entries");
 
         // Map credits to cast format with photos from fetchNames
         // Important: Array.map() preserves the order from filteredCredits, which maintains API order
@@ -2660,23 +2928,12 @@ function handleResetAll() {
                 link: `https://www.imdb.com/name/${personId}/`,
                 position: creditNode.position // billing position for Cast
             };
-            
-            if (index < 5) {
-                console.log(`[Credits Debug] Mapped cast member ${index}:`, {
-                    name: castMember.name,
-                    role: castMember.role,
-                    billingPosition: castMember.position,
-                    hasPhoto: castMember.photo !== 'https://ptpimg.me/9wv452.png'
-                });
-            }
-            
+
             return castMember;
         });
-        console.log("[Credits Debug] Total cast members after mapping:", cast.length);
 
         // Try to match with existing cast table on page
         const actorRows = document.querySelectorAll('.table--panel-like tbody tr');
-        console.log("[Credits Debug] Found", actorRows.length, "existing actor rows on page");
         let matchCount = 0;
         actorRows.forEach(row => {
             const actorNameElement = row.querySelector('.movie-page__actor-column a');
@@ -2693,7 +2950,6 @@ function handleResetAll() {
                 }
             }
         });
-        console.log("[Credits Debug] Matched", matchCount, "cast members with existing table data");
 
         // Filter and limit based on settings, then reorder: cast with photos first, then without photos
         const filteredCast = cast
@@ -2707,15 +2963,6 @@ function handleResetAll() {
         // Combine: photos first (in original order), then no photos (in original order)
         const reorderedCast = [...castWithPhotos, ...castWithoutPhotos];
         
-        console.log("[Credits Debug] Final filtered cast:", filteredCast.length, "members (max:", CAST_MAX_DISPLAY + ")");
-        console.log("[Credits Debug] Cast with photos:", castWithPhotos.length, "- Cast without photos:", castWithoutPhotos.length);
-        console.log("[Credits Debug] First 5 final cast members:", reorderedCast.slice(0, 5).map(p => ({
-            name: p.name,
-            role: p.role,
-            hasPhoto: p.photo !== 'https://ptpimg.me/9wv452.png'
-        })));
-        console.log("[Credits Debug] Cast ordering: Photos first, then no-photos (original order preserved within each group) ✓");
-
         const cDiv = document.createElement('div');
         cDiv.className = 'panel';
         cDiv.id = 'imdb_cast_photos';
@@ -2807,8 +3054,117 @@ function handleResetAll() {
         }
     };
 
+    const renderIMDbVideoToTrailer = (trailerContainer, video, movieTitle = null) => {
+        trailerContainer.innerHTML = '';
+
+        const videoElement = document.createElement('video');
+        videoElement.controls = true;
+        videoElement.preload = 'metadata';
+        videoElement.style.width = '100%';
+        videoElement.style.maxWidth = '100%';
+        videoElement.style.background = '#000';
+        videoElement.src = video.bestMp4.url;
+
+        trailerContainer.appendChild(videoElement);
+
+        const caption = document.createElement('div');
+        caption.style.marginTop = '8px';
+        caption.style.fontSize = '0.95em';
+        applyColorIfEnabled(caption, IMDB_ACCENT_COLOR);
+
+        const captionParts = [];
+        if (movieTitle) {
+            captionParts.push(movieTitle);
+        }
+        if (video.contentTypeLabel) {
+            captionParts.push(video.contentTypeLabel);
+        }
+        captionParts.push(video.title);
+        caption.textContent = captionParts.join(' — ');
+
+        trailerContainer.appendChild(caption);
+    };
+
+    const replacePTPTrailerWithIMDbVideos = async (imdbId, titleData) => {
+        if (!SHOW_IMDB_TRAILERS) {
+            return;
+        }
+
+        const synopsisPanel = document.getElementById('synopsis-and-trailer');
+        if (!synopsisPanel) {
+            return;
+        }
+
+        const trailerContainer = synopsisPanel.querySelector('.panel__body > #trailer') || synopsisPanel.querySelector('#trailer');
+        if (!trailerContainer || trailerContainer.dataset.imdbTrailerHandled === 'true') {
+            return;
+        }
+
+        const trailerData = await fetchIMDbTrailerData(imdbId);
+        if (!trailerData || !trailerData.defaultVideoId || !Array.isArray(trailerData.videos)) {
+            return;
+        }
+
+        const defaultVideo = trailerData.videos.find(video => video.id === trailerData.defaultVideoId);
+        if (!defaultVideo || !defaultVideo.bestMp4 || !defaultVideo.bestMp4.url) {
+            return;
+        }
+
+        const originalTrailerHtml = trailerContainer.innerHTML;
+        const movieTitle = titleData && titleData.titleText ? titleData.titleText.text : null;
+
+        const controlsContainer = document.createElement('div');
+        controlsContainer.id = 'imdb-trailer-selector-container';
+        controlsContainer.style.marginBottom = '8px';
+
+        const controlsLabel = document.createElement('label');
+        controlsLabel.style.display = 'inline-block';
+        controlsLabel.style.marginRight = '8px';
+        controlsLabel.textContent = 'Video source:';
+
+        const select = document.createElement('select');
+        select.id = 'imdb-trailer-selector';
+        select.style.maxWidth = '100%';
+        select.style.padding = '3px 6px';
+
+        const originalOption = document.createElement('option');
+        originalOption.value = 'original';
+        originalOption.textContent = 'Original PTP trailer';
+        select.appendChild(originalOption);
+
+        trailerData.videos.forEach(video => {
+            const option = document.createElement('option');
+            option.value = video.id;
+            option.textContent = `${video.contentTypeLabel}: ${video.title}`;
+            select.appendChild(option);
+        });
+
+        select.value = defaultVideo.id;
+        select.addEventListener('change', () => {
+            if (select.value === 'original') {
+                trailerContainer.innerHTML = originalTrailerHtml;
+                return;
+            }
+
+            const selectedVideo = trailerData.videos.find(video => video.id === select.value);
+            if (!selectedVideo) {
+                trailerContainer.innerHTML = originalTrailerHtml;
+                return;
+            }
+
+            renderIMDbVideoToTrailer(trailerContainer, selectedVideo, movieTitle);
+        });
+
+        controlsContainer.appendChild(controlsLabel);
+        controlsContainer.appendChild(select);
+
+        trailerContainer.parentNode.insertBefore(controlsContainer, trailerContainer);
+        renderIMDbVideoToTrailer(trailerContainer, defaultVideo, movieTitle);
+        trailerContainer.dataset.imdbTrailerHandled = 'true';
+    };
+
     // Initialize panels
-    fetchIMDBData(imdbId).then(data => {
+    fetchIMDBData(imdbId).then(async data => {
         const { titleData, processedSoundtracks, idToNameMap, namesData } = data;
 
         if (titleData) {
@@ -2863,6 +3219,8 @@ function handleResetAll() {
             if (SHOW_CAST_PHOTOS && titleData.credits && titleData.credits.edges && titleData.credits.edges.length > 0) {
                 displayCastPhotos(titleData, idToNameMap, namesData);
             }
+
+            await replacePTPTrailerWithIMDbVideos(imdbId, titleData);
 
             formatIMDbText();
 
