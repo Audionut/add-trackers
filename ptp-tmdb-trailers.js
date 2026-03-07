@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP - TMDB Trailer Selector
-// @version      1.3
+// @version      1.4
 // @description  Add a dropdown to switch between various TMDB videos
 // @match        https://passthepopcorn.me/torrents.php?id=*
 // @icon         data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADkAAAA5CAMAAAC7xnO3AAAAV1BMVEUAAAD///9oiM2CacFm5Mj/jGb842dn3auC3X/z82j/uWZw14xudcRwbsBmpdz83GZm4NBq26KP4Hrm9Wr/rmdmr91u2ZNmntln5L/902b/l2Zt1otnseEVRKmYAAAAeUlEQVRIx+3WtwqAMBCAYU2zpNlii+//nAZFCDooSIaQ+5fjhm89LoNCl7u+TpCvM8kopUNda81YVfVu78rS8rEtCkJI4/ZNKYSQkBJjfJerk4sv+SHnUxo1/ZMCJEiQIKOV8pKPe8s8aa317q3x7m2SxfUnxCWhAO24CSsei22B/wAAAABJRU5ErkJggg==
@@ -24,13 +24,22 @@
         backdropDarkness: 38,
         backdropSharpness: 100,
         columnBackgroundTransparency: 0,
-        columnContentTransparency: 0
+        columnContentTransparency: 0,
+        enabledVideoTypes: {
+            trailer: true,
+            teaser: true,
+            featurette: true,
+            'behind the scenes': true,
+            clip: true
+        }
     };
     const CACHE_KEY_PREFIX = 'ptp_tmdb_trailers_cache_v1_';
     const LOGO_CACHE_KEY_PREFIX = 'ptp_tmdb_logo_cache_v1_';
     const BACKDROP_CACHE_KEY_PREFIX = 'ptp_tmdb_backdrop_cache_v1_';
     const API_KEY_PLACEHOLDER = '<REDACTED>';
     let settings = loadSettings();
+    let columnBackgroundObserver = null;
+    let columnBackgroundObserverTimer = null;
 
     // Base64-encoded TMDB icon
     const tmdbIconBase64 = 'PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiB2aWV3Qm94PSIwIDAgNDg5LjA0IDM1LjQiPjxkZWZzPjxzdHlsZT4uY2xzLTF7ZmlsbDp1cmwoI2xpbmVhci1ncmFkaWVudCk7fTwvc3R5bGU+PGxpbmVhckdyYWRpZW50IGlkPSJsaW5lYXItZ3JhZGllbnQiIHkxPSIxNy43IiB4Mj0iNDg5LjA0IiB5Mj0iMTcuNyIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iIzkwY2VhMSIvPjxzdG9wIG9mZnNldD0iMC41NiIgc3RvcC1jb2xvcj0iIzNjYmVjOSIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzAwYjNlNSIvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjx0aXRsZT5Bc3NldCA1PC90aXRsZT48ZyBpZD0iTGF5ZXJfMiIgZGF0YS1uYW1lPSJMYXllciAyIj48ZyBpZD0iTGF5ZXJfMS0yIiBkYXRhLW5hbWU9IkxheWVyIDEiPjxwYXRoIGNsYXNzPSJjbHMtMSIgZD0iTTI5My41LDBoOC45bDguNzUsMjMuMmguMUwzMjAuMTUsMGg4LjM1TDMxMy45LDM1LjRoLTYuMjVabTQ2LjYsMGg3LjhWMzUuNGgtNy44Wm0yMi4yLDBoMjQuMDVWNy4ySDM3MC4xdjYuNmgxNS4zNVYyMUgzNzAuMXY3LjJoMTcuMTV2Ny4ySDM2Mi4zWm01NSwwSDQyOWEzMy41NCwzMy41NCwwLDAsMSw4LjA3LDFBMTguNTUsMTguNTUsMCwwLDEsNDQzLjc1LDRhMTUuMSwxNS4xLDAsMCwxLDQuNTIsNS41M0ExOC41LDE4LjUsMCwwLDEsNDUwLDE3LjhhMTYuOTEsMTYuOTEsMCwwLDEtMS42Myw3LjU4LDE2LjM3LDE2LjM3LDAsMCwxLTQuMzcsNS41LDE5LjUyLDE5LjUyLDAsMCwxLTYuMzUsMy4zN0EyNC41OSwyNC41OSwwLDAsMSw0MzAsMzUuNEg0MTcuMjlabTcuODEsMjguMmg0YTIxLjU3LDIxLjU3LDAsMCwwLDUtLjU1LDEwLjg3LDEwLjg3LDAsMCwwLDQtMS44Myw4LjY5LDguNjksMCwwLDAsMi42Ny0zLjM0LDExLjkyLDExLjkyLDAsMCwwLDEtNS4wOCw5Ljg3LDkuODcsMCwwLDAtMS00LjUyLDksOSwwLDAsMC0yLjYyLTMuMTgsMTEuNjgsMTEuNjgsMCwwLDAtMy44OC0xLjg4LDE3LjQzLDE3LjQzLDAsMCwwLTQuNjctLjYyaC00LjZaTTQ2MS4yNCwwaDEzLjJhMzQuNDIsMzQuNDIsMCwwLDEsNC42My4zMiwxMi45LDEyLjksMCwwLDEsNC4xNywxLjMsNy44OCw3Ljg4LDAsMCwxLDMsMi43M0E4LjM0LDguMzQsMCwwLDEsNDg3LjM5LDlhNy40Miw3LjQyLDAsMCwxLTEuNjcsNSw5LjI4LDkuMjgsMCwwLDEtNC40MywyLjgydi4xYTEwLDEwLDAsMCwxLDMuMTgsMSw4LjM4LDguMzgsMCwwLDEsMi40NSwxLjg1LDcuNzksNy43OSwwLDAsMSwxLjU3LDIuNjIsOS4xNiw5LjE2LDAsMCwxLC41NSwzLjIsOC41Miw4LjUyLDAsMCwxLTEuMiw0LjY4LDkuNDIsOS40MiwwLDAsMS0zLjEsMywxMy4zOCwxMy4zOCwwLDAsMS00LjI3LDEuNjUsMjMuMTEsMjMuMTEsMCwwLDEtNC43My41aC0xNC41Wk00NjksMTQuMTVoNS42NWE4LjE2LDguMTYsMCwwLDAsMS43OC0uMkE0Ljc4LDQuNzgsMCwwLDAsNDc4LDEzLjNhMy4zNCwzLjM0LDAsMCwwLDEuMTMtMS4yLDMuNjMsMy42MywwLDAsMCwuNDItMS44LDMuMjIsMy4yMiwwLDAsMC0uNDctMS44MiwzLjMzLDMuMzMsMCwwLDAtMS4yMy0xLjEzLDUuNzcsNS43NywwLDAsMC0xLjctLjU4LDEwLjc5LDEwLjc5LDAsMCwwLTEuODUtLjE3SDQ2OVptMCwxNC42NWg3YTguOTEsOC45MSwwLDAsMCwxLjgzLS4yLDQuNzgsNC43OCwwLDAsMCwxLjY3LS43LDQsNCwwLDAsMCwxLjIzLTEuMywzLjcxLDMuNzEsMCwwLDAsLjQ3LTIsMy4xMywzLjEzLDAsMCwwLS42Mi0yQTQsNCwwLDAsMCw0NzksMjEuNDUsNy44Myw3LjgzLDAsMCwwLDQ3NywyMC45YTE1LjEyLDE1LjEyLDAsMCwwLTIuMDUtLjE1SDQ2OVptLTI2NSw2LjUzSDI3MWExNy42NiwxNy42NiwwLDAsMCwxNy42Ni0xNy42NmgwQTE3LjY3LDE3LjY3LDAsMCwwLDI3MSwwSDIwNC4wNkExNy42NywxNy42NywwLDAsMCwxODYuNCwxNy42N2gwQTE3LjY2LDE3LjY2LDAsMCwwLDIwNC4wNiwzNS4zM1pNMTAuMSw2LjlIMFYwSDI4VjYuOUgxNy45VjM1LjRIMTAuMVpNMzksMGg3LjhWMTMuMkg2MS45VjBoNy44VjM1LjRINjEuOVYyMC4xSDQ2Ljc1VjM1LjRIMzlaTTgwLjIsMGgyNFY3LjJIODh2Ni42aDE1LjM1VjIxSDg4djcuMmgxNy4xNXY3LjJoLTI1Wm01NSwwSDE0N2w4LjE1LDIzLjFoLjFMMTYzLjQ1LDBIMTc1LjJWMzUuNGgtNy44VjguMjVoLS4xTDE1OCwzNS40aC01Ljk1bC05LTI3LjE1SDE0M1YzNS40aC03LjhaIi8+PC9nPjwvZz48L3N2Zz4=';
@@ -70,6 +79,16 @@
                 ? Math.min(100, Math.max(0, legacyTransparency))
                 : DEFAULT_SETTINGS.columnContentTransparency);
         delete normalized.columnTransparency;
+        const inputTypes = normalized.enabledVideoTypes && typeof normalized.enabledVideoTypes === 'object'
+            ? normalized.enabledVideoTypes
+            : {};
+        normalized.enabledVideoTypes = {
+            trailer: inputTypes.trailer !== undefined ? Boolean(inputTypes.trailer) : true,
+            teaser: inputTypes.teaser !== undefined ? Boolean(inputTypes.teaser) : true,
+            featurette: inputTypes.featurette !== undefined ? Boolean(inputTypes.featurette) : true,
+            'behind the scenes': inputTypes['behind the scenes'] !== undefined ? Boolean(inputTypes['behind the scenes']) : true,
+            clip: inputTypes.clip !== undefined ? Boolean(inputTypes.clip) : true
+        };
         return normalized;
     }
 
@@ -166,6 +185,14 @@
                 <label for="ptp-tmdb-column-content-transparency" style="display:block; margin-bottom: 4px;">Column Text/Image Transparency (0-100)</label>
                 <input id="ptp-tmdb-column-content-transparency" type="number" min="0" max="100" step="1" style="width:100%; box-sizing:border-box; padding:6px;" />
             </div>
+            <div style="margin-bottom: 12px;">
+                <div style="margin-bottom: 4px;">Enabled TMDB Video Types</div>
+                <label style="display:block;"><input id="ptp-tmdb-type-trailer" type="checkbox" /> Trailer</label>
+                <label style="display:block;"><input id="ptp-tmdb-type-teaser" type="checkbox" /> Teaser</label>
+                <label style="display:block;"><input id="ptp-tmdb-type-featurette" type="checkbox" /> Featurette</label>
+                <label style="display:block;"><input id="ptp-tmdb-type-behind-scenes" type="checkbox" /> Behind the Scenes</label>
+                <label style="display:block;"><input id="ptp-tmdb-type-clip" type="checkbox" /> Clip</label>
+            </div>
             <div style="display:flex; justify-content:flex-end; gap:8px;">
                 <button id="ptp-tmdb-settings-cancel" type="button">Cancel</button>
                 <button id="ptp-tmdb-settings-save" type="button">Save</button>
@@ -184,6 +211,11 @@
         const backdropSharpnessInput = panel.querySelector('#ptp-tmdb-backdrop-sharpness');
         const columnBgTransparencyInput = panel.querySelector('#ptp-tmdb-column-bg-transparency');
         const columnContentTransparencyInput = panel.querySelector('#ptp-tmdb-column-content-transparency');
+        const typeTrailerInput = panel.querySelector('#ptp-tmdb-type-trailer');
+        const typeTeaserInput = panel.querySelector('#ptp-tmdb-type-teaser');
+        const typeFeaturetteInput = panel.querySelector('#ptp-tmdb-type-featurette');
+        const typeBehindScenesInput = panel.querySelector('#ptp-tmdb-type-behind-scenes');
+        const typeClipInput = panel.querySelector('#ptp-tmdb-type-clip');
         const cancelButton = panel.querySelector('#ptp-tmdb-settings-cancel');
         const saveButton = panel.querySelector('#ptp-tmdb-settings-save');
 
@@ -196,6 +228,11 @@
         backdropSharpnessInput.value = String(settings.backdropSharpness ?? DEFAULT_SETTINGS.backdropSharpness);
         columnBgTransparencyInput.value = String(settings.columnBackgroundTransparency ?? DEFAULT_SETTINGS.columnBackgroundTransparency);
         columnContentTransparencyInput.value = String(settings.columnContentTransparency ?? DEFAULT_SETTINGS.columnContentTransparency);
+        typeTrailerInput.checked = Boolean(settings.enabledVideoTypes?.trailer);
+        typeTeaserInput.checked = Boolean(settings.enabledVideoTypes?.teaser);
+        typeFeaturetteInput.checked = Boolean(settings.enabledVideoTypes?.featurette);
+        typeBehindScenesInput.checked = Boolean(settings.enabledVideoTypes?.['behind the scenes']);
+        typeClipInput.checked = Boolean(settings.enabledVideoTypes?.clip);
 
         const closeModal = () => {
             modal.style.display = 'none';
@@ -247,7 +284,14 @@
                 backdropDarkness: darkness,
                 backdropSharpness: sharpness,
                 columnBackgroundTransparency: columnBgTransparency,
-                columnContentTransparency: columnContentTransparency
+                columnContentTransparency: columnContentTransparency,
+                enabledVideoTypes: {
+                    trailer: typeTrailerInput.checked,
+                    teaser: typeTeaserInput.checked,
+                    featurette: typeFeaturetteInput.checked,
+                    'behind the scenes': typeBehindScenesInput.checked,
+                    clip: typeClipInput.checked
+                }
             });
             closeModal();
             window.location.reload();
@@ -573,12 +617,21 @@
             .main-column :is(img, svg, video, canvas) {
                 opacity: ${columnContentOpacity} !important;
             }
+            #header,
+            .header,
+            .linkbox,
+            #header *,
+            .header *,
+            .linkbox * {
+                opacity: 1 !important;
+            }
             .page__main-content {
                 background-color: transparent !important;
             }
         `;
 
         applyColumnBackgroundTransparency(columnBgFactor);
+        ensureColumnBackgroundObserver(columnBgFactor);
     }
 
     function parseCssColor(colorString) {
@@ -597,6 +650,9 @@
         const nodes = document.querySelectorAll('.sidebar, .main-column, .sidebar *, .main-column *');
         nodes.forEach(node => {
             const element = node;
+            if (element.closest('#header, .header, .linkbox')) {
+                return;
+            }
             if (!element.dataset.tmdbBaseBgColor) {
                 element.dataset.tmdbBaseBgColor = window.getComputedStyle(element).backgroundColor || '';
             }
@@ -609,6 +665,35 @@
 
             const adjustedAlpha = Math.max(0, Math.min(1, parsed.a * alphaFactor));
             element.style.setProperty('background-color', `rgba(${parsed.r}, ${parsed.g}, ${parsed.b}, ${adjustedAlpha.toFixed(3)})`, 'important');
+        });
+    }
+
+    function scheduleColumnBackgroundRefresh(alphaFactor) {
+        if (columnBackgroundObserverTimer) {
+            clearTimeout(columnBackgroundObserverTimer);
+        }
+        columnBackgroundObserverTimer = setTimeout(() => {
+            applyColumnBackgroundTransparency(alphaFactor);
+        }, 50);
+    }
+
+    function ensureColumnBackgroundObserver(alphaFactor) {
+        if (columnBackgroundObserver) return;
+
+        const targets = document.querySelectorAll('.sidebar, .main-column');
+        if (targets.length === 0) return;
+
+        columnBackgroundObserver = new MutationObserver(() => {
+            scheduleColumnBackgroundRefresh(alphaFactor);
+        });
+
+        targets.forEach(target => {
+            columnBackgroundObserver.observe(target, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeFilter: ['style', 'class']
+            });
         });
     }
 
@@ -902,7 +987,9 @@
 
     // Modify the populateDropdowns function to support integrating with an existing selector
     function populateDropdowns(videos, videoDropdown, originalIframe, videoDiv, originalLoaded, isTVShow, useExistingSelector) {
-        const sortedVideos = sortVideos(videos);
+        const enabledTypes = settings.enabledVideoTypes || {};
+        const filteredVideos = videos.filter(video => enabledTypes[video.type] !== false);
+        const sortedVideos = sortVideos(filteredVideos);
         const getCurrentTMDBVideo = (selectValue) => {
             const videoId = useExistingSelector ? getTMDBVideoId(selectValue) : selectValue;
             return sortedVideos.find(video => video.videoId === videoId);
