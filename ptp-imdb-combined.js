@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.2.2
+// @version      1.2.3
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -50,6 +50,10 @@ let CONST_PIXEL_HEIGHT = 300;
 let CAST_IMAGES_PER_ROW = 4;
 let CAST_DEFAULT_ROWS = 2;
 let DISABLE_CUSTOM_COLORS = false;
+const IMDB_TRAILER_PREVIEW_HEIGHT = 200;
+const IMDB_TRAILER_FALLBACK_ASPECT_RATIO = 16 / 9;
+const IMDB_TRAILER_MIN_ASPECT_RATIO = 1.2;
+const IMDB_TRAILER_MAX_ASPECT_RATIO = 2.5;
 
 const saveSettings = () => {
     GM.setValue('SHOW_SIMILAR_MOVIES', SHOW_SIMILAR_MOVIES);
@@ -3054,35 +3058,230 @@ function handleResetAll() {
         }
     };
 
+    const clampValue = (value, min, max) => Math.min(Math.max(value, min), max);
+
+    const normalizeAspectRatio = (ratio) => {
+        if (!Number.isFinite(ratio) || ratio <= 0) {
+            return IMDB_TRAILER_FALLBACK_ASPECT_RATIO;
+        }
+        return clampValue(ratio, IMDB_TRAILER_MIN_ASPECT_RATIO, IMDB_TRAILER_MAX_ASPECT_RATIO);
+    };
+
+    const waitForMediaEvent = (mediaElement, eventName, timeoutMs = 2000) => {
+        return new Promise((resolve, reject) => {
+            let settled = false;
+            const onEvent = () => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                resolve();
+            };
+            const onError = () => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                reject(new Error(`Media event failed: ${eventName}`));
+            };
+            const cleanup = () => {
+                clearTimeout(timeoutId);
+                mediaElement.removeEventListener(eventName, onEvent);
+                mediaElement.removeEventListener('error', onError);
+            };
+            const timeoutId = setTimeout(() => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                reject(new Error(`Timed out waiting for ${eventName}`));
+            }, timeoutMs);
+
+            mediaElement.addEventListener(eventName, onEvent, { once: true });
+            mediaElement.addEventListener('error', onError, { once: true });
+        });
+    };
+
+    const getVideoIntrinsicAspectRatio = (videoElement) => {
+        if (videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
+            return normalizeAspectRatio(videoElement.videoWidth / videoElement.videoHeight);
+        }
+        return IMDB_TRAILER_FALLBACK_ASPECT_RATIO;
+    };
+
+    const computeRowDarkRatio = (imageData, width, rowIndex) => {
+        let darkPixels = 0;
+        for (let x = 0; x < width; x++) {
+            const offset = (rowIndex * width + x) * 4;
+            const r = imageData[offset];
+            const g = imageData[offset + 1];
+            const b = imageData[offset + 2];
+            const luma = (0.2126 * r) + (0.7152 * g) + (0.0722 * b);
+            const maxChannel = Math.max(r, g, b);
+            const minChannel = Math.min(r, g, b);
+            if (luma <= 24 && (maxChannel - minChannel) <= 18) {
+                darkPixels++;
+            }
+        }
+        return darkPixels / width;
+    };
+
+    const estimateLetterboxAspectRatio = (videoElement, intrinsicAspectRatio) => {
+        if (!videoElement.videoWidth || !videoElement.videoHeight) {
+            return null;
+        }
+
+        const sampleWidth = Math.min(320, videoElement.videoWidth);
+        const sampleHeight = Math.max(90, Math.round(sampleWidth * videoElement.videoHeight / videoElement.videoWidth));
+        const canvas = document.createElement('canvas');
+        canvas.width = sampleWidth;
+        canvas.height = sampleHeight;
+
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        if (!context) {
+            return null;
+        }
+
+        try {
+            context.drawImage(videoElement, 0, 0, sampleWidth, sampleHeight);
+            const frame = context.getImageData(0, 0, sampleWidth, sampleHeight).data;
+
+            const darkThreshold = 0.97;
+            let topBarRows = 0;
+            for (let y = 0; y < sampleHeight; y++) {
+                const rowDarkRatio = computeRowDarkRatio(frame, sampleWidth, y);
+                if (rowDarkRatio >= darkThreshold) {
+                    topBarRows++;
+                } else {
+                    break;
+                }
+            }
+
+            let bottomBarRows = 0;
+            for (let y = sampleHeight - 1; y >= 0; y--) {
+                const rowDarkRatio = computeRowDarkRatio(frame, sampleWidth, y);
+                if (rowDarkRatio >= darkThreshold) {
+                    bottomBarRows++;
+                } else {
+                    break;
+                }
+            }
+
+            const totalBarRows = topBarRows + bottomBarRows;
+            if (totalBarRows < Math.round(sampleHeight * 0.08)) {
+                return null;
+            }
+
+            const centerRowDarkRatio = computeRowDarkRatio(frame, sampleWidth, Math.floor(sampleHeight / 2));
+            if (centerRowDarkRatio > 0.92) {
+                return null;
+            }
+
+            const effectiveHeight = sampleHeight - totalBarRows;
+            if (effectiveHeight <= 0) {
+                return null;
+            }
+
+            const detectedAspectRatio = sampleWidth / effectiveHeight;
+            if (detectedAspectRatio <= (intrinsicAspectRatio * 1.06)) {
+                return null;
+            }
+
+            return normalizeAspectRatio(detectedAspectRatio);
+        } catch (error) {
+            return null;
+        }
+    };
+
+    const resolvePlaybackAspectRatio = async (videoElement) => {
+        try {
+            if (!(videoElement.videoWidth > 0 && videoElement.videoHeight > 0)) {
+                await waitForMediaEvent(videoElement, 'loadedmetadata', 2500);
+            }
+        } catch (_) {
+            return IMDB_TRAILER_FALLBACK_ASPECT_RATIO;
+        }
+
+        const intrinsicAspectRatio = getVideoIntrinsicAspectRatio(videoElement);
+
+        try {
+            if (videoElement.readyState < 2) {
+                await waitForMediaEvent(videoElement, 'loadeddata', 2500);
+            }
+        } catch (_) {
+            return intrinsicAspectRatio;
+        }
+
+        const letterboxAspectRatio = estimateLetterboxAspectRatio(videoElement, intrinsicAspectRatio);
+        return letterboxAspectRatio || intrinsicAspectRatio;
+    };
+
+    const setTrailerWrapperHeight = (wrapper, aspectRatio) => {
+        const width = wrapper.clientWidth || (wrapper.parentElement ? wrapper.parentElement.clientWidth : 0);
+        if (!width) {
+            return;
+        }
+
+        const safeAspectRatio = normalizeAspectRatio(aspectRatio);
+        const targetHeight = Math.max(120, Math.round(width / safeAspectRatio));
+        wrapper.style.height = `${targetHeight}px`;
+    };
+
     const renderIMDbVideoToTrailer = (trailerContainer, video, movieTitle = null) => {
+        if (typeof trailerContainer._imdbTrailerCleanup === 'function') {
+            trailerContainer._imdbTrailerCleanup();
+            trailerContainer._imdbTrailerCleanup = null;
+        }
+
         trailerContainer.innerHTML = '';
+
+        const videoWrapper = document.createElement('div');
+        videoWrapper.style.position = 'relative';
+        videoWrapper.style.width = '100%';
+        videoWrapper.style.height = `${IMDB_TRAILER_PREVIEW_HEIGHT}px`;
+        videoWrapper.style.background = '#000';
+        videoWrapper.style.overflow = 'hidden';
+        videoWrapper.style.transition = 'height 180ms ease';
 
         const videoElement = document.createElement('video');
         videoElement.controls = true;
         videoElement.preload = 'metadata';
+        videoElement.playsInline = true;
         videoElement.style.width = '100%';
-        videoElement.style.maxWidth = '100%';
+        videoElement.style.height = '100%';
+        videoElement.style.objectFit = 'contain';
         videoElement.style.background = '#000';
         videoElement.src = video.bestMp4.url;
 
-        trailerContainer.appendChild(videoElement);
+        const startPlayback = async () => {
+            if (videoWrapper.dataset.mode === 'expanded' || videoWrapper.dataset.mode === 'expanding') {
+                return;
+            }
 
-        const caption = document.createElement('div');
-        caption.style.marginTop = '8px';
-        caption.style.fontSize = '0.95em';
-        applyColorIfEnabled(caption, IMDB_ACCENT_COLOR);
+            videoWrapper.dataset.mode = 'expanding';
 
-        const captionParts = [];
-        if (movieTitle) {
-            captionParts.push(movieTitle);
-        }
-        if (video.contentTypeLabel) {
-            captionParts.push(video.contentTypeLabel);
-        }
-        captionParts.push(video.title);
-        caption.textContent = captionParts.join(' — ');
+            const resolvedAspectRatio = await resolvePlaybackAspectRatio(videoElement);
+            videoWrapper.dataset.aspectRatio = String(resolvedAspectRatio);
+            setTrailerWrapperHeight(videoWrapper, resolvedAspectRatio);
+            videoWrapper.dataset.mode = 'expanded';
+        };
 
-        trailerContainer.appendChild(caption);
+        videoElement.addEventListener('play', () => {
+            startPlayback();
+        });
+
+        const onWindowResize = () => {
+            if (videoWrapper.dataset.mode !== 'expanded') {
+                return;
+            }
+            const ratio = parseFloat(videoWrapper.dataset.aspectRatio || `${IMDB_TRAILER_FALLBACK_ASPECT_RATIO}`);
+            setTrailerWrapperHeight(videoWrapper, ratio);
+        };
+        window.addEventListener('resize', onWindowResize);
+
+        trailerContainer._imdbTrailerCleanup = () => {
+            window.removeEventListener('resize', onWindowResize);
+        };
+
+        videoWrapper.appendChild(videoElement);
+        trailerContainer.appendChild(videoWrapper);
     };
 
     const replacePTPTrailerWithIMDbVideos = async (imdbId, titleData) => {
@@ -3142,6 +3341,10 @@ function handleResetAll() {
         select.value = defaultVideo.id;
         select.addEventListener('change', () => {
             if (select.value === 'original') {
+                if (typeof trailerContainer._imdbTrailerCleanup === 'function') {
+                    trailerContainer._imdbTrailerCleanup();
+                    trailerContainer._imdbTrailerCleanup = null;
+                }
                 trailerContainer.innerHTML = originalTrailerHtml;
                 return;
             }
