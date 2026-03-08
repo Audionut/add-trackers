@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.2.4
+// @version      1.2.5
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -42,6 +42,8 @@ let ENABLE_IMDB_RATINGS_PANEL = false;
 let SHOW_RATINGS_ROTTEN_TOMATOES = false;
 let SHOW_RATINGS_LETTERBOXD = false;
 let SHOW_IMDB_VOTE_HISTOGRAM = false;
+let SHOW_IMDB_WEIGHTED_SCORE = false;
+let SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE = false;
 let SHOW_IMDB_DEMOGRAPHICS = false;
 let SHOW_IMDB_COUNTRY_AVERAGES = false;
 let isPanelVisible = true;
@@ -62,33 +64,80 @@ let IMDB_DEMOGRAPHICS_PANEL_HEIGHT = 216;
 let CAST_IMAGES_PER_ROW = 4;
 let CAST_DEFAULT_ROWS = 2;
 let DISABLE_CUSTOM_COLORS = false;
-let IMDB_DEMOGRAPHIC_FIELDS_ENABLED = {
-    userCategory: true,
-    gender: true,
-    age: true,
-    country: true
+let IMDB_DEMOGRAPHIC_ROW_TYPES_ENABLED = {
+    ageOnly: true,
+    genderOnly: true,
+    genderAge: true,
+    userCategoryOnly: true,
+    countryOnly: true,
+    other: true
 };
-let IMDB_DEMOGRAPHIC_FIELD_ORDER = ['userCategory', 'gender', 'age', 'country'];
-let settingsPanelState = null;
+let IMDB_DEMOGRAPHIC_GENDERS_ENABLED = {
+    FEMALE: true,
+    MALE: true
+};
+let IMDB_DEMOGRAPHIC_AGES_ENABLED = {
+    AGE_UNDER_18: true,
+    AGE_18_29: true,
+    AGE_30_44: true,
+    AGE_45_PLUS: true
+};
+let IMDB_DEMOGRAPHIC_SORT_BY = 'label';
+let IMDB_DEMOGRAPHIC_SORT_DIRECTION = 'asc';
+let IMDB_WEIGHTED_SCORE_TYPE = 'trimmed5';
+let IMDB_DEMOGRAPHIC_SCORE_OVERRIDE_KEY = 'gender:FEMALE';
 const IMDB_TRAILER_PREVIEW_HEIGHT = 200;
 const IMDB_TRAILER_FALLBACK_ASPECT_RATIO = 16 / 9;
 const IMDB_TRAILER_MIN_ASPECT_RATIO = 1.2;
 const IMDB_TRAILER_MAX_ASPECT_RATIO = 2.5;
 const PTP_ID = typeof groupid !== 'undefined' ? groupid : null;
 
-const DEFAULT_IMDB_DEMOGRAPHIC_FIELDS_ENABLED = {
-    userCategory: true,
-    gender: true,
-    age: true,
-    country: true
+const DEFAULT_IMDB_DEMOGRAPHIC_ROW_TYPES_ENABLED = {
+    ageOnly: true,
+    genderOnly: true,
+    genderAge: true,
+    userCategoryOnly: true,
+    countryOnly: true,
+    other: true
 };
-const DEFAULT_IMDB_DEMOGRAPHIC_FIELD_ORDER = ['userCategory', 'gender', 'age', 'country'];
-const IMDB_DEMOGRAPHIC_FIELD_LABELS = {
-    userCategory: 'User Category',
-    gender: 'Gender',
-    age: 'Age',
-    country: 'Country'
+const DEFAULT_IMDB_DEMOGRAPHIC_GENDERS_ENABLED = {
+    FEMALE: true,
+    MALE: true
 };
+const DEFAULT_IMDB_DEMOGRAPHIC_AGES_ENABLED = {
+    AGE_UNDER_18: true,
+    AGE_18_29: true,
+    AGE_30_44: true,
+    AGE_45_PLUS: true
+};
+const DEFAULT_IMDB_DEMOGRAPHIC_SORT_BY = 'label';
+const DEFAULT_IMDB_DEMOGRAPHIC_SORT_DIRECTION = 'asc';
+const IMDB_DEMOGRAPHIC_LABEL_FIELDS = ['userCategory', 'gender', 'age', 'country'];
+const DEFAULT_IMDB_WEIGHTED_SCORE_TYPE = 'trimmed5';
+const DEFAULT_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE_KEY = 'gender:FEMALE';
+const IMDB_WEIGHTED_SCORE_TYPE_LABELS = {
+    trimmed5: 'Trimmed mean 5%',
+    trimmed10: 'Trimmed mean 10%',
+    median: 'Weighted median',
+    mean: 'Mean',
+    bayesian: 'Bayesian blend'
+};
+const IMDB_SCORE_OVERRIDE_OPTIONS = [
+    { value: 'gender:FEMALE', label: 'Female' },
+    { value: 'gender:MALE', label: 'Male' },
+    { value: 'age:AGE_UNDER_18', label: 'UNDER-18' },
+    { value: 'age:AGE_18_29', label: '18-29' },
+    { value: 'age:AGE_30_44', label: '30-44' },
+    { value: 'age:AGE_45_PLUS', label: '45-PLUS' },
+    { value: 'gender:FEMALE|age:AGE_UNDER_18', label: 'Female / UNDER-18' },
+    { value: 'gender:FEMALE|age:AGE_18_29', label: 'Female / 18-29' },
+    { value: 'gender:FEMALE|age:AGE_30_44', label: 'Female / 30-44' },
+    { value: 'gender:FEMALE|age:AGE_45_PLUS', label: 'Female / 45-PLUS' },
+    { value: 'gender:MALE|age:AGE_UNDER_18', label: 'Male / UNDER-18' },
+    { value: 'gender:MALE|age:AGE_18_29', label: 'Male / 18-29' },
+    { value: 'gender:MALE|age:AGE_30_44', label: 'Male / 30-44' },
+    { value: 'gender:MALE|age:AGE_45_PLUS', label: 'Male / 45-PLUS' }
+];
 
 const saveSettings = () => {
     GM.setValue('SHOW_SIMILAR_MOVIES', SHOW_SIMILAR_MOVIES);
@@ -109,6 +158,8 @@ const saveSettings = () => {
     GM.setValue('SHOW_RATINGS_ROTTEN_TOMATOES', SHOW_RATINGS_ROTTEN_TOMATOES);
     GM.setValue('SHOW_RATINGS_LETTERBOXD', SHOW_RATINGS_LETTERBOXD);
     GM.setValue('SHOW_IMDB_VOTE_HISTOGRAM', SHOW_IMDB_VOTE_HISTOGRAM);
+    GM.setValue('SHOW_IMDB_WEIGHTED_SCORE', SHOW_IMDB_WEIGHTED_SCORE);
+    GM.setValue('SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE', SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE);
     GM.setValue('SHOW_IMDB_DEMOGRAPHICS', SHOW_IMDB_DEMOGRAPHICS);
     GM.setValue('SHOW_IMDB_COUNTRY_AVERAGES', SHOW_IMDB_COUNTRY_AVERAGES);
     GM.setValue('isPanelVisible', isPanelVisible);
@@ -129,8 +180,13 @@ const saveSettings = () => {
     GM.setValue('SIMILAR_MOVIES_LOCATION', SIMILAR_MOVIES_LOCATION);
     GM.setValue('PARENTS_LOCATION', PARENTS_LOCATION);
     GM.setValue('DISABLE_CUSTOM_COLORS', DISABLE_CUSTOM_COLORS);
-    GM.setValue('IMDB_DEMOGRAPHIC_FIELDS_ENABLED', IMDB_DEMOGRAPHIC_FIELDS_ENABLED);
-    GM.setValue('IMDB_DEMOGRAPHIC_FIELD_ORDER', IMDB_DEMOGRAPHIC_FIELD_ORDER);
+    GM.setValue('IMDB_DEMOGRAPHIC_ROW_TYPES_ENABLED', IMDB_DEMOGRAPHIC_ROW_TYPES_ENABLED);
+    GM.setValue('IMDB_DEMOGRAPHIC_GENDERS_ENABLED', IMDB_DEMOGRAPHIC_GENDERS_ENABLED);
+    GM.setValue('IMDB_DEMOGRAPHIC_AGES_ENABLED', IMDB_DEMOGRAPHIC_AGES_ENABLED);
+    GM.setValue('IMDB_DEMOGRAPHIC_SORT_BY', IMDB_DEMOGRAPHIC_SORT_BY);
+    GM.setValue('IMDB_DEMOGRAPHIC_SORT_DIRECTION', IMDB_DEMOGRAPHIC_SORT_DIRECTION);
+    GM.setValue('IMDB_WEIGHTED_SCORE_TYPE', IMDB_WEIGHTED_SCORE_TYPE);
+    GM.setValue('IMDB_DEMOGRAPHIC_SCORE_OVERRIDE_KEY', IMDB_DEMOGRAPHIC_SCORE_OVERRIDE_KEY);
 };
 
 const loadSettings = async () => {
@@ -152,6 +208,8 @@ const loadSettings = async () => {
     SHOW_RATINGS_ROTTEN_TOMATOES = await GM.getValue('SHOW_RATINGS_ROTTEN_TOMATOES', false);
     SHOW_RATINGS_LETTERBOXD = await GM.getValue('SHOW_RATINGS_LETTERBOXD', false);
     SHOW_IMDB_VOTE_HISTOGRAM = await GM.getValue('SHOW_IMDB_VOTE_HISTOGRAM', false);
+    SHOW_IMDB_WEIGHTED_SCORE = await GM.getValue('SHOW_IMDB_WEIGHTED_SCORE', false);
+    SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE = await GM.getValue('SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE', false);
     SHOW_IMDB_DEMOGRAPHICS = await GM.getValue('SHOW_IMDB_DEMOGRAPHICS', false);
     SHOW_IMDB_COUNTRY_AVERAGES = await GM.getValue('SHOW_IMDB_COUNTRY_AVERAGES', false);
     isPanelVisible = await GM.getValue('isPanelVisible', true);
@@ -173,14 +231,30 @@ const loadSettings = async () => {
     PARENTS_LOCATION = await GM.getValue('PARENTS_LOCATION', 3);
     DISABLE_CUSTOM_COLORS = await GM.getValue('DISABLE_CUSTOM_COLORS', false);
 
-    const storedEnabled = await GM.getValue('IMDB_DEMOGRAPHIC_FIELDS_ENABLED', DEFAULT_IMDB_DEMOGRAPHIC_FIELDS_ENABLED);
-    IMDB_DEMOGRAPHIC_FIELDS_ENABLED = {
-        ...DEFAULT_IMDB_DEMOGRAPHIC_FIELDS_ENABLED,
-        ...(storedEnabled && typeof storedEnabled === 'object' ? storedEnabled : {})
-    };
+    const storedRowTypes = await GM.getValue('IMDB_DEMOGRAPHIC_ROW_TYPES_ENABLED', DEFAULT_IMDB_DEMOGRAPHIC_ROW_TYPES_ENABLED);
+    IMDB_DEMOGRAPHIC_ROW_TYPES_ENABLED = normalizeDemographicOptionMap(storedRowTypes, DEFAULT_IMDB_DEMOGRAPHIC_ROW_TYPES_ENABLED);
 
-    const storedOrder = await GM.getValue('IMDB_DEMOGRAPHIC_FIELD_ORDER', DEFAULT_IMDB_DEMOGRAPHIC_FIELD_ORDER);
-    IMDB_DEMOGRAPHIC_FIELD_ORDER = normalizeDemographicFieldOrder(storedOrder);
+    const storedGenders = await GM.getValue('IMDB_DEMOGRAPHIC_GENDERS_ENABLED', DEFAULT_IMDB_DEMOGRAPHIC_GENDERS_ENABLED);
+    IMDB_DEMOGRAPHIC_GENDERS_ENABLED = normalizeDemographicOptionMap(storedGenders, DEFAULT_IMDB_DEMOGRAPHIC_GENDERS_ENABLED);
+
+    const storedAges = await GM.getValue('IMDB_DEMOGRAPHIC_AGES_ENABLED', DEFAULT_IMDB_DEMOGRAPHIC_AGES_ENABLED);
+    IMDB_DEMOGRAPHIC_AGES_ENABLED = normalizeDemographicOptionMap(storedAges, DEFAULT_IMDB_DEMOGRAPHIC_AGES_ENABLED);
+
+    const storedSortBy = await GM.getValue('IMDB_DEMOGRAPHIC_SORT_BY', DEFAULT_IMDB_DEMOGRAPHIC_SORT_BY);
+    IMDB_DEMOGRAPHIC_SORT_BY = ['label', 'rating', 'votes'].includes(storedSortBy) ? storedSortBy : DEFAULT_IMDB_DEMOGRAPHIC_SORT_BY;
+
+    const storedSortDirection = await GM.getValue('IMDB_DEMOGRAPHIC_SORT_DIRECTION', DEFAULT_IMDB_DEMOGRAPHIC_SORT_DIRECTION);
+    IMDB_DEMOGRAPHIC_SORT_DIRECTION = ['asc', 'desc'].includes(storedSortDirection) ? storedSortDirection : DEFAULT_IMDB_DEMOGRAPHIC_SORT_DIRECTION;
+
+    const storedWeightedScoreType = await GM.getValue('IMDB_WEIGHTED_SCORE_TYPE', DEFAULT_IMDB_WEIGHTED_SCORE_TYPE);
+    IMDB_WEIGHTED_SCORE_TYPE = storedWeightedScoreType in IMDB_WEIGHTED_SCORE_TYPE_LABELS
+        ? storedWeightedScoreType
+        : DEFAULT_IMDB_WEIGHTED_SCORE_TYPE;
+
+    const storedDemographicScoreOverrideKey = await GM.getValue('IMDB_DEMOGRAPHIC_SCORE_OVERRIDE_KEY', DEFAULT_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE_KEY);
+    IMDB_DEMOGRAPHIC_SCORE_OVERRIDE_KEY = IMDB_SCORE_OVERRIDE_OPTIONS.some((option) => option.value === storedDemographicScoreOverrideKey)
+        ? storedDemographicScoreOverrideKey
+        : DEFAULT_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE_KEY;
 };
 
 const IMDB_ACCENT_COLOR = '#F2DB83';
@@ -421,61 +495,6 @@ function showSettingsPanel() {
                             <input type="checkbox" id="keywords-open" style="margin-right: 8px;">
                             <span>Open Keywords by Default</span>
                         </label>
-                    </div>
-
-                    <!-- Ratings + Parents Column -->
-                    <div>
-                        <h3 style="color: #F2DB83; margin-top: 0;">Ratings Box</h3>
-
-                        <label style="display: block; margin-bottom: 12px; cursor: pointer;">
-                            <input type="checkbox" id="enable-imdb-ratings-panel" style="margin-right: 8px;">
-                            <span>Enable IMDb Ratings + Ratings Panel Modifications</span>
-                        </label>
-
-                        <label style="display: block; margin-bottom: 10px; cursor: pointer;">
-                            <input type="checkbox" id="show-ratings-rotten-tomatoes" style="margin-right: 8px;">
-                            <span>Show Rotten Tomatoes</span>
-                        </label>
-
-                        <label style="display: block; margin-bottom: 10px; cursor: pointer;">
-                            <input type="checkbox" id="show-ratings-letterboxd" style="margin-right: 8px;">
-                            <span>Show Letterboxd</span>
-                        </label>
-
-                        <label style="display: block; margin-bottom: 10px; cursor: pointer;">
-                            <input type="checkbox" id="show-imdb-vote-histogram" style="margin-right: 8px;">
-                            <span>Show IMDb Vote Histogram</span>
-                        </label>
-
-                        <label style="display: block; margin-bottom: 10px; cursor: pointer;">
-                            <input type="checkbox" id="show-imdb-demographics" style="margin-right: 8px;">
-                            <span>Show IMDb Demographics</span>
-                        </label>
-
-                        <label style="display: block; margin-bottom: 14px; cursor: pointer;">
-                            <input type="checkbox" id="show-imdb-country-averages" style="margin-right: 8px;">
-                            <span>Show Country Averages</span>
-                        </label>
-
-                        <div style="margin-top: 18px;">
-                            <h4 style="color: #F2DB83; margin: 0 0 10px;">IMDb Demographics</h4>
-                            <p style="margin: 0 0 10px; font-size: 0.85em; color: #ccc;">
-                                Disable fields to hide them from labels. Use arrows to control label and sort order.
-                            </p>
-                            <div id="demographic-order-controls" style="display: grid; gap: 8px;"></div>
-                        </div>
-
-                        <label style="display: block; margin-top: 10px; margin-bottom: 12px;">
-                            <span style="display: block; margin-bottom: 5px;">IMDb Demographics Panel Height (px):</span>
-                            <input type="number" id="imdb-demographics-height" min="120" max="600" step="1" style="
-                                width: 90px;
-                                padding: 5px;
-                                background: #444;
-                                color: #fff;
-                                border: 1px solid #666;
-                                border-radius: 3px;
-                            ">
-                        </label>
 
                         <h3 style="color: #F2DB83; margin: 24px 0 10px;">Parents Guide</h3>
 
@@ -503,6 +522,182 @@ function showSettingsPanel() {
                             <input type="checkbox" id="hide-text" style="margin-right: 8px;">
                             <span>Hide Parental Guide Text</span>
                         </label>
+                    </div>
+
+                    <!-- Ratings + Parents Column -->
+                    <div>
+                        <h3 style="color: #F2DB83; margin-top: 0;">Ratings Box</h3>
+
+                        <label style="display: block; margin-bottom: 12px; cursor: pointer;">
+                            <input type="checkbox" id="enable-imdb-ratings-panel" style="margin-right: 8px;">
+                            <span>Enable IMDb Ratings + Ratings Panel Modifications</span>
+                        </label>
+
+                        <label style="display: block; margin-bottom: 10px; cursor: pointer;">
+                            <input type="checkbox" id="show-ratings-rotten-tomatoes" style="margin-right: 8px;">
+                            <span>Show Rotten Tomatoes</span>
+                        </label>
+
+                        <label style="display: block; margin-bottom: 10px; cursor: pointer;">
+                            <input type="checkbox" id="show-ratings-letterboxd" style="margin-right: 8px;">
+                            <span>Show Letterboxd</span>
+                        </label>
+
+                        <label style="display: block; margin-bottom: 10px; cursor: pointer;">
+                            <input type="checkbox" id="show-imdb-vote-histogram" style="margin-right: 8px;">
+                            <span>Show IMDb Vote Histogram</span>
+                        </label>
+
+                        <div style="margin: 0 0 14px 20px; padding: 10px 12px; border: 1px solid #555; border-radius: 6px; background: #383838;">
+                            <label style="display: block; margin-bottom: 10px; cursor: pointer;">
+                                <input type="checkbox" id="show-imdb-weighted-score" style="margin-right: 8px;">
+                                <span>Show Weighted IMDb Score</span>
+                                <span title="Calculates an alternate IMDb score from the vote histogram instead of using only the default IMDb aggregate." style="display: inline-block; margin-left: 6px; width: 16px; height: 16px; line-height: 16px; text-align: center; border: 1px solid #777; border-radius: 50%; font-size: 11px; color: #ccc; cursor: help;">?</span>
+                            </label>
+                            <label style="display: block; margin-bottom: 10px;">
+                                <span style="display: block; margin-bottom: 5px;">Active weighting type:
+                                    <span title="Mean: plain average of all votes.&#10;Trimmed mean 5%: removes the lowest and highest 5% before averaging.&#10;Trimmed mean 10%: removes the lowest and highest 10% before averaging.&#10;Weighted median: the middle vote in the weighted distribution.&#10;Bayesian blend: blends the histogram mean toward a fixed prior for extra stability." style="display: inline-block; margin-left: 6px; width: 16px; height: 16px; line-height: 16px; text-align: center; border: 1px solid #777; border-radius: 50%; font-size: 11px; color: #ccc; cursor: help;">?</span>
+                                </span>
+                                <select id="imdb-weighted-score-type" style="
+                                    width: 100%;
+                                    padding: 5px;
+                                    background: #444;
+                                    color: #fff;
+                                    border: 1px solid #666;
+                                    border-radius: 3px;
+                                ">
+                                    <option value="trimmed5">Trimmed mean 5%</option>
+                                    <option value="trimmed10">Trimmed mean 10%</option>
+                                    <option value="median">Weighted median</option>
+                                    <option value="mean">Mean</option>
+                                    <option value="bayesian">Bayesian blend</option>
+                                </select>
+                            </label>
+                        </div>
+
+                        <div style="margin: 0 0 14px 20px; padding: 10px 12px; border: 1px solid #555; border-radius: 6px; background: #383838;">
+                            <label style="display: block; margin-bottom: 10px; cursor: pointer;">
+                                <input type="checkbox" id="show-imdb-demographic-score-override" style="margin-right: 8px;">
+                                <span>Replace IMDb User Score With Demographic Score</span>
+                                <span title="Uses a selected IMDb demographic score in the main IMDb Users card instead of the overall IMDb users aggregate." style="display: inline-block; margin-left: 6px; width: 16px; height: 16px; line-height: 16px; text-align: center; border: 1px solid #777; border-radius: 50%; font-size: 11px; color: #ccc; cursor: help;">?</span>
+                            </label>
+                            <label style="display: block;">
+                                <span style="display: block; margin-bottom: 5px;">Demographic source:</span>
+                                <select id="imdb-demographic-score-override-key" style="
+                                    width: 100%;
+                                    padding: 5px;
+                                    background: #444;
+                                    color: #fff;
+                                    border: 1px solid #666;
+                                    border-radius: 3px;
+                                ">
+                                    <option value="gender:FEMALE">Female</option>
+                                    <option value="gender:MALE">Male</option>
+                                    <option value="age:AGE_UNDER_18">UNDER-18</option>
+                                    <option value="age:AGE_18_29">18-29</option>
+                                    <option value="age:AGE_30_44">30-44</option>
+                                    <option value="age:AGE_45_PLUS">45-PLUS</option>
+                                    <option value="gender:FEMALE|age:AGE_UNDER_18">Female / UNDER-18</option>
+                                    <option value="gender:FEMALE|age:AGE_18_29">Female / 18-29</option>
+                                    <option value="gender:FEMALE|age:AGE_30_44">Female / 30-44</option>
+                                    <option value="gender:FEMALE|age:AGE_45_PLUS">Female / 45-PLUS</option>
+                                    <option value="gender:MALE|age:AGE_UNDER_18">Male / UNDER-18</option>
+                                    <option value="gender:MALE|age:AGE_18_29">Male / 18-29</option>
+                                    <option value="gender:MALE|age:AGE_30_44">Male / 30-44</option>
+                                    <option value="gender:MALE|age:AGE_45_PLUS">Male / 45-PLUS</option>
+                                </select>
+                            </label>
+                        </div>
+
+                        <label style="display: block; margin-bottom: 10px; cursor: pointer;">
+                            <input type="checkbox" id="show-imdb-demographics" style="margin-right: 8px;">
+                            <span>Show IMDb Demographics</span>
+                        </label>
+
+                        <label style="display: block; margin-bottom: 14px; cursor: pointer;">
+                            <input type="checkbox" id="show-imdb-country-averages" style="margin-right: 8px;">
+                            <span>Show Country Averages</span>
+                        </label>
+
+                        <div style="margin-top: 18px;">
+                            <h4 style="color: #F2DB83; margin: 0 0 10px;">IMDb Demographics</h4>
+                            <p style="margin: 0 0 10px; font-size: 0.85em; color: #ccc;">
+                                Use the filters below to control which demographic rows appear.
+                            </p>
+                            <div style="display: grid; gap: 12px; margin-bottom: 12px;">
+                                <div>
+                                    <div style="margin-bottom: 6px; font-weight: bold;">Show demographic row types</div>
+                                    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
+                                        <label style="cursor: pointer;"><input type="checkbox" id="demographic-row-age-only" style="margin-right: 8px;">Age only</label>
+                                        <label style="cursor: pointer;"><input type="checkbox" id="demographic-row-gender-only" style="margin-right: 8px;">Gender only</label>
+                                        <label style="cursor: pointer;"><input type="checkbox" id="demographic-row-gender-age" style="margin-right: 8px;">Gender + age</label>
+                                        <label style="cursor: pointer;"><input type="checkbox" id="demographic-row-user-category-only" style="margin-right: 8px;">User category only</label>
+                                        <label style="cursor: pointer;"><input type="checkbox" id="demographic-row-country-only" style="margin-right: 8px;">Country only</label>
+                                        <label style="cursor: pointer;"><input type="checkbox" id="demographic-row-other" style="margin-right: 8px;">Other combinations</label>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div style="margin-bottom: 6px; font-weight: bold;">Show ages</div>
+                                    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
+                                        <label style="cursor: pointer;"><input type="checkbox" id="demographic-age-under-18" style="margin-right: 8px;">UNDER-18</label>
+                                        <label style="cursor: pointer;"><input type="checkbox" id="demographic-age-18-29" style="margin-right: 8px;">18-29</label>
+                                        <label style="cursor: pointer;"><input type="checkbox" id="demographic-age-30-44" style="margin-right: 8px;">30-44</label>
+                                        <label style="cursor: pointer;"><input type="checkbox" id="demographic-age-45-plus" style="margin-right: 8px;">45-PLUS</label>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div style="margin-bottom: 6px; font-weight: bold;">Show genders</div>
+                                    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
+                                        <label style="cursor: pointer;"><input type="checkbox" id="demographic-gender-female" style="margin-right: 8px;">Female</label>
+                                        <label style="cursor: pointer;"><input type="checkbox" id="demographic-gender-male" style="margin-right: 8px;">Male</label>
+                                    </div>
+                                </div>
+                                <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 140px); gap: 10px;">
+                                    <label style="display: block;">
+                                        <span style="display: block; margin-bottom: 5px;">Sort demographics by:</span>
+                                        <select id="imdb-demographics-sort-by" style="
+                                            width: 100%;
+                                            padding: 5px;
+                                            background: #444;
+                                            color: #fff;
+                                            border: 1px solid #666;
+                                            border-radius: 3px;
+                                        ">
+                                            <option value="label">Label</option>
+                                            <option value="rating">Rating</option>
+                                            <option value="votes">Votes</option>
+                                        </select>
+                                    </label>
+                                    <label style="display: block;">
+                                        <span style="display: block; margin-bottom: 5px;">Direction:</span>
+                                        <select id="imdb-demographics-sort-direction" style="
+                                            width: 100%;
+                                            padding: 5px;
+                                            background: #444;
+                                            color: #fff;
+                                            border: 1px solid #666;
+                                            border-radius: 3px;
+                                        ">
+                                            <option value="asc">Ascending</option>
+                                            <option value="desc">Descending</option>
+                                        </select>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <label style="display: block; margin-top: 10px; margin-bottom: 12px;">
+                            <span style="display: block; margin-bottom: 5px;">IMDb Demographics Panel Height (px):</span>
+                            <input type="number" id="imdb-demographics-height" min="120" max="600" step="1" style="
+                                width: 90px;
+                                padding: 5px;
+                                background: #444;
+                                color: #fff;
+                                border: 1px solid #666;
+                                border-radius: 3px;
+                            ">
+                        </label>
+
                     </div>
 
                     <!-- Panel Locations + Cache Column -->
@@ -664,11 +859,6 @@ function showSettingsPanel() {
     `;
 
     document.body.appendChild(panel);
-    settingsPanelState = {
-        demographicFieldsEnabled: { ...IMDB_DEMOGRAPHIC_FIELDS_ENABLED },
-        demographicFieldOrder: [...IMDB_DEMOGRAPHIC_FIELD_ORDER]
-    };
-    renderDemographicOrderControls();
 
     // Load current settings into the form
     loadSettingsIntoForm();
@@ -688,105 +878,29 @@ function showSettingsPanel() {
     });
 }
 
-function normalizeDemographicFieldOrder(order) {
-    const normalized = Array.isArray(order) ? order.filter(field => field in IMDB_DEMOGRAPHIC_FIELD_LABELS) : [];
-    const deduped = [...new Set(normalized)];
-
-    Object.keys(IMDB_DEMOGRAPHIC_FIELD_LABELS).forEach((field) => {
-        if (!deduped.includes(field)) {
-            deduped.push(field);
-        }
-    });
-
-    return deduped;
+function normalizeDemographicOptionMap(storedValue, defaults) {
+    return {
+        ...defaults,
+        ...(storedValue && typeof storedValue === 'object' ? storedValue : {})
+    };
 }
 
-function moveDemographicField(field, direction) {
-    if (!settingsPanelState) {
-        return;
-    }
-
-    const order = normalizeDemographicFieldOrder(settingsPanelState.demographicFieldOrder);
-    const index = order.indexOf(field);
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-
-    if (index === -1 || targetIndex < 0 || targetIndex >= order.length) {
-        return;
-    }
-
-    [order[index], order[targetIndex]] = [order[targetIndex], order[index]];
-    settingsPanelState.demographicFieldOrder = order;
-    renderDemographicOrderControls();
+function shouldIncludeHistogramData() {
+    return SHOW_IMDB_VOTE_HISTOGRAM || SHOW_IMDB_WEIGHTED_SCORE;
 }
 
-function renderDemographicOrderControls() {
-    const container = document.getElementById('demographic-order-controls');
-    if (!container) {
-        return;
-    }
+function shouldIncludeDemographicsData() {
+    return SHOW_IMDB_DEMOGRAPHICS || SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE;
+}
 
-    const order = normalizeDemographicFieldOrder(settingsPanelState?.demographicFieldOrder || IMDB_DEMOGRAPHIC_FIELD_ORDER);
-    container.innerHTML = order.map((field, index) => `
-        <div data-demographic-field-row="${field}" style="
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) auto;
-            gap: 10px;
-            align-items: center;
-            padding: 8px 10px;
-            border: 1px solid #555;
-            border-radius: 6px;
-            background: #383838;
-        ">
-            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                <input type="checkbox" data-demographic-field-checkbox="${field}">
-                <span>${index + 1}. ${IMDB_DEMOGRAPHIC_FIELD_LABELS[field]}</span>
-            </label>
-            <div style="display: flex; gap: 6px;">
-                <button type="button" data-demographic-move-up="${field}" style="
-                    padding: 4px 8px;
-                    background: #444;
-                    color: #fff;
-                    border: 1px solid #666;
-                    border-radius: 4px;
-                    cursor: pointer;
-                ">↑</button>
-                <button type="button" data-demographic-move-down="${field}" style="
-                    padding: 4px 8px;
-                    background: #444;
-                    color: #fff;
-                    border: 1px solid #666;
-                    border-radius: 4px;
-                    cursor: pointer;
-                ">↓</button>
-            </div>
-        </div>
-    `).join('');
+function getEnabledWeightedScoreTypes() {
+    return Object.keys(IMDB_WEIGHTED_SCORE_TYPE_LABELS);
+}
 
-    order.forEach((field, index) => {
-        const checkbox = container.querySelector(`[data-demographic-field-checkbox="${field}"]`);
-        const moveUpButton = container.querySelector(`[data-demographic-move-up="${field}"]`);
-        const moveDownButton = container.querySelector(`[data-demographic-move-down="${field}"]`);
-
-        if (checkbox) {
-            const enabled = settingsPanelState?.demographicFieldsEnabled || IMDB_DEMOGRAPHIC_FIELDS_ENABLED;
-            checkbox.checked = !!enabled[field];
-            checkbox.addEventListener('change', () => {
-                if (settingsPanelState) {
-                    settingsPanelState.demographicFieldsEnabled[field] = checkbox.checked;
-                }
-            });
-        }
-
-        if (moveUpButton) {
-            moveUpButton.disabled = index === 0;
-            moveUpButton.addEventListener('click', () => moveDemographicField(field, 'up'));
-        }
-
-        if (moveDownButton) {
-            moveDownButton.disabled = index === order.length - 1;
-            moveDownButton.addEventListener('click', () => moveDemographicField(field, 'down'));
-        }
-    });
+function getActiveWeightedScoreType() {
+    return getEnabledWeightedScoreTypes().includes(IMDB_WEIGHTED_SCORE_TYPE)
+        ? IMDB_WEIGHTED_SCORE_TYPE
+        : DEFAULT_IMDB_WEIGHTED_SCORE_TYPE;
 }
 
 function loadSettingsIntoForm() {
@@ -814,6 +928,10 @@ function loadSettingsIntoForm() {
     document.getElementById('show-ratings-rotten-tomatoes').checked = SHOW_RATINGS_ROTTEN_TOMATOES;
     document.getElementById('show-ratings-letterboxd').checked = SHOW_RATINGS_LETTERBOXD;
     document.getElementById('show-imdb-vote-histogram').checked = SHOW_IMDB_VOTE_HISTOGRAM;
+    document.getElementById('show-imdb-weighted-score').checked = SHOW_IMDB_WEIGHTED_SCORE;
+    document.getElementById('imdb-weighted-score-type').value = IMDB_WEIGHTED_SCORE_TYPE;
+    document.getElementById('show-imdb-demographic-score-override').checked = SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE;
+    document.getElementById('imdb-demographic-score-override-key').value = IMDB_DEMOGRAPHIC_SCORE_OVERRIDE_KEY;
     document.getElementById('show-imdb-demographics').checked = SHOW_IMDB_DEMOGRAPHICS;
     document.getElementById('show-imdb-country-averages').checked = SHOW_IMDB_COUNTRY_AVERAGES;
     document.getElementById('panel-visible').checked = isPanelVisible;
@@ -828,7 +946,20 @@ function loadSettingsIntoForm() {
     document.getElementById('awards-location').value = AWARDS_LOCATION;
     document.getElementById('similar-movies-location').value = SIMILAR_MOVIES_LOCATION;
     document.getElementById('existing-imdb-tags').value = EXISTING_IMDB_TAGS;
-    renderDemographicOrderControls();
+    document.getElementById('demographic-row-age-only').checked = !!IMDB_DEMOGRAPHIC_ROW_TYPES_ENABLED.ageOnly;
+    document.getElementById('demographic-row-gender-only').checked = !!IMDB_DEMOGRAPHIC_ROW_TYPES_ENABLED.genderOnly;
+    document.getElementById('demographic-row-gender-age').checked = !!IMDB_DEMOGRAPHIC_ROW_TYPES_ENABLED.genderAge;
+    document.getElementById('demographic-row-user-category-only').checked = !!IMDB_DEMOGRAPHIC_ROW_TYPES_ENABLED.userCategoryOnly;
+    document.getElementById('demographic-row-country-only').checked = !!IMDB_DEMOGRAPHIC_ROW_TYPES_ENABLED.countryOnly;
+    document.getElementById('demographic-row-other').checked = !!IMDB_DEMOGRAPHIC_ROW_TYPES_ENABLED.other;
+    document.getElementById('demographic-age-under-18').checked = !!IMDB_DEMOGRAPHIC_AGES_ENABLED.AGE_UNDER_18;
+    document.getElementById('demographic-age-18-29').checked = !!IMDB_DEMOGRAPHIC_AGES_ENABLED.AGE_18_29;
+    document.getElementById('demographic-age-30-44').checked = !!IMDB_DEMOGRAPHIC_AGES_ENABLED.AGE_30_44;
+    document.getElementById('demographic-age-45-plus').checked = !!IMDB_DEMOGRAPHIC_AGES_ENABLED.AGE_45_PLUS;
+    document.getElementById('demographic-gender-female').checked = !!IMDB_DEMOGRAPHIC_GENDERS_ENABLED.FEMALE;
+    document.getElementById('demographic-gender-male').checked = !!IMDB_DEMOGRAPHIC_GENDERS_ENABLED.MALE;
+    document.getElementById('imdb-demographics-sort-by').value = IMDB_DEMOGRAPHIC_SORT_BY;
+    document.getElementById('imdb-demographics-sort-direction').value = IMDB_DEMOGRAPHIC_SORT_DIRECTION;
 }
 
 function saveSettingsFromForm() {
@@ -856,6 +987,8 @@ function saveSettingsFromForm() {
     SHOW_RATINGS_ROTTEN_TOMATOES = document.getElementById('show-ratings-rotten-tomatoes').checked;
     SHOW_RATINGS_LETTERBOXD = document.getElementById('show-ratings-letterboxd').checked;
     SHOW_IMDB_VOTE_HISTOGRAM = document.getElementById('show-imdb-vote-histogram').checked;
+    SHOW_IMDB_WEIGHTED_SCORE = document.getElementById('show-imdb-weighted-score').checked;
+    SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE = document.getElementById('show-imdb-demographic-score-override').checked;
     SHOW_IMDB_DEMOGRAPHICS = document.getElementById('show-imdb-demographics').checked;
     SHOW_IMDB_COUNTRY_AVERAGES = document.getElementById('show-imdb-country-averages').checked;
     isPanelVisible = document.getElementById('panel-visible').checked;
@@ -870,14 +1003,28 @@ function saveSettingsFromForm() {
     AWARDS_LOCATION = parseInt(document.getElementById('awards-location').value) || 4;
     SIMILAR_MOVIES_LOCATION = parseInt(document.getElementById('similar-movies-location').value) || 5;
     EXISTING_IMDB_TAGS = parseInt(document.getElementById('existing-imdb-tags').value) || 6;
-    const demographicFieldOrder = normalizeDemographicFieldOrder(settingsPanelState?.demographicFieldOrder || IMDB_DEMOGRAPHIC_FIELD_ORDER);
-    IMDB_DEMOGRAPHIC_FIELD_ORDER = demographicFieldOrder;
-    IMDB_DEMOGRAPHIC_FIELDS_ENABLED = Object.fromEntries(
-        demographicFieldOrder.map((field) => [
-            field,
-            !!document.querySelector(`[data-demographic-field-checkbox="${field}"]`)?.checked
-        ])
-    );
+    IMDB_DEMOGRAPHIC_ROW_TYPES_ENABLED = {
+        ageOnly: document.getElementById('demographic-row-age-only').checked,
+        genderOnly: document.getElementById('demographic-row-gender-only').checked,
+        genderAge: document.getElementById('demographic-row-gender-age').checked,
+        userCategoryOnly: document.getElementById('demographic-row-user-category-only').checked,
+        countryOnly: document.getElementById('demographic-row-country-only').checked,
+        other: document.getElementById('demographic-row-other').checked
+    };
+    IMDB_DEMOGRAPHIC_AGES_ENABLED = {
+        AGE_UNDER_18: document.getElementById('demographic-age-under-18').checked,
+        AGE_18_29: document.getElementById('demographic-age-18-29').checked,
+        AGE_30_44: document.getElementById('demographic-age-30-44').checked,
+        AGE_45_PLUS: document.getElementById('demographic-age-45-plus').checked
+    };
+    IMDB_DEMOGRAPHIC_GENDERS_ENABLED = {
+        FEMALE: document.getElementById('demographic-gender-female').checked,
+        MALE: document.getElementById('demographic-gender-male').checked
+    };
+    IMDB_DEMOGRAPHIC_SORT_BY = document.getElementById('imdb-demographics-sort-by').value;
+    IMDB_DEMOGRAPHIC_SORT_DIRECTION = document.getElementById('imdb-demographics-sort-direction').value;
+    IMDB_WEIGHTED_SCORE_TYPE = document.getElementById('imdb-weighted-score-type').value;
+    IMDB_DEMOGRAPHIC_SCORE_OVERRIDE_KEY = document.getElementById('imdb-demographic-score-override-key').value;
 
     saveSettings();
     closeSettingsPanel();
@@ -891,7 +1038,6 @@ function closeSettingsPanel() {
     if (panel) {
         panel.remove();
     }
-    settingsPanelState = null;
 }
 
 function handleFlushCache() {
@@ -920,6 +1066,8 @@ function handleResetAll() {
         SHOW_RATINGS_ROTTEN_TOMATOES = false;
         SHOW_RATINGS_LETTERBOXD = false;
         SHOW_IMDB_VOTE_HISTOGRAM = false;
+        SHOW_IMDB_WEIGHTED_SCORE = false;
+        SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE = false;
         SHOW_IMDB_DEMOGRAPHICS = false;
         SHOW_IMDB_COUNTRY_AVERAGES = false;
         isPanelVisible = true;
@@ -938,8 +1086,13 @@ function handleResetAll() {
         SIMILAR_MOVIES_LOCATION = 5;
         EXISTING_IMDB_TAGS = 6;
         DISABLE_CUSTOM_COLORS = false;
-        IMDB_DEMOGRAPHIC_FIELDS_ENABLED = { ...DEFAULT_IMDB_DEMOGRAPHIC_FIELDS_ENABLED };
-        IMDB_DEMOGRAPHIC_FIELD_ORDER = [...DEFAULT_IMDB_DEMOGRAPHIC_FIELD_ORDER];
+        IMDB_DEMOGRAPHIC_ROW_TYPES_ENABLED = { ...DEFAULT_IMDB_DEMOGRAPHIC_ROW_TYPES_ENABLED };
+        IMDB_DEMOGRAPHIC_GENDERS_ENABLED = { ...DEFAULT_IMDB_DEMOGRAPHIC_GENDERS_ENABLED };
+        IMDB_DEMOGRAPHIC_AGES_ENABLED = { ...DEFAULT_IMDB_DEMOGRAPHIC_AGES_ENABLED };
+        IMDB_DEMOGRAPHIC_SORT_BY = DEFAULT_IMDB_DEMOGRAPHIC_SORT_BY;
+        IMDB_DEMOGRAPHIC_SORT_DIRECTION = DEFAULT_IMDB_DEMOGRAPHIC_SORT_DIRECTION;
+        IMDB_WEIGHTED_SCORE_TYPE = DEFAULT_IMDB_WEIGHTED_SCORE_TYPE;
+        IMDB_DEMOGRAPHIC_SCORE_OVERRIDE_KEY = DEFAULT_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE_KEY;
 
         saveSettings();
         flushCache();
@@ -1105,6 +1258,49 @@ function ensureRatingsStyles() {
             font-weight: 700;
             line-height: 1;
             margin: 0 0 6px;
+        }
+
+        .imdb-weighted-score-inline {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            grid-template-rows: auto auto;
+            column-gap: 12px;
+            align-items: end;
+        }
+
+        .imdb-weighted-score-badge {
+            display: block;
+            align-items: flex-end;
+            justify-content: flex-end;
+            grid-column: 2;
+            grid-row: 1 / span 2;
+            min-width: fit-content;
+            font-size: 28px;
+            font-weight: 700;
+            line-height: 1;
+            color: inherit;
+            white-space: nowrap;
+        }
+
+        .imdb-primary-score {
+            grid-column: 1;
+            grid-row: 1 / span 2;
+            align-self: center;
+        }
+
+        .imdb-ratings-meta-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 10px;
+        }
+
+        .imdb-weighted-meta-label {
+            font-size: 12px;
+            line-height: 1.2;
+            color: #c7c7c7;
+            margin-left: auto;
+            white-space: nowrap;
         }
 
         .imdb-ptp-value-wrapper {
@@ -1313,31 +1509,23 @@ function formatRottenTomatoesAudienceCount(value, fallback) {
         return display;
     }
 
-    const normalized = display
-        .replace(/\b(Ratings?)\+$/i, '$1')
-        .replace(/\b(Ratings?)\+(\s|$)/i, '$1$2');
-    const countAndRatingsMatch = /^(\d[\d,]*)\s+(Ratings?)$/i.exec(normalized);
+    const withoutRatings = display
+        .replace(/\s*Ratings?\b/gi, '')
+        .replace(/\s*\+\s*/g, '+')
+        .trim();
 
-    if (countAndRatingsMatch) {
-        return `${countAndRatingsMatch[1]}+ ${countAndRatingsMatch[2]}`;
-    }
-
-    return normalized.includes('+') ? normalized : `${normalized}+`;
+    return withoutRatings.includes('+') ? withoutRatings : `${withoutRatings}+`;
 }
 
-function formatMeterRank(meterRank) {
-    if (!meterRank || !Number.isFinite(meterRank.currentRank)) {
-        return 'Unranked';
-    }
-
-    const change = meterRank.rankChange;
+function formatMeterRankChange(meterRank) {
+    const change = meterRank?.rankChange;
     if (!change || !Number.isFinite(change.difference) || !change.changeDirection) {
-        return `#${meterRank.currentRank.toLocaleString()}`;
+        return '';
     }
 
     const changeClass = change.changeDirection === 'UP' ? 'imdb-meter-up' : 'imdb-meter-down';
     const arrow = change.changeDirection === 'UP' ? 'up' : 'down';
-    return `#${meterRank.currentRank.toLocaleString()} <span class="${changeClass}">${arrow} ${change.difference.toLocaleString()}</span>`;
+    return `<span class="${changeClass}">${arrow} ${change.difference.toLocaleString()}</span>`;
 }
 
 function formatUserCategory(value) {
@@ -1372,6 +1560,156 @@ function buildLegacyImdbAnchor(imdbId, label) {
     return `<a target="_blank" class="rating" id="imdb-title-link" href="http://www.imdb.com/title/${imdbId}/" rel="noreferrer" style="position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden;">${label}</a>`;
 }
 
+function getOrderedHistogramValues(histogramValues) {
+    if (!Array.isArray(histogramValues)) {
+        return [];
+    }
+
+    return histogramValues
+        .filter((item) => Number.isFinite(item?.rating) && Number.isFinite(item?.voteCount) && item.voteCount > 0)
+        .slice()
+        .sort((a, b) => a.rating - b.rating);
+}
+
+function calculateHistogramMean(histogramValues) {
+    const ordered = getOrderedHistogramValues(histogramValues);
+    const totalVotes = ordered.reduce((total, item) => total + item.voteCount, 0);
+    if (totalVotes <= 0) {
+        return null;
+    }
+
+    const weightedTotal = ordered.reduce((total, item) => total + (item.rating * item.voteCount), 0);
+    return weightedTotal / totalVotes;
+}
+
+function calculateTrimmedHistogramMean(histogramValues, trimFraction) {
+    const ordered = getOrderedHistogramValues(histogramValues)
+        .map((item) => ({ rating: item.rating, voteCount: item.voteCount }));
+    const totalVotes = ordered.reduce((total, item) => total + item.voteCount, 0);
+    const totalTrimVotes = totalVotes * trimFraction;
+
+    if (totalVotes <= 0 || (totalTrimVotes * 2) >= totalVotes) {
+        return null;
+    }
+
+    let trimLowRemaining = totalTrimVotes;
+    for (let index = 0; index < ordered.length && trimLowRemaining > 0; index++) {
+        const removable = Math.min(ordered[index].voteCount, trimLowRemaining);
+        ordered[index].voteCount -= removable;
+        trimLowRemaining -= removable;
+    }
+
+    let trimHighRemaining = totalTrimVotes;
+    for (let index = ordered.length - 1; index >= 0 && trimHighRemaining > 0; index--) {
+        const removable = Math.min(ordered[index].voteCount, trimHighRemaining);
+        ordered[index].voteCount -= removable;
+        trimHighRemaining -= removable;
+    }
+
+    const remainingVotes = ordered.reduce((total, item) => total + item.voteCount, 0);
+    if (remainingVotes <= 0) {
+        return null;
+    }
+
+    const weightedTotal = ordered.reduce((total, item) => total + (item.rating * item.voteCount), 0);
+    return weightedTotal / remainingVotes;
+}
+
+function calculateWeightedMedian(histogramValues) {
+    const ordered = getOrderedHistogramValues(histogramValues);
+    const totalVotes = ordered.reduce((total, item) => total + item.voteCount, 0);
+    if (totalVotes <= 0) {
+        return null;
+    }
+
+    const midpoint = totalVotes / 2;
+    let runningVotes = 0;
+    for (const item of ordered) {
+        runningVotes += item.voteCount;
+        if (runningVotes >= midpoint) {
+            return item.rating;
+        }
+    }
+
+    return ordered[ordered.length - 1]?.rating ?? null;
+}
+
+function calculateBayesianHistogramMean(histogramValues, priorMean = 6.5, priorVotes = 10000) {
+    const mean = calculateHistogramMean(histogramValues);
+    const totalVotes = getOrderedHistogramValues(histogramValues).reduce((total, item) => total + item.voteCount, 0);
+    if (!Number.isFinite(mean) || totalVotes <= 0) {
+        return null;
+    }
+
+    return ((mean * totalVotes) + (priorMean * priorVotes)) / (totalVotes + priorVotes);
+}
+
+function calculateWeightedScoreFromHistogram(histogramValues, weightingType) {
+    switch (weightingType) {
+        case 'mean':
+            return calculateHistogramMean(histogramValues);
+        case 'trimmed5':
+            return calculateTrimmedHistogramMean(histogramValues, 0.05);
+        case 'trimmed10':
+            return calculateTrimmedHistogramMean(histogramValues, 0.10);
+        case 'median':
+            return calculateWeightedMedian(histogramValues);
+        case 'bayesian':
+            return calculateBayesianHistogramMean(histogramValues);
+        default:
+            return null;
+    }
+}
+
+function getWeightedScoreSummary(histogramValues) {
+    const activeType = getActiveWeightedScoreType();
+    if (!SHOW_IMDB_WEIGHTED_SCORE || !activeType) {
+        return null;
+    }
+
+    const score = calculateWeightedScoreFromHistogram(histogramValues, activeType);
+    if (!Number.isFinite(score)) {
+        return null;
+    }
+
+    return {
+        type: activeType,
+        label: IMDB_WEIGHTED_SCORE_TYPE_LABELS[activeType],
+        tooltip: `${IMDB_WEIGHTED_SCORE_TYPE_LABELS[activeType]} derived from the IMDb vote histogram.`,
+        score
+    };
+}
+
+function buildDemographicSelectionKey(demographic) {
+    const parts = [];
+    if (demographic?.gender) {
+        parts.push(`gender:${demographic.gender}`);
+    }
+    if (demographic?.age) {
+        parts.push(`age:${demographic.age}`);
+    }
+
+    return parts.join('|');
+}
+
+function getDemographicScoreOverrideSummary(entries) {
+    if (!SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE || !Array.isArray(entries)) {
+        return null;
+    }
+
+    const selectedEntry = entries.find((entry) => buildDemographicSelectionKey(entry?.demographic) === IMDB_DEMOGRAPHIC_SCORE_OVERRIDE_KEY);
+    if (!selectedEntry || !Number.isFinite(selectedEntry.aggregate) || !Number.isFinite(selectedEntry.voteCount) || selectedEntry.voteCount <= 0) {
+        return null;
+    }
+
+    const selectedOption = IMDB_SCORE_OVERRIDE_OPTIONS.find((option) => option.value === IMDB_DEMOGRAPHIC_SCORE_OVERRIDE_KEY);
+    return {
+        label: selectedOption?.label || buildDemographicLabel(selectedEntry),
+        score: selectedEntry.aggregate,
+        votes: selectedEntry.voteCount
+    };
+}
+
 function getDemographicFieldValue(entry, field) {
     const demographic = entry?.demographic || {};
 
@@ -1390,13 +1728,60 @@ function getDemographicFieldValue(entry, field) {
 }
 
 function buildDemographicLabel(entry) {
-    const fields = normalizeDemographicFieldOrder(IMDB_DEMOGRAPHIC_FIELD_ORDER)
-        .filter((field) => IMDB_DEMOGRAPHIC_FIELDS_ENABLED[field]);
-    const parts = fields
+    const parts = IMDB_DEMOGRAPHIC_LABEL_FIELDS
         .map((field) => getDemographicFieldValue(entry, field))
         .filter(Boolean);
 
     return parts.join(' / ') || 'All IMDb users';
+}
+
+function getDemographicEntryType(entry) {
+    const demographic = entry?.demographic || {};
+    const hasAge = !!demographic.age;
+    const hasGender = !!demographic.gender;
+    const hasCountry = !!demographic.country;
+    const hasUserCategory = !!demographic.userCategory;
+
+    if (hasAge && hasGender && !hasCountry && !hasUserCategory) {
+        return 'genderAge';
+    }
+    if (hasAge && !hasGender && !hasCountry && !hasUserCategory) {
+        return 'ageOnly';
+    }
+    if (!hasAge && hasGender && !hasCountry && !hasUserCategory) {
+        return 'genderOnly';
+    }
+    if (!hasAge && !hasGender && !hasCountry && hasUserCategory) {
+        return 'userCategoryOnly';
+    }
+    if (!hasAge && !hasGender && hasCountry && !hasUserCategory) {
+        return 'countryOnly';
+    }
+    if (!hasAge && !hasGender && !hasCountry && !hasUserCategory) {
+        return 'overall';
+    }
+
+    return 'other';
+}
+
+function isDemographicOptionEnabled(optionMap, value) {
+    if (!value) {
+        return true;
+    }
+
+    if (!optionMap || typeof optionMap !== 'object') {
+        return true;
+    }
+
+    return value in optionMap ? !!optionMap[value] : true;
+}
+
+function getDemographicSortMultiplier() {
+    return IMDB_DEMOGRAPHIC_SORT_DIRECTION === 'desc' ? -1 : 1;
+}
+
+function compareDemographicLabels(left, right) {
+    return buildDemographicLabel(left).localeCompare(buildDemographicLabel(right));
 }
 
 function getSortedDemographics(entries, overallVoteCount) {
@@ -1404,8 +1789,8 @@ function getSortedDemographics(entries, overallVoteCount) {
         return [];
     }
 
-    const fields = normalizeDemographicFieldOrder(IMDB_DEMOGRAPHIC_FIELD_ORDER)
-        .filter((field) => IMDB_DEMOGRAPHIC_FIELDS_ENABLED[field]);
+    const sortMultiplier = getDemographicSortMultiplier();
+    const hasSelectedFieldValue = (entry) => IMDB_DEMOGRAPHIC_LABEL_FIELDS.some((field) => Boolean(getDemographicFieldValue(entry, field)));
 
     return entries
         .filter((entry) => Number.isFinite(entry.voteCount) && Number.isFinite(entry.aggregate))
@@ -1417,15 +1802,39 @@ function getSortedDemographics(entries, overallVoteCount) {
             !entry.demographic?.country &&
             !entry.demographic?.userCategory
         ))
+        .filter((entry) => IMDB_DEMOGRAPHIC_ROW_TYPES_ENABLED[getDemographicEntryType(entry)] !== false)
+        .filter((entry) => isDemographicOptionEnabled(IMDB_DEMOGRAPHIC_AGES_ENABLED, entry.demographic?.age))
+        .filter((entry) => isDemographicOptionEnabled(IMDB_DEMOGRAPHIC_GENDERS_ENABLED, entry.demographic?.gender))
+        .filter((entry) => hasSelectedFieldValue(entry))
         .sort((a, b) => {
-            for (const field of fields) {
-                const compare = String(getDemographicFieldValue(a, field)).localeCompare(String(getDemographicFieldValue(b, field)));
-                if (compare !== 0) {
-                    return compare;
+            if (IMDB_DEMOGRAPHIC_SORT_BY === 'rating') {
+                const aggregateCompare = (Number(a.aggregate) - Number(b.aggregate)) * sortMultiplier;
+                if (aggregateCompare !== 0) {
+                    return aggregateCompare;
+                }
+            } else if (IMDB_DEMOGRAPHIC_SORT_BY === 'votes') {
+                const voteCompare = (Number(a.voteCount) - Number(b.voteCount)) * sortMultiplier;
+                if (voteCompare !== 0) {
+                    return voteCompare;
+                }
+            } else {
+                const labelCompare = compareDemographicLabels(a, b) * sortMultiplier;
+                if (labelCompare !== 0) {
+                    return labelCompare;
                 }
             }
 
-            return b.voteCount - a.voteCount;
+            const labelCompare = compareDemographicLabels(a, b);
+            if (labelCompare !== 0) {
+                return labelCompare;
+            }
+
+            const aggregateCompare = Number(b.aggregate) - Number(a.aggregate);
+            if (aggregateCompare !== 0) {
+                return aggregateCompare;
+            }
+
+            return Number(b.voteCount) - Number(a.voteCount);
         });
 }
 
@@ -1592,6 +2001,8 @@ function buildDemographicsHtml(entries, overallVoteCount, isLoading = false) {
 function buildTopCardsHtml(imdbId, imdbData, ptpData, supplemental) {
     const imdbScore = imdbData?.ratingsSummary?.aggregateRating;
     const imdbVotes = imdbData?.ratingsSummary?.voteCount;
+    const histogramValues = imdbData?.aggregateRatingsBreakdown?.histogram?.histogramValues || [];
+    const demographicEntries = imdbData?.aggregateRatingsBreakdown?.ratingsSummaryByDemographics || [];
     const topRanking = imdbData?.ratingsSummary?.topRanking;
     const meterRank = imdbData?.meterRank;
     const metaScore = imdbData?.metacritic?.metascore?.score;
@@ -1602,6 +2013,11 @@ function buildTopCardsHtml(imdbId, imdbData, ptpData, supplemental) {
     const rt = supplemental?.rottenTomatoes;
     const lb = supplemental?.letterboxd;
     const imdbPending = isPendingValue(imdbData);
+    const weightedScore = getWeightedScoreSummary(histogramValues);
+    const demographicScoreOverride = getDemographicScoreOverrideSummary(demographicEntries);
+    const primaryImdbScore = demographicScoreOverride?.score ?? imdbScore;
+    const primaryImdbVotes = demographicScoreOverride?.votes ?? imdbVotes;
+    const primaryImdbMetaLabel = demographicScoreOverride?.label || 'IMDb Users';
     const rtPending = SHOW_RATINGS_ROTTEN_TOMATOES && isPendingValue(rt);
     const lbPending = SHOW_RATINGS_LETTERBOXD && isPendingValue(lb);
 
@@ -1609,9 +2025,12 @@ function buildTopCardsHtml(imdbId, imdbData, ptpData, supplemental) {
         <div class="imdb-ratings-top">
             <div class="imdb-ratings-card">
                 <h4><a href="${imdbRatingsUrl}" target="_blank" rel="noreferrer" style="color: inherit;">IMDb Users</a>${buildLegacyImdbAnchor(imdbId, 'IMDb Users')}</h4>
-                <div class="imdb-ratings-value">${imdbPending ? '...' : (Number.isFinite(imdbScore) ? imdbScore.toFixed(1) : 'None')}</div>
+                <div class="imdb-ratings-value imdb-weighted-score-inline">
+                    <span class="imdb-primary-score" title="${demographicScoreOverride ? `Replacing IMDb Users with ${demographicScoreOverride.label}.` : 'IMDb Users aggregate rating.'}">${imdbPending ? '...' : (Number.isFinite(primaryImdbScore) ? primaryImdbScore.toFixed(1) : 'None')}</span>
+                    ${imdbPending || !weightedScore ? '' : `<span class="imdb-weighted-score-badge" title="${weightedScore.tooltip}">${weightedScore.score.toFixed(1)}</span>`}
+                </div>
                 <div class="imdb-ratings-meta">
-                    ${imdbPending ? 'Loading IMDb data...' : `${formatCount(imdbVotes)} votes<br>
+                    ${imdbPending ? 'Loading IMDb data...' : `${demographicScoreOverride || weightedScore ? `<div class="imdb-ratings-meta-top"><span>${demographicScoreOverride ? primaryImdbMetaLabel : '&nbsp;'}</span>${weightedScore ? '<span class="imdb-weighted-meta-label">Weighted</span>' : ''}</div>` : ''}${formatCount(primaryImdbVotes)} votes<br>
                     ${topRanking?.rank ? `Top Rated rank #${formatCount(topRanking.rank)}` : 'No top ranking'}`}
                 </div>
             </div>
@@ -1636,8 +2055,7 @@ function buildTopCardsHtml(imdbId, imdbData, ptpData, supplemental) {
                 <h4><a href="${imdbmeterUrl}" target="_blank" rel="noreferrer" style="color: inherit;">IMDb Meter</a></h4>
                 <div class="imdb-ratings-value">${imdbPending ? '...' : (meterRank?.currentRank ? `#${formatCount(meterRank.currentRank)}` : 'None')}</div>
                 <div class="imdb-ratings-meta">
-                    ${imdbPending ? 'Loading meter rank...' : `${formatMeterRank(meterRank)}<br>
-                    ${meterRank?.meterType ? meterRank.meterType.replace(/_/g, ' ') : 'No meter type'}`}
+                    ${imdbPending ? 'Loading meter rank...' : (formatMeterRankChange(meterRank) || 'No rank change')}
                 </div>
             </div>
             ${SHOW_RATINGS_ROTTEN_TOMATOES ? `
@@ -2218,7 +2636,7 @@ function hasRequiredRatingsData(titleData) {
         return false;
     }
 
-    if (SHOW_IMDB_VOTE_HISTOGRAM && !titleData.aggregateRatingsBreakdown?.histogram) {
+    if (shouldIncludeHistogramData() && !titleData.aggregateRatingsBreakdown?.histogram) {
         return false;
     }
 
@@ -2226,7 +2644,7 @@ function hasRequiredRatingsData(titleData) {
         return false;
     }
 
-    if (SHOW_IMDB_DEMOGRAPHICS && !Array.isArray(titleData.aggregateRatingsBreakdown?.ratingsSummaryByDemographics)) {
+    if (shouldIncludeDemographicsData() && !Array.isArray(titleData.aggregateRatingsBreakdown?.ratingsSummaryByDemographics)) {
         return false;
     }
 
@@ -3210,9 +3628,9 @@ function hasRequiredRatingsData(titleData) {
                 id: imdbId,
                 first: 250,
                 after: afterCursor,
-                includeHistogram: SHOW_IMDB_VOTE_HISTOGRAM,
+                includeHistogram: shouldIncludeHistogramData(),
                 includeCountries: SHOW_IMDB_COUNTRY_AVERAGES,
-                includeDemographics: SHOW_IMDB_DEMOGRAPHICS
+                includeDemographics: shouldIncludeDemographicsData()
             }
         };
 
