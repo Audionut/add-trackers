@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.2.5
+// @version      1.2.6
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -90,7 +90,13 @@ const IMDB_TRAILER_PREVIEW_HEIGHT = 200;
 const IMDB_TRAILER_FALLBACK_ASPECT_RATIO = 16 / 9;
 const IMDB_TRAILER_MIN_ASPECT_RATIO = 1.2;
 const IMDB_TRAILER_MAX_ASPECT_RATIO = 2.5;
-const PTP_ID = typeof groupid !== 'undefined' ? groupid : null;
+const PTP_ID = (() => {
+    const candidate = typeof groupid !== 'undefined'
+        ? groupid
+        : new URLSearchParams(window.location.search).get('id');
+    const parsed = parseInt(candidate, 10);
+    return Number.isFinite(parsed) ? parsed : null;
+})();
 
 const DEFAULT_IMDB_DEMOGRAPHIC_ROW_TYPES_ENABLED = {
     ageOnly: true,
@@ -1927,52 +1933,6 @@ function hydratePtpVoteControls(container, originalControls) {
     } else {
         hiddenHook.appendChild(originalControls.voteAnchor);
     }
-
-    const forwardInteraction = (event) => {
-        event.preventDefault();
-
-        const target = originalControls.voteAnchor;
-        if (!target) {
-            window.location.hash = 'edit-vote';
-            return;
-        }
-
-        if (window.jQuery && typeof window.jQuery === 'function') {
-            try {
-                const jqTarget = window.jQuery(target);
-                if (typeof jqTarget.qtip === 'function') {
-                    jqTarget.qtip('show');
-                }
-            } catch (_) {
-            }
-        }
-
-        ['mouseenter', 'mouseover', 'focus', 'click'].forEach((type) => {
-            try {
-                const forwardedEvent = type === 'focus'
-                    ? new FocusEvent(type, { bubbles: true, cancelable: true })
-                    : new MouseEvent(type, { bubbles: true, cancelable: true, view: window });
-                target.dispatchEvent(forwardedEvent);
-            } catch (_) {
-            }
-        });
-    };
-
-    triggers.forEach((trigger) => {
-        trigger.addEventListener('click', forwardInteraction);
-        trigger.addEventListener('mouseenter', () => {
-            const target = originalControls.voteAnchor;
-            if (!target) {
-                return;
-            }
-
-            try {
-                target.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true, cancelable: true, view: window }));
-                target.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, cancelable: true, view: window }));
-            } catch (_) {
-            }
-        });
-    });
 }
 
 function buildDemographicsHtml(entries, overallVoteCount, isLoading = false) {
