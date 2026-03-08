@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.2.3
+// @version      1.2.4
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -17,6 +17,10 @@
 // @grant        GM.deleteValue
 // @run-at       document-start
 // @connect      api.graphql.imdb.com
+// @connect      metacritic.com
+// @connect      rottentomatoes.com
+// @connect      letterboxd.com
+// @connect      query.wikidata.org
 // @require      https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js
 // ==/UserScript==
 
@@ -28,11 +32,18 @@ let SHOW_AWARDS = true;
 let SHOW_SOUNDTRACKS = true;
 let SHOW_IMDB_TRAILERS = false;
 let CACHE_EXPIRY_DAYS = 7;
+let NEW_MOVIE_TTL_DAYS = 3;
 let SHOW_ALTERNATE_VERSIONS = true;
 let ALTERNATE_VERSIONS_PANEL_OPEN = false;
 let SHOW_KEYWORDS = true;
 let KEYWORDS_PANEL_OPEN = false;
 let SHOW_PARENTS_GUIDE = true;
+let ENABLE_IMDB_RATINGS_PANEL = false;
+let SHOW_RATINGS_ROTTEN_TOMATOES = false;
+let SHOW_RATINGS_LETTERBOXD = false;
+let SHOW_IMDB_VOTE_HISTOGRAM = false;
+let SHOW_IMDB_DEMOGRAPHICS = false;
+let SHOW_IMDB_COUNTRY_AVERAGES = false;
 let isPanelVisible = true;
 let isToggleableSections = true;
 let hideSpoilers = true;
@@ -47,13 +58,37 @@ let PARENTS_LOCATION = 3;
 let CAST_FILTER_TYPE = 'actors'; // 'actors' or 'all'
 let CAST_MAX_DISPLAY = 128;
 let CONST_PIXEL_HEIGHT = 300;
+let IMDB_DEMOGRAPHICS_PANEL_HEIGHT = 216;
 let CAST_IMAGES_PER_ROW = 4;
 let CAST_DEFAULT_ROWS = 2;
 let DISABLE_CUSTOM_COLORS = false;
+let IMDB_DEMOGRAPHIC_FIELDS_ENABLED = {
+    userCategory: true,
+    gender: true,
+    age: true,
+    country: true
+};
+let IMDB_DEMOGRAPHIC_FIELD_ORDER = ['userCategory', 'gender', 'age', 'country'];
+let settingsPanelState = null;
 const IMDB_TRAILER_PREVIEW_HEIGHT = 200;
 const IMDB_TRAILER_FALLBACK_ASPECT_RATIO = 16 / 9;
 const IMDB_TRAILER_MIN_ASPECT_RATIO = 1.2;
 const IMDB_TRAILER_MAX_ASPECT_RATIO = 2.5;
+const PTP_ID = typeof groupid !== 'undefined' ? groupid : null;
+
+const DEFAULT_IMDB_DEMOGRAPHIC_FIELDS_ENABLED = {
+    userCategory: true,
+    gender: true,
+    age: true,
+    country: true
+};
+const DEFAULT_IMDB_DEMOGRAPHIC_FIELD_ORDER = ['userCategory', 'gender', 'age', 'country'];
+const IMDB_DEMOGRAPHIC_FIELD_LABELS = {
+    userCategory: 'User Category',
+    gender: 'Gender',
+    age: 'Age',
+    country: 'Country'
+};
 
 const saveSettings = () => {
     GM.setValue('SHOW_SIMILAR_MOVIES', SHOW_SIMILAR_MOVIES);
@@ -64,11 +99,18 @@ const saveSettings = () => {
     GM.setValue('SHOW_SOUNDTRACKS', SHOW_SOUNDTRACKS);
     GM.setValue('SHOW_IMDB_TRAILERS', SHOW_IMDB_TRAILERS);
     GM.setValue('CACHE_EXPIRY_DAYS', CACHE_EXPIRY_DAYS);
+    GM.setValue('NEW_MOVIE_TTL_DAYS', NEW_MOVIE_TTL_DAYS);
     GM.setValue('SHOW_ALTERNATE_VERSIONS', SHOW_ALTERNATE_VERSIONS);
     GM.setValue('ALTERNATE_VERSIONS_PANEL_OPEN', ALTERNATE_VERSIONS_PANEL_OPEN);
     GM.setValue('SHOW_KEYWORDS', SHOW_KEYWORDS);
     GM.setValue('KEYWORDS_PANEL_OPEN', KEYWORDS_PANEL_OPEN);
     GM.setValue('SHOW_PARENTS_GUIDE', SHOW_PARENTS_GUIDE);
+    GM.setValue('ENABLE_IMDB_RATINGS_PANEL', ENABLE_IMDB_RATINGS_PANEL);
+    GM.setValue('SHOW_RATINGS_ROTTEN_TOMATOES', SHOW_RATINGS_ROTTEN_TOMATOES);
+    GM.setValue('SHOW_RATINGS_LETTERBOXD', SHOW_RATINGS_LETTERBOXD);
+    GM.setValue('SHOW_IMDB_VOTE_HISTOGRAM', SHOW_IMDB_VOTE_HISTOGRAM);
+    GM.setValue('SHOW_IMDB_DEMOGRAPHICS', SHOW_IMDB_DEMOGRAPHICS);
+    GM.setValue('SHOW_IMDB_COUNTRY_AVERAGES', SHOW_IMDB_COUNTRY_AVERAGES);
     GM.setValue('isPanelVisible', isPanelVisible);
     GM.setValue('isToggleableSections', isToggleableSections);
     GM.setValue('hideSpoilers', hideSpoilers);
@@ -79,6 +121,7 @@ const saveSettings = () => {
     GM.setValue('CAST_IMAGES_PER_ROW', CAST_IMAGES_PER_ROW);
     GM.setValue('CAST_DEFAULT_ROWS', CAST_DEFAULT_ROWS);
     GM.setValue('CONST_PIXEL_HEIGHT', CONST_PIXEL_HEIGHT);
+    GM.setValue('IMDB_DEMOGRAPHICS_PANEL_HEIGHT', IMDB_DEMOGRAPHICS_PANEL_HEIGHT);
     GM.setValue('TECHSPECS_LOCATION', TECHSPECS_LOCATION);
     GM.setValue('BOXOFFICE_LOCATION', BOXOFFICE_LOCATION);
     GM.setValue('AWARDS_LOCATION', AWARDS_LOCATION);
@@ -86,6 +129,8 @@ const saveSettings = () => {
     GM.setValue('SIMILAR_MOVIES_LOCATION', SIMILAR_MOVIES_LOCATION);
     GM.setValue('PARENTS_LOCATION', PARENTS_LOCATION);
     GM.setValue('DISABLE_CUSTOM_COLORS', DISABLE_CUSTOM_COLORS);
+    GM.setValue('IMDB_DEMOGRAPHIC_FIELDS_ENABLED', IMDB_DEMOGRAPHIC_FIELDS_ENABLED);
+    GM.setValue('IMDB_DEMOGRAPHIC_FIELD_ORDER', IMDB_DEMOGRAPHIC_FIELD_ORDER);
 };
 
 const loadSettings = async () => {
@@ -97,11 +142,18 @@ const loadSettings = async () => {
     SHOW_SOUNDTRACKS = await GM.getValue('SHOW_SOUNDTRACKS', true);
     SHOW_IMDB_TRAILERS = await GM.getValue('SHOW_IMDB_TRAILERS', true);
     CACHE_EXPIRY_DAYS = await GM.getValue('CACHE_EXPIRY_DAYS', 14);
+    NEW_MOVIE_TTL_DAYS = await GM.getValue('NEW_MOVIE_TTL_DAYS', 3);
     SHOW_ALTERNATE_VERSIONS = await GM.getValue('SHOW_ALTERNATE_VERSIONS', true);
     ALTERNATE_VERSIONS_PANEL_OPEN = await GM.getValue('ALTERNATE_VERSIONS_PANEL_OPEN', false);
     SHOW_KEYWORDS = await GM.getValue('SHOW_KEYWORDS', true);
     KEYWORDS_PANEL_OPEN = await GM.getValue('KEYWORDS_PANEL_OPEN', false);
     SHOW_PARENTS_GUIDE = await GM.getValue('SHOW_PARENTS_GUIDE', true);
+    ENABLE_IMDB_RATINGS_PANEL = await GM.getValue('ENABLE_IMDB_RATINGS_PANEL', false);
+    SHOW_RATINGS_ROTTEN_TOMATOES = await GM.getValue('SHOW_RATINGS_ROTTEN_TOMATOES', false);
+    SHOW_RATINGS_LETTERBOXD = await GM.getValue('SHOW_RATINGS_LETTERBOXD', false);
+    SHOW_IMDB_VOTE_HISTOGRAM = await GM.getValue('SHOW_IMDB_VOTE_HISTOGRAM', false);
+    SHOW_IMDB_DEMOGRAPHICS = await GM.getValue('SHOW_IMDB_DEMOGRAPHICS', false);
+    SHOW_IMDB_COUNTRY_AVERAGES = await GM.getValue('SHOW_IMDB_COUNTRY_AVERAGES', false);
     isPanelVisible = await GM.getValue('isPanelVisible', true);
     isToggleableSections = await GM.getValue('isToggleableSections', true);
     hideSpoilers = await GM.getValue('hideSpoilers', true);
@@ -112,6 +164,7 @@ const loadSettings = async () => {
     CAST_IMAGES_PER_ROW = await GM.getValue('CAST_IMAGES_PER_ROW', 4);
     CAST_DEFAULT_ROWS = await GM.getValue('CAST_DEFAULT_ROWS', 2);
     CONST_PIXEL_HEIGHT = await GM.getValue('CONST_PIXEL_HEIGHT', 300);
+    IMDB_DEMOGRAPHICS_PANEL_HEIGHT = await GM.getValue('IMDB_DEMOGRAPHICS_PANEL_HEIGHT', 216);
     TECHSPECS_LOCATION = await GM.getValue('TECHSPECS_LOCATION', 1);
     BOXOFFICE_LOCATION = await GM.getValue('BOXOFFICE_LOCATION', 2);
     AWARDS_LOCATION = await GM.getValue('AWARDS_LOCATION', 4);
@@ -119,6 +172,15 @@ const loadSettings = async () => {
     SIMILAR_MOVIES_LOCATION = await GM.getValue('SIMILAR_MOVIES_LOCATION', 5);
     PARENTS_LOCATION = await GM.getValue('PARENTS_LOCATION', 3);
     DISABLE_CUSTOM_COLORS = await GM.getValue('DISABLE_CUSTOM_COLORS', false);
+
+    const storedEnabled = await GM.getValue('IMDB_DEMOGRAPHIC_FIELDS_ENABLED', DEFAULT_IMDB_DEMOGRAPHIC_FIELDS_ENABLED);
+    IMDB_DEMOGRAPHIC_FIELDS_ENABLED = {
+        ...DEFAULT_IMDB_DEMOGRAPHIC_FIELDS_ENABLED,
+        ...(storedEnabled && typeof storedEnabled === 'object' ? storedEnabled : {})
+    };
+
+    const storedOrder = await GM.getValue('IMDB_DEMOGRAPHIC_FIELD_ORDER', DEFAULT_IMDB_DEMOGRAPHIC_FIELD_ORDER);
+    IMDB_DEMOGRAPHIC_FIELD_ORDER = normalizeDemographicFieldOrder(storedOrder);
 };
 
 const IMDB_ACCENT_COLOR = '#F2DB83';
@@ -196,7 +258,7 @@ function showSettingsPanel() {
                 border: 2px solid #555;
                 border-radius: 10px;
                 padding: 20px;
-                max-width: 800px;
+                width: min(1100px, 92vw);
                 max-height: 80vh;
                 overflow-y: auto;
                 color: #fff;
@@ -222,7 +284,7 @@ function showSettingsPanel() {
                     ">✕</button>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;">
                     <!-- Content Panels Column -->
                     <div>
                         <h3 style="color: #F2DB83; margin-top: 0;">Content Panels</h3>
@@ -361,9 +423,61 @@ function showSettingsPanel() {
                         </label>
                     </div>
 
-                    <!-- Parents Guide Column -->
+                    <!-- Ratings + Parents Column -->
                     <div>
-                        <h3 style="color: #F2DB83; margin-top: 0;">Parents Guide</h3>
+                        <h3 style="color: #F2DB83; margin-top: 0;">Ratings Box</h3>
+
+                        <label style="display: block; margin-bottom: 12px; cursor: pointer;">
+                            <input type="checkbox" id="enable-imdb-ratings-panel" style="margin-right: 8px;">
+                            <span>Enable IMDb Ratings + Ratings Panel Modifications</span>
+                        </label>
+
+                        <label style="display: block; margin-bottom: 10px; cursor: pointer;">
+                            <input type="checkbox" id="show-ratings-rotten-tomatoes" style="margin-right: 8px;">
+                            <span>Show Rotten Tomatoes</span>
+                        </label>
+
+                        <label style="display: block; margin-bottom: 10px; cursor: pointer;">
+                            <input type="checkbox" id="show-ratings-letterboxd" style="margin-right: 8px;">
+                            <span>Show Letterboxd</span>
+                        </label>
+
+                        <label style="display: block; margin-bottom: 10px; cursor: pointer;">
+                            <input type="checkbox" id="show-imdb-vote-histogram" style="margin-right: 8px;">
+                            <span>Show IMDb Vote Histogram</span>
+                        </label>
+
+                        <label style="display: block; margin-bottom: 10px; cursor: pointer;">
+                            <input type="checkbox" id="show-imdb-demographics" style="margin-right: 8px;">
+                            <span>Show IMDb Demographics</span>
+                        </label>
+
+                        <label style="display: block; margin-bottom: 14px; cursor: pointer;">
+                            <input type="checkbox" id="show-imdb-country-averages" style="margin-right: 8px;">
+                            <span>Show Country Averages</span>
+                        </label>
+
+                        <div style="margin-top: 18px;">
+                            <h4 style="color: #F2DB83; margin: 0 0 10px;">IMDb Demographics</h4>
+                            <p style="margin: 0 0 10px; font-size: 0.85em; color: #ccc;">
+                                Disable fields to hide them from labels. Use arrows to control label and sort order.
+                            </p>
+                            <div id="demographic-order-controls" style="display: grid; gap: 8px;"></div>
+                        </div>
+
+                        <label style="display: block; margin-top: 10px; margin-bottom: 12px;">
+                            <span style="display: block; margin-bottom: 5px;">IMDb Demographics Panel Height (px):</span>
+                            <input type="number" id="imdb-demographics-height" min="120" max="600" step="1" style="
+                                width: 90px;
+                                padding: 5px;
+                                background: #444;
+                                color: #fff;
+                                border: 1px solid #666;
+                                border-radius: 3px;
+                            ">
+                        </label>
+
+                        <h3 style="color: #F2DB83; margin: 24px 0 10px;">Parents Guide</h3>
 
                         <label style="display: block; margin-bottom: 10px; cursor: pointer;">
                             <input type="checkbox" id="show-parents-guide" style="margin-right: 8px;">
@@ -389,44 +503,9 @@ function showSettingsPanel() {
                             <input type="checkbox" id="hide-text" style="margin-right: 8px;">
                             <span>Hide Parental Guide Text</span>
                         </label>
-
-                        <h3 style="color: #F2DB83; margin-top: 30px;">Cache Settings</h3>
-
-                        <label style="display: block; margin-bottom: 10px;">
-                            <span style="display: block; margin-bottom: 5px;">Cache Expiry (days):</span>
-                            <input type="number" id="cache-expiry" min="1" max="365" style="
-                                width: 80px;
-                                padding: 5px;
-                                background: #444;
-                                color: #fff;
-                                border: 1px solid #666;
-                                border-radius: 3px;
-                            ">
-                        </label>
-
-                        <button id="flush-cache-btn" style="
-                            background: #ffc107;
-                            color: #000;
-                            border: none;
-                            border-radius: 5px;
-                            padding: 8px 16px;
-                            cursor: pointer;
-                            margin-top: 10px;
-                            margin-right: 10px;
-                        ">🗑️ Flush Cache</button>
-
-                        <button id="reset-all-btn" style="
-                            background: #dc3545;
-                            color: white;
-                            border: none;
-                            border-radius: 5px;
-                            padding: 8px 16px;
-                            cursor: pointer;
-                            margin-top: 10px;
-                        ">🔄 Reset All</button>
                     </div>
 
-                    <!-- Panel Locations Column -->
+                    <!-- Panel Locations + Cache Column -->
                     <div>
                         <h3 style="color: #F2DB83; margin-top: 0;">Panel Locations</h3>
                         <p style="font-size: 0.9em; color: #ccc; margin-bottom: 15px;">Lower numbers appear higher in sidebar</p>
@@ -502,6 +581,53 @@ function showSettingsPanel() {
                                 border-radius: 3px;
                             ">
                         </label>
+
+                        <h3 style="color: #F2DB83; margin-top: 30px;">Cache Settings</h3>
+
+                        <label style="display: block; margin-bottom: 10px;">
+                            <span style="display: block; margin-bottom: 5px;">Cache Expiry (days):</span>
+                            <input type="number" id="cache-expiry" min="1" max="365" style="
+                                width: 80px;
+                                padding: 5px;
+                                background: #444;
+                                color: #fff;
+                                border: 1px solid #666;
+                                border-radius: 3px;
+                            ">
+                        </label>
+
+                        <label style="display: block; margin-bottom: 10px;">
+                            <span style="display: block; margin-bottom: 5px;">New Movie TTL (days):</span>
+                            <input type="number" id="new-movie-ttl" min="1" max="30" style="
+                                width: 80px;
+                                padding: 5px;
+                                background: #444;
+                                color: #fff;
+                                border: 1px solid #666;
+                                border-radius: 3px;
+                            ">
+                        </label>
+
+                        <button id="flush-cache-btn" style="
+                            background: #ffc107;
+                            color: #000;
+                            border: none;
+                            border-radius: 5px;
+                            padding: 8px 16px;
+                            cursor: pointer;
+                            margin-top: 10px;
+                            margin-right: 10px;
+                        ">🗑️ Flush Cache</button>
+
+                        <button id="reset-all-btn" style="
+                            background: #dc3545;
+                            color: white;
+                            border: none;
+                            border-radius: 5px;
+                            padding: 8px 16px;
+                            cursor: pointer;
+                            margin-top: 10px;
+                        ">🔄 Reset All</button>
                     </div>
                 </div>
 
@@ -538,6 +664,11 @@ function showSettingsPanel() {
     `;
 
     document.body.appendChild(panel);
+    settingsPanelState = {
+        demographicFieldsEnabled: { ...IMDB_DEMOGRAPHIC_FIELDS_ENABLED },
+        demographicFieldOrder: [...IMDB_DEMOGRAPHIC_FIELD_ORDER]
+    };
+    renderDemographicOrderControls();
 
     // Load current settings into the form
     loadSettingsIntoForm();
@@ -557,6 +688,107 @@ function showSettingsPanel() {
     });
 }
 
+function normalizeDemographicFieldOrder(order) {
+    const normalized = Array.isArray(order) ? order.filter(field => field in IMDB_DEMOGRAPHIC_FIELD_LABELS) : [];
+    const deduped = [...new Set(normalized)];
+
+    Object.keys(IMDB_DEMOGRAPHIC_FIELD_LABELS).forEach((field) => {
+        if (!deduped.includes(field)) {
+            deduped.push(field);
+        }
+    });
+
+    return deduped;
+}
+
+function moveDemographicField(field, direction) {
+    if (!settingsPanelState) {
+        return;
+    }
+
+    const order = normalizeDemographicFieldOrder(settingsPanelState.demographicFieldOrder);
+    const index = order.indexOf(field);
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+
+    if (index === -1 || targetIndex < 0 || targetIndex >= order.length) {
+        return;
+    }
+
+    [order[index], order[targetIndex]] = [order[targetIndex], order[index]];
+    settingsPanelState.demographicFieldOrder = order;
+    renderDemographicOrderControls();
+}
+
+function renderDemographicOrderControls() {
+    const container = document.getElementById('demographic-order-controls');
+    if (!container) {
+        return;
+    }
+
+    const order = normalizeDemographicFieldOrder(settingsPanelState?.demographicFieldOrder || IMDB_DEMOGRAPHIC_FIELD_ORDER);
+    container.innerHTML = order.map((field, index) => `
+        <div data-demographic-field-row="${field}" style="
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 10px;
+            align-items: center;
+            padding: 8px 10px;
+            border: 1px solid #555;
+            border-radius: 6px;
+            background: #383838;
+        ">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" data-demographic-field-checkbox="${field}">
+                <span>${index + 1}. ${IMDB_DEMOGRAPHIC_FIELD_LABELS[field]}</span>
+            </label>
+            <div style="display: flex; gap: 6px;">
+                <button type="button" data-demographic-move-up="${field}" style="
+                    padding: 4px 8px;
+                    background: #444;
+                    color: #fff;
+                    border: 1px solid #666;
+                    border-radius: 4px;
+                    cursor: pointer;
+                ">↑</button>
+                <button type="button" data-demographic-move-down="${field}" style="
+                    padding: 4px 8px;
+                    background: #444;
+                    color: #fff;
+                    border: 1px solid #666;
+                    border-radius: 4px;
+                    cursor: pointer;
+                ">↓</button>
+            </div>
+        </div>
+    `).join('');
+
+    order.forEach((field, index) => {
+        const checkbox = container.querySelector(`[data-demographic-field-checkbox="${field}"]`);
+        const moveUpButton = container.querySelector(`[data-demographic-move-up="${field}"]`);
+        const moveDownButton = container.querySelector(`[data-demographic-move-down="${field}"]`);
+
+        if (checkbox) {
+            const enabled = settingsPanelState?.demographicFieldsEnabled || IMDB_DEMOGRAPHIC_FIELDS_ENABLED;
+            checkbox.checked = !!enabled[field];
+            checkbox.addEventListener('change', () => {
+                if (settingsPanelState) {
+                    settingsPanelState.demographicFieldsEnabled[field] = checkbox.checked;
+                }
+            });
+        }
+
+        if (moveUpButton) {
+            moveUpButton.disabled = index === 0;
+            moveUpButton.addEventListener('click', () => moveDemographicField(field, 'up'));
+        }
+
+        if (moveDownButton) {
+            moveDownButton.disabled = index === order.length - 1;
+            moveDownButton.addEventListener('click', () => moveDemographicField(field, 'down'));
+        }
+    });
+}
+
 function loadSettingsIntoForm() {
     document.getElementById('show-similar-movies').checked = SHOW_SIMILAR_MOVIES;
     document.getElementById('place-under-cast').checked = PLACE_UNDER_CAST;
@@ -572,22 +804,31 @@ function loadSettingsIntoForm() {
     document.getElementById('cast-images-per-row').value = CAST_IMAGES_PER_ROW;
     document.getElementById('cast-default-rows').value = CAST_DEFAULT_ROWS;
     document.getElementById('panel-height').value = CONST_PIXEL_HEIGHT;
+    document.getElementById('imdb-demographics-height').value = IMDB_DEMOGRAPHICS_PANEL_HEIGHT;
     document.getElementById('show-alternate-versions').checked = SHOW_ALTERNATE_VERSIONS;
     document.getElementById('alternate-versions-open').checked = ALTERNATE_VERSIONS_PANEL_OPEN;
     document.getElementById('show-keywords').checked = SHOW_KEYWORDS;
     document.getElementById('keywords-open').checked = KEYWORDS_PANEL_OPEN;
     document.getElementById('show-parents-guide').checked = SHOW_PARENTS_GUIDE;
+    document.getElementById('enable-imdb-ratings-panel').checked = ENABLE_IMDB_RATINGS_PANEL;
+    document.getElementById('show-ratings-rotten-tomatoes').checked = SHOW_RATINGS_ROTTEN_TOMATOES;
+    document.getElementById('show-ratings-letterboxd').checked = SHOW_RATINGS_LETTERBOXD;
+    document.getElementById('show-imdb-vote-histogram').checked = SHOW_IMDB_VOTE_HISTOGRAM;
+    document.getElementById('show-imdb-demographics').checked = SHOW_IMDB_DEMOGRAPHICS;
+    document.getElementById('show-imdb-country-averages').checked = SHOW_IMDB_COUNTRY_AVERAGES;
     document.getElementById('panel-visible').checked = isPanelVisible;
     document.getElementById('toggleable-sections').checked = isToggleableSections;
     document.getElementById('hide-spoilers').checked = hideSpoilers;
     document.getElementById('hide-text').checked = hidetext;
     document.getElementById('cache-expiry').value = CACHE_EXPIRY_DAYS;
+    document.getElementById('new-movie-ttl').value = NEW_MOVIE_TTL_DAYS;
     document.getElementById('techspecs-location').value = TECHSPECS_LOCATION;
     document.getElementById('boxoffice-location').value = BOXOFFICE_LOCATION;
     document.getElementById('parents-location').value = PARENTS_LOCATION;
     document.getElementById('awards-location').value = AWARDS_LOCATION;
     document.getElementById('similar-movies-location').value = SIMILAR_MOVIES_LOCATION;
     document.getElementById('existing-imdb-tags').value = EXISTING_IMDB_TAGS;
+    renderDemographicOrderControls();
 }
 
 function saveSettingsFromForm() {
@@ -605,22 +846,38 @@ function saveSettingsFromForm() {
     CAST_IMAGES_PER_ROW = parseInt(document.getElementById('cast-images-per-row').value) || 4;
     CAST_DEFAULT_ROWS = parseInt(document.getElementById('cast-default-rows').value) || 2;
     CONST_PIXEL_HEIGHT = parseInt(document.getElementById('panel-height').value) || 300;
+    IMDB_DEMOGRAPHICS_PANEL_HEIGHT = parseInt(document.getElementById('imdb-demographics-height').value) || 216;
     SHOW_ALTERNATE_VERSIONS = document.getElementById('show-alternate-versions').checked;
     ALTERNATE_VERSIONS_PANEL_OPEN = document.getElementById('alternate-versions-open').checked;
     SHOW_KEYWORDS = document.getElementById('show-keywords').checked;
     KEYWORDS_PANEL_OPEN = document.getElementById('keywords-open').checked;
     SHOW_PARENTS_GUIDE = document.getElementById('show-parents-guide').checked;
+    ENABLE_IMDB_RATINGS_PANEL = document.getElementById('enable-imdb-ratings-panel').checked;
+    SHOW_RATINGS_ROTTEN_TOMATOES = document.getElementById('show-ratings-rotten-tomatoes').checked;
+    SHOW_RATINGS_LETTERBOXD = document.getElementById('show-ratings-letterboxd').checked;
+    SHOW_IMDB_VOTE_HISTOGRAM = document.getElementById('show-imdb-vote-histogram').checked;
+    SHOW_IMDB_DEMOGRAPHICS = document.getElementById('show-imdb-demographics').checked;
+    SHOW_IMDB_COUNTRY_AVERAGES = document.getElementById('show-imdb-country-averages').checked;
     isPanelVisible = document.getElementById('panel-visible').checked;
     isToggleableSections = document.getElementById('toggleable-sections').checked;
     hideSpoilers = document.getElementById('hide-spoilers').checked;
     hidetext = document.getElementById('hide-text').checked;
     CACHE_EXPIRY_DAYS = parseInt(document.getElementById('cache-expiry').value) || 7;
+    NEW_MOVIE_TTL_DAYS = parseInt(document.getElementById('new-movie-ttl').value) || 3;
     TECHSPECS_LOCATION = parseInt(document.getElementById('techspecs-location').value) || 1;
     BOXOFFICE_LOCATION = parseInt(document.getElementById('boxoffice-location').value) || 2;
     PARENTS_LOCATION = parseInt(document.getElementById('parents-location').value) || 3;
     AWARDS_LOCATION = parseInt(document.getElementById('awards-location').value) || 4;
     SIMILAR_MOVIES_LOCATION = parseInt(document.getElementById('similar-movies-location').value) || 5;
     EXISTING_IMDB_TAGS = parseInt(document.getElementById('existing-imdb-tags').value) || 6;
+    const demographicFieldOrder = normalizeDemographicFieldOrder(settingsPanelState?.demographicFieldOrder || IMDB_DEMOGRAPHIC_FIELD_ORDER);
+    IMDB_DEMOGRAPHIC_FIELD_ORDER = demographicFieldOrder;
+    IMDB_DEMOGRAPHIC_FIELDS_ENABLED = Object.fromEntries(
+        demographicFieldOrder.map((field) => [
+            field,
+            !!document.querySelector(`[data-demographic-field-checkbox="${field}"]`)?.checked
+        ])
+    );
 
     saveSettings();
     closeSettingsPanel();
@@ -634,6 +891,7 @@ function closeSettingsPanel() {
     if (panel) {
         panel.remove();
     }
+    settingsPanelState = null;
 }
 
 function handleFlushCache() {
@@ -652,11 +910,18 @@ function handleResetAll() {
         SHOW_SOUNDTRACKS = true;
         SHOW_IMDB_TRAILERS = true;
         CACHE_EXPIRY_DAYS = 7;
+        NEW_MOVIE_TTL_DAYS = 3;
         SHOW_ALTERNATE_VERSIONS = true;
         ALTERNATE_VERSIONS_PANEL_OPEN = false;
         SHOW_KEYWORDS = true;
         KEYWORDS_PANEL_OPEN = false;
         SHOW_PARENTS_GUIDE = true;
+        ENABLE_IMDB_RATINGS_PANEL = false;
+        SHOW_RATINGS_ROTTEN_TOMATOES = false;
+        SHOW_RATINGS_LETTERBOXD = false;
+        SHOW_IMDB_VOTE_HISTOGRAM = false;
+        SHOW_IMDB_DEMOGRAPHICS = false;
+        SHOW_IMDB_COUNTRY_AVERAGES = false;
         isPanelVisible = true;
         isToggleableSections = true;
         hideSpoilers = true;
@@ -665,6 +930,7 @@ function handleResetAll() {
         CAST_FILTER_TYPE = 'actors';
         CAST_MAX_DISPLAY = 128;
         CONST_PIXEL_HEIGHT = 300;
+        IMDB_DEMOGRAPHICS_PANEL_HEIGHT = 216;
         TECHSPECS_LOCATION = 1;
         BOXOFFICE_LOCATION = 2;
         PARENTS_LOCATION = 3;
@@ -672,6 +938,8 @@ function handleResetAll() {
         SIMILAR_MOVIES_LOCATION = 5;
         EXISTING_IMDB_TAGS = 6;
         DISABLE_CUSTOM_COLORS = false;
+        IMDB_DEMOGRAPHIC_FIELDS_ENABLED = { ...DEFAULT_IMDB_DEMOGRAPHIC_FIELDS_ENABLED };
+        IMDB_DEMOGRAPHIC_FIELD_ORDER = [...DEFAULT_IMDB_DEMOGRAPHIC_FIELD_ORDER];
 
         saveSettings();
         flushCache();
@@ -679,6 +947,1290 @@ function handleResetAll() {
         alert('All settings reset and cache flushed!\nReloading page to apply changes.');
         window.location.reload();
     }
+}
+
+const RATINGS_PANEL_ID = 'movie-ratings-table';
+const RATINGS_STYLE_ID = 'ptp-imdb-graphql-ratings-box-style';
+const METER_UP_COLOR = '#8dc891';
+const METER_DOWN_COLOR = '#d98c8c';
+
+function textRequest(url) {
+    return new Promise((resolve, reject) => {
+        GM_xmlhttpRequest({
+            method: 'GET',
+            url,
+            onload: (response) => {
+                if (response.status < 200 || response.status >= 300) {
+                    reject(new Error(`HTTP ${response.status}: ${url}`));
+                    return;
+                }
+
+                resolve(response.responseText || '');
+            },
+            onerror: () => {
+                reject(new Error(`Request failed: ${url}`));
+            }
+        });
+    });
+}
+
+function textRequestDetailed(url) {
+    return new Promise((resolve, reject) => {
+        GM_xmlhttpRequest({
+            method: 'GET',
+            url,
+            onload: (response) => {
+                if (response.status < 200 || response.status >= 300) {
+                    reject(new Error(`HTTP ${response.status}: ${url}`));
+                    return;
+                }
+
+                resolve({
+                    text: response.responseText || '',
+                    finalUrl: response.finalUrl || url
+                });
+            },
+            onerror: () => {
+                reject(new Error(`Request failed: ${url}`));
+            }
+        });
+    });
+}
+
+async function jsonRequest(url) {
+    const text = await textRequest(url);
+    return JSON.parse(text);
+}
+
+function parseHtmlDocument(html) {
+    return new DOMParser().parseFromString(html, 'text/html');
+}
+
+function isPendingValue(value) {
+    return value === undefined;
+}
+
+function parsePtpRating() {
+    const userScore = parseInt(document.getElementById('user_rating')?.textContent || '', 10);
+    const userCount = parseInt(document.getElementById('user_total')?.textContent || '', 10);
+    const personalRating = parseInt(
+        (document.getElementById('ptp_your_rating')?.textContent || '').replace(/[^\d]+/g, ''),
+        10
+    );
+
+    return {
+        userScore: Number.isFinite(userScore) ? userScore : null,
+        userCount: Number.isFinite(userCount) ? userCount : 0,
+        personalRating: Number.isFinite(personalRating) ? personalRating : null
+    };
+}
+
+function captureOriginalPtpVoteControls() {
+    const ratingSpan = document.getElementById('ptp_your_rating');
+    const voteAnchor = document.getElementById('star0');
+    const voteContainer = voteAnchor
+        ? (voteAnchor.closest('.clearfix') || voteAnchor.closest('.star-rating-container') || voteAnchor.parentElement)
+        : null;
+
+    return {
+        ratingSpan: ratingSpan || null,
+        voteAnchor: voteAnchor || null,
+        voteContainer: voteContainer || null
+    };
+}
+
+function ensureRatingsStyles() {
+    if (document.getElementById(RATINGS_STYLE_ID)) {
+        return;
+    }
+
+    const headingColor = DISABLE_CUSTOM_COLORS ? 'inherit' : IMDB_ACCENT_COLOR;
+    const style = document.createElement('style');
+    style.id = RATINGS_STYLE_ID;
+    style.textContent = `
+        #${RATINGS_PANEL_ID}.imdb-graphql-ratings-box {
+            padding: 12px 0;
+        }
+
+        .imdb-ratings-shell {
+            display: grid;
+            gap: 12px;
+        }
+
+        .imdb-ratings-consensus,
+        .imdb-ratings-card,
+        .imdb-ratings-section {
+            padding: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.025);
+        }
+
+        .imdb-ratings-consensus {
+            font-size: 12px;
+            color: #d5d5d5;
+            line-height: 1.5;
+        }
+
+        .imdb-ratings-top {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(var(--imdb-top-card-min, 170px), 1fr));
+            gap: 10px;
+        }
+
+        .imdb-ratings-card h4,
+        .imdb-ratings-section h4 {
+            margin: 0 0 8px;
+            font-size: 12px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: ${headingColor};
+        }
+
+        .imdb-provider-heading {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .imdb-provider-heading img {
+            width: 18px;
+            height: 18px;
+            object-fit: contain;
+        }
+
+        .imdb-ratings-value,
+        .imdb-provider-split-value {
+            font-size: 28px;
+            font-weight: 700;
+            line-height: 1;
+            margin: 0 0 6px;
+        }
+
+        .imdb-ptp-value-wrapper {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .imdb-ptp-value-label {
+            position: relative;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        .imdb-ptp-overlay-target {
+            position: absolute;
+            inset: 0;
+            z-index: 2;
+            overflow: hidden;
+        }
+
+        .imdb-ptp-overlay-target .clearfix,
+        .imdb-ptp-overlay-target .star-rating-container {
+            margin: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        .imdb-ptp-overlay-target .star-rating-container {
+            display: block !important;
+        }
+
+        .imdb-ptp-overlay-target #star0 {
+            display: block !important;
+            width: 100% !important;
+            height: 100% !important;
+            opacity: 0.01 !important;
+            cursor: pointer !important;
+        }
+
+        .imdb-ratings-meta {
+            font-size: 12px;
+            color: #c7c7c7;
+            line-height: 1.5;
+        }
+
+        .imdb-provider-split {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .imdb-provider-split-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #a7a7a7;
+            margin-bottom: 4px;
+        }
+
+        .imdb-ratings-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+            gap: 12px;
+            align-items: start;
+        }
+
+        .imdb-histogram-row {
+            display: grid;
+            grid-template-columns: 22px minmax(0, 1fr) 78px;
+            gap: 8px;
+            align-items: center;
+            margin-top: 5px;
+            font-size: 12px;
+        }
+
+        .imdb-histogram-track {
+            height: 9px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 999px;
+            overflow: hidden;
+        }
+
+        .imdb-histogram-fill {
+            height: 100%;
+            background: linear-gradient(90deg, ${IMDB_ACCENT_COLOR}, #c4a33f);
+        }
+
+        .imdb-chip-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .imdb-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 8px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.06);
+            font-size: 12px;
+        }
+
+        .imdb-detail-list {
+            display: grid;
+            gap: 6px;
+            font-size: 12px;
+        }
+
+        .imdb-detail-list-scroll {
+            max-height: ${IMDB_DEMOGRAPHICS_PANEL_HEIGHT}px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        .imdb-detail-item {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto auto;
+            gap: 8px;
+            align-items: baseline;
+            padding-bottom: 6px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .imdb-detail-item:last-child {
+            border-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .imdb-meter-up {
+            color: ${METER_UP_COLOR};
+        }
+
+        .imdb-meter-down {
+            color: ${METER_DOWN_COLOR};
+        }
+
+        .imdb-muted {
+            color: #a7a7a7;
+        }
+
+        .imdb-ptp-trigger {
+            color: inherit;
+            text-decoration: none;
+            font-weight: 700;
+        }
+
+        .imdb-ptp-trigger:hover,
+        .imdb-ptp-trigger:focus {
+            text-decoration: underline;
+        }
+
+        .imdb-ptp-compat {
+            position: absolute;
+            left: -9999px;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+        }
+
+        @media (max-width: 900px) {
+            .imdb-ratings-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+function formatTenScale(scoreTimesTen) {
+    if (!Number.isFinite(scoreTimesTen)) {
+        return 'None';
+    }
+
+    return `${(scoreTimesTen / 10).toFixed(1)}/10`;
+}
+
+function formatCount(value) {
+    if (!Number.isFinite(value)) {
+        return 'Unknown';
+    }
+
+    return Math.round(value).toLocaleString();
+}
+
+function formatPercentAsTenScale(value) {
+    if (!Number.isFinite(value)) {
+        return 'None';
+    }
+
+    return `${(value / 10).toFixed(1)}/10`;
+}
+
+function formatDisplayCount(value, fallback) {
+    if (typeof value === 'string' && value.trim()) {
+        return value.trim();
+    }
+
+    return formatCount(fallback);
+}
+
+function formatRottenTomatoesAudienceCount(value, fallback) {
+    const display = formatDisplayCount(value, fallback);
+    if (!display || display === 'Unknown') {
+        return display;
+    }
+
+    const normalized = display
+        .replace(/\b(Ratings?)\+$/i, '$1')
+        .replace(/\b(Ratings?)\+(\s|$)/i, '$1$2');
+    const countAndRatingsMatch = /^(\d[\d,]*)\s+(Ratings?)$/i.exec(normalized);
+
+    if (countAndRatingsMatch) {
+        return `${countAndRatingsMatch[1]}+ ${countAndRatingsMatch[2]}`;
+    }
+
+    return normalized.includes('+') ? normalized : `${normalized}+`;
+}
+
+function formatMeterRank(meterRank) {
+    if (!meterRank || !Number.isFinite(meterRank.currentRank)) {
+        return 'Unranked';
+    }
+
+    const change = meterRank.rankChange;
+    if (!change || !Number.isFinite(change.difference) || !change.changeDirection) {
+        return `#${meterRank.currentRank.toLocaleString()}`;
+    }
+
+    const changeClass = change.changeDirection === 'UP' ? 'imdb-meter-up' : 'imdb-meter-down';
+    const arrow = change.changeDirection === 'UP' ? 'up' : 'down';
+    return `#${meterRank.currentRank.toLocaleString()} <span class="${changeClass}">${arrow} ${change.difference.toLocaleString()}</span>`;
+}
+
+function formatUserCategory(value) {
+    if (!value) {
+        return '';
+    }
+
+    return String(value)
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
+function formatAge(value) {
+    if (!value) {
+        return '';
+    }
+
+    return String(value)
+        .replace(/^AGE_/, '')
+        .replace('_', '-');
+}
+
+function formatGender(value) {
+    if (!value) {
+        return '';
+    }
+
+    return String(value).charAt(0) + String(value).slice(1).toLowerCase();
+}
+
+function buildLegacyImdbAnchor(imdbId, label) {
+    return `<a target="_blank" class="rating" id="imdb-title-link" href="http://www.imdb.com/title/${imdbId}/" rel="noreferrer" style="position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden;">${label}</a>`;
+}
+
+function getDemographicFieldValue(entry, field) {
+    const demographic = entry?.demographic || {};
+
+    switch (field) {
+        case 'userCategory':
+            return formatUserCategory(demographic.userCategory);
+        case 'gender':
+            return formatGender(demographic.gender);
+        case 'age':
+            return formatAge(demographic.age);
+        case 'country':
+            return demographic.country || '';
+        default:
+            return '';
+    }
+}
+
+function buildDemographicLabel(entry) {
+    const fields = normalizeDemographicFieldOrder(IMDB_DEMOGRAPHIC_FIELD_ORDER)
+        .filter((field) => IMDB_DEMOGRAPHIC_FIELDS_ENABLED[field]);
+    const parts = fields
+        .map((field) => getDemographicFieldValue(entry, field))
+        .filter(Boolean);
+
+    return parts.join(' / ') || 'All IMDb users';
+}
+
+function getSortedDemographics(entries, overallVoteCount) {
+    if (!Array.isArray(entries)) {
+        return [];
+    }
+
+    const fields = normalizeDemographicFieldOrder(IMDB_DEMOGRAPHIC_FIELD_ORDER)
+        .filter((field) => IMDB_DEMOGRAPHIC_FIELDS_ENABLED[field]);
+
+    return entries
+        .filter((entry) => Number.isFinite(entry.voteCount) && Number.isFinite(entry.aggregate))
+        .filter((entry) => entry.voteCount > 0)
+        .filter((entry) => !(
+            entry.voteCount === overallVoteCount &&
+            !entry.demographic?.age &&
+            !entry.demographic?.gender &&
+            !entry.demographic?.country &&
+            !entry.demographic?.userCategory
+        ))
+        .sort((a, b) => {
+            for (const field of fields) {
+                const compare = String(getDemographicFieldValue(a, field)).localeCompare(String(getDemographicFieldValue(b, field)));
+                if (compare !== 0) {
+                    return compare;
+                }
+            }
+
+            return b.voteCount - a.voteCount;
+        });
+}
+
+function buildHistogramHtml(histogramValues, isLoading = false) {
+    if (isLoading) {
+        return '<div class="imdb-muted">Loading histogram...</div>';
+    }
+    if (!Array.isArray(histogramValues) || histogramValues.length === 0) {
+        return '<div class="imdb-muted">No histogram data.</div>';
+    }
+
+    const maxVoteCount = histogramValues.reduce((max, item) => Math.max(max, item.voteCount || 0), 0);
+    const ordered = histogramValues.slice().sort((a, b) => b.rating - a.rating);
+
+    return ordered.map((item) => {
+        const width = maxVoteCount > 0 ? Math.max(2, Math.round((item.voteCount / maxVoteCount) * 100)) : 0;
+        return `
+            <div class="imdb-histogram-row">
+                <strong>${item.rating}</strong>
+                <div class="imdb-histogram-track">
+                    <div class="imdb-histogram-fill" style="width: ${width}%"></div>
+                </div>
+                <span>${formatCount(item.voteCount)}</span>
+            </div>
+        `;
+    }).join('');
+}
+
+function buildCountriesHtml(entries, isLoading = false) {
+    if (isLoading) {
+        return '<div class="imdb-muted">Loading country averages...</div>';
+    }
+    if (!Array.isArray(entries) || entries.length === 0) {
+        return '<div class="imdb-muted">No country breakdown.</div>';
+    }
+
+    return `
+        <div class="imdb-chip-list">
+            ${entries.map((entry) => `
+                <span class="imdb-chip">
+                    <strong>${entry.country}</strong>
+                    <span>${Number(entry.aggregate).toFixed(1)}</span>
+                </span>
+            `).join('')}
+        </div>
+    `;
+}
+
+function buildPtpVoteHtml(ptpData) {
+    const personalScoreHtml = ptpData.personalRating !== null
+        ? formatTenScale(ptpData.personalRating)
+        : 'None';
+    const actionLabel = ptpData.personalRating !== null ? 'Edit your vote' : 'Cast your vote';
+    const ptpRatingsUrl = PTP_ID !== null
+        ? `https://passthepopcorn.me/torrents.php?action=ratings&id=${PTP_ID}`
+        : '#';
+
+    return `
+        <div>Personal: ${personalScoreHtml}</div>
+        <div style="margin-top: 6px;">
+            <a href="${ptpRatingsUrl}" class="imdb-ptp-trigger" title="${actionLabel}" data-ptp-vote-trigger="1">
+                <strong>${formatCount(ptpData.userCount)}</strong> votes
+            </a>
+        </div>
+        <div class="imdb-ptp-compat" data-ptp-vote-hook="1"></div>
+    `;
+}
+
+function hydratePtpVoteControls(container, originalControls) {
+    if (!container || !originalControls?.voteAnchor) {
+        return;
+    }
+
+    const hiddenHook = container.querySelector('[data-ptp-vote-hook="1"]');
+    const overlayHook = container.querySelector('[data-ptp-overlay-hook="1"]');
+    const triggers = Array.from(container.querySelectorAll('[data-ptp-vote-trigger="1"]'));
+    if (!hiddenHook || !overlayHook || triggers.length === 0) {
+        return;
+    }
+
+    hiddenHook.innerHTML = '';
+
+    if (originalControls.ratingSpan) {
+        hiddenHook.appendChild(originalControls.ratingSpan);
+    }
+
+    if (originalControls.voteContainer) {
+        overlayHook.innerHTML = '';
+        overlayHook.appendChild(originalControls.voteContainer);
+    } else {
+        hiddenHook.appendChild(originalControls.voteAnchor);
+    }
+
+    const forwardInteraction = (event) => {
+        event.preventDefault();
+
+        const target = originalControls.voteAnchor;
+        if (!target) {
+            window.location.hash = 'edit-vote';
+            return;
+        }
+
+        if (window.jQuery && typeof window.jQuery === 'function') {
+            try {
+                const jqTarget = window.jQuery(target);
+                if (typeof jqTarget.qtip === 'function') {
+                    jqTarget.qtip('show');
+                }
+            } catch (_) {
+            }
+        }
+
+        ['mouseenter', 'mouseover', 'focus', 'click'].forEach((type) => {
+            try {
+                const forwardedEvent = type === 'focus'
+                    ? new FocusEvent(type, { bubbles: true, cancelable: true })
+                    : new MouseEvent(type, { bubbles: true, cancelable: true, view: window });
+                target.dispatchEvent(forwardedEvent);
+            } catch (_) {
+            }
+        });
+    };
+
+    triggers.forEach((trigger) => {
+        trigger.addEventListener('click', forwardInteraction);
+        trigger.addEventListener('mouseenter', () => {
+            const target = originalControls.voteAnchor;
+            if (!target) {
+                return;
+            }
+
+            try {
+                target.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true, cancelable: true, view: window }));
+                target.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, cancelable: true, view: window }));
+            } catch (_) {
+            }
+        });
+    });
+}
+
+function buildDemographicsHtml(entries, overallVoteCount, isLoading = false) {
+    if (isLoading) {
+        return '<div class="imdb-muted">Loading demographics...</div>';
+    }
+
+    const items = getSortedDemographics(entries, overallVoteCount);
+    if (items.length === 0) {
+        return '<div class="imdb-muted">No demographic breakdown.</div>';
+    }
+
+    return `
+        <div class="imdb-detail-list imdb-detail-list-scroll">
+            ${items.map((entry) => `
+                <div class="imdb-detail-item">
+                    <span>${buildDemographicLabel(entry)}</span>
+                    <strong>${Number(entry.aggregate).toFixed(1)}</strong>
+                    <span class="imdb-muted">${formatCount(entry.voteCount)}</span>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+function buildTopCardsHtml(imdbId, imdbData, ptpData, supplemental) {
+    const imdbScore = imdbData?.ratingsSummary?.aggregateRating;
+    const imdbVotes = imdbData?.ratingsSummary?.voteCount;
+    const topRanking = imdbData?.ratingsSummary?.topRanking;
+    const meterRank = imdbData?.meterRank;
+    const metaScore = imdbData?.metacritic?.metascore?.score;
+    const metaReviews = imdbData?.metacritic?.metascore?.reviewCount;
+    const metaUrl = imdbData?.metacritic?.url || `https://www.metacritic.com/movie/${imdbData?.titleText?.text || ''}`;
+    const imdbRatingsUrl = `https://www.imdb.com/title/${imdbId}/ratings/`;
+    const imdbmeterUrl = `https://www.imdb.com/chart/moviemeter/`;
+    const rt = supplemental?.rottenTomatoes;
+    const lb = supplemental?.letterboxd;
+    const imdbPending = isPendingValue(imdbData);
+    const rtPending = SHOW_RATINGS_ROTTEN_TOMATOES && isPendingValue(rt);
+    const lbPending = SHOW_RATINGS_LETTERBOXD && isPendingValue(lb);
+
+    return `
+        <div class="imdb-ratings-top">
+            <div class="imdb-ratings-card">
+                <h4><a href="${imdbRatingsUrl}" target="_blank" rel="noreferrer" style="color: inherit;">IMDb Users</a>${buildLegacyImdbAnchor(imdbId, 'IMDb Users')}</h4>
+                <div class="imdb-ratings-value">${imdbPending ? '...' : (Number.isFinite(imdbScore) ? imdbScore.toFixed(1) : 'None')}</div>
+                <div class="imdb-ratings-meta">
+                    ${imdbPending ? 'Loading IMDb data...' : `${formatCount(imdbVotes)} votes<br>
+                    ${topRanking?.rank ? `Top Rated rank #${formatCount(topRanking.rank)}` : 'No top ranking'}`}
+                </div>
+            </div>
+            <div class="imdb-ratings-card">
+                <h4>PTP</h4>
+                <div class="imdb-ratings-value imdb-ptp-value-wrapper" title="Edit your PTP vote">
+                    <span class="imdb-ptp-value-label">${formatTenScale(ptpData.userScore)}</span>
+                    <div class="imdb-ptp-overlay-target" data-ptp-overlay-hook="1"></div>
+                </div>
+                <div class="imdb-ratings-meta">
+                    ${buildPtpVoteHtml(ptpData)}
+                </div>
+            </div>
+            <div class="imdb-ratings-card">
+                <h4><a href="${metaUrl}" target="_blank" rel="noreferrer" style="color: inherit;">Metacritic</a></h4>
+                <div class="imdb-ratings-value">${imdbPending ? '...' : (Number.isFinite(metaScore) ? metaScore : 'None')}</div>
+                <div class="imdb-ratings-meta">
+                    ${imdbPending ? 'Loading Metacritic...' : `${Number.isFinite(metaReviews) ? `${formatCount(metaReviews)} critic reviews` : 'No review count'}<br>`}
+                </div>
+            </div>
+            <div class="imdb-ratings-card">
+                <h4><a href="${imdbmeterUrl}" target="_blank" rel="noreferrer" style="color: inherit;">IMDb Meter</a></h4>
+                <div class="imdb-ratings-value">${imdbPending ? '...' : (meterRank?.currentRank ? `#${formatCount(meterRank.currentRank)}` : 'None')}</div>
+                <div class="imdb-ratings-meta">
+                    ${imdbPending ? 'Loading meter rank...' : `${formatMeterRank(meterRank)}<br>
+                    ${meterRank?.meterType ? meterRank.meterType.replace(/_/g, ' ') : 'No meter type'}`}
+                </div>
+            </div>
+            ${SHOW_RATINGS_ROTTEN_TOMATOES ? `
+                <div class="imdb-ratings-card">
+                    <h4>${rt?.url ? `<a href="${rt.url}" target="_blank" rel="noreferrer" style="color: inherit;" class="imdb-provider-heading">${rt?.icon ? `<img src="${rt.icon}" alt="Rotten Tomatoes status">` : ''}<span>Rotten Tomatoes</span></a>` : `<span class="imdb-provider-heading">${rt?.icon ? `<img src="${rt.icon}" alt="Rotten Tomatoes status">` : ''}<span>Rotten Tomatoes</span></span>`}</h4>
+                    <div class="imdb-provider-split">
+                        <div>
+                            <div class="imdb-provider-split-label">Critics</div>
+                            <div class="imdb-provider-split-value">${rtPending ? '...' : (Number.isFinite(rt?.critic?.percent) ? `${rt.critic.percent}%` : 'None')}</div>
+                            <div class="imdb-ratings-meta">
+                                ${rtPending ? 'Loading Rotten Tomatoes...' : `(${Number.isFinite(rt?.critic?.count) ? `<a href="${rt.critic.url}" target="_blank" rel="noreferrer" title="${Number.isFinite(rt?.critic?.percent) ? `${rt.critic.percent}% of critics have given this movie a positive review.` : ''}">${formatDisplayCount(rt.critic.countDisplay, rt.critic.count)} votes</a>` : 'Unknown'})`}
+                            </div>
+                        </div>
+                        <div>
+                            <div class="imdb-provider-split-label">Users</div>
+                            <div class="imdb-provider-split-value">${rtPending ? '...' : (Number.isFinite(rt?.user?.percent) ? `${rt.user.percent}%` : 'None')}</div>
+                            <div class="imdb-ratings-meta">
+                                ${rtPending ? '&nbsp;' : `(${Number.isFinite(rt?.user?.count) || rt?.user?.countDisplay ? `<a href="${rt.user.url}" target="_blank" rel="noreferrer" title="${Number.isFinite(rt?.user?.percent) ? `${rt.user.percent}% of users have rated this movie 3.5 stars or higher.` : ''}">${formatRottenTomatoesAudienceCount(rt.user.countDisplay, rt.user.count)} votes</a>` : 'Unknown'})`}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
+            ${SHOW_RATINGS_LETTERBOXD ? `
+                <div class="imdb-ratings-card">
+                    <h4>${lb?.url ? `<a href="${lb.url}" target="_blank" rel="noreferrer" style="color: inherit;">Letterboxd</a>` : 'Letterboxd'}</h4>
+                    <div class="imdb-ratings-value">${lbPending ? '...' : (Number.isFinite(lb?.user?.score) ? formatPercentAsTenScale(lb.user.score) : 'None')}</div>
+                    <div class="imdb-ratings-meta">
+                        ${lbPending ? 'Loading Letterboxd...' : `Ratings: ${Number.isFinite(lb?.user?.count) ? `<a href="${lb.user.url}" target="_blank" rel="noreferrer">${formatCount(lb.user.count)}</a>` : 'Unknown'}<br>
+                        Likes: ${Number.isFinite(lb?.likes) ? `<a href="${lb.likesUrl}" target="_blank" rel="noreferrer">${formatCount(lb.likes)}</a>` : 'Unknown'} | Fans: ${Number.isFinite(lb?.fans) ? `<a href="${lb.fansUrl}" target="_blank" rel="noreferrer">${formatCount(lb.fans)}</a>` : 'Unknown'}`}
+                    </div>
+                </div>
+            ` : ''}
+        </div>
+    `;
+}
+
+function buildRottenTomatoesConsensusHtml(supplemental) {
+    if (!SHOW_RATINGS_ROTTEN_TOMATOES) {
+        return '';
+    }
+
+    const consensus = supplemental?.rottenTomatoes?.consensus;
+    if (!consensus) {
+        return '';
+    }
+
+    return `<div class="imdb-ratings-consensus"><em>${consensus}</em></div>`;
+}
+
+function buildBoxHtml(imdbId, imdbData, ptpData, supplemental) {
+    const histogramValues = imdbData?.aggregateRatingsBreakdown?.histogram?.histogramValues || [];
+    const countries = imdbData?.aggregateRatingsBreakdown?.ratingsSummaryByCountry || [];
+    const demographics = imdbData?.aggregateRatingsBreakdown?.ratingsSummaryByDemographics || [];
+    const overallVoteCount = imdbData?.ratingsSummary?.voteCount || 0;
+    const imdbPending = isPendingValue(imdbData);
+    const detailSections = [];
+
+    if (SHOW_IMDB_VOTE_HISTOGRAM) {
+        detailSections.push(`
+            <div class="imdb-ratings-section">
+                <h4>IMDb Vote Histogram</h4>
+                ${buildHistogramHtml(histogramValues, imdbPending)}
+            </div>
+        `);
+    }
+
+    if (SHOW_IMDB_DEMOGRAPHICS) {
+        detailSections.push(`
+            <div class="imdb-ratings-section">
+                <h4>IMDb Demographics</h4>
+                ${buildDemographicsHtml(demographics, overallVoteCount, imdbPending)}
+            </div>
+        `);
+    }
+
+    return `
+        <div class="imdb-ratings-shell">
+            ${buildTopCardsHtml(imdbId, imdbData, ptpData, supplemental)}
+            ${buildRottenTomatoesConsensusHtml(supplemental)}
+            ${detailSections.length > 0 ? `<div class="imdb-ratings-grid">${detailSections.join('')}</div>` : ''}
+            ${SHOW_IMDB_COUNTRY_AVERAGES ? `
+                <div class="imdb-ratings-section">
+                    <h4>Country Averages</h4>
+                    ${buildCountriesHtml(countries, imdbPending)}
+                </div>
+            ` : ''}
+        </div>
+    `;
+}
+
+function setupAdaptiveTopCardsLayout(container) {
+    if (!container) {
+        return;
+    }
+
+    if (container._imdbTopCardsResizeObserver) {
+        container._imdbTopCardsResizeObserver.disconnect();
+        container._imdbTopCardsResizeObserver = null;
+    }
+
+    const topCards = container.querySelector('.imdb-ratings-top');
+    if (!topCards) {
+        return;
+    }
+
+    const cards = topCards.querySelectorAll(':scope > .imdb-ratings-card');
+    if (!cards.length) {
+        return;
+    }
+
+    const apply = () => {
+        const styles = getComputedStyle(topCards);
+        const gap = Number.parseFloat(styles.columnGap || styles.gap || '10') || 10;
+        const width = topCards.clientWidth;
+        const cardCount = cards.length;
+
+        if (!width || cardCount <= 0) {
+            return;
+        }
+
+        const widthPerCard = (width - (gap * Math.max(0, cardCount - 1))) / cardCount;
+        const adaptiveMin = Math.max(145, Math.min(190, Math.floor(widthPerCard)));
+        topCards.style.setProperty('--imdb-top-card-min', `${adaptiveMin}px`);
+
+        const absoluteMinCardWidth = 145;
+        const maxColumnsThatFit = Math.max(
+            1,
+            Math.min(cardCount, Math.floor((width + gap) / (absoluteMinCardWidth + gap)))
+        );
+
+        let bestColumns = Math.min(maxColumnsThatFit, cardCount);
+        let bestPenalty = Number.POSITIVE_INFINITY;
+
+        for (let columns = Math.min(2, maxColumnsThatFit); columns <= maxColumnsThatFit; columns++) {
+            const remainder = cardCount % columns;
+            const orphanPenalty = remainder === 0 ? 0 : (remainder === 1 ? 2 : 1);
+
+            if (orphanPenalty < bestPenalty || (orphanPenalty === bestPenalty && columns > bestColumns)) {
+                bestPenalty = orphanPenalty;
+                bestColumns = columns;
+            }
+        }
+
+        if (maxColumnsThatFit === 1) {
+            bestColumns = 1;
+        }
+
+        topCards.style.gridTemplateColumns = `repeat(${bestColumns}, minmax(0, 1fr))`;
+    };
+
+    apply();
+
+    if (typeof ResizeObserver === 'function') {
+        const resizeObserver = new ResizeObserver(() => {
+            apply();
+        });
+        resizeObserver.observe(topCards);
+        container._imdbTopCardsResizeObserver = resizeObserver;
+    } else {
+        topCards.style.setProperty('--imdb-top-card-min', '170px');
+    }
+}
+
+function renderRatingsBox(container, imdbId, imdbData, ptpData, supplemental, originalControls) {
+    container.innerHTML = buildBoxHtml(imdbId, imdbData, ptpData, supplemental);
+    setupAdaptiveTopCardsLayout(container);
+    hydratePtpVoteControls(container, originalControls);
+}
+
+function buildRatingsBox(imdbId, imdbData, ptpData, supplemental, originalControls) {
+    const container = document.createElement('div');
+    container.id = RATINGS_PANEL_ID;
+    container.className = 'imdb-graphql-ratings-box';
+    renderRatingsBox(container, imdbId, imdbData, ptpData, supplemental, originalControls);
+    return container;
+}
+
+function replaceRatingsBox(oldTable, newTable) {
+    oldTable.parentNode.replaceChild(newTable, oldTable);
+}
+
+function makeRatingsButton(text, onClick) {
+    const button = document.createElement('a');
+    button.href = '#';
+    button.style.float = 'right';
+    button.textContent = text;
+    button.addEventListener('click', (event) => {
+        event.preventDefault();
+        onClick();
+    });
+    return button;
+}
+
+function reinitializeVoter(personalRating) {
+    const initVoting = window.InitializeMoviePageVoting;
+    if (typeof initVoting === 'function' && PTP_ID !== null) {
+        initVoting(PTP_ID, personalRating);
+    }
+}
+
+async function clearRatingsCaches(imdbId) {
+    if (imdbId) {
+        await GM.setValue(`iMDB_data_${imdbId}`, null);
+        await GM.setValue(`ratings_supplemental_data_${imdbId}`, null);
+    }
+
+    window.location.reload();
+}
+
+function buildRequestRatingsPanel(imdbId, imdbData, ptpData, supplemental, originalControls) {
+    const panel = document.createElement('div');
+    panel.className = 'panel';
+
+    const heading = document.createElement('div');
+    heading.className = 'panel__heading';
+
+    const title = document.createElement('span');
+    title.className = 'panel__heading__title';
+    title.textContent = 'Ratings';
+
+    heading.appendChild(title);
+    heading.appendChild(makeRatingsButton('Refresh', () => {
+        clearRatingsCaches(imdbId);
+    }));
+
+    const body = document.createElement('div');
+    body.className = 'panel__body';
+    body.appendChild(buildRatingsBox(imdbId, imdbData, ptpData, supplemental, originalControls));
+
+    panel.appendChild(heading);
+    panel.appendChild(body);
+    return panel;
+}
+
+function mountRatingsPanel(imdbId, ptpData, supplemental, originalControls) {
+    ensureRatingsStyles();
+
+    const ratingsTable = document.getElementById(RATINGS_PANEL_ID);
+    let mountedBox = null;
+
+    if (ratingsTable) {
+        const newRatingsBox = buildRatingsBox(imdbId, undefined, ptpData, supplemental, originalControls);
+        const header = ratingsTable.parentNode.querySelector('.panel__heading__title');
+        if (header) {
+            header.innerHTML = 'Ratings';
+        }
+
+        replaceRatingsBox(ratingsTable, newRatingsBox);
+        mountedBox = newRatingsBox;
+        reinitializeVoter(ptpData.personalRating);
+
+        if (header && header.parentElement && !header.parentElement.querySelector('[data-imdb-graphql-ratings-refresh="1"]')) {
+            const refreshButton = makeRatingsButton('Refresh', () => {
+                clearRatingsCaches(imdbId);
+            });
+            refreshButton.dataset.imdbGraphqlRatingsRefresh = '1';
+            header.parentElement.appendChild(refreshButton);
+        }
+    } else {
+        const requestTable = document.getElementById('request-table');
+        if (requestTable && requestTable.parentNode) {
+            const panel = buildRequestRatingsPanel(imdbId, undefined, ptpData, supplemental, originalControls);
+            requestTable.parentNode.insertBefore(panel, requestTable.nextSibling);
+            mountedBox = panel.querySelector(`#${RATINGS_PANEL_ID}`);
+        }
+    }
+
+    return mountedBox;
+}
+
+function getFirstNonEmptyValue(...values) {
+    for (const value of values) {
+        if (value === null || value === undefined) {
+            continue;
+        }
+        if (typeof value === 'string' && value.trim() === '') {
+            continue;
+        }
+
+        return value;
+    }
+
+    return null;
+}
+
+function parseRottenTomatoesNumber(value) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+    }
+    if (typeof value === 'string') {
+        const match = value.match(/-?\d+(\.\d+)?/);
+        if (match) {
+            return Number.parseFloat(match[0]);
+        }
+    }
+
+    return null;
+}
+
+function parseRottenTomatoesCount(value) {
+    const parsed = parseRottenTomatoesNumber(value);
+    return Number.isFinite(parsed) ? Math.trunc(parsed) : 0;
+}
+
+function getRottenTomatoesCriticType(criticsScore) {
+    const rawType = getFirstNonEmptyValue(
+        criticsScore?.scoreType,
+        criticsScore?.ratingState,
+        criticsScore?.tomatometerState,
+        criticsScore?.iconName,
+        criticsScore?.scoreIcon?.name,
+        criticsScore?.scoreIcon?.type,
+        criticsScore?.scoreIcon?.tomatometer,
+        criticsScore?.scoreSentiment,
+        criticsScore?.classification?.type,
+        criticsScore?.classification
+    );
+
+    return rawType ? String(rawType).trim().toLowerCase() : '';
+}
+
+function isRottenTomatoesCertified(criticsScore) {
+    if (criticsScore?.certified === true || criticsScore?.isCertified === true) {
+        return true;
+    }
+
+    return getRottenTomatoesCriticType(criticsScore).includes('certified');
+}
+
+async function fetchRottenTomatoesFromWikidata(imdbId) {
+    const queryUrl = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(`SELECT * WHERE {?s wdt:P345 "${imdbId}". OPTIONAL { ?s wdt:P1258 ?Rotten_Tomatoes_ID. }}`)}`;
+    const payload = await jsonRequest(queryUrl);
+    const rtId = payload?.results?.bindings?.[0]?.Rotten_Tomatoes_ID?.value;
+    return rtId ? `https://www.rottentomatoes.com/${rtId}` : null;
+}
+
+function getRottenTomatoesLogo(criticScore, isCertified, isLarge = true) {
+    if (Number.isNaN(criticScore)) {
+        return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAzBAMAAAAnTUYnAAAAMFBMVEX///8AAAD8/P/+/v/8/v/9/f/////9///8/P/////9/f/9/f/9///6///////7//9jXvJiAAAAEHRSTlPfAL/NsJUWol0ihXlpMk9AUJO7fgAAAZRJREFUOMt10j1Iw0AUwPGnEfxEfFVDq4j12S6CEDs4a7EUtxoo4ljQKohgq+jiUnFwcCmis3VwcHMRRBCKu1DQyUFEcBJpBxcnL9ckd6Z3f8iQ9yPkHQmg2zcG8uQlphObGhg5/lTIKhVMm2LvrTKWnH4moqugjJ08HcaTRIsYkDAbJolVDQh7gdsupR7KkqyTXLwhZOvt61KiKXmDXzGPXd9Xhfy4Q3Zl5wCMkidnxLKZpLI74NTjyqYDCwmiSfDaa8prkSgV7SDK+NLZlLCR3rcgQbEo+C1xqYOTTUUQ9TtiWsAy0suWJEaOyQjw+FxUYXIKqmaZXCilj4mllHaEcVCXg1GNlGBIIxUY1EgBBjQyoREL2rTPzDhiqIQ/o7QJ7W7zEIJghnueYWliSFaCcMu+zcpg8ruWHToQcFv7ferqgzIJyecxvJsqk3H1J2WCGX9nsUY3l5DinCUuEQuC9SIXxR9340okGoAudAXXAovVfMGPf3KLQsxHCVZQCOvI3/oOhfA2bD4/qKEQLzN/nkfRH1D6W+4DJAr9AAAAAElFTkSuQmCC';
+    }
+    if (criticScore < 60) {
+        return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyBAMAAADsEZWCAAAAMFBMVEUAAAAO/2wM/20N/3MN/20N/24N/20R/2wP/2wQ/3AN/24O/24P/20P/24M/20M/24BuYFjAAAAEHRSTlMAybgUrTqFLXggYUhUnpNr9KbLSQAAAdNJREFUOMuFlL8vBEEUx5dzOIR8xzoch0kkGhGiQETiKiVKnYtORUOhOfwDiD/gLlGLnwmJCIXeNgqVq7SXSERp3ns7e7syiW+xs7OfnX3vzfvOev/rUftfTrAAwD9ygFRBGbToIF0gDTpII5MhB1llohzkmYnvJAoqJJmH6xg5BqmPblsCqMM6aa7ndgWNfGxRQKSfloBUqpNWmo+Ym04m3fzd703alUszXzfjNmXP301VgawZ0xoom7ES5dIEBXxIsU82ILJhjXqY0uO4GZrKmipIJlI7Z9AJbfMvMHk1gaDyk6l9SG52jcpJI0YDiEocmPU5XdGIlJd9iUvJtcbVF5HU8u3upMdKBwkQ73jmriBFaLqUks45Q6QVL4mKDiKainKr/SENFIWViz2dWzuaKdJzzXR5y4Idtk1M6u2FQTsSko9OUB4niWdWvkH7cGrc9gdD57yd71SYkrokJbXCi7NeB83FYTKOiYF7rHcUBsImbAnpFSeKR7bB70pzc3QuEfqqjYYL6aD22aTWizfAEpWslbySrndw796LzsAiO1x8ZdUBGzDN6Zbj516FPZg1aDgCnIntzvwPHRwRB+aCHArE3w6dyj/JodQBsOECxBKzXw1bZfpNbnldAAAAAElFTkSuQmCC';
+    }
+    if (isCertified) {
+        return isLarge
+            ? 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyBAMAAADsEZWCAAAAMFBMVEUAAAD/RTP/3ylG/3T//v7/7zb/nSz/1VP/3zH/aDhB/3tZ/33/5eHW/1z/hHv/wLpmoPHOAAAAEHRSTlMA0+6K+7S0N6XAdqzCUL21ms6D8QAAAutJREFUOMtlk09IFFEcx9cgtUBohMQBw/otb5xF7LCPJVnxELxLsLj5hvUPXnbn4NohWA1dPQg5S2JFoFLZXiIYjBjpMt526SDM2WyXVJIOhpdAiGCPQf3e223V2S8Db3if+X2/v5nfm0BdLQv5B/mNTKBBC5NTCZ5YntzwA3UKtIe6lYDllA9Y+v5Iq1Y6mActfR7MmZBO81mttGiNgpY8F/6KzN7cAyTNpX3NWj5rowOSL3oOSof6kxm4fH+R1KOaTBhtXSnxMQDQStlJCGX+p5A5LTsDYHCCqPVrD6RrKWafSeZBX8k9o5sA6UR2ZqRa1Mz7zH0gNqU2tQDIY3OWrEryGkgLeumU0mh0BaBn6lLNzgRA/zE7SlH2eyAHHDQBrpiAenrDdsrRsqMoKgc0uCZiBFhSUI8GFaEOQJOk6BlvQnLL+aJIXQeQQWJVLoqje7WBkI+04xa+J5I1H8EkTRKi+IVtZwJNFoRUVVHW8MJFlWRdkBYLhj3GPBbrZix2yoZO7nXF2kGXNSlJ2GckuAjSKUibIDuKt1OJM1Vhu7svh05jHfgRRE3ei8W8uBdnLO6x+AmWqrUcxZM2vxgb6mKsUicmqN7OcSXGutHtz09WudslifgGisjZZX/xYYY1Q10xRY5hHclvhCJHdi1rxpG8gZTiVwek5BQaSSek5QEZbiDtJCmnfauBmNgaytTxPn9hEjxUO1UYKaan/3hL5AOqjEE7vqSot0lCAw6cwzHG6KuStKyHpg+h10gQN5xw+eD3aWu8duQdm9q9upGDsIHQoJQ6garsCASN55Hc5gfDiPRTVLRGypQnSJi7A8QN8omw4fYP1v4Sm7ph1+Wcu6QXegkhNJqRYKtArTDnYWQTQSBg8OBWQZCjYoFGKIlEIjlijIWNSJDTgeInLKHFIvUJSUH4XS1i16Ihx3HkSqPFd7gvSfRjVmaK2Ow354xsbwfOa2CgTu4ELqpcI23Yh09He1XnjB/IrX92kRYQCwoChgAAAABJRU5ErkJggg=='
+            : 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyBAMAAADsEZWCAAAAMFBMVEX/NAEAAAD/1wEE/0//eQ//XwkO/20R/1j/wi7/0QL/mwZG/1P/vwcW/1Gf/yX/rCaMpZb7AAAAEHRSTlP5AP6R0a/DejLZxV/DRYprc1z0OgAAAeNJREFUOMt10jFIG1EYB/BHaYZKoRxN8EGX8kiGSLcHPUEojbxAUjpcJFlcOhSeg0vhIKF0aAOxOJZrOhQ6HXboWEp1CIKIk4MgjpJFJxdBHBwc9HvffZec+eIfDu7ej+9737s74Y0jpcw8jUQ2jdkwpspkzfxRLvvm4q4U3kQqyQvTICFQo5RNNyMGK9Kq6lh6scqm30hFUq9ySiaV3q7CnKZSbJBQSfT91/mJwlQTKSwmFfqV1h+pqIvSi3CT81Br/TNKxqugvFUoB9rFP6N2IBKb9a+0DnUn/B8s46OTvJvshxDvvlx+zgVCiMc4HUgPbuaEy78PArPkNgJpggS4siaS5GClBgIDlMQ4VFQFWaSSTGaU2kMpi8nAcCglJrEqegKO843JA5LX90rAZAYlVmKa4ARcnlA3Lrm0hguetD5FHqrfIMtTZ6vhV+DySFVA8tEOP+lcA6QQP2eyVOyCePUSk2jDc9Is86FrKPmIXmnQytEAxQqKrJda14OOxvidwU0r7tN/vRXqNMTbJASZLJAcMZlPRPKaT4m0V5i0V518tVysnQex1k6Cb+171+2pDWnB91P5i/vMWu0PhuseRq4Pt8KX9pBkZehlc9weyYJ3J3KT5NmqN5l2F0UeMpmF6xZWVq84L+zNHAAAAABJRU5ErkJggg==';
+    }
+    return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyBAMAAADsEZWCAAAAMFBMVEX/NAsAAAAC/1D/OQz/NAsJ/0//Nwz/MwsU/1Eo/04G/1EJ/1UD/1H/sTL/XhfJ/0x2piOmAAAAEHRSTlP7AJDOoXcqWj9mLB5PZaZRPI8p8gAAAX5JREFUOMt90jFLAzEUB/BXc9DVSGmhdXpyi4KkVropFv0CdnJSDwRXb6lzB8HBRcXBwUFBJ10EQd100sGP4OYHED+AmOTy+tK7nP+W4y4/8vJyF5AuhzIXkgcskz4OZfNoGJApXG/1UXNBWjh7hYjHeWm+v73GGuby1abR5SUnZgFKvHHpyT2DsaE35/n2xCe/gwNv/OPuxglDrP8XSoEYkFyjjq43v/TZAZPIyZOBzQnEGaB0M3k8Q9xSWr5HEiVWarD8BbCAsSJQ0LOyByY/eGrHMq4aqdt7cf6rwEuipQah9LRsB6WrZQWEqc8RtjstEIyQ0ADu1U8CwQYUQDomwvyoOZgs1GIREErFzmHkh7aV8jnlUuxB/VOtZ/YjxtZWLCakYnRNoQHhuHetChDZ7xNKtfBNqUK79BykWuqhnUbuvPG4cjcVKzXeKEUkVqQCUejMSqCHxIm/JZEdQ5JGfv8kVI+XZ5E7DFEqfZG7tNZiIkko+6sKOmsDSfkD2vBSWgDW61wAAAAASUVORK5ErkJggg==';
+}
+
+async function fetchRottenTomatoesData(imdbId) {
+    try {
+        const url = await fetchRottenTomatoesFromWikidata(imdbId);
+        if (!url) {
+            return null;
+        }
+
+        const doc = parseHtmlDocument(await textRequest(url));
+        const jsonText = doc.getElementById('media-scorecard-json')?.textContent || '';
+        if (!jsonText) {
+            return null;
+        }
+
+        const payload = JSON.parse(jsonText);
+        const criticsScore = payload?.criticsScore || {};
+        const audienceScore = payload?.audienceScore || {};
+        const criticPercent = parseRottenTomatoesNumber(getFirstNonEmptyValue(criticsScore?.score, criticsScore?.tomatometer, criticsScore?.value));
+        const criticAverage = parseRottenTomatoesNumber(getFirstNonEmptyValue(criticsScore?.averageRating, criticsScore?.averageScore));
+        const criticCountDisplay = getFirstNonEmptyValue(criticsScore?.ratingCount, criticsScore?.reviewCount, criticsScore?.count);
+        const criticCount = parseRottenTomatoesCount(criticCountDisplay);
+        const userPercent = parseRottenTomatoesNumber(getFirstNonEmptyValue(audienceScore?.score, audienceScore?.popcornScore, audienceScore?.value));
+        const userAverage = parseRottenTomatoesNumber(getFirstNonEmptyValue(audienceScore?.averageRating, audienceScore?.averageScore));
+        const userCountDisplay = getFirstNonEmptyValue(audienceScore?.bandedRatingCount, audienceScore?.ratingCount, audienceScore?.count);
+        const userCount = parseRottenTomatoesCount(userCountDisplay);
+        const criticCertified = isRottenTomatoesCertified(criticsScore);
+        const criticUrl = new URL(url);
+        criticUrl.pathname += '/reviews';
+        const userUrl = new URL(url);
+        userUrl.pathname += '/reviews';
+        userUrl.search = 'type=user';
+
+        return {
+            url,
+            critic: {
+                score: Number.isFinite(criticAverage) ? Math.trunc(criticAverage * 10) : null,
+                percent: Number.isFinite(criticPercent) ? Math.trunc(criticPercent) : null,
+                count: criticCount,
+                countDisplay: criticCountDisplay,
+                certified: criticCertified,
+                type: getRottenTomatoesCriticType(criticsScore) || null,
+                url: criticUrl.toString()
+            },
+            user: {
+                score: Number.isFinite(userAverage) ? Math.trunc(userAverage * 20) : null,
+                percent: Number.isFinite(userPercent) ? Math.trunc(userPercent) : null,
+                count: userCount,
+                countDisplay: userCountDisplay,
+                url: userUrl.toString()
+            },
+            consensus: doc.querySelector('#critics-consensus p')?.textContent?.trim() || '',
+            icon: getRottenTomatoesLogo(Number.isFinite(criticPercent) ? Math.trunc(criticPercent) : Number.NaN, criticCertified)
+        };
+    } catch (_) {
+        return null;
+    }
+}
+
+async function fetchLetterboxdData(imdbId) {
+    try {
+        const baseUrl = `https://letterboxd.com/imdb/${imdbId}/`;
+        const pageResponse = await textRequestDetailed(baseUrl);
+        const page = parseHtmlDocument(pageResponse.text);
+        const finalUrl = pageResponse.finalUrl || baseUrl;
+        const imdbLink = page.querySelector('[data-track-action="IMDb"]')?.href || '';
+        if (!imdbLink.includes(imdbId)) {
+            return null;
+        }
+
+        const membersUrl = new URL('members', finalUrl).toString();
+        const membersPage = parseHtmlDocument(await textRequest(membersUrl));
+        const jsonText = page.querySelector('script[type="application/ld+json"]')?.textContent?.replace(/\/\*.*?\*\//g, '').trim() || '';
+        if (!jsonText) {
+            return null;
+        }
+
+        const payload = JSON.parse(jsonText);
+        let userScore = 0;
+        let userCount = 0;
+
+        if (payload.aggregateRating && typeof payload.aggregateRating.ratingValue === 'number') {
+            userScore = Math.round(payload.aggregateRating.ratingValue * 20);
+            userCount = Number.parseInt(payload.aggregateRating.ratingCount, 10) || 0;
+        } else {
+            const filmSlug = String(payload['@id'] || '').split('.com/')[1];
+            if (!filmSlug) {
+                return null;
+            }
+
+            const histogramHtml = await textRequest(`https://letterboxd.com/csi/${filmSlug}ratings-summary/`);
+            const ratingCategories = histogramHtml.split('rating-histogram-bar');
+            let ratingTotal = 0;
+
+            for (let i = 1; i < ratingCategories.length; i++) {
+                const count = Number.parseInt((ratingCategories[i].split('title="')[1] || '').replace(/,/g, ''), 10) || 0;
+                userCount += count;
+                ratingTotal += count * (i / 2);
+            }
+
+            if (userCount > 0) {
+                userScore = Number.parseInt((Math.round((ratingTotal / userCount) * 100) / 100) * 20, 10);
+            }
+        }
+
+        const likes = Number.parseInt((membersPage.querySelector('.js-route-likes a')?.title || '').replace(/[^\d]/g, ''), 10) || 0;
+        const fans = Number.parseInt((membersPage.querySelector('.js-route-fans a')?.title || '').replace(/[^\d]/g, ''), 10) || 0;
+
+        return {
+            url: finalUrl,
+            user: {
+                score: userScore,
+                count: userCount,
+                url: new URL('ratings', finalUrl).toString()
+            },
+            likes,
+            fans,
+            likesUrl: new URL('likes', finalUrl).toString(),
+            fansUrl: new URL('fans', finalUrl).toString()
+        };
+    } catch (_) {
+        return null;
+    }
+}
+
+async function getSupplementalRatingsCache(imdbId) {
+    return getCache(`ratings_supplemental_data_${imdbId}`);
+}
+
+async function mergeSupplementalRatingsCache(imdbId, partial) {
+    const cached = await getSupplementalRatingsCache(imdbId);
+    const nextValue = {
+        rottenTomatoes: cached?.rottenTomatoes ?? undefined,
+        letterboxd: cached?.letterboxd ?? undefined,
+        ...partial
+    };
+    await setCache(`ratings_supplemental_data_${imdbId}`, nextValue);
+    return nextValue;
+}
+
+async function fetchRottenTomatoesWithCache(imdbId) {
+    const cached = await getSupplementalRatingsCache(imdbId);
+    if (cached && Object.prototype.hasOwnProperty.call(cached, 'rottenTomatoes')) {
+        return cached.rottenTomatoes;
+    }
+
+    const rottenTomatoes = await fetchRottenTomatoesData(imdbId);
+    await mergeSupplementalRatingsCache(imdbId, { rottenTomatoes });
+    return rottenTomatoes;
+}
+
+async function fetchLetterboxdWithCache(imdbId) {
+    const cached = await getSupplementalRatingsCache(imdbId);
+    if (cached && Object.prototype.hasOwnProperty.call(cached, 'letterboxd')) {
+        return cached.letterboxd;
+    }
+
+    const letterboxd = await fetchLetterboxdData(imdbId);
+    await mergeSupplementalRatingsCache(imdbId, { letterboxd });
+    return letterboxd;
+}
+
+async function setCache(key, data) {
+    const cacheData = {
+        timestamp: Date.now(),
+        data: LZString.compress(JSON.stringify(data))
+    };
+    await GM.setValue(key, JSON.stringify(cacheData));
+}
+
+function getCacheDurationForEntry(key, parsedData) {
+    const standardDurationMs = CACHE_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+    if (!key.startsWith('iMDB_data_')) {
+        return standardDurationMs;
+    }
+
+    const releaseYear = Number.parseInt(parsedData?.data?.title?.releaseYear?.year, 10);
+    if (!Number.isFinite(releaseYear)) {
+        return standardDurationMs;
+    }
+
+    const currentYear = new Date().getFullYear();
+    if (releaseYear >= currentYear - 1) {
+        return NEW_MOVIE_TTL_DAYS * 24 * 60 * 60 * 1000;
+    }
+
+    return standardDurationMs;
+}
+
+async function getCache(key) {
+    const cached = await GM.getValue(key, null);
+    if (cached) {
+        try {
+            const cacheData = JSON.parse(cached);
+            const currentTime = Date.now();
+
+            const decompressedData = LZString.decompress(cacheData.data);
+            const parsedData = JSON.parse(decompressedData);
+            if (!parsedData || typeof parsedData !== 'object') {
+                console.error("Decompressed data is invalid:", decompressedData);
+                return null;
+            }
+
+            const cacheDuration = getCacheDurationForEntry(key, parsedData);
+            if (currentTime - cacheData.timestamp < cacheDuration) {
+                return parsedData;
+            } else {
+                console.log("Cache expired for key:", key);
+            }
+        } catch (error) {
+            console.error("Error parsing cache for key:", key, error);
+        }
+    }
+
+    return null;
+}
+
+function hasRequiredRatingsData(titleData) {
+    if (!titleData) {
+        return false;
+    }
+
+    if (!ENABLE_IMDB_RATINGS_PANEL) {
+        return true;
+    }
+
+    if (!titleData.ratingsSummary || !('metacritic' in titleData) || !('meterRank' in titleData)) {
+        return false;
+    }
+
+    if (SHOW_IMDB_VOTE_HISTOGRAM && !titleData.aggregateRatingsBreakdown?.histogram) {
+        return false;
+    }
+
+    if (SHOW_IMDB_COUNTRY_AVERAGES && !Array.isArray(titleData.aggregateRatingsBreakdown?.ratingsSummaryByCountry)) {
+        return false;
+    }
+
+    if (SHOW_IMDB_DEMOGRAPHICS && !Array.isArray(titleData.aggregateRatingsBreakdown?.ratingsSummaryByDemographics)) {
+        return false;
+    }
+
+    return true;
 }
 
 (async function () {
@@ -781,9 +2333,6 @@ function handleResetAll() {
 
     console.log(`Successfully found IMDb ID: ${imdbId}`);
 
-    // Cache duration (1 week (by default) in milliseconds)
-    const CACHE_DURATION = CACHE_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
-
     // Compress and set cache with expiration
     const setCache = async (key, data) => {
         const cacheData = {
@@ -800,17 +2349,20 @@ function handleResetAll() {
             try {
                 const cacheData = JSON.parse(cached);
                 const currentTime = Date.now();
+                const decompressedData = LZString.decompress(cacheData.data);
+                const parsedData = JSON.parse(decompressedData);
+
+                if (!parsedData || typeof parsedData !== 'object') {
+                    console.error("Decompressed data is invalid:", decompressedData);
+                    return null;
+                }
+
+                const cacheDuration = getCacheDurationForEntry(key, parsedData);
 
                 // Check if the cache is expired
-                if (currentTime - cacheData.timestamp < CACHE_DURATION) {
-                    const decompressedData = LZString.decompress(cacheData.data);
-                    const parsedData = JSON.parse(decompressedData);
-                    if (parsedData && typeof parsedData === 'object') {
-                        //console.log("Cache hit for key:", key);
-                        return parsedData; // Return the decompressed and parsed data
-                    } else {
-                        console.error("Decompressed data is invalid:", decompressedData);
-                    }
+                if (currentTime - cacheData.timestamp < cacheDuration) {
+                    //console.log("Cache hit for key:", key);
+                    return parsedData; // Return the decompressed and parsed data
                 } else {
                     console.log("Cache expired for key:", key);
                 }
@@ -1155,7 +2707,7 @@ function handleResetAll() {
         const cachedData = await getCache(cacheKey);
         if (cachedData) {
             console.log("Using cached compressed IMDb data");
-            if (cachedData.data && cachedData.data.title) {
+            if (cachedData.data && cachedData.data.title && hasRequiredRatingsData(cachedData.data.title)) {
                 const titleData = cachedData.data.title;
                 const soundtracks = titleData.soundtrack.edges;
                 const uniqueIds = [];
@@ -1241,14 +2793,14 @@ function handleResetAll() {
 
                 return { titleData, processedSoundtracks, idToNameMap, namesData: names };
             } else {
-                console.error("Cached data structure invalid. Fetching fresh data...");
+                console.error("Cached IMDb data is missing required ratings fields. Fetching fresh data...");
             }
         }
 
         const url = `https://api.graphql.imdb.com/`;
         const query = {
             query: `
-                query getTitleDetails($id: ID!, $first: Int!, $after: ID) {
+                query getTitleDetails($id: ID!, $first: Int!, $after: ID, $includeHistogram: Boolean!, $includeCountries: Boolean!, $includeDemographics: Boolean!) {
                     title(id: $id) {
                         soundtrack(first: 40) {
                             edges {
@@ -1283,6 +2835,57 @@ function handleResetAll() {
                         }
                         releaseYear {
                             year
+                        }
+                        ratingsSummary {
+                            aggregateRating
+                            voteCount
+                            topRanking {
+                                id
+                                rank
+                            }
+                        }
+                        metacritic {
+                            url
+                            metascore {
+                                reviewCount
+                                score
+                            }
+                        }
+                        aggregateRatingsBreakdown {
+                            histogram @include(if: $includeHistogram) {
+                                demographic {
+                                    age
+                                    country
+                                    gender
+                                    userCategory
+                                }
+                                histogramValues {
+                                    rating
+                                    voteCount
+                                }
+                            }
+                            ratingsSummaryByCountry @include(if: $includeCountries) {
+                                country
+                                aggregate
+                            }
+                            ratingsSummaryByDemographics @include(if: $includeDemographics) {
+                                aggregate
+                                voteCount
+                                demographic {
+                                    age
+                                    country
+                                    gender
+                                    userCategory
+                                }
+                            }
+                        }
+                        meterRank {
+                            currentRank
+                            meterType
+                            rankChange {
+                                changeDirection
+                                difference
+                            }
                         }
                         alternateVersions(first: 50) {
                             edges {
@@ -1606,7 +3209,10 @@ function handleResetAll() {
             variables: {
                 id: imdbId,
                 first: 250,
-                after: afterCursor
+                after: afterCursor,
+                includeHistogram: SHOW_IMDB_VOTE_HISTOGRAM,
+                includeCountries: SHOW_IMDB_COUNTRY_AVERAGES,
+                includeDemographics: SHOW_IMDB_DEMOGRAPHICS
             }
         };
 
@@ -3366,9 +4972,57 @@ function handleResetAll() {
         trailerContainer.dataset.imdbTrailerHandled = 'true';
     };
 
+    const ptpRatingsData = ENABLE_IMDB_RATINGS_PANEL ? parsePtpRating() : null;
+    const originalPtpVoteControls = ENABLE_IMDB_RATINGS_PANEL ? captureOriginalPtpVoteControls() : null;
+    const supplementalRatings = {
+        rottenTomatoes: SHOW_RATINGS_ROTTEN_TOMATOES ? undefined : null,
+        letterboxd: SHOW_RATINGS_LETTERBOXD ? undefined : null
+    };
+    const mountedRatingsBox = ENABLE_IMDB_RATINGS_PANEL
+        ? mountRatingsPanel(imdbId, ptpRatingsData, supplementalRatings, originalPtpVoteControls)
+        : null;
+    let ratingsTitleData;
+
+    const rerenderRatingsPanel = () => {
+        if (!ENABLE_IMDB_RATINGS_PANEL || !mountedRatingsBox) {
+            return;
+        }
+
+        renderRatingsBox(mountedRatingsBox, imdbId, ratingsTitleData, ptpRatingsData, supplementalRatings, originalPtpVoteControls);
+        reinitializeVoter(ptpRatingsData.personalRating);
+    };
+
+    if (ENABLE_IMDB_RATINGS_PANEL && SHOW_RATINGS_ROTTEN_TOMATOES) {
+        fetchRottenTomatoesWithCache(imdbId)
+            .then((data) => {
+                supplementalRatings.rottenTomatoes = data;
+                rerenderRatingsPanel();
+            })
+            .catch((error) => {
+                supplementalRatings.rottenTomatoes = null;
+                console.error('Failed to fetch Rotten Tomatoes data:', error);
+                rerenderRatingsPanel();
+            });
+    }
+
+    if (ENABLE_IMDB_RATINGS_PANEL && SHOW_RATINGS_LETTERBOXD) {
+        fetchLetterboxdWithCache(imdbId)
+            .then((data) => {
+                supplementalRatings.letterboxd = data;
+                rerenderRatingsPanel();
+            })
+            .catch((error) => {
+                supplementalRatings.letterboxd = null;
+                console.error('Failed to fetch Letterboxd data:', error);
+                rerenderRatingsPanel();
+            });
+    }
+
     // Initialize panels
     fetchIMDBData(imdbId).then(async data => {
         const { titleData, processedSoundtracks, idToNameMap, namesData } = data;
+        ratingsTitleData = titleData || null;
+        rerenderRatingsPanel();
 
         if (titleData) {
             if (SHOW_SIMILAR_MOVIES && titleData.moreLikeThisTitles) {
@@ -3458,6 +5112,8 @@ function handleResetAll() {
         }
     }).catch(err => {
         console.error("PTP IMDb Combined processing error:", err);
+        ratingsTitleData = null;
+        rerenderRatingsPanel();
 
         // **NEW: Dispatch error event when fetch fails**
         document.dispatchEvent(new CustomEvent('imdbProcessingComplete', {
