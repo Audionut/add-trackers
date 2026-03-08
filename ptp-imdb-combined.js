@@ -1572,7 +1572,7 @@ function formatTenScale(scoreTimesTen) {
         return 'None';
     }
 
-    return `${(scoreTimesTen / 10).toFixed(1)}/10`;
+    return (scoreTimesTen / 10).toFixed(1);
 }
 
 function formatCount(value) {
