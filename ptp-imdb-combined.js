@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.2.6
+// @version      1.2.7
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -41,6 +41,8 @@ let SHOW_PARENTS_GUIDE = true;
 let ENABLE_IMDB_RATINGS_PANEL = false;
 let SHOW_RATINGS_ROTTEN_TOMATOES = false;
 let SHOW_RATINGS_LETTERBOXD = false;
+let SHOW_RATINGS_LETTERBOXD_HISTOGRAM = false;
+let SHOW_RATINGS_LETTERBOXD_WEIGHTED_SCORE = false;
 let SHOW_IMDB_VOTE_HISTOGRAM = false;
 let SHOW_IMDB_WEIGHTED_SCORE = false;
 let SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE = false;
@@ -163,6 +165,8 @@ const saveSettings = () => {
     GM.setValue('ENABLE_IMDB_RATINGS_PANEL', ENABLE_IMDB_RATINGS_PANEL);
     GM.setValue('SHOW_RATINGS_ROTTEN_TOMATOES', SHOW_RATINGS_ROTTEN_TOMATOES);
     GM.setValue('SHOW_RATINGS_LETTERBOXD', SHOW_RATINGS_LETTERBOXD);
+    GM.setValue('SHOW_RATINGS_LETTERBOXD_HISTOGRAM', SHOW_RATINGS_LETTERBOXD_HISTOGRAM);
+    GM.setValue('SHOW_RATINGS_LETTERBOXD_WEIGHTED_SCORE', SHOW_RATINGS_LETTERBOXD_WEIGHTED_SCORE);
     GM.setValue('SHOW_IMDB_VOTE_HISTOGRAM', SHOW_IMDB_VOTE_HISTOGRAM);
     GM.setValue('SHOW_IMDB_WEIGHTED_SCORE', SHOW_IMDB_WEIGHTED_SCORE);
     GM.setValue('SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE', SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE);
@@ -213,6 +217,11 @@ const loadSettings = async () => {
     ENABLE_IMDB_RATINGS_PANEL = await GM.getValue('ENABLE_IMDB_RATINGS_PANEL', false);
     SHOW_RATINGS_ROTTEN_TOMATOES = await GM.getValue('SHOW_RATINGS_ROTTEN_TOMATOES', false);
     SHOW_RATINGS_LETTERBOXD = await GM.getValue('SHOW_RATINGS_LETTERBOXD', false);
+    SHOW_RATINGS_LETTERBOXD_HISTOGRAM = await GM.getValue('SHOW_RATINGS_LETTERBOXD_HISTOGRAM', false);
+    SHOW_RATINGS_LETTERBOXD_WEIGHTED_SCORE = await GM.getValue(
+        'SHOW_RATINGS_LETTERBOXD_WEIGHTED_SCORE',
+        await GM.getValue('SHOW_RATINGS_LETTERBOXD_HISTOGRAM', false)
+    );
     SHOW_IMDB_VOTE_HISTOGRAM = await GM.getValue('SHOW_IMDB_VOTE_HISTOGRAM', false);
     SHOW_IMDB_WEIGHTED_SCORE = await GM.getValue('SHOW_IMDB_WEIGHTED_SCORE', false);
     SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE = await GM.getValue('SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE', false);
@@ -547,6 +556,19 @@ function showSettingsPanel() {
                         <label style="display: block; margin-bottom: 10px; cursor: pointer;">
                             <input type="checkbox" id="show-ratings-letterboxd" style="margin-right: 8px;">
                             <span>Show Letterboxd</span>
+                        </label>
+
+                        <label style="display: block; margin-bottom: 4px; cursor: pointer; margin-left: 20px;">
+                            <input type="checkbox" id="show-ratings-letterboxd-weighted-score" style="margin-right: 8px;">
+                            <span>Show Letterboxd Weighting</span>
+                        </label>
+                        <p style="margin: 0 0 12px 26px; font-size: 0.85em; color: #ccc;">
+                            Uses the IMDb weighting type for the Letterboxd weighted badge.
+                        </p>
+
+                        <label style="display: block; margin-bottom: 10px; cursor: pointer; margin-left: 20px;">
+                            <input type="checkbox" id="show-ratings-letterboxd-histogram" style="margin-right: 8px;">
+                            <span>Show Letterboxd Histogram</span>
                         </label>
 
                         <label style="display: block; margin-bottom: 10px; cursor: pointer;">
@@ -895,6 +917,10 @@ function shouldIncludeHistogramData() {
     return SHOW_IMDB_VOTE_HISTOGRAM || SHOW_IMDB_WEIGHTED_SCORE;
 }
 
+function shouldIncludeLetterboxdHistogramData() {
+    return SHOW_RATINGS_LETTERBOXD_HISTOGRAM || SHOW_RATINGS_LETTERBOXD_WEIGHTED_SCORE;
+}
+
 function shouldIncludeDemographicsData() {
     return SHOW_IMDB_DEMOGRAPHICS || SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE;
 }
@@ -933,6 +959,8 @@ function loadSettingsIntoForm() {
     document.getElementById('enable-imdb-ratings-panel').checked = ENABLE_IMDB_RATINGS_PANEL;
     document.getElementById('show-ratings-rotten-tomatoes').checked = SHOW_RATINGS_ROTTEN_TOMATOES;
     document.getElementById('show-ratings-letterboxd').checked = SHOW_RATINGS_LETTERBOXD;
+    document.getElementById('show-ratings-letterboxd-histogram').checked = SHOW_RATINGS_LETTERBOXD_HISTOGRAM;
+    document.getElementById('show-ratings-letterboxd-weighted-score').checked = SHOW_RATINGS_LETTERBOXD_WEIGHTED_SCORE;
     document.getElementById('show-imdb-vote-histogram').checked = SHOW_IMDB_VOTE_HISTOGRAM;
     document.getElementById('show-imdb-weighted-score').checked = SHOW_IMDB_WEIGHTED_SCORE;
     document.getElementById('imdb-weighted-score-type').value = IMDB_WEIGHTED_SCORE_TYPE;
@@ -992,6 +1020,8 @@ function saveSettingsFromForm() {
     ENABLE_IMDB_RATINGS_PANEL = document.getElementById('enable-imdb-ratings-panel').checked;
     SHOW_RATINGS_ROTTEN_TOMATOES = document.getElementById('show-ratings-rotten-tomatoes').checked;
     SHOW_RATINGS_LETTERBOXD = document.getElementById('show-ratings-letterboxd').checked;
+    SHOW_RATINGS_LETTERBOXD_HISTOGRAM = document.getElementById('show-ratings-letterboxd-histogram').checked;
+    SHOW_RATINGS_LETTERBOXD_WEIGHTED_SCORE = document.getElementById('show-ratings-letterboxd-weighted-score').checked;
     SHOW_IMDB_VOTE_HISTOGRAM = document.getElementById('show-imdb-vote-histogram').checked;
     SHOW_IMDB_WEIGHTED_SCORE = document.getElementById('show-imdb-weighted-score').checked;
     SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE = document.getElementById('show-imdb-demographic-score-override').checked;
@@ -1071,6 +1101,8 @@ function handleResetAll() {
         ENABLE_IMDB_RATINGS_PANEL = false;
         SHOW_RATINGS_ROTTEN_TOMATOES = false;
         SHOW_RATINGS_LETTERBOXD = false;
+        SHOW_RATINGS_LETTERBOXD_HISTOGRAM = false;
+        SHOW_RATINGS_LETTERBOXD_WEIGHTED_SCORE = false;
         SHOW_IMDB_VOTE_HISTOGRAM = false;
         SHOW_IMDB_WEIGHTED_SCORE = false;
         SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE = false;
@@ -1395,6 +1427,64 @@ function ensureRatingsStyles() {
             background: linear-gradient(90deg, ${IMDB_ACCENT_COLOR}, #c4a33f);
         }
 
+        .imdb-letterboxd-histogram {
+            display: grid;
+            grid-template-columns: repeat(10, minmax(0, 1fr));
+            gap: 6px;
+            align-items: end;
+            height: 88px;
+            margin-top: 10px;
+        }
+
+        .imdb-letterboxd-bar {
+            position: relative;
+            display: grid;
+            grid-template-rows: minmax(0, 1fr) auto;
+            gap: 6px;
+            align-items: end;
+            height: 100%;
+            min-width: 0;
+        }
+
+        .imdb-letterboxd-bar-fill {
+            width: 100%;
+            min-height: 4px;
+            border-radius: 6px 6px 0 0;
+            background: linear-gradient(180deg, ${IMDB_ACCENT_COLOR}, #c4a33f);
+        }
+
+        .imdb-letterboxd-bar-label {
+            font-size: 10px;
+            line-height: 1.2;
+            text-align: center;
+            color: #a7a7a7;
+            white-space: nowrap;
+        }
+
+        .imdb-letterboxd-bar::after {
+            content: attr(data-count);
+            position: absolute;
+            left: 50%;
+            bottom: calc(100% + 8px);
+            transform: translateX(-50%);
+            padding: 4px 6px;
+            border-radius: 4px;
+            background: rgba(0, 0, 0, 0.9);
+            color: #fff;
+            font-size: 11px;
+            line-height: 1.2;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.12s ease;
+            z-index: 3;
+        }
+
+        .imdb-letterboxd-bar:hover::after,
+        .imdb-letterboxd-bar:focus-visible::after {
+            opacity: 1;
+        }
+
         .imdb-chip-list {
             display: flex;
             flex-wrap: wrap;
@@ -1667,9 +1757,16 @@ function calculateWeightedScoreFromHistogram(histogramValues, weightingType) {
     }
 }
 
-function getWeightedScoreSummary(histogramValues) {
+function getWeightedScoreSummary(histogramValues, options = {}) {
+    const enabled = Object.prototype.hasOwnProperty.call(options, 'enabled')
+        ? options.enabled
+        : SHOW_IMDB_WEIGHTED_SCORE;
+    const sourceLabel = options.sourceLabel || 'IMDb';
+    const displayScoreMultiplier = Number.isFinite(options.displayScoreMultiplier)
+        ? options.displayScoreMultiplier
+        : 1;
     const activeType = getActiveWeightedScoreType();
-    if (!SHOW_IMDB_WEIGHTED_SCORE || !activeType) {
+    if (!enabled || !activeType) {
         return null;
     }
 
@@ -1681,8 +1778,9 @@ function getWeightedScoreSummary(histogramValues) {
     return {
         type: activeType,
         label: IMDB_WEIGHTED_SCORE_TYPE_LABELS[activeType],
-        tooltip: `${IMDB_WEIGHTED_SCORE_TYPE_LABELS[activeType]} derived from the IMDb vote histogram.`,
-        score
+        tooltip: `${IMDB_WEIGHTED_SCORE_TYPE_LABELS[activeType]} derived from the ${sourceLabel} vote histogram.`,
+        score,
+        displayScore: score * displayScoreMultiplier
     };
 }
 
@@ -1869,6 +1967,32 @@ function buildHistogramHtml(histogramValues, isLoading = false) {
     }).join('');
 }
 
+function buildLetterboxdHistogramHtml(histogramValues, isLoading = false) {
+    if (isLoading) {
+        return '<div class="imdb-muted">Loading Letterboxd histogram...</div>';
+    }
+    if (!Array.isArray(histogramValues) || histogramValues.length === 0) {
+        return '<div class="imdb-muted">No Letterboxd histogram data.</div>';
+    }
+
+    const maxVoteCount = histogramValues.reduce((max, item) => Math.max(max, item.voteCount || 0), 0);
+    const ordered = histogramValues.slice().sort((a, b) => a.rating - b.rating);
+
+    return `
+        <div class="imdb-letterboxd-histogram">
+            ${ordered.map((item) => {
+                const height = maxVoteCount > 0 ? Math.max(4, Math.round((item.voteCount / maxVoteCount) * 100)) : 0;
+                return `
+                    <div class="imdb-letterboxd-bar" title="${formatCount(item.voteCount)} ratings" data-count="${formatCount(item.voteCount)} ratings" tabindex="0">
+                        <div class="imdb-letterboxd-bar-fill" style="height: ${height}%"></div>
+                        <div class="imdb-letterboxd-bar-label">${Number(item.rating).toFixed(1)}</div>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+
 function buildCountriesHtml(entries, isLoading = false) {
     if (isLoading) {
         return '<div class="imdb-muted">Loading country averages...</div>';
@@ -1893,7 +2017,7 @@ function buildPtpVoteHtml(ptpData) {
     const personalScoreHtml = ptpData.personalRating !== null
         ? formatTenScale(ptpData.personalRating)
         : 'None';
-    const actionLabel = ptpData.personalRating !== null ? 'Edit your vote' : 'Cast your vote';
+    const actionLabel = 'Open ratings page';
     const ptpRatingsUrl = PTP_ID !== null
         ? `https://passthepopcorn.me/torrents.php?action=ratings&id=${PTP_ID}`
         : '#';
@@ -1974,6 +2098,11 @@ function buildTopCardsHtml(imdbId, imdbData, ptpData, supplemental) {
     const lb = supplemental?.letterboxd;
     const imdbPending = isPendingValue(imdbData);
     const weightedScore = getWeightedScoreSummary(histogramValues);
+    const letterboxdWeightedScore = getWeightedScoreSummary(lb?.histogram || [], {
+        enabled: SHOW_RATINGS_LETTERBOXD_WEIGHTED_SCORE,
+        sourceLabel: 'Letterboxd',
+        displayScoreMultiplier: 2
+    });
     const demographicScoreOverride = getDemographicScoreOverrideSummary(demographicEntries);
     const primaryImdbScore = demographicScoreOverride?.score ?? imdbScore;
     const primaryImdbVotes = demographicScoreOverride?.votes ?? imdbVotes;
@@ -1996,7 +2125,7 @@ function buildTopCardsHtml(imdbId, imdbData, ptpData, supplemental) {
             </div>
             <div class="imdb-ratings-card">
                 <h4>PTP</h4>
-                <div class="imdb-ratings-value imdb-ptp-value-wrapper" title="Edit your PTP vote">
+                <div class="imdb-ratings-value imdb-ptp-value-wrapper">
                     <span class="imdb-ptp-value-label">${formatTenScale(ptpData.userScore)}</span>
                     <div class="imdb-ptp-overlay-target" data-ptp-overlay-hook="1"></div>
                 </div>
@@ -2042,11 +2171,17 @@ function buildTopCardsHtml(imdbId, imdbData, ptpData, supplemental) {
             ${SHOW_RATINGS_LETTERBOXD ? `
                 <div class="imdb-ratings-card">
                     <h4>${lb?.url ? `<a href="${lb.url}" target="_blank" rel="noreferrer" style="color: inherit;">Letterboxd</a>` : 'Letterboxd'}</h4>
-                    <div class="imdb-ratings-value">${lbPending ? '...' : (Number.isFinite(lb?.user?.score) ? formatPercentAsTenScale(lb.user.score) : 'None')}</div>
-                    <div class="imdb-ratings-meta">
-                        ${lbPending ? 'Loading Letterboxd...' : `Ratings: ${Number.isFinite(lb?.user?.count) ? `<a href="${lb.user.url}" target="_blank" rel="noreferrer">${formatCount(lb.user.count)}</a>` : 'Unknown'}<br>
-                        Likes: ${Number.isFinite(lb?.likes) ? `<a href="${lb.likesUrl}" target="_blank" rel="noreferrer">${formatCount(lb.likes)}</a>` : 'Unknown'} | Fans: ${Number.isFinite(lb?.fans) ? `<a href="${lb.fansUrl}" target="_blank" rel="noreferrer">${formatCount(lb.fans)}</a>` : 'Unknown'}`}
+                    <div class="imdb-ratings-value${SHOW_RATINGS_LETTERBOXD_WEIGHTED_SCORE ? ' imdb-weighted-score-inline' : ''}">
+                        <span class="${SHOW_RATINGS_LETTERBOXD_WEIGHTED_SCORE ? 'imdb-primary-score' : ''}">${lbPending ? '...' : (Number.isFinite(lb?.user?.score) ? (lb.user.score / 10).toFixed(1) : 'None')}</span>
+                        ${lbPending || !letterboxdWeightedScore ? '' : `<span class="imdb-weighted-score-badge" title="${letterboxdWeightedScore.tooltip}">${letterboxdWeightedScore.displayScore.toFixed(1)}</span>`}
                     </div>
+                    ${SHOW_RATINGS_LETTERBOXD_HISTOGRAM
+                        ? buildLetterboxdHistogramHtml(lb?.histogram || [], lbPending)
+                        : `<div class="imdb-ratings-meta">
+                            ${lbPending ? 'Loading Letterboxd...' : `Ratings: ${Number.isFinite(lb?.user?.count) ? `<a href="${lb.user.url}" target="_blank" rel="noreferrer">${formatCount(lb.user.count)}</a>` : 'Unknown'}<br>
+                            Likes: ${Number.isFinite(lb?.likes) ? `<a href="${lb.likesUrl}" target="_blank" rel="noreferrer">${formatCount(lb.likes)}</a>` : 'Unknown'} | Fans: ${Number.isFinite(lb?.fans) ? `<a href="${lb.fansUrl}" target="_blank" rel="noreferrer">${formatCount(lb.fans)}</a>` : 'Unknown'}`}
+                        </div>`
+                    }
                 </div>
             ` : ''}
         </div>
@@ -2446,28 +2581,56 @@ async function fetchLetterboxdData(imdbId) {
         const payload = JSON.parse(jsonText);
         let userScore = 0;
         let userCount = 0;
+        let histogram = [];
 
         if (payload.aggregateRating && typeof payload.aggregateRating.ratingValue === 'number') {
             userScore = Math.round(payload.aggregateRating.ratingValue * 20);
             userCount = Number.parseInt(payload.aggregateRating.ratingCount, 10) || 0;
-        } else {
-            const filmSlug = String(payload['@id'] || '').split('.com/')[1];
-            if (!filmSlug) {
-                return null;
-            }
+        }
 
+        const filmSlug = String(payload['@id'] || '').split('.com/')[1];
+        if (filmSlug) {
             const histogramHtml = await textRequest(`https://letterboxd.com/csi/${filmSlug}ratings-summary/`);
             const ratingCategories = histogramHtml.split('rating-histogram-bar');
             let ratingTotal = 0;
+            let histogramVoteCount = 0;
+            const nextHistogram = [];
 
             for (let i = 1; i < ratingCategories.length; i++) {
-                const count = Number.parseInt((ratingCategories[i].split('title="')[1] || '').replace(/,/g, ''), 10) || 0;
-                userCount += count;
-                ratingTotal += count * (i / 2);
+                const segment = ratingCategories[i];
+                const dataCountMatch = segment.match(/data-count="(\d+)"/i);
+                const titleMatch = segment.match(/title="([^"]+)"/i);
+                let count = dataCountMatch ? Number.parseInt(dataCountMatch[1], 10) : 0;
+
+                if (!Number.isFinite(count) || count <= 0) {
+                    const titleText = titleMatch ? titleMatch[1] : '';
+                    const titleCountMatch = titleText.match(/([\d,]+)\s+ratings?/i);
+
+                    if (titleCountMatch) {
+                        count = Number.parseInt(titleCountMatch[1].replace(/,/g, ''), 10) || 0;
+                    } else {
+                        const numericTokens = titleText.match(/\d[\d,]*/g) || [];
+                        count = numericTokens.reduce((max, token) => {
+                            const parsed = Number.parseInt(token.replace(/,/g, ''), 10) || 0;
+                            return parsed > max ? parsed : max;
+                        }, 0);
+                    }
+                }
+
+                const rating = i / 2;
+                nextHistogram.push({
+                    rating,
+                    voteCount: count
+                });
+                histogramVoteCount += count;
+                ratingTotal += count * rating;
             }
 
-            if (userCount > 0) {
-                userScore = Number.parseInt((Math.round((ratingTotal / userCount) * 100) / 100) * 20, 10);
+            histogram = nextHistogram.filter((entry) => entry.voteCount > 0);
+
+            if (histogramVoteCount > 0) {
+                userCount = histogramVoteCount;
+                userScore = Number.parseInt((Math.round((ratingTotal / histogramVoteCount) * 100) / 100) * 20, 10);
             }
         }
 
@@ -2481,6 +2644,7 @@ async function fetchLetterboxdData(imdbId) {
                 count: userCount,
                 url: new URL('ratings', finalUrl).toString()
             },
+            histogram,
             likes,
             fans,
             likesUrl: new URL('likes', finalUrl).toString(),
@@ -2489,6 +2653,35 @@ async function fetchLetterboxdData(imdbId) {
     } catch (_) {
         return null;
     }
+}
+
+function hasValidLetterboxdHistogram(letterboxd) {
+    if (!letterboxd || !Object.prototype.hasOwnProperty.call(letterboxd, 'histogram')) {
+        return false;
+    }
+
+    if (!Array.isArray(letterboxd.histogram)) {
+        return false;
+    }
+
+    if (!letterboxd.histogram.every((entry) => Number.isFinite(entry?.rating) && Number.isSafeInteger(entry?.voteCount) && entry.voteCount >= 0)) {
+        return false;
+    }
+
+    const histogramTotal = letterboxd.histogram.reduce((sum, entry) => sum + entry.voteCount, 0);
+    if (!Number.isSafeInteger(histogramTotal)) {
+        return false;
+    }
+
+    const cachedUserCount = letterboxd.user?.count;
+    if (Number.isSafeInteger(cachedUserCount) && histogramTotal > 0) {
+        const allowedDrift = Math.max(25, Math.round(histogramTotal * 0.05));
+        if (Math.abs(cachedUserCount - histogramTotal) > allowedDrift) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 async function getSupplementalRatingsCache(imdbId) {
@@ -2520,7 +2713,15 @@ async function fetchRottenTomatoesWithCache(imdbId) {
 async function fetchLetterboxdWithCache(imdbId) {
     const cached = await getSupplementalRatingsCache(imdbId);
     if (cached && Object.prototype.hasOwnProperty.call(cached, 'letterboxd')) {
-        return cached.letterboxd;
+        const cachedLetterboxd = cached.letterboxd;
+
+        if (!shouldIncludeLetterboxdHistogramData() || cachedLetterboxd === null) {
+            return cachedLetterboxd;
+        }
+
+        if (hasValidLetterboxdHistogram(cachedLetterboxd)) {
+            return cachedLetterboxd;
+        }
     }
 
     const letterboxd = await fetchLetterboxdData(imdbId);
