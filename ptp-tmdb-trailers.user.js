@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP - TMDB Trailer Selector
-// @version      1.4
+// @version      1.5
 // @description  Add a dropdown to switch between various TMDB videos
 // @match        https://passthepopcorn.me/torrents.php?id=*
 // @icon         data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADkAAAA5CAMAAAC7xnO3AAAAV1BMVEUAAAD///9oiM2CacFm5Mj/jGb842dn3auC3X/z82j/uWZw14xudcRwbsBmpdz83GZm4NBq26KP4Hrm9Wr/rmdmr91u2ZNmntln5L/902b/l2Zt1otnseEVRKmYAAAAeUlEQVRIx+3WtwqAMBCAYU2zpNlii+//nAZFCDooSIaQ+5fjhm89LoNCl7u+TpCvM8kopUNda81YVfVu78rS8rEtCkJI4/ZNKYSQkBJjfJerk4sv+SHnUxo1/ZMCJEiQIKOV8pKPe8s8aa317q3x7m2SxfUnxCWhAO24CSsei22B/wAAAABJRU5ErkJggg==
@@ -23,6 +23,7 @@
         replaceSiteLogo: false,
         replacePageBackground: false,
         logoPlacement: 'title',
+        hiddenSiteLogoSpacerPx: 16,
         backdropDarkness: 38,
         backdropSharpness: 100,
         columnBackgroundTransparency: 0,
@@ -65,11 +66,15 @@
         normalized.replaceSiteLogo = Boolean(normalized.replaceSiteLogo);
         normalized.replacePageBackground = Boolean(normalized.replacePageBackground);
         normalized.logoPlacement = normalized.logoPlacement === 'site' ? 'site' : 'title';
+        const hiddenSiteLogoSpacerPx = Number.parseInt(normalized.hiddenSiteLogoSpacerPx, 10);
         const darkness = Number.parseInt(normalized.backdropDarkness, 10);
         const sharpness = Number.parseInt(normalized.backdropSharpness, 10);
         const legacyTransparency = Number.parseInt(normalized.columnTransparency, 10);
         const backgroundTransparency = Number.parseInt(normalized.columnBackgroundTransparency, 10);
         const contentTransparency = Number.parseInt(normalized.columnContentTransparency, 10);
+        normalized.hiddenSiteLogoSpacerPx = Number.isFinite(hiddenSiteLogoSpacerPx)
+            ? Math.min(120, Math.max(0, hiddenSiteLogoSpacerPx))
+            : DEFAULT_SETTINGS.hiddenSiteLogoSpacerPx;
         normalized.backdropDarkness = Number.isFinite(darkness) ? Math.min(100, Math.max(0, darkness)) : DEFAULT_SETTINGS.backdropDarkness;
         normalized.backdropSharpness = Number.isFinite(sharpness) ? Math.min(100, Math.max(0, sharpness)) : DEFAULT_SETTINGS.backdropSharpness;
         normalized.columnBackgroundTransparency = Number.isFinite(backgroundTransparency)
@@ -166,6 +171,10 @@
                 </select>
             </div>
             <div style="margin-bottom: 12px;">
+                <label for="ptp-tmdb-hidden-site-logo-spacer" style="display:block; margin-bottom: 4px;">Hidden Site Logo Spacer (px)</label>
+                <input id="ptp-tmdb-hidden-site-logo-spacer" type="number" min="0" max="120" step="1" style="width:100%; box-sizing:border-box; padding:6px;" />
+            </div>
+            <div style="margin-bottom: 12px;">
                 <label style="display:flex; align-items:center; gap:8px;">
                     <input id="ptp-tmdb-replace-background" type="checkbox" />
                     Replace page background with random TMDB backdrop (prefers largest)
@@ -208,6 +217,7 @@
         const ttlInput = panel.querySelector('#ptp-tmdb-cache-ttl');
         const replaceLogoInput = panel.querySelector('#ptp-tmdb-replace-logo');
         const logoPlacementInput = panel.querySelector('#ptp-tmdb-logo-placement');
+        const hiddenSiteLogoSpacerInput = panel.querySelector('#ptp-tmdb-hidden-site-logo-spacer');
         const replaceBackgroundInput = panel.querySelector('#ptp-tmdb-replace-background');
         const backdropDarknessInput = panel.querySelector('#ptp-tmdb-backdrop-darkness');
         const backdropSharpnessInput = panel.querySelector('#ptp-tmdb-backdrop-sharpness');
@@ -225,6 +235,7 @@
         ttlInput.value = String(settings.cacheTtlDays || DEFAULT_SETTINGS.cacheTtlDays);
         replaceLogoInput.checked = Boolean(settings.replaceSiteLogo);
         logoPlacementInput.value = settings.logoPlacement || 'title';
+        hiddenSiteLogoSpacerInput.value = String(settings.hiddenSiteLogoSpacerPx ?? DEFAULT_SETTINGS.hiddenSiteLogoSpacerPx);
         replaceBackgroundInput.checked = Boolean(settings.replacePageBackground);
         backdropDarknessInput.value = String(settings.backdropDarkness ?? DEFAULT_SETTINGS.backdropDarkness);
         backdropSharpnessInput.value = String(settings.backdropSharpness ?? DEFAULT_SETTINGS.backdropSharpness);
@@ -261,6 +272,11 @@
                 alert('Backdrop sharpness must be between 0 and 100.');
                 return;
             }
+            const hiddenSiteLogoSpacerPx = Number.parseInt(hiddenSiteLogoSpacerInput.value, 10);
+            if (!Number.isFinite(hiddenSiteLogoSpacerPx) || hiddenSiteLogoSpacerPx < 0 || hiddenSiteLogoSpacerPx > 120) {
+                alert('Hidden site logo spacer must be between 0 and 120 pixels.');
+                return;
+            }
             const columnBgTransparency = Number.parseInt(columnBgTransparencyInput.value, 10);
             if (!Number.isFinite(columnBgTransparency) || columnBgTransparency < 0 || columnBgTransparency > 100) {
                 alert('Column background transparency must be between 0 and 100.');
@@ -283,6 +299,7 @@
                 replaceSiteLogo: replaceLogoInput.checked,
                 replacePageBackground: replaceBackgroundInput.checked,
                 logoPlacement: logoPlacementInput.value,
+                hiddenSiteLogoSpacerPx,
                 backdropDarkness: darkness,
                 backdropSharpness: sharpness,
                 columnBackgroundTransparency: columnBgTransparency,
@@ -524,11 +541,14 @@
                 const spacer = document.createElement('div');
                 spacer.id = 'ptp-tmdb-site-logo-spacer';
                 spacer.style.width = '100%';
-                spacer.style.height = '18px';
                 spacer.style.margin = '0';
                 spacer.style.pointerEvents = 'none';
                 originalSiteLogo.insertAdjacentElement('afterend', spacer);
                 originalSiteLogo.dataset.tmdbSpacerApplied = '1';
+            }
+            const spacer = document.getElementById('ptp-tmdb-site-logo-spacer');
+            if (spacer) {
+                spacer.style.height = `${settings.hiddenSiteLogoSpacerPx}px`;
             }
             originalSiteLogo.style.display = 'none';
         }
