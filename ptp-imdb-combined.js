@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.2.8
+// @version      1.2.9
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -3029,13 +3029,35 @@ function hasRequiredRatingsData(titleData) {
         });
     };
 
-    const isValidIMDbMp4Url = (url) => {
+    const isValidIMDbPlaybackUrl = (url) => {
         if (!url || typeof url !== 'string') return false;
-        return /https:\/\/imdb-video\.media-imdb\.com\/.+\.mp4(?:$|\?)/i.test(url);
+        return /^https?:\/\//i.test(url);
     };
 
-    const rankMp4Candidates = (candidates) => {
+    const inferVideoMimeType = (url) => {
+        if (!url || typeof url !== 'string') {
+            return '';
+        }
+
+        const sanitizedUrl = url.split('?')[0].toLowerCase();
+        if (sanitizedUrl.endsWith('.mp4')) {
+            return 'video/mp4';
+        }
+        if (sanitizedUrl.endsWith('.webm')) {
+            return 'video/webm';
+        }
+        if (sanitizedUrl.endsWith('.m3u8')) {
+            return 'application/vnd.apple.mpegurl';
+        }
+        return '';
+    };
+
+    const rankPlaybackCandidates = (candidates) => {
         return [...candidates].sort((left, right) => {
+            const leftMimeRank = left.mimeType === 'video/mp4' ? 0 : 1;
+            const rightMimeRank = right.mimeType === 'video/mp4' ? 0 : 1;
+            if (leftMimeRank !== rightMimeRank) return leftMimeRank - rightMimeRank;
+
             const leftArea = (left.width || 0) * (left.height || 0);
             const rightArea = (right.width || 0) * (right.height || 0);
             if (rightArea !== leftArea) return rightArea - leftArea;
@@ -3046,7 +3068,7 @@ function hasRequiredRatingsData(titleData) {
         });
     };
 
-    const selectBestMp4 = (video) => {
+    const selectPlaybackSources = (video) => {
         const candidates = [];
 
         const appendCandidates = (items = []) => {
@@ -3055,15 +3077,20 @@ function hasRequiredRatingsData(titleData) {
                     ? item
                     : (item && typeof item.url === 'string' ? item.url : null);
 
-                if (!itemUrl || !isValidIMDbMp4Url(itemUrl)) {
+                if (!itemUrl || !isValidIMDbPlaybackUrl(itemUrl)) {
                     return;
                 }
+
+                const mimeType = (item && typeof item === 'object' && typeof item.mimeType === 'string' && item.mimeType)
+                    ? item.mimeType
+                    : inferVideoMimeType(itemUrl);
 
                 candidates.push({
                     url: itemUrl,
                     width: (item && typeof item === 'object' && item.width) ? item.width : 0,
                     height: (item && typeof item === 'object' && item.height) ? item.height : 0,
-                    bitrate: (item && typeof item === 'object' && item.bitrate) ? item.bitrate : 0
+                    bitrate: (item && typeof item === 'object' && item.bitrate) ? item.bitrate : 0,
+                    mimeType
                 });
             });
         };
@@ -3072,21 +3099,29 @@ function hasRequiredRatingsData(titleData) {
         appendCandidates(video.previewURLs);
 
         if (candidates.length === 0) {
-            return null;
+            return [];
         }
 
-        const best = rankMp4Candidates(candidates)[0];
-        return {
-            url: best.url,
-            width: best.width,
-            height: best.height,
-            bitrate: best.bitrate
-        };
+        const dedupedCandidates = [];
+        const seenUrls = new Set();
+
+        rankPlaybackCandidates(candidates).forEach((candidate) => {
+            if (seenUrls.has(candidate.url)) {
+                return;
+            }
+            seenUrls.add(candidate.url);
+            dedupedCandidates.push(candidate);
+        });
+
+        return dedupedCandidates;
     };
 
     const normalizeIMDbVideo = (video) => {
-        const bestMp4 = selectBestMp4(video);
-        if (!bestMp4) return null;
+        const playbackSources = selectPlaybackSources(video);
+        if (playbackSources.length === 0) return null;
+
+        const bestMp4 = playbackSources.find((source) => source.mimeType === 'video/mp4') || null;
+        const primarySource = bestMp4 || playbackSources[0];
 
         const contentTypeLabel = video.contentType && video.contentType.displayName && video.contentType.displayName.value
             ? video.contentType.displayName.value
@@ -3097,17 +3132,21 @@ function hasRequiredRatingsData(titleData) {
             title: (video.name && video.name.value) ? video.name.value : 'IMDb Video',
             contentTypeLabel,
             runtimeSeconds: (video.runtime && typeof video.runtime.value === 'number') ? video.runtime.value : null,
-            bestMp4
+            primarySource,
+            bestMp4,
+            playbackSources
         };
     };
 
     const compareNormalizedVideoQuality = (left, right) => {
-        const leftArea = (left.bestMp4.width || 0) * (left.bestMp4.height || 0);
-        const rightArea = (right.bestMp4.width || 0) * (right.bestMp4.height || 0);
+        const leftSource = left.primarySource || left.bestMp4 || null;
+        const rightSource = right.primarySource || right.bestMp4 || null;
+        const leftArea = leftSource ? (leftSource.width || 0) * (leftSource.height || 0) : 0;
+        const rightArea = rightSource ? (rightSource.width || 0) * (rightSource.height || 0) : 0;
         if (rightArea !== leftArea) return rightArea - leftArea;
 
-        const leftBitrate = left.bestMp4.bitrate || 0;
-        const rightBitrate = right.bestMp4.bitrate || 0;
+        const leftBitrate = leftSource ? (leftSource.bitrate || 0) : 0;
+        const rightBitrate = rightSource ? (rightSource.bitrate || 0) : 0;
         return rightBitrate - leftBitrate;
     };
 
@@ -3322,7 +3361,7 @@ function hasRequiredRatingsData(titleData) {
     };
 
     // Function to fetch data from IMDb API with caching and expiration
-    const fetchIMDBData = async (imdbId, afterCursor = null, allAwards = []) => {
+    const fetchIMDBData = async (imdbId, afterCursor = null, allAwards = [], namesPromise = null, baseTitleData = null, creditsPrepared = false) => {
         const cacheKey = `iMDB_data_${imdbId}`;
 
         const cachedData = await getCache(cacheKey);
@@ -3837,8 +3876,6 @@ function hasRequiredRatingsData(titleData) {
             }
         };
 
-        console.log("[API Debug] Fetching IMDb data for:", imdbId, "afterCursor:", afterCursor);
-        
         return new Promise(async (resolve, reject) => {
             GM_xmlhttpRequest({
                 method: "POST",
@@ -3850,137 +3887,109 @@ function hasRequiredRatingsData(titleData) {
                 onload: async function (response) {
                     if (response.status >= 200 && response.status < 300) {
                         const data = JSON.parse(response.responseText);
-                        console.log("[API Debug] IMDb API response received, status:", response.status);
                         
                         if (data && data.data && data.data.title) {
-                            const titleData = data.data.title;
-                            const soundtracks = titleData.soundtrack.edges;
-                            const alternateVersions = titleData.alternateVersions.edges;
-                            const keywords = titleData.keywords.edges;
-                            
-                            // Process principalCreditsV2 and full credits, then merge
-                            const principalCreditsArray = [];
-                            const fullCreditsArray = titleData.credits?.edges || [];
-                            
-                            console.log("[API Debug] Full credits from API:", fullCreditsArray.length, "total");
-                            
-                            if (titleData.principalCreditsV2) {
-                                // CORRECT: Preserve grouping structure and process in order
-                                const groupedCredits = titleData.principalCreditsV2.map(grouping => ({
-                                    grouping: grouping.grouping.text,
-                                    groupingId: grouping.grouping.id,
-                                    credits: grouping.credits
-                                }));
-                                
-                                console.log("[API Debug] Principal credits V2 groupings:", groupedCredits.map(g => ({
-                                    grouping: g.grouping,
-                                    count: g.credits.length
-                                })));
-                                
-                                // Find Stars grouping and process it first, then others
-                                const starsGrouping = groupedCredits.find(g => g.grouping === 'Stars');
-                                const otherGroupings = groupedCredits.filter(g => g.grouping !== 'Stars');
-                                
-                                // Process Stars first (top-billed cast in correct order)
-                                if (starsGrouping) {
-                                    console.log(`[API Debug] Processing Stars grouping with ${starsGrouping.credits.length} credits`);
-                                    console.log("[API Debug] Stars grouping details:", starsGrouping.credits.map((credit, idx) => {
-                                        const firstRoleEdge = credit.creditedRoles?.edges?.[0];
-                                        const firstRole = firstRoleEdge?.node;
-                                        const characters = firstRole?.characters?.edges?.map(e => e.node.name).join(', ') || '';
-                                        return {
-                                            position: idx,
-                                            id: credit.name.id,
-                                            name: credit.name.nameText.text,
-                                            character: characters
-                                        };
+                            const pageTitleData = data.data.title;
+                            const titleData = baseTitleData || pageTitleData;
+
+                            if (!creditsPrepared) {
+                                // Merge principal credits once, then reuse during awards pagination.
+                                const principalCreditsArray = [];
+                                const fullCreditsArray = titleData.credits?.edges || [];
+
+                                if (titleData.principalCreditsV2) {
+                                    const groupedCredits = titleData.principalCreditsV2.map(grouping => ({
+                                        grouping: grouping.grouping.text,
+                                        credits: grouping.credits
                                     }));
-                                    
-                                    starsGrouping.credits.forEach((credit, indexInGroup) => {
-                                        const firstRoleEdge = credit.creditedRoles?.edges?.[0];
-                                        const firstRole = firstRoleEdge?.node;
-                                        const characters = firstRole?.characters?.edges?.map(e => ({ name: e.node.name })) || [];
-                                        
-                                        principalCreditsArray.push({
-                                            node: {
-                                                name: credit.name,
-                                                category: firstRole?.category || { id: 'actor', text: 'Actor' },
-                                                characters: characters,
-                                                jobs: [],
-                                                isPrincipal: true,
-                                                principalGrouping: 'Stars',
-                                                positionInGrouping: indexInGroup
-                                            }
+
+                                    const starsGrouping = groupedCredits.find(g => g.grouping === 'Stars');
+                                    const otherGroupings = groupedCredits.filter(g => g.grouping !== 'Stars');
+
+                                    if (starsGrouping) {
+                                        starsGrouping.credits.forEach((credit, indexInGroup) => {
+                                            const firstRoleEdge = credit.creditedRoles?.edges?.[0];
+                                            const firstRole = firstRoleEdge?.node;
+                                            const characters = firstRole?.characters?.edges?.map(e => ({ name: e.node.name })) || [];
+
+                                            principalCreditsArray.push({
+                                                node: {
+                                                    name: credit.name,
+                                                    category: firstRole?.category || { id: 'actor', text: 'Actor' },
+                                                    characters,
+                                                    jobs: [],
+                                                    isPrincipal: true,
+                                                    principalGrouping: 'Stars',
+                                                    positionInGrouping: indexInGroup
+                                                }
+                                            });
+                                        });
+                                    }
+
+                                    otherGroupings.forEach(group => {
+                                        group.credits.forEach((credit, indexInGroup) => {
+                                            const firstRoleEdge = credit.creditedRoles?.edges?.[0];
+                                            const firstRole = firstRoleEdge?.node;
+                                            const characters = firstRole?.characters?.edges?.map(e => ({ name: e.node.name })) || [];
+
+                                            principalCreditsArray.push({
+                                                node: {
+                                                    name: credit.name,
+                                                    category: firstRole?.category || { id: 'unknown', text: 'Unknown' },
+                                                    characters,
+                                                    jobs: [],
+                                                    isPrincipal: true,
+                                                    principalGrouping: group.grouping,
+                                                    positionInGrouping: indexInGroup
+                                                }
+                                            });
                                         });
                                     });
                                 }
-                                
-                                // Then process other groupings (Directors, Writers, etc.)
-                                otherGroupings.forEach(group => {
-                                    console.log(`[API Debug] Processing grouping: ${group.grouping} with ${group.credits.length} credits`);
-                                    
-                                    group.credits.forEach((credit, indexInGroup) => {
-                                        const firstRoleEdge = credit.creditedRoles?.edges?.[0];
-                                        const firstRole = firstRoleEdge?.node;
-                                        const characters = firstRole?.characters?.edges?.map(e => ({ name: e.node.name })) || [];
-                                        
-                                        principalCreditsArray.push({
-                                            node: {
-                                                name: credit.name,
-                                                category: firstRole?.category || { id: 'unknown', text: 'Unknown' },
-                                                characters: characters,
-                                                jobs: [],
-                                                isPrincipal: true,
-                                                principalGrouping: group.grouping,
-                                                positionInGrouping: indexInGroup
-                                            }
-                                        });
-                                    });
-                                });
-                                
-                                console.log("[API Debug] Principal credits V2 received:", principalCreditsArray.length, "total");
-                                console.log("[API Debug] First 10 principal credits:", principalCreditsArray.slice(0, 10).map((e, idx) => ({
-                                    position: idx,
-                                    id: e.node.name.id,
-                                    name: e.node.name.nameText.text,
-                                    category: e.node.category.text,
-                                    grouping: e.node.principalGrouping,
-                                    positionInGrouping: e.node.positionInGrouping,
-                                    characters: e.node.characters?.map(c => c.name).join(', ')
-                                })));
-                            }
-                            
-                            // Create a Set of principal credit IDs for deduplication
-                            const principalIds = new Set(principalCreditsArray.map(e => e.node.name.id));
-                            
-                            // Filter full credits to remove duplicates already in principal credits
-                            const additionalCredits = fullCreditsArray.filter(edge => {
-                                return !principalIds.has(edge.node.name.id);
-                            });
-                            
-                            console.log("[API Debug] Additional credits after deduplication:", additionalCredits.length);
-                            
-                            // Merge: principal credits first (preserving grouping order), then additional credits
-                            const mergedCredits = [...principalCreditsArray, ...additionalCredits];
-                            
-                            titleData.credits = { edges: mergedCredits };
-                            
-                            console.log("[API Debug] Total merged credits:", mergedCredits.length);
-                            console.log("[API Debug] First 10 merged credits:", mergedCredits.slice(0, 10).map((e, idx) => ({
-                                position: idx,
-                                id: e.node.name.id,
-                                name: e.node.name.nameText.text,
-                                category: e.node.category.text,
-                                categoryId: e.node.category.id,
-                                isPrincipal: e.node.isPrincipal || false,
-                                grouping: e.node.principalGrouping || 'N/A'
-                            })));
 
-                            const awardNominations = titleData.awardNominations.edges.map(edge => edge.node);
+                                const principalIds = new Set(principalCreditsArray.map(e => e.node.name.id));
+                                const additionalCredits = fullCreditsArray.filter(edge => !principalIds.has(edge.node.name.id));
+                                titleData.credits = { edges: [...principalCreditsArray, ...additionalCredits] };
+                                creditsPrepared = true;
+                            }
+
+                            const awardNominations = pageTitleData.awardNominations.edges.map(edge => edge.node);
                             allAwards.push(...awardNominations);
 
-                            if (titleData.awardNominations.pageInfo.hasNextPage) {
-                                fetchIMDBData(imdbId, titleData.awardNominations.pageInfo.endCursor, allAwards)
+                            if (!namesPromise) {
+                                const soundtracksForPrefetch = titleData.soundtrack?.edges || [];
+                                const uniqueIdsForPrefetch = [];
+
+                                soundtracksForPrefetch.forEach(edge => {
+                                    edge.node.comments.forEach(comment => {
+                                        const match = comment.markdown.match(/\[link=nm(\d+)\]/);
+                                        if (match) {
+                                            uniqueIdsForPrefetch.push(`nm${match[1]}`);
+                                        }
+                                    });
+                                });
+
+                                const prefetchedCredits = titleData.credits?.edges || [];
+                                prefetchedCredits.forEach(edge => {
+                                    const creditNode = edge.node;
+                                    if (creditNode.name && creditNode.name.id) {
+                                        uniqueIdsForPrefetch.push(creditNode.name.id);
+                                    }
+                                });
+
+                                const uniqueIdSetForPrefetch = [...new Set(uniqueIdsForPrefetch)];
+                                namesPromise = fetchNames(uniqueIdSetForPrefetch);
+                            }
+
+                            if (pageTitleData.awardNominations.pageInfo.hasNextPage) {
+                                fetchIMDBData(
+                                    imdbId,
+                                    pageTitleData.awardNominations.pageInfo.endCursor,
+                                    allAwards,
+                                    namesPromise,
+                                    titleData,
+                                    creditsPrepared
+                                )
                                     .then(resolve)
                                     .catch(reject);
                             } else {
@@ -3988,6 +3997,7 @@ function hasRequiredRatingsData(titleData) {
                                 delete titleData.awardNominations;
 
                                 // Extract unique IDs from comments
+                                const soundtracks = titleData.soundtrack?.edges || [];
                                 const uniqueIds = [];
                                 soundtracks.forEach(edge => {
                                     edge.node.comments.forEach(comment => {
@@ -4000,27 +4010,24 @@ function hasRequiredRatingsData(titleData) {
 
                                 // Add unique IDs from credits (already flattened above)
                                 const credits = titleData.credits.edges;
-                                console.log("[API Debug] Extracting IDs from", credits.length, "principal credits");
                                 credits.forEach(edge => {
                                     const creditNode = edge.node;
                                     if (creditNode.name && creditNode.name.id) {
                                         uniqueIds.push(creditNode.name.id);
                                     }
                                 });
-                                console.log("[API Debug] Total unique IDs to fetch:", uniqueIds.length, "(before deduplication)");
 
                                 // Fetch names for unique IDs
                                 const uniqueIdSet = [...new Set(uniqueIds)];
-                                console.log("[API Debug] Unique IDs after deduplication:", uniqueIdSet.length);
-                                const names = await fetchNames(uniqueIdSet);
-                                console.log("[API Debug] Names fetched:", names.length, "entries");
+                                const names = namesPromise
+                                    ? await namesPromise
+                                    : await fetchNames(uniqueIdSet);
 
                                 // Map IDs to names
                                 const idToNameMap = {};
                                 names.forEach(name => {
                                     idToNameMap[name.id] = name.nameText.text;
                                 });
-                                console.log("[API Debug] ID to Name Map created with", Object.keys(idToNameMap).length, "entries");
 
                                 // Process the soundtrack data
                                 const processedSoundtracks = soundtracks.map(edge => {
@@ -4084,7 +4091,7 @@ function hasRequiredRatingsData(titleData) {
                                     };
                                 });
 
-                                setCache(cacheKey, data);
+                                await setCache(cacheKey, { data: { title: titleData } });
                                 resolve({ titleData, processedSoundtracks, idToNameMap, namesData: names });
                             }
                         } else {
@@ -5475,7 +5482,27 @@ function hasRequiredRatingsData(titleData) {
         videoElement.style.height = '100%';
         videoElement.style.objectFit = 'contain';
         videoElement.style.background = '#000';
-        videoElement.src = video.bestMp4.url;
+
+        const rawSources = Array.isArray(video.playbackSources) && video.playbackSources.length
+            ? video.playbackSources
+            : (video.primarySource ? [video.primarySource] : (video.bestMp4 ? [video.bestMp4] : []));
+        const playableSources = [...rawSources];
+        let sourceIndex = 0;
+
+        const applySourceAt = (index) => {
+            const source = playableSources[index];
+            if (!source || !source.url) {
+                return false;
+            }
+            videoElement.src = source.url;
+            videoElement.load();
+            return true;
+        };
+
+        if (!applySourceAt(0)) {
+            trailerContainer.innerHTML = '';
+            return;
+        }
 
         const startPlayback = async () => {
             if (videoWrapper.dataset.mode === 'expanded' || videoWrapper.dataset.mode === 'expanding') {
@@ -5492,6 +5519,14 @@ function hasRequiredRatingsData(titleData) {
 
         videoElement.addEventListener('play', () => {
             startPlayback();
+        });
+
+        videoElement.addEventListener('error', () => {
+            sourceIndex += 1;
+            if (!applySourceAt(sourceIndex)) {
+                return;
+            }
+            videoElement.play().catch(() => {});
         });
 
         const onWindowResize = () => {
@@ -5511,7 +5546,7 @@ function hasRequiredRatingsData(titleData) {
         trailerContainer.appendChild(videoWrapper);
     };
 
-    const replacePTPTrailerWithIMDbVideos = async (imdbId, titleData) => {
+    const replacePTPTrailerWithIMDbVideos = async (imdbId, titleData, trailerDataPromise = null) => {
         if (!SHOW_IMDB_TRAILERS) {
             return;
         }
@@ -5526,13 +5561,18 @@ function hasRequiredRatingsData(titleData) {
             return;
         }
 
-        const trailerData = await fetchIMDbTrailerData(imdbId);
+        const trailerData = trailerDataPromise
+            ? await trailerDataPromise
+            : await fetchIMDbTrailerData(imdbId);
         if (!trailerData || !trailerData.defaultVideoId || !Array.isArray(trailerData.videos)) {
             return;
         }
 
         const defaultVideo = trailerData.videos.find(video => video.id === trailerData.defaultVideoId);
-        if (!defaultVideo || !defaultVideo.bestMp4 || !defaultVideo.bestMp4.url) {
+        const hasPlaybackSources = Array.isArray(defaultVideo && defaultVideo.playbackSources)
+            && defaultVideo.playbackSources.length > 0;
+        const hasLegacyMp4 = !!(defaultVideo && defaultVideo.bestMp4 && defaultVideo.bestMp4.url);
+        if (!defaultVideo || (!hasPlaybackSources && !hasLegacyMp4)) {
             return;
         }
 
@@ -5640,6 +5680,8 @@ function hasRequiredRatingsData(titleData) {
     }
 
     // Initialize panels
+    const imdbTrailerDataPromise = SHOW_IMDB_TRAILERS ? fetchIMDbTrailerData(imdbId) : null;
+
     fetchIMDBData(imdbId).then(async data => {
         const { titleData, processedSoundtracks, idToNameMap, namesData } = data;
         ratingsTitleData = titleData || null;
@@ -5698,7 +5740,7 @@ function hasRequiredRatingsData(titleData) {
                 displayCastPhotos(titleData, idToNameMap, namesData);
             }
 
-            await replacePTPTrailerWithIMDbVideos(imdbId, titleData);
+            await replacePTPTrailerWithIMDbVideos(imdbId, titleData, imdbTrailerDataPromise);
 
             formatIMDbText();
 
