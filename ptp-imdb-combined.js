@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.2.7
+// @version      1.2.8
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -130,6 +130,7 @@ const IMDB_WEIGHTED_SCORE_TYPE_LABELS = {
     mean: 'Mean',
     bayesian: 'Bayesian blend'
 };
+const LETTERBOXD_TRANSIENT_ERROR_RETRY_MS = 5 * 60 * 1000;
 const IMDB_SCORE_OVERRIDE_OPTIONS = [
     { value: 'gender:FEMALE', label: 'Female' },
     { value: 'gender:MALE', label: 'Male' },
@@ -2568,14 +2569,20 @@ async function fetchLetterboxdData(imdbId) {
         const finalUrl = pageResponse.finalUrl || baseUrl;
         const imdbLink = page.querySelector('[data-track-action="IMDb"]')?.href || '';
         if (!imdbLink.includes(imdbId)) {
-            return null;
+            return {
+                status: 'not_found',
+                data: null
+            };
         }
 
         const membersUrl = new URL('members', finalUrl).toString();
         const membersPage = parseHtmlDocument(await textRequest(membersUrl));
         const jsonText = page.querySelector('script[type="application/ld+json"]')?.textContent?.replace(/\/\*.*?\*\//g, '').trim() || '';
         if (!jsonText) {
-            return null;
+            return {
+                status: 'not_found',
+                data: null
+            };
         }
 
         const payload = JSON.parse(jsonText);
@@ -2638,20 +2645,26 @@ async function fetchLetterboxdData(imdbId) {
         const fans = Number.parseInt((membersPage.querySelector('.js-route-fans a')?.title || '').replace(/[^\d]/g, ''), 10) || 0;
 
         return {
-            url: finalUrl,
-            user: {
-                score: userScore,
-                count: userCount,
-                url: new URL('ratings', finalUrl).toString()
-            },
-            histogram,
-            likes,
-            fans,
-            likesUrl: new URL('likes', finalUrl).toString(),
-            fansUrl: new URL('fans', finalUrl).toString()
+            status: 'ok',
+            data: {
+                url: finalUrl,
+                user: {
+                    score: userScore,
+                    count: userCount,
+                    url: new URL('ratings', finalUrl).toString()
+                },
+                histogram,
+                likes,
+                fans,
+                likesUrl: new URL('likes', finalUrl).toString(),
+                fansUrl: new URL('fans', finalUrl).toString()
+            }
         };
     } catch (_) {
-        return null;
+        return {
+            status: 'error',
+            data: null
+        };
     }
 }
 
@@ -2691,8 +2704,7 @@ async function getSupplementalRatingsCache(imdbId) {
 async function mergeSupplementalRatingsCache(imdbId, partial) {
     const cached = await getSupplementalRatingsCache(imdbId);
     const nextValue = {
-        rottenTomatoes: cached?.rottenTomatoes ?? undefined,
-        letterboxd: cached?.letterboxd ?? undefined,
+        ...(cached && typeof cached === 'object' ? cached : {}),
         ...partial
     };
     await setCache(`ratings_supplemental_data_${imdbId}`, nextValue);
@@ -2712,21 +2724,51 @@ async function fetchRottenTomatoesWithCache(imdbId) {
 
 async function fetchLetterboxdWithCache(imdbId) {
     const cached = await getSupplementalRatingsCache(imdbId);
+
+    // Keep transient network/parser failures on a short retry cooldown to avoid hammering.
+    if (
+        cached
+        && Number.isFinite(cached.letterboxdTransientErrorAt)
+        && Date.now() - cached.letterboxdTransientErrorAt < LETTERBOXD_TRANSIENT_ERROR_RETRY_MS
+    ) {
+        return null;
+    }
+
     if (cached && Object.prototype.hasOwnProperty.call(cached, 'letterboxd')) {
         const cachedLetterboxd = cached.letterboxd;
 
-        if (!shouldIncludeLetterboxdHistogramData() || cachedLetterboxd === null) {
+        if (cachedLetterboxd !== null && !shouldIncludeLetterboxdHistogramData()) {
             return cachedLetterboxd;
         }
 
-        if (hasValidLetterboxdHistogram(cachedLetterboxd)) {
+        if (cachedLetterboxd !== null && hasValidLetterboxdHistogram(cachedLetterboxd)) {
             return cachedLetterboxd;
         }
     }
 
-    const letterboxd = await fetchLetterboxdData(imdbId);
-    await mergeSupplementalRatingsCache(imdbId, { letterboxd });
-    return letterboxd;
+    const letterboxdResponse = await fetchLetterboxdData(imdbId);
+
+    if (letterboxdResponse.status === 'ok') {
+        await mergeSupplementalRatingsCache(imdbId, {
+            letterboxd: letterboxdResponse.data,
+            letterboxdTransientErrorAt: null
+        });
+        return letterboxdResponse.data;
+    }
+
+    if (letterboxdResponse.status === 'error') {
+        await mergeSupplementalRatingsCache(imdbId, {
+            letterboxd: null,
+            letterboxdTransientErrorAt: Date.now()
+        });
+        return null;
+    }
+
+    await mergeSupplementalRatingsCache(imdbId, {
+        letterboxd: null,
+        letterboxdTransientErrorAt: null
+    });
+    return null;
 }
 
 async function setCache(key, data) {
