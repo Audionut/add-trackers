@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.3.2
+// @version      1.3.3
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -45,6 +45,7 @@ let SHOW_RATINGS_METACRITIC_BREAKDOWN = true;
 let SHOW_RATINGS_AGGREGATE = false;
 let RATINGS_AGGREGATE_DROP_EXTREMES = false;
 let RATINGS_AGGREGATE_KEEP_ROTTEN_TOMATOES = false;
+let RATINGS_AGGREGATE_USE_VOTE_COUNT_WEIGHTING = false;
 let RATINGS_AGGREGATE_METHOD = 'mean';
 let RATINGS_AGGREGATE_SOURCE_SETTINGS = {
     imdb: { enabled: true, option: 'displayed', weight: 1 },
@@ -220,6 +221,11 @@ const RATINGS_AGGREGATE_METHOD_LABELS = {
     mean: 'Mean',
     median: 'Median'
 };
+const RATINGS_AGGREGATE_VOTE_COUNT_WEIGHT_RULES = [
+    { maxVotesExclusive: 100, multiplier: 0.5, label: '<100 votes' },
+    { maxVotesExclusive: 500, multiplier: 0.85, label: '100-499 votes' },
+    { maxVotesExclusive: 1000, multiplier: 0.95, label: '500-999 votes' }
+];
 
 const saveSettings = () => {
     GM.setValue('SHOW_SIMILAR_MOVIES', SHOW_SIMILAR_MOVIES);
@@ -243,6 +249,7 @@ const saveSettings = () => {
     GM.setValue('SHOW_RATINGS_AGGREGATE', SHOW_RATINGS_AGGREGATE);
     GM.setValue('RATINGS_AGGREGATE_DROP_EXTREMES', RATINGS_AGGREGATE_DROP_EXTREMES);
     GM.setValue('RATINGS_AGGREGATE_KEEP_ROTTEN_TOMATOES', RATINGS_AGGREGATE_KEEP_ROTTEN_TOMATOES);
+    GM.setValue('RATINGS_AGGREGATE_USE_VOTE_COUNT_WEIGHTING', RATINGS_AGGREGATE_USE_VOTE_COUNT_WEIGHTING);
     GM.setValue('RATINGS_AGGREGATE_METHOD', RATINGS_AGGREGATE_METHOD);
     GM.setValue('RATINGS_AGGREGATE_SOURCE_SETTINGS', RATINGS_AGGREGATE_SOURCE_SETTINGS);
     GM.setValue('SHOW_RATINGS_IMDB_METER', SHOW_RATINGS_IMDB_METER);
@@ -306,6 +313,7 @@ const loadSettings = async () => {
     SHOW_RATINGS_AGGREGATE = await GM.getValue('SHOW_RATINGS_AGGREGATE', false);
     RATINGS_AGGREGATE_DROP_EXTREMES = await GM.getValue('RATINGS_AGGREGATE_DROP_EXTREMES', false);
     RATINGS_AGGREGATE_KEEP_ROTTEN_TOMATOES = await GM.getValue('RATINGS_AGGREGATE_KEEP_ROTTEN_TOMATOES', false);
+    RATINGS_AGGREGATE_USE_VOTE_COUNT_WEIGHTING = await GM.getValue('RATINGS_AGGREGATE_USE_VOTE_COUNT_WEIGHTING', false);
     RATINGS_AGGREGATE_METHOD = await GM.getValue('RATINGS_AGGREGATE_METHOD', 'mean');
     if (!(RATINGS_AGGREGATE_METHOD in RATINGS_AGGREGATE_METHOD_LABELS)) {
         RATINGS_AGGREGATE_METHOD = 'mean';
@@ -678,6 +686,10 @@ function showSettingsPanel() {
                                     <input type="checkbox" id="ratings-aggregate-keep-rotten-tomatoes" style="margin-right: 8px;">
                                     <span>Never Discard Rotten Tomatoes</span>
                                 </label>
+                                <label style="display: block; margin-bottom: 10px; cursor: pointer;">
+                                    <input type="checkbox" id="ratings-aggregate-use-vote-count-weighting" style="margin-right: 8px;">
+                                    <span title="Adjusts aggregate source weights by vote count. Fixed multipliers: under 100 votes x0.50, 100-499 x0.85, 500-999 x0.95, 1000+ x1.00.">Downweight Low-Vote Sources</span>
+                                </label>
                                 <label style="display: block; margin-bottom: 10px;">
                                     <span style="display: block; margin-bottom: 5px;">Aggregate method:</span>
                                     <select id="ratings-aggregate-method" style="
@@ -696,7 +708,7 @@ function showSettingsPanel() {
                                 <div style="display: grid; gap: 8px; margin-top: 12px;">
                                     <div style="font-weight: bold;">
                                         Aggregate sources
-                                        <span title="Weight controls how strongly a source influences the aggregate. Higher values matter more for Mean and Median. Median uses interpolated weighting, so changes can be gradual instead of only flipping at a cutoff. Average ignores weights." style="display: inline-block; margin-left: 6px; width: 16px; height: 16px; line-height: 16px; text-align: center; border: 1px solid #777; border-radius: 50%; font-size: 11px; color: #ccc; cursor: help;">?</span>
+                                        <span title="Weight controls how strongly a source influences the aggregate. Higher values matter more for Mean and Median. Median uses interpolated weighting, so changes can be gradual instead of only flipping at a cutoff. Average ignores manual source weights unless low-vote downweighting is enabled." style="display: inline-block; margin-left: 6px; width: 16px; height: 16px; line-height: 16px; text-align: center; border: 1px solid #777; border-radius: 50%; font-size: 11px; color: #ccc; cursor: help;">?</span>
                                     </div>
                                     <div style="display: grid; gap: 8px;">
                                         <div style="display: grid; grid-template-columns: minmax(0, 120px) minmax(0, 1fr) 72px; gap: 8px; align-items: center;">
@@ -1275,6 +1287,7 @@ function loadSettingsIntoForm() {
     document.getElementById('show-ratings-aggregate').checked = SHOW_RATINGS_AGGREGATE;
     document.getElementById('ratings-aggregate-drop-extremes').checked = RATINGS_AGGREGATE_DROP_EXTREMES;
     document.getElementById('ratings-aggregate-keep-rotten-tomatoes').checked = RATINGS_AGGREGATE_KEEP_ROTTEN_TOMATOES;
+    document.getElementById('ratings-aggregate-use-vote-count-weighting').checked = RATINGS_AGGREGATE_USE_VOTE_COUNT_WEIGHTING;
     document.getElementById('ratings-aggregate-method').value = RATINGS_AGGREGATE_METHOD;
     document.getElementById('show-ratings-imdb-meter').checked = SHOW_RATINGS_IMDB_METER;
     document.getElementById('show-ratings-rotten-tomatoes').checked = SHOW_RATINGS_ROTTEN_TOMATOES;
@@ -1353,6 +1366,7 @@ function saveSettingsFromForm() {
     SHOW_RATINGS_AGGREGATE = document.getElementById('show-ratings-aggregate').checked;
     RATINGS_AGGREGATE_DROP_EXTREMES = document.getElementById('ratings-aggregate-drop-extremes').checked;
     RATINGS_AGGREGATE_KEEP_ROTTEN_TOMATOES = document.getElementById('ratings-aggregate-keep-rotten-tomatoes').checked;
+    RATINGS_AGGREGATE_USE_VOTE_COUNT_WEIGHTING = document.getElementById('ratings-aggregate-use-vote-count-weighting').checked;
     RATINGS_AGGREGATE_METHOD = document.getElementById('ratings-aggregate-method').value;
     if (!(RATINGS_AGGREGATE_METHOD in RATINGS_AGGREGATE_METHOD_LABELS)) {
         RATINGS_AGGREGATE_METHOD = 'mean';
@@ -1457,6 +1471,7 @@ function handleResetAll() {
         SHOW_RATINGS_AGGREGATE = false;
         RATINGS_AGGREGATE_DROP_EXTREMES = false;
         RATINGS_AGGREGATE_KEEP_ROTTEN_TOMATOES = false;
+        RATINGS_AGGREGATE_USE_VOTE_COUNT_WEIGHTING = false;
         RATINGS_AGGREGATE_METHOD = 'mean';
         RATINGS_AGGREGATE_SOURCE_SETTINGS = normalizeAggregateSourceSettings(DEFAULT_RATINGS_AGGREGATE_SOURCE_SETTINGS);
         SHOW_RATINGS_IMDB_METER = true;
@@ -2562,13 +2577,47 @@ function getAggregateMethodLabel() {
     return RATINGS_AGGREGATE_METHOD_LABELS[RATINGS_AGGREGATE_METHOD] || RATINGS_AGGREGATE_METHOD_LABELS.mean;
 }
 
+function getAggregateVoteCountWeightRule(voteCount) {
+    if (!Number.isFinite(voteCount) || voteCount <= 0) {
+        return null;
+    }
+
+    return RATINGS_AGGREGATE_VOTE_COUNT_WEIGHT_RULES.find((rule) => voteCount < rule.maxVotesExclusive) || null;
+}
+
+function getAggregateVoteCountWeightMultiplier(voteCount) {
+    if (!RATINGS_AGGREGATE_USE_VOTE_COUNT_WEIGHTING) {
+        return 1;
+    }
+
+    return getAggregateVoteCountWeightRule(voteCount)?.multiplier || 1;
+}
+
+function getAggregateSourceEffectiveWeight(source) {
+    const baseWeight = Number.isFinite(source?.weight) && source.weight > 0 ? source.weight : 0;
+    const voteCountMultiplier = Number.isFinite(source?.voteCountWeightMultiplier) && source.voteCountWeightMultiplier > 0
+        ? source.voteCountWeightMultiplier
+        : 1;
+    return baseWeight * voteCountMultiplier;
+}
+
+function getAggregateSourceAverageWeight(source) {
+    if (!RATINGS_AGGREGATE_USE_VOTE_COUNT_WEIGHTING) {
+        return 1;
+    }
+
+    return Number.isFinite(source?.voteCountWeightMultiplier) && source.voteCountWeightMultiplier > 0
+        ? source.voteCountWeightMultiplier
+        : 1;
+}
+
 function calculateAggregateMedian(sources) {
     if (!Array.isArray(sources) || !sources.length) {
         return null;
     }
 
     const sortedSources = sources
-        .filter((source) => Number.isFinite(source.score) && Number.isFinite(source.weight) && source.weight > 0)
+        .filter((source) => Number.isFinite(source.score) && getAggregateSourceEffectiveWeight(source) > 0)
         .slice()
         .sort((left, right) => {
             if (left.score !== right.score) {
@@ -2582,7 +2631,7 @@ function calculateAggregateMedian(sources) {
         return null;
     }
 
-    const totalWeight = sortedSources.reduce((sum, source) => sum + source.weight, 0);
+    const totalWeight = sortedSources.reduce((sum, source) => sum + getAggregateSourceEffectiveWeight(source), 0);
     if (!(totalWeight > 0)) {
         return null;
     }
@@ -2595,7 +2644,7 @@ function calculateAggregateMedian(sources) {
     let cumulativeWeight = 0;
     const weightedPositions = sortedSources.map((source) => {
         const start = cumulativeWeight / totalWeight;
-        cumulativeWeight += source.weight;
+        cumulativeWeight += getAggregateSourceEffectiveWeight(source);
         const end = cumulativeWeight / totalWeight;
         return {
             score: source.score,
@@ -2624,6 +2673,52 @@ function calculateAggregateMedian(sources) {
     return weightedPositions[weightedPositions.length - 1].score;
 }
 
+function calculateMedianValue(values) {
+    if (!Array.isArray(values) || !values.length) {
+        return null;
+    }
+
+    const sortedValues = values
+        .filter((value) => Number.isFinite(value))
+        .slice()
+        .sort((left, right) => left - right);
+
+    if (!sortedValues.length) {
+        return null;
+    }
+
+    const middleIndex = Math.floor(sortedValues.length / 2);
+    if (sortedValues.length % 2 === 1) {
+        return sortedValues[middleIndex];
+    }
+
+    return (sortedValues[middleIndex - 1] + sortedValues[middleIndex]) / 2;
+}
+
+function isExtremeRottenTomatoesOutlier(source, allSources, direction) {
+    if (source?.sourceKey !== 'rottenTomatoes' || !Number.isFinite(source?.score)) {
+        return false;
+    }
+
+    const otherScores = (Array.isArray(allSources) ? allSources : [])
+        .filter((entry) => entry !== source && Number.isFinite(entry?.score))
+        .map((entry) => entry.score)
+        .sort((left, right) => left - right);
+
+    if (otherScores.length < 3) {
+        return false;
+    }
+
+    const medianScore = calculateMedianValue(otherScores);
+    const nearestScore = direction === 'low'
+        ? otherScores[0]
+        : otherScores[otherScores.length - 1];
+    const distanceFromMedian = Math.abs(source.score - medianScore);
+    const distanceFromNearest = Math.abs(source.score - nearestScore);
+
+    return distanceFromMedian >= 2 && distanceFromNearest >= 1.5;
+}
+
 function buildAggregateTooltip(summary) {
     if (!summary) {
         return '';
@@ -2641,8 +2736,28 @@ function buildAggregateTooltip(summary) {
         `Aggregate ${summary.score.toFixed(1)}/10 from ${summary.usedSources.length} source${summary.usedSources.length === 1 ? '' : 's'} using ${summary.methodLabel}.`
     ];
 
+    if (summary.usesVoteCountWeighting) {
+        lines.push('Vote-count downweighting active: <100 x0.50 | 100-499 x0.85 | 500-999 x0.95 | 1000+ x1.00');
+    }
+
     summary.usedSources.forEach((source) => {
-        lines.push(`${source.label}: ${source.score.toFixed(1)}/10 x${source.weight.toFixed(1)}`);
+        const appliedWeight = summary.method === 'average'
+            ? getAggregateSourceAverageWeight(source)
+            : getAggregateSourceEffectiveWeight(source);
+        const voteCountText = Number.isFinite(source.voteCount) && source.voteCount > 0
+            ? `${formatCount(source.voteCount)} votes`
+            : 'vote count unavailable';
+        const weightText = summary.method === 'average'
+            ? (source.voteCountWeightMultiplier !== 1
+                ? `vote weight x${appliedWeight.toFixed(2)}`
+                : 'vote weight x1.00')
+            : (source.voteCountWeightMultiplier !== 1
+                ? `x${source.weight.toFixed(2)} -> x${appliedWeight.toFixed(2)}`
+                : `x${source.weight.toFixed(2)}`);
+        const multiplierText = source.voteCountWeightMultiplier !== 1 && source.voteCountWeightLabel
+            ? ` (${source.voteCountWeightLabel}, vote multiplier x${source.voteCountWeightMultiplier.toFixed(2)})`
+            : '';
+        lines.push(`${source.label}: ${source.score.toFixed(1)}/10 ${weightText} | ${voteCountText}${multiplierText}`);
     });
 
     if (summary.protectedSources.length) {
@@ -2762,17 +2877,23 @@ function getAggregateScoreSummary(imdbData, ptpData, supplemental) {
     let pending = false;
 
     enabledSources.forEach(([sourceKey, settings]) => {
-        const addSource = (score, detailLabel = null) => {
+        const addSource = (score, detailLabel = null, voteCount = null) => {
             if (!Number.isFinite(score)) {
                 return;
             }
+
+            const voteCountWeightRule = getAggregateVoteCountWeightRule(voteCount);
+            const voteCountWeightMultiplier = getAggregateVoteCountWeightMultiplier(voteCount);
 
             allSources.push({
                 sourceKey,
                 option: settings.option,
                 label: getAggregateSourceLabel(sourceKey, settings.option, detailLabel),
                 score,
-                weight: settings.weight
+                weight: settings.weight,
+                voteCount,
+                voteCountWeightMultiplier,
+                voteCountWeightLabel: voteCountWeightMultiplier !== 1 ? voteCountWeightRule?.label || null : null
             });
         };
 
@@ -2784,28 +2905,36 @@ function getAggregateScoreSummary(imdbData, ptpData, supplemental) {
                 }
 
                 if (settings.option === 'displayed') {
-                    addSource(displayedImdbScore, SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE && configuredDemographicScore ? configuredDemographicScore.label : 'Users');
+                    addSource(
+                        displayedImdbScore,
+                        SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE && configuredDemographicScore ? configuredDemographicScore.label : 'Users',
+                        SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE && configuredDemographicScore ? configuredDemographicScore.votes : imdbData?.ratingsSummary?.voteCount
+                    );
                     return;
                 }
 
                 if (settings.option === 'overall') {
-                    addSource(imdbScore, 'Users');
+                    addSource(imdbScore, 'Users', imdbData?.ratingsSummary?.voteCount);
                     return;
                 }
 
                 if (settings.option === 'demographic') {
-                    addSource(configuredDemographicScore?.score, configuredDemographicScore?.label);
+                    addSource(configuredDemographicScore?.score, configuredDemographicScore?.label, configuredDemographicScore?.votes);
                     return;
                 }
 
                 const weightedType = getAggregateWeightedScoreType(settings.option);
                 if (weightedType) {
-                    addSource(calculateWeightedScoreFromHistogram(histogramValues, weightedType), IMDB_WEIGHTED_SCORE_TYPE_LABELS[weightedType]);
+                    addSource(
+                        calculateWeightedScoreFromHistogram(histogramValues, weightedType),
+                        IMDB_WEIGHTED_SCORE_TYPE_LABELS[weightedType],
+                        imdbData?.ratingsSummary?.voteCount
+                    );
                 }
                 return;
             }
             case 'ptp':
-                addSource(Number.isFinite(ptpData?.userScore) ? ptpData.userScore / 10 : null);
+                addSource(Number.isFinite(ptpData?.userScore) ? ptpData.userScore / 10 : null, null, ptpData?.userCount);
                 return;
             case 'metacritic':
                 if (imdbPending) {
@@ -2817,7 +2946,10 @@ function getAggregateScoreSummary(imdbData, ptpData, supplemental) {
                     const criticScore = Number.isFinite(meta?.critic?.score)
                         ? meta.critic.score
                         : imdbData?.metacritic?.metascore?.score;
-                    addSource(Number.isFinite(criticScore) ? criticScore / 10 : null, 'Critics');
+                    const criticCount = Number.isFinite(meta?.critic?.count)
+                        ? meta.critic.count
+                        : imdbData?.metacritic?.metascore?.reviewCount;
+                    addSource(Number.isFinite(criticScore) ? criticScore / 10 : null, 'Critics', criticCount);
                     return;
                 }
 
@@ -2826,7 +2958,7 @@ function getAggregateScoreSummary(imdbData, ptpData, supplemental) {
                     return;
                 }
 
-                addSource(Number.isFinite(meta?.user?.score) ? meta.user.score : null, 'Users');
+                addSource(Number.isFinite(meta?.user?.score) ? meta.user.score : null, 'Users', meta?.user?.count);
                 return;
             case 'rottenTomatoes':
                 if (isPendingValue(rt)) {
@@ -2835,11 +2967,11 @@ function getAggregateScoreSummary(imdbData, ptpData, supplemental) {
                 }
 
                 if (settings.option === 'critic') {
-                    addSource(Number.isFinite(rt?.critic?.percent) ? rt.critic.percent / 10 : null, 'Critics');
+                    addSource(Number.isFinite(rt?.critic?.percent) ? rt.critic.percent / 10 : null, 'Critics', rt?.critic?.count);
                     return;
                 }
 
-                addSource(Number.isFinite(rt?.user?.percent) ? rt.user.percent / 10 : null, 'Users');
+                addSource(Number.isFinite(rt?.user?.percent) ? rt.user.percent / 10 : null, 'Users', rt?.user?.count);
                 return;
             case 'tmdb':
                 if (isPendingValue(tmdb)) {
@@ -2847,7 +2979,7 @@ function getAggregateScoreSummary(imdbData, ptpData, supplemental) {
                     return;
                 }
 
-                addSource(tmdb?.voteAverage);
+                addSource(tmdb?.voteAverage, null, tmdb?.voteCount);
                 return;
             case 'letterboxd':
                 if (isPendingValue(lb)) {
@@ -2856,14 +2988,18 @@ function getAggregateScoreSummary(imdbData, ptpData, supplemental) {
                 }
 
                 if (settings.option === 'user') {
-                    addSource(Number.isFinite(lb?.user?.score) ? lb.user.score / 10 : null, 'Users');
+                    addSource(Number.isFinite(lb?.user?.score) ? lb.user.score / 10 : null, 'Users', lb?.user?.count);
                     return;
                 }
 
                 const letterboxdWeightedType = getAggregateWeightedScoreType(settings.option);
                 if (letterboxdWeightedType) {
                     const weightedScore = calculateWeightedScoreFromHistogram(lb?.histogram || [], letterboxdWeightedType);
-                    addSource(Number.isFinite(weightedScore) ? weightedScore * 2 : null, IMDB_WEIGHTED_SCORE_TYPE_LABELS[letterboxdWeightedType]);
+                    addSource(
+                        Number.isFinite(weightedScore) ? weightedScore * 2 : null,
+                        IMDB_WEIGHTED_SCORE_TYPE_LABELS[letterboxdWeightedType],
+                        lb?.user?.count
+                    );
                 }
                 return;
             default:
@@ -2927,8 +3063,14 @@ function getAggregateScoreSummary(imdbData, ptpData, supplemental) {
             const lowestSource = sortedSources[0];
             const highestSource = sortedSources[sortedSources.length - 1];
             const discardTargets = [];
+            const keepLowestRottenTomatoes = RATINGS_AGGREGATE_KEEP_ROTTEN_TOMATOES
+                && lowestSource.sourceKey === 'rottenTomatoes'
+                && !isExtremeRottenTomatoesOutlier(lowestSource, sortedSources, 'low');
+            const keepHighestRottenTomatoes = RATINGS_AGGREGATE_KEEP_ROTTEN_TOMATOES
+                && highestSource.sourceKey === 'rottenTomatoes'
+                && !isExtremeRottenTomatoesOutlier(highestSource, sortedSources, 'high');
 
-            if (RATINGS_AGGREGATE_KEEP_ROTTEN_TOMATOES && lowestSource.sourceKey === 'rottenTomatoes') {
+            if (keepLowestRottenTomatoes) {
                 protectedSources.push(lowestSource);
                 protectedLowest = true;
             } else {
@@ -2937,7 +3079,7 @@ function getAggregateScoreSummary(imdbData, ptpData, supplemental) {
             }
 
             if (highestSource !== lowestSource) {
-                if (RATINGS_AGGREGATE_KEEP_ROTTEN_TOMATOES && highestSource.sourceKey === 'rottenTomatoes') {
+                if (keepHighestRottenTomatoes) {
                     protectedSources.push(highestSource);
                     protectedHighest = true;
                 } else {
@@ -2952,20 +3094,25 @@ function getAggregateScoreSummary(imdbData, ptpData, supplemental) {
         }
     }
 
-    const totalWeight = usedSources.reduce((sum, source) => sum + source.weight, 0);
+    const totalWeight = usedSources.reduce((sum, source) => sum + getAggregateSourceEffectiveWeight(source), 0);
+    const weightedTotal = usedSources.reduce((sum, source) => sum + (source.score * getAggregateSourceEffectiveWeight(source)), 0);
+    const averageWeightTotal = usedSources.reduce((sum, source) => sum + getAggregateSourceAverageWeight(source), 0);
+    const averageWeightedTotal = usedSources.reduce((sum, source) => sum + (source.score * getAggregateSourceAverageWeight(source)), 0);
     const score = (() => {
         switch (RATINGS_AGGREGATE_METHOD) {
             case 'average':
-                return usedSources.length > 0
-                    ? usedSources.reduce((sum, source) => sum + source.score, 0) / usedSources.length
-                    : null;
-            case 'median':
-                return calculateAggregateMedian(usedSources);
+                return RATINGS_AGGREGATE_USE_VOTE_COUNT_WEIGHTING
+                    ? (averageWeightTotal > 0 ? averageWeightedTotal / averageWeightTotal : null)
+                    : (usedSources.length > 0
+                        ? usedSources.reduce((sum, source) => sum + source.score, 0) / usedSources.length
+                        : null);
             case 'mean':
             default:
                 return totalWeight > 0
-                    ? usedSources.reduce((sum, source) => sum + (source.score * source.weight), 0) / totalWeight
+                    ? weightedTotal / totalWeight
                     : null;
+            case 'median':
+                return calculateAggregateMedian(usedSources);
         }
     })();
 
@@ -2980,6 +3127,7 @@ function getAggregateScoreSummary(imdbData, ptpData, supplemental) {
         discardedHighest,
         protectedLowest,
         protectedHighest,
+        usesVoteCountWeighting: RATINGS_AGGREGATE_USE_VOTE_COUNT_WEIGHTING && usedSources.some((source) => source.voteCountWeightMultiplier !== 1),
         method: RATINGS_AGGREGATE_METHOD,
         methodLabel: getAggregateMethodLabel()
     };
@@ -3035,6 +3183,7 @@ function buildTopCardsHtml(imdbId, imdbData, ptpData, supplemental) {
     const aggregateScore = getAggregateScoreSummary(imdbData, ptpData, supplemental);
     const aggregateTooltip = escapeHtmlAttribute(aggregateScore?.tooltip || '');
     const aggregateUsesWeightedSources = !!aggregateScore?.usedSources?.some((source) => source.weight !== 1);
+    const aggregateUsesVoteCountWeighting = !!aggregateScore?.usesVoteCountWeighting;
     const aggregateProtectsRottenTomatoes = !!aggregateScore?.protectedSources?.length;
     const aggregateDiscardSummary = getAggregateDiscardSummaryText(aggregateScore);
     const cards = [];
@@ -3184,7 +3333,7 @@ function buildTopCardsHtml(imdbId, imdbData, ptpData, supplemental) {
                 <div class="imdb-ratings-meta" title="${aggregateTooltip}">
                     ${aggregateScore?.pending
                         ? 'Loading selected sources...'
-                        : `${aggregateScore.usedSources.length} source${aggregateScore.usedSources.length === 1 ? '' : 's'} used<br>${aggregateScore.methodLabel}${aggregateUsesWeightedSources && aggregateScore.method !== 'average' ? '<br>Custom weights applied' : ''}${aggregateProtectsRottenTomatoes ? '<br>RT protected from discard' : ''}${aggregateDiscardSummary ? `<br>${aggregateDiscardSummary}` : ''}`
+                        : `${aggregateScore.usedSources.length} source${aggregateScore.usedSources.length === 1 ? '' : 's'} used<br>${aggregateScore.methodLabel}${aggregateUsesWeightedSources && aggregateScore.method !== 'average' ? '<br>Custom weights applied' : ''}${aggregateUsesVoteCountWeighting ? '<br>Vote-count weighting applied' : ''}${aggregateProtectsRottenTomatoes ? '<br>RT protected from discard' : ''}${aggregateDiscardSummary ? `<br>${aggregateDiscardSummary}` : ''}`
                     }
                 </div>
             </div>
