@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.3.1
+// @version      1.3.2
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -2680,6 +2680,68 @@ function getAggregateDiscardSummaryText(summary) {
     return '';
 }
 
+function hasHistogramCounts(histogram) {
+    return Array.isArray(histogram) && histogram.some((count) => Number.isFinite(count) && count > 0);
+}
+
+function hasIMDbUsersCardData(primaryScore, primaryVotes, topRanking, weightedScore, imdbPending) {
+    return imdbPending
+        || Number.isFinite(primaryScore)
+        || Number.isFinite(primaryVotes)
+        || Number.isFinite(topRanking?.rank)
+        || !!weightedScore;
+}
+
+function hasPtpCardData(ptpData) {
+    return Number.isFinite(ptpData?.userScore)
+        || (Number.isFinite(ptpData?.userCount) && ptpData.userCount > 0)
+        || Number.isFinite(ptpData?.personalRating);
+}
+
+function hasMetacriticCardData(metaCriticScore, metaCriticCount, metaUserScore, metaUserCount, metaPending, imdbPending) {
+    return imdbPending
+        || metaPending
+        || Number.isFinite(metaCriticScore)
+        || Number.isFinite(metaCriticCount)
+        || Number.isFinite(metaUserScore)
+        || Number.isFinite(metaUserCount);
+}
+
+function hasIMDbMeterCardData(meterRank, imdbPending) {
+    return imdbPending
+        || Number.isFinite(meterRank?.currentRank)
+        || Number.isFinite(meterRank?.rankChange);
+}
+
+function hasRottenTomatoesCardData(rt, rtPending) {
+    return rtPending
+        || Number.isFinite(rt?.critic?.percent)
+        || Number.isFinite(rt?.critic?.count)
+        || Number.isFinite(rt?.user?.percent)
+        || Number.isFinite(rt?.user?.count)
+        || !!rt?.critic?.countDisplay
+        || !!rt?.user?.countDisplay;
+}
+
+function hasTMDbCardData(tmdb, tmdbPending) {
+    return tmdbPending
+        || Number.isFinite(tmdb?.voteAverage)
+        || Number.isFinite(tmdb?.voteCount);
+}
+
+function hasLetterboxdCardData(lb, lbPending) {
+    return lbPending
+        || Number.isFinite(lb?.user?.score)
+        || Number.isFinite(lb?.user?.count)
+        || Number.isFinite(lb?.likes)
+        || Number.isFinite(lb?.fans)
+        || hasHistogramCounts(lb?.histogram);
+}
+
+function hasAggregateCardData(aggregateScore) {
+    return !!(aggregateScore?.pending || aggregateScore?.allSources?.length);
+}
+
 function getAggregateScoreSummary(imdbData, ptpData, supplemental) {
     if (!SHOW_RATINGS_AGGREGATE) {
         return null;
@@ -2852,7 +2914,7 @@ function getAggregateScoreSummary(imdbData, ptpData, supplemental) {
     let discardedHighest = false;
     let protectedLowest = false;
     let protectedHighest = false;
-    if (RATINGS_AGGREGATE_DROP_EXTREMES && usedSources.length > 2) {
+    if (RATINGS_AGGREGATE_DROP_EXTREMES && usedSources.length >= 4) {
         const sortedSources = usedSources.slice().sort((left, right) => {
             if (left.score !== right.score) {
                 return left.score - right.score;
@@ -2975,9 +3037,10 @@ function buildTopCardsHtml(imdbId, imdbData, ptpData, supplemental) {
     const aggregateUsesWeightedSources = !!aggregateScore?.usedSources?.some((source) => source.weight !== 1);
     const aggregateProtectsRottenTomatoes = !!aggregateScore?.protectedSources?.length;
     const aggregateDiscardSummary = getAggregateDiscardSummaryText(aggregateScore);
+    const cards = [];
 
-    return `
-        <div class="imdb-ratings-top">
+    if (hasIMDbUsersCardData(primaryImdbScore, primaryImdbVotes, topRanking, weightedScore, imdbPending)) {
+        cards.push(`
             <div class="imdb-ratings-card">
                 <h4><a href="${imdbTitleUrl}" target="_blank" rel="noreferrer" style="color: inherit;">IMDb Users</a>${buildLegacyImdbAnchor(imdbId, 'IMDb Users')}</h4>
                 <div class="imdb-ratings-value imdb-weighted-score-inline">
@@ -2989,6 +3052,11 @@ function buildTopCardsHtml(imdbId, imdbData, ptpData, supplemental) {
                     ${topRanking?.rank ? `Top Rated rank #${formatCount(topRanking.rank)}` : 'No top ranking'}`}
                 </div>
             </div>
+        `);
+    }
+
+    if (hasPtpCardData(ptpData)) {
+        cards.push(`
             <div class="imdb-ratings-card">
                 <h4>PTP</h4>
                 <div class="imdb-ratings-value imdb-ptp-value-wrapper">
@@ -2999,111 +3067,133 @@ function buildTopCardsHtml(imdbId, imdbData, ptpData, supplemental) {
                     ${buildPtpVoteHtml(ptpData)}
                 </div>
             </div>
-            ${SHOW_RATINGS_METACRITIC ? `
-                <div class="imdb-ratings-card imdb-ratings-card-metacritic${showMetacriticExpanded ? ' imdb-ratings-card-metacritic-expanded' : ''}">
-                    <h4><a href="${metaUrl}" target="_blank" rel="noreferrer" style="color: inherit;">Metacritic</a></h4>
-                    ${showMetacriticUserData ? `
-                        <div class="imdb-provider-split">
-                            <div>
-                                <div class="imdb-provider-split-value">${imdbPending ? '...' : (Number.isFinite(metaCriticScore) ? metaCriticScore : 'None')}</div>
-                                <div class="imdb-provider-split-label">Critics</div>
-                                <div class="imdb-ratings-meta">
-                                    ${imdbPending
-                                        ? 'Loading Metacritic...'
-                                        : `${Number.isFinite(metaCriticCount) ? `<a href="${metaCriticUrl}" target="_blank" rel="noreferrer">${formatCount(metaCriticCount)} critic reviews</a>` : 'No critic reviews'}${metaPending ? '<br>Loading review split...' : (SHOW_RATINGS_METACRITIC_BREAKDOWN && metaCriticBreakdown ? `<br>${metaCriticBreakdown}` : '')}`
-                                    }
-                                </div>
-                            </div>
-                            <div>
-                                ${SHOW_RATINGS_METACRITIC_USER_SCORE ? `<div class="imdb-provider-split-value">${metaPending ? '...' : (Number.isFinite(metaUserScore) ? metaUserScore.toFixed(1) : 'None')}</div>` : ''}
-                                <div class="imdb-provider-split-label">Users</div>
-                                <div class="imdb-ratings-meta">
-                                    ${metaPending
-                                        ? 'Loading Metacritic users...'
-                                        : `${Number.isFinite(metaUserCount) ? `<a href="${metaUserUrl}" target="_blank" rel="noreferrer">${formatCount(metaUserCount)} user ratings</a>` : 'No user ratings'}${SHOW_RATINGS_METACRITIC_BREAKDOWN && metaUserBreakdown ? `<br>${metaUserBreakdown}` : ''}`
-                                    }
-                                </div>
-                            </div>
-                        </div>
-                    ` : `
-                        <div class="imdb-ratings-value">${imdbPending ? '...' : (Number.isFinite(metaCriticScore) ? metaCriticScore : 'None')}</div>
-                        <div class="imdb-ratings-meta">
-                            ${imdbPending ? 'Loading Metacritic...' : `${Number.isFinite(metaCriticCount) ? `<a href="${metaCriticUrl}" target="_blank" rel="noreferrer">${formatCount(metaCriticCount)} critic reviews</a>` : 'No critic reviews'}`}
-                        </div>
-                    `}
-                </div>
-            ` : ''}
-            ${SHOW_RATINGS_IMDB_METER ? `
-                <div class="imdb-ratings-card">
-                    <h4><a href="${imdbmeterUrl}" target="_blank" rel="noreferrer" style="color: inherit;">IMDb Meter</a></h4>
-                    <div class="imdb-ratings-value">${imdbPending ? '...' : (meterRank?.currentRank ? `#${formatCount(meterRank.currentRank)}` : 'None')}</div>
-                    <div class="imdb-ratings-meta">
-                        ${imdbPending ? 'Loading meter rank...' : (formatMeterRankChange(meterRank) || 'No rank change')}
-                    </div>
-                </div>
-            ` : ''}
-            ${SHOW_RATINGS_ROTTEN_TOMATOES ? `
-                <div class="imdb-ratings-card">
-                    <h4>${rt?.url ? `<a href="${rt.url}" target="_blank" rel="noreferrer" style="color: inherit;" class="imdb-provider-heading">${rt?.icon ? `<img src="${rt.icon}" alt="Rotten Tomatoes status">` : ''}<span>Rotten Tomatoes</span></a>` : `<span class="imdb-provider-heading">${rt?.icon ? `<img src="${rt.icon}" alt="Rotten Tomatoes status">` : ''}<span>Rotten Tomatoes</span></span>`}</h4>
+        `);
+    }
+
+    if (SHOW_RATINGS_METACRITIC && hasMetacriticCardData(metaCriticScore, metaCriticCount, metaUserScore, metaUserCount, metaPending, imdbPending)) {
+        cards.push(`
+            <div class="imdb-ratings-card imdb-ratings-card-metacritic${showMetacriticExpanded ? ' imdb-ratings-card-metacritic-expanded' : ''}">
+                <h4><a href="${metaUrl}" target="_blank" rel="noreferrer" style="color: inherit;">Metacritic</a></h4>
+                ${showMetacriticUserData ? `
                     <div class="imdb-provider-split">
                         <div>
-                            <div class="imdb-provider-split-value">${rtPending ? '...' : (Number.isFinite(rt?.critic?.percent) ? `${rt.critic.percent}%` : 'None')}</div>
+                            <div class="imdb-provider-split-value">${imdbPending ? '...' : (Number.isFinite(metaCriticScore) ? metaCriticScore : 'None')}</div>
                             <div class="imdb-provider-split-label">Critics</div>
                             <div class="imdb-ratings-meta">
-                                ${rtPending ? 'Loading Rotten Tomatoes...' : `(${Number.isFinite(rt?.critic?.count) ? `<a href="${rt.critic.url}" target="_blank" rel="noreferrer" title="${Number.isFinite(rt?.critic?.percent) ? `${rt.critic.percent}% of critics have given this movie a positive review.` : ''}">${formatDisplayCount(rt.critic.countDisplay, rt.critic.count)} votes</a>` : 'Unknown'})`}
+                                ${imdbPending
+                                    ? 'Loading Metacritic...'
+                                    : `${Number.isFinite(metaCriticCount) ? `<a href="${metaCriticUrl}" target="_blank" rel="noreferrer">${formatCount(metaCriticCount)} critic reviews</a>` : 'No critic reviews'}${metaPending ? '<br>Loading review split...' : (SHOW_RATINGS_METACRITIC_BREAKDOWN && metaCriticBreakdown ? `<br>${metaCriticBreakdown}` : '')}`
+                                }
                             </div>
                         </div>
                         <div>
-                            <div class="imdb-provider-split-value">${rtPending ? '...' : (Number.isFinite(rt?.user?.percent) ? `${rt.user.percent}%` : 'None')}</div>
+                            ${SHOW_RATINGS_METACRITIC_USER_SCORE ? `<div class="imdb-provider-split-value">${metaPending ? '...' : (Number.isFinite(metaUserScore) ? metaUserScore.toFixed(1) : 'None')}</div>` : ''}
                             <div class="imdb-provider-split-label">Users</div>
                             <div class="imdb-ratings-meta">
-                                ${rtPending ? '&nbsp;' : `(${Number.isFinite(rt?.user?.count) || rt?.user?.countDisplay ? `<a href="${rt.user.url}" target="_blank" rel="noreferrer" title="${Number.isFinite(rt?.user?.percent) ? `${rt.user.percent}% of users have rated this movie 3.5 stars or higher.` : ''}">${formatRottenTomatoesAudienceCount(rt.user.countDisplay, rt.user.count)} votes</a>` : 'Unknown'})`}
+                                ${metaPending
+                                    ? 'Loading Metacritic users...'
+                                    : `${Number.isFinite(metaUserCount) ? `<a href="${metaUserUrl}" target="_blank" rel="noreferrer">${formatCount(metaUserCount)} user ratings</a>` : 'No user ratings'}${SHOW_RATINGS_METACRITIC_BREAKDOWN && metaUserBreakdown ? `<br>${metaUserBreakdown}` : ''}`
+                                }
                             </div>
                         </div>
                     </div>
-                </div>
-            ` : ''}
-            ${SHOW_RATINGS_TMDB ? `
-                <div class="imdb-ratings-card">
-                    <h4>${tmdbUrl ? `<a href="${tmdbUrl}" target="_blank" rel="noreferrer" style="color: inherit;">TMDb</a>` : 'TMDb'}</h4>
-                    <div class="imdb-ratings-value">${tmdbPending ? '...' : (Number.isFinite(tmdb?.voteAverage) ? tmdb.voteAverage.toFixed(1) : 'None')}</div>
+                ` : `
+                    <div class="imdb-ratings-value">${imdbPending ? '...' : (Number.isFinite(metaCriticScore) ? metaCriticScore : 'None')}</div>
                     <div class="imdb-ratings-meta">
-                        ${tmdbPending ? 'Loading TMDb...' : (Number.isFinite(tmdb?.voteCount) ? `${formatCount(tmdb.voteCount)} votes` : 'No vote count')}
+                        ${imdbPending ? 'Loading Metacritic...' : `${Number.isFinite(metaCriticCount) ? `<a href="${metaCriticUrl}" target="_blank" rel="noreferrer">${formatCount(metaCriticCount)} critic reviews</a>` : 'No critic reviews'}`}
+                    </div>
+                `}
+            </div>
+        `);
+    }
+
+    if (SHOW_RATINGS_IMDB_METER && hasIMDbMeterCardData(meterRank, imdbPending)) {
+        cards.push(`
+            <div class="imdb-ratings-card">
+                <h4><a href="${imdbmeterUrl}" target="_blank" rel="noreferrer" style="color: inherit;">IMDb Meter</a></h4>
+                <div class="imdb-ratings-value">${imdbPending ? '...' : (meterRank?.currentRank ? `#${formatCount(meterRank.currentRank)}` : 'None')}</div>
+                <div class="imdb-ratings-meta">
+                    ${imdbPending ? 'Loading meter rank...' : (formatMeterRankChange(meterRank) || 'No rank change')}
+                </div>
+            </div>
+        `);
+    }
+
+    if (SHOW_RATINGS_ROTTEN_TOMATOES && hasRottenTomatoesCardData(rt, rtPending)) {
+        cards.push(`
+            <div class="imdb-ratings-card">
+                <h4>${rt?.url ? `<a href="${rt.url}" target="_blank" rel="noreferrer" style="color: inherit;" class="imdb-provider-heading">${rt?.icon ? `<img src="${rt.icon}" alt="Rotten Tomatoes status">` : ''}<span>Rotten Tomatoes</span></a>` : `<span class="imdb-provider-heading">${rt?.icon ? `<img src="${rt.icon}" alt="Rotten Tomatoes status">` : ''}<span>Rotten Tomatoes</span></span>`}</h4>
+                <div class="imdb-provider-split">
+                    <div>
+                        <div class="imdb-provider-split-value">${rtPending ? '...' : (Number.isFinite(rt?.critic?.percent) ? `${rt.critic.percent}%` : 'None')}</div>
+                        <div class="imdb-provider-split-label">Critics</div>
+                        <div class="imdb-ratings-meta">
+                            ${rtPending ? 'Loading Rotten Tomatoes...' : `(${Number.isFinite(rt?.critic?.count) ? `<a href="${rt.critic.url}" target="_blank" rel="noreferrer" title="${Number.isFinite(rt?.critic?.percent) ? `${rt.critic.percent}% of critics have given this movie a positive review.` : ''}">${formatDisplayCount(rt.critic.countDisplay, rt.critic.count)} votes</a>` : 'Unknown'})`}
+                        </div>
+                    </div>
+                    <div>
+                        <div class="imdb-provider-split-value">${rtPending ? '...' : (Number.isFinite(rt?.user?.percent) ? `${rt.user.percent}%` : 'None')}</div>
+                        <div class="imdb-provider-split-label">Users</div>
+                        <div class="imdb-ratings-meta">
+                            ${rtPending ? '&nbsp;' : `(${Number.isFinite(rt?.user?.count) || rt?.user?.countDisplay ? `<a href="${rt.user.url}" target="_blank" rel="noreferrer" title="${Number.isFinite(rt?.user?.percent) ? `${rt.user.percent}% of users have rated this movie 3.5 stars or higher.` : ''}">${formatRottenTomatoesAudienceCount(rt.user.countDisplay, rt.user.count)} votes</a>` : 'Unknown'})`}
+                        </div>
                     </div>
                 </div>
-            ` : ''}
-            ${SHOW_RATINGS_LETTERBOXD ? `
-                <div class="imdb-ratings-card">
-                    <h4>${lb?.url ? `<a href="${lb.url}" target="_blank" rel="noreferrer" style="color: inherit;">Letterboxd</a>` : 'Letterboxd'}</h4>
-                    <div class="imdb-ratings-value${SHOW_RATINGS_LETTERBOXD_WEIGHTED_SCORE ? ' imdb-weighted-score-inline' : ''}">
-                        <span class="${SHOW_RATINGS_LETTERBOXD_WEIGHTED_SCORE ? 'imdb-primary-score' : ''}">${lbPending ? '...' : (Number.isFinite(lb?.user?.score) ? (lb.user.score / 10).toFixed(1) : 'None')}</span>
-                        ${lbPending || !letterboxdWeightedScore ? '' : `<span class="imdb-weighted-score-badge" title="${letterboxdWeightedScore.tooltip}">${letterboxdWeightedScore.displayScore.toFixed(1)}</span>`}
-                    </div>
-                    ${SHOW_RATINGS_LETTERBOXD_HISTOGRAM
-                        ? buildLetterboxdHistogramHtml(lb?.histogram || [], lbPending)
-                        : `<div class="imdb-ratings-meta">
-                            ${lbPending ? 'Loading Letterboxd...' : `Ratings: ${Number.isFinite(lb?.user?.count) ? `<a href="${lb.user.url}" target="_blank" rel="noreferrer">${formatCount(lb.user.count)}</a>` : 'Unknown'}<br>
-                            Likes: ${Number.isFinite(lb?.likes) ? `<a href="${lb.likesUrl}" target="_blank" rel="noreferrer">${formatCount(lb.likes)}</a>` : 'Unknown'} | Fans: ${Number.isFinite(lb?.fans) ? `<a href="${lb.fansUrl}" target="_blank" rel="noreferrer">${formatCount(lb.fans)}</a>` : 'Unknown'}`}
-                        </div>`
+            </div>
+        `);
+    }
+
+    if (SHOW_RATINGS_TMDB && hasTMDbCardData(tmdb, tmdbPending)) {
+        cards.push(`
+            <div class="imdb-ratings-card">
+                <h4>${tmdbUrl ? `<a href="${tmdbUrl}" target="_blank" rel="noreferrer" style="color: inherit;">TMDb</a>` : 'TMDb'}</h4>
+                <div class="imdb-ratings-value">${tmdbPending ? '...' : (Number.isFinite(tmdb?.voteAverage) ? tmdb.voteAverage.toFixed(1) : 'None')}</div>
+                <div class="imdb-ratings-meta">
+                    ${tmdbPending ? 'Loading TMDb...' : (Number.isFinite(tmdb?.voteCount) ? `${formatCount(tmdb.voteCount)} votes` : 'No vote count')}
+                </div>
+            </div>
+        `);
+    }
+
+    if (SHOW_RATINGS_LETTERBOXD && hasLetterboxdCardData(lb, lbPending)) {
+        cards.push(`
+            <div class="imdb-ratings-card">
+                <h4>${lb?.url ? `<a href="${lb.url}" target="_blank" rel="noreferrer" style="color: inherit;">Letterboxd</a>` : 'Letterboxd'}</h4>
+                <div class="imdb-ratings-value${SHOW_RATINGS_LETTERBOXD_WEIGHTED_SCORE ? ' imdb-weighted-score-inline' : ''}">
+                    <span class="${SHOW_RATINGS_LETTERBOXD_WEIGHTED_SCORE ? 'imdb-primary-score' : ''}">${lbPending ? '...' : (Number.isFinite(lb?.user?.score) ? (lb.user.score / 10).toFixed(1) : 'None')}</span>
+                    ${lbPending || !letterboxdWeightedScore ? '' : `<span class="imdb-weighted-score-badge" title="${letterboxdWeightedScore.tooltip}">${letterboxdWeightedScore.displayScore.toFixed(1)}</span>`}
+                </div>
+                ${SHOW_RATINGS_LETTERBOXD_HISTOGRAM
+                    ? buildLetterboxdHistogramHtml(lb?.histogram || [], lbPending)
+                    : `<div class="imdb-ratings-meta">
+                        ${lbPending ? 'Loading Letterboxd...' : `Ratings: ${Number.isFinite(lb?.user?.count) ? `<a href="${lb.user.url}" target="_blank" rel="noreferrer">${formatCount(lb.user.count)}</a>` : 'Unknown'}<br>
+                        Likes: ${Number.isFinite(lb?.likes) ? `<a href="${lb.likesUrl}" target="_blank" rel="noreferrer">${formatCount(lb.likes)}</a>` : 'Unknown'} | Fans: ${Number.isFinite(lb?.fans) ? `<a href="${lb.fansUrl}" target="_blank" rel="noreferrer">${formatCount(lb.fans)}</a>` : 'Unknown'}`}
+                    </div>`
+                }
+            </div>
+        `);
+    }
+
+    if (SHOW_RATINGS_AGGREGATE && hasAggregateCardData(aggregateScore)) {
+        cards.push(`
+            <div class="imdb-ratings-card">
+                <h4>Aggregate</h4>
+                <div class="imdb-ratings-value" title="${aggregateTooltip}">
+                    ${aggregateScore?.pending ? '...' : (Number.isFinite(aggregateScore?.score) ? aggregateScore.score.toFixed(1) : 'None')}
+                </div>
+                <div class="imdb-ratings-meta" title="${aggregateTooltip}">
+                    ${aggregateScore?.pending
+                        ? 'Loading selected sources...'
+                        : `${aggregateScore.usedSources.length} source${aggregateScore.usedSources.length === 1 ? '' : 's'} used<br>${aggregateScore.methodLabel}${aggregateUsesWeightedSources && aggregateScore.method !== 'average' ? '<br>Custom weights applied' : ''}${aggregateProtectsRottenTomatoes ? '<br>RT protected from discard' : ''}${aggregateDiscardSummary ? `<br>${aggregateDiscardSummary}` : ''}`
                     }
                 </div>
-            ` : ''}
-            ${SHOW_RATINGS_AGGREGATE ? `
-                <div class="imdb-ratings-card">
-                    <h4>Aggregate</h4>
-                    <div class="imdb-ratings-value" title="${aggregateTooltip}">
-                        ${aggregateScore?.pending ? '...' : (Number.isFinite(aggregateScore?.score) ? aggregateScore.score.toFixed(1) : 'None')}
-                    </div>
-                    <div class="imdb-ratings-meta" title="${aggregateTooltip}">
-                        ${aggregateScore?.pending
-                            ? 'Loading selected sources...'
-                            : (aggregateScore?.allSources?.length
-                                ? `${aggregateScore.usedSources.length} source${aggregateScore.usedSources.length === 1 ? '' : 's'} used<br>${aggregateScore.methodLabel}${aggregateUsesWeightedSources && aggregateScore.method !== 'average' ? '<br>Custom weights applied' : ''}${aggregateProtectsRottenTomatoes ? '<br>RT protected from discard' : ''}${aggregateDiscardSummary ? `<br>${aggregateDiscardSummary}` : ''}`
-                                : 'No selected scores available')
-                        }
-                    </div>
-                </div>
-            ` : ''}
+            </div>
+        `);
+    }
+
+    return `
+        <div class="imdb-ratings-top">
+            ${cards.join('')}
         </div>
     `;
 }
