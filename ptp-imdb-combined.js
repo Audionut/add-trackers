@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.3.0
+// @version      1.3.1
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -696,7 +696,7 @@ function showSettingsPanel() {
                                 <div style="display: grid; gap: 8px; margin-top: 12px;">
                                     <div style="font-weight: bold;">
                                         Aggregate sources
-                                        <span title="Weight controls how strongly a source influences the aggregate. Higher values matter more for Mean and Median. Average ignores weights." style="display: inline-block; margin-left: 6px; width: 16px; height: 16px; line-height: 16px; text-align: center; border: 1px solid #777; border-radius: 50%; font-size: 11px; color: #ccc; cursor: help;">?</span>
+                                        <span title="Weight controls how strongly a source influences the aggregate. Higher values matter more for Mean and Median. Median uses interpolated weighting, so changes can be gradual instead of only flipping at a cutoff. Average ignores weights." style="display: inline-block; margin-left: 6px; width: 16px; height: 16px; line-height: 16px; text-align: center; border: 1px solid #777; border-radius: 50%; font-size: 11px; color: #ccc; cursor: help;">?</span>
                                     </div>
                                     <div style="display: grid; gap: 8px;">
                                         <div style="display: grid; grid-template-columns: minmax(0, 120px) minmax(0, 1fr) 72px; gap: 8px; align-items: center;">
@@ -2587,16 +2587,41 @@ function calculateAggregateMedian(sources) {
         return null;
     }
 
-    const midpoint = totalWeight / 2;
+    if (sortedSources.length === 1) {
+        return sortedSources[0].score;
+    }
+
+    const midpoint = 0.5;
     let cumulativeWeight = 0;
-    for (const source of sortedSources) {
+    const weightedPositions = sortedSources.map((source) => {
+        const start = cumulativeWeight / totalWeight;
         cumulativeWeight += source.weight;
-        if (cumulativeWeight >= midpoint) {
-            return source.score;
+        const end = cumulativeWeight / totalWeight;
+        return {
+            score: source.score,
+            position: (start + end) / 2
+        };
+    });
+
+    if (midpoint <= weightedPositions[0].position) {
+        return weightedPositions[0].score;
+    }
+
+    for (let index = 1; index < weightedPositions.length; index += 1) {
+        const previous = weightedPositions[index - 1];
+        const current = weightedPositions[index];
+        if (midpoint <= current.position) {
+            const span = current.position - previous.position;
+            if (!(span > 0)) {
+                return current.score;
+            }
+
+            const ratio = (midpoint - previous.position) / span;
+            return previous.score + ((current.score - previous.score) * ratio);
         }
     }
 
-    return sortedSources[sortedSources.length - 1].score;
+    return weightedPositions[weightedPositions.length - 1].score;
 }
 
 function buildAggregateTooltip(summary) {
@@ -3073,7 +3098,7 @@ function buildTopCardsHtml(imdbId, imdbData, ptpData, supplemental) {
                         ${aggregateScore?.pending
                             ? 'Loading selected sources...'
                             : (aggregateScore?.allSources?.length
-                                ? `${aggregateScore.usedSources.length} source${aggregateScore.usedSources.length === 1 ? '' : 's'} used<br>${aggregateScore.methodLabel}${aggregateUsesWeightedSources && aggregateScore.method === 'mean' ? '<br>Custom weights applied' : ''}${aggregateProtectsRottenTomatoes ? '<br>RT protected from discard' : ''}${aggregateDiscardSummary ? `<br>${aggregateDiscardSummary}` : ''}`
+                                ? `${aggregateScore.usedSources.length} source${aggregateScore.usedSources.length === 1 ? '' : 's'} used<br>${aggregateScore.methodLabel}${aggregateUsesWeightedSources && aggregateScore.method !== 'average' ? '<br>Custom weights applied' : ''}${aggregateProtectsRottenTomatoes ? '<br>RT protected from discard' : ''}${aggregateDiscardSummary ? `<br>${aggregateDiscardSummary}` : ''}`
                                 : 'No selected scores available')
                         }
                     </div>
