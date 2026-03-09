@@ -664,70 +664,75 @@ function showSettingsPanel() {
                             <span>Show Metacritic Pos/Mix/Neg Breakdown</span>
                         </label>
 
-                        <div style="margin: 0 0 16px 0; padding: 10px 12px; border: 1px solid #555; border-radius: 6px; background: #383838;">
-                            <label style="display: block; margin-bottom: 10px; cursor: pointer;">
+                        <details style="margin: 0 0 16px 0; border: 1px solid #555; border-radius: 6px; background: #383838;">
+                            <summary style="cursor: pointer; padding: 10px 12px;">
                                 <input type="checkbox" id="show-ratings-aggregate" style="margin-right: 8px;">
                                 <span>Show Aggregate Score Tile</span>
-                            </label>
-                            <label style="display: block; margin-bottom: 10px; cursor: pointer; margin-left: 20px;">
-                                <input type="checkbox" id="ratings-aggregate-drop-extremes" style="margin-right: 8px;">
-                                <span>Discard Highest and Lowest</span>
-                            </label>
-                            <label style="display: block; margin-bottom: 10px; cursor: pointer; margin-left: 20px;">
-                                <input type="checkbox" id="ratings-aggregate-keep-rotten-tomatoes" style="margin-right: 8px;">
-                                <span>Never Discard Rotten Tomatoes</span>
-                            </label>
-                            <label style="display: block; margin-bottom: 10px; margin-left: 20px;">
-                                <span style="display: block; margin-bottom: 5px;">Aggregate method:</span>
-                                <select id="ratings-aggregate-method" style="
-                                    width: 100%;
-                                    padding: 5px;
-                                    background: #444;
-                                    color: #fff;
-                                    border: 1px solid #666;
-                                    border-radius: 3px;
-                                ">
-                                    <option value="average">Average</option>
-                                    <option value="mean">Mean</option>
-                                    <option value="median">Median</option>
-                                </select>
-                            </label>
-                            <div style="display: grid; gap: 8px; margin-top: 12px;">
-                                <div style="font-weight: bold;">Aggregate sources</div>
-                                <div style="display: grid; gap: 8px;">
-                                    <div style="display: grid; grid-template-columns: minmax(0, 120px) minmax(0, 1fr) 72px; gap: 8px; align-items: center;">
-                                        <label style="cursor: pointer;"><input type="checkbox" id="aggregate-source-imdb-enabled" style="margin-right: 8px;">IMDb</label>
-                                        <select id="aggregate-source-imdb-option" style="width: 100%; padding: 5px; background: #444; color: #fff; border: 1px solid #666; border-radius: 3px;">${buildAggregateSourceSelectHtml('imdb')}</select>
-                                        <input type="number" id="aggregate-source-imdb-weight" min="0.1" max="10" step="0.1" style="width: 100%; padding: 5px; background: #444; color: #fff; border: 1px solid #666; border-radius: 3px;" title="Weight">
+                            </summary>
+                            <div style="padding: 0 12px 12px; border-top: 1px solid #555;">
+                                <label style="display: block; margin: 12px 0 10px; cursor: pointer;">
+                                    <input type="checkbox" id="ratings-aggregate-drop-extremes" style="margin-right: 8px;">
+                                    <span>Discard Highest and Lowest</span>
+                                </label>
+                                <label style="display: block; margin-bottom: 10px; cursor: pointer;">
+                                    <input type="checkbox" id="ratings-aggregate-keep-rotten-tomatoes" style="margin-right: 8px;">
+                                    <span>Never Discard Rotten Tomatoes</span>
+                                </label>
+                                <label style="display: block; margin-bottom: 10px;">
+                                    <span style="display: block; margin-bottom: 5px;">Aggregate method:</span>
+                                    <select id="ratings-aggregate-method" style="
+                                        width: 100%;
+                                        padding: 5px;
+                                        background: #444;
+                                        color: #fff;
+                                        border: 1px solid #666;
+                                        border-radius: 3px;
+                                    ">
+                                        <option value="average">Average</option>
+                                        <option value="mean">Mean</option>
+                                        <option value="median">Median</option>
+                                    </select>
+                                </label>
+                                <div style="display: grid; gap: 8px; margin-top: 12px;">
+                                    <div style="font-weight: bold;">
+                                        Aggregate sources
+                                        <span title="Weight controls how strongly a source influences the aggregate. Higher values matter more for Mean and Median. Average ignores weights." style="display: inline-block; margin-left: 6px; width: 16px; height: 16px; line-height: 16px; text-align: center; border: 1px solid #777; border-radius: 50%; font-size: 11px; color: #ccc; cursor: help;">?</span>
                                     </div>
-                                    <div style="display: grid; grid-template-columns: minmax(0, 120px) minmax(0, 1fr) 72px; gap: 8px; align-items: center;">
-                                        <label style="cursor: pointer;"><input type="checkbox" id="aggregate-source-ptp-enabled" style="margin-right: 8px;">PTP</label>
-                                        <select id="aggregate-source-ptp-option" style="width: 100%; padding: 5px; background: #444; color: #fff; border: 1px solid #666; border-radius: 3px;">${buildAggregateSourceSelectHtml('ptp')}</select>
-                                        <input type="number" id="aggregate-source-ptp-weight" min="0.1" max="10" step="0.1" style="width: 100%; padding: 5px; background: #444; color: #fff; border: 1px solid #666; border-radius: 3px;" title="Weight">
-                                    </div>
-                                    <div style="display: grid; grid-template-columns: minmax(0, 120px) minmax(0, 1fr) 72px; gap: 8px; align-items: center;">
-                                        <label style="cursor: pointer;"><input type="checkbox" id="aggregate-source-metacritic-enabled" style="margin-right: 8px;">Metacritic</label>
-                                        <select id="aggregate-source-metacritic-option" style="width: 100%; padding: 5px; background: #444; color: #fff; border: 1px solid #666; border-radius: 3px;">${buildAggregateSourceSelectHtml('metacritic')}</select>
-                                        <input type="number" id="aggregate-source-metacritic-weight" min="0.1" max="10" step="0.1" style="width: 100%; padding: 5px; background: #444; color: #fff; border: 1px solid #666; border-radius: 3px;" title="Weight">
-                                    </div>
-                                    <div style="display: grid; grid-template-columns: minmax(0, 120px) minmax(0, 1fr) 72px; gap: 8px; align-items: center;">
-                                        <label style="cursor: pointer;"><input type="checkbox" id="aggregate-source-rottenTomatoes-enabled" style="margin-right: 8px;">RT</label>
-                                        <select id="aggregate-source-rottenTomatoes-option" style="width: 100%; padding: 5px; background: #444; color: #fff; border: 1px solid #666; border-radius: 3px;">${buildAggregateSourceSelectHtml('rottenTomatoes')}</select>
-                                        <input type="number" id="aggregate-source-rottenTomatoes-weight" min="0.1" max="10" step="0.1" style="width: 100%; padding: 5px; background: #444; color: #fff; border: 1px solid #666; border-radius: 3px;" title="Weight">
-                                    </div>
-                                    <div style="display: grid; grid-template-columns: minmax(0, 120px) minmax(0, 1fr) 72px; gap: 8px; align-items: center;">
-                                        <label style="cursor: pointer;"><input type="checkbox" id="aggregate-source-tmdb-enabled" style="margin-right: 8px;">TMDb</label>
-                                        <select id="aggregate-source-tmdb-option" style="width: 100%; padding: 5px; background: #444; color: #fff; border: 1px solid #666; border-radius: 3px;">${buildAggregateSourceSelectHtml('tmdb')}</select>
-                                        <input type="number" id="aggregate-source-tmdb-weight" min="0.1" max="10" step="0.1" style="width: 100%; padding: 5px; background: #444; color: #fff; border: 1px solid #666; border-radius: 3px;" title="Weight">
-                                    </div>
-                                    <div style="display: grid; grid-template-columns: minmax(0, 120px) minmax(0, 1fr) 72px; gap: 8px; align-items: center;">
-                                        <label style="cursor: pointer;"><input type="checkbox" id="aggregate-source-letterboxd-enabled" style="margin-right: 8px;">Letterboxd</label>
-                                        <select id="aggregate-source-letterboxd-option" style="width: 100%; padding: 5px; background: #444; color: #fff; border: 1px solid #666; border-radius: 3px;">${buildAggregateSourceSelectHtml('letterboxd')}</select>
-                                        <input type="number" id="aggregate-source-letterboxd-weight" min="0.1" max="10" step="0.1" style="width: 100%; padding: 5px; background: #444; color: #fff; border: 1px solid #666; border-radius: 3px;" title="Weight">
+                                    <div style="display: grid; gap: 8px;">
+                                        <div style="display: grid; grid-template-columns: minmax(0, 120px) minmax(0, 1fr) 72px; gap: 8px; align-items: center;">
+                                            <label style="cursor: pointer;"><input type="checkbox" id="aggregate-source-imdb-enabled" style="margin-right: 8px;">IMDb</label>
+                                            <select id="aggregate-source-imdb-option" style="width: 100%; padding: 5px; background: #444; color: #fff; border: 1px solid #666; border-radius: 3px;">${buildAggregateSourceSelectHtml('imdb')}</select>
+                                            <input type="number" id="aggregate-source-imdb-weight" min="0.1" max="10" step="0.1" style="width: 100%; padding: 5px; background: #444; color: #fff; border: 1px solid #666; border-radius: 3px;" title="Higher weight increases this source's influence for Mean and Median. Average ignores weights.">
+                                        </div>
+                                        <div style="display: grid; grid-template-columns: minmax(0, 120px) minmax(0, 1fr) 72px; gap: 8px; align-items: center;">
+                                            <label style="cursor: pointer;"><input type="checkbox" id="aggregate-source-ptp-enabled" style="margin-right: 8px;">PTP</label>
+                                            <select id="aggregate-source-ptp-option" style="width: 100%; padding: 5px; background: #444; color: #fff; border: 1px solid #666; border-radius: 3px;">${buildAggregateSourceSelectHtml('ptp')}</select>
+                                            <input type="number" id="aggregate-source-ptp-weight" min="0.1" max="10" step="0.1" style="width: 100%; padding: 5px; background: #444; color: #fff; border: 1px solid #666; border-radius: 3px;" title="Higher weight increases this source's influence for Mean and Median. Average ignores weights.">
+                                        </div>
+                                        <div style="display: grid; grid-template-columns: minmax(0, 120px) minmax(0, 1fr) 72px; gap: 8px; align-items: center;">
+                                            <label style="cursor: pointer;"><input type="checkbox" id="aggregate-source-metacritic-enabled" style="margin-right: 8px;">Metacritic</label>
+                                            <select id="aggregate-source-metacritic-option" style="width: 100%; padding: 5px; background: #444; color: #fff; border: 1px solid #666; border-radius: 3px;">${buildAggregateSourceSelectHtml('metacritic')}</select>
+                                            <input type="number" id="aggregate-source-metacritic-weight" min="0.1" max="10" step="0.1" style="width: 100%; padding: 5px; background: #444; color: #fff; border: 1px solid #666; border-radius: 3px;" title="Higher weight increases this source's influence for Mean and Median. Average ignores weights.">
+                                        </div>
+                                        <div style="display: grid; grid-template-columns: minmax(0, 120px) minmax(0, 1fr) 72px; gap: 8px; align-items: center;">
+                                            <label style="cursor: pointer;"><input type="checkbox" id="aggregate-source-rottenTomatoes-enabled" style="margin-right: 8px;">RT</label>
+                                            <select id="aggregate-source-rottenTomatoes-option" style="width: 100%; padding: 5px; background: #444; color: #fff; border: 1px solid #666; border-radius: 3px;">${buildAggregateSourceSelectHtml('rottenTomatoes')}</select>
+                                            <input type="number" id="aggregate-source-rottenTomatoes-weight" min="0.1" max="10" step="0.1" style="width: 100%; padding: 5px; background: #444; color: #fff; border: 1px solid #666; border-radius: 3px;" title="Higher weight increases this source's influence for Mean and Median. Average ignores weights.">
+                                        </div>
+                                        <div style="display: grid; grid-template-columns: minmax(0, 120px) minmax(0, 1fr) 72px; gap: 8px; align-items: center;">
+                                            <label style="cursor: pointer;"><input type="checkbox" id="aggregate-source-tmdb-enabled" style="margin-right: 8px;">TMDb</label>
+                                            <select id="aggregate-source-tmdb-option" style="width: 100%; padding: 5px; background: #444; color: #fff; border: 1px solid #666; border-radius: 3px;">${buildAggregateSourceSelectHtml('tmdb')}</select>
+                                            <input type="number" id="aggregate-source-tmdb-weight" min="0.1" max="10" step="0.1" style="width: 100%; padding: 5px; background: #444; color: #fff; border: 1px solid #666; border-radius: 3px;" title="Higher weight increases this source's influence for Mean and Median. Average ignores weights.">
+                                        </div>
+                                        <div style="display: grid; grid-template-columns: minmax(0, 120px) minmax(0, 1fr) 72px; gap: 8px; align-items: center;">
+                                            <label style="cursor: pointer;"><input type="checkbox" id="aggregate-source-letterboxd-enabled" style="margin-right: 8px;">Letterboxd</label>
+                                            <select id="aggregate-source-letterboxd-option" style="width: 100%; padding: 5px; background: #444; color: #fff; border: 1px solid #666; border-radius: 3px;">${buildAggregateSourceSelectHtml('letterboxd')}</select>
+                                            <input type="number" id="aggregate-source-letterboxd-weight" min="0.1" max="10" step="0.1" style="width: 100%; padding: 5px; background: #444; color: #fff; border: 1px solid #666; border-radius: 3px;" title="Higher weight increases this source's influence for Mean and Median. Average ignores weights.">
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
+                        </details>
 
                         <label style="display: block; margin-bottom: 10px; cursor: pointer;">
                             <input type="checkbox" id="show-ratings-imdb-meter" style="margin-right: 8px;">
@@ -767,160 +772,162 @@ function showSettingsPanel() {
                             <span>Show IMDb Vote Histogram</span>
                         </label>
 
-                        <div style="margin: 0 0 14px 20px; padding: 10px 12px; border: 1px solid #555; border-radius: 6px; background: #383838;">
-                            <label style="display: block; margin-bottom: 10px; cursor: pointer;">
+                        <details style="margin: 0 0 14px 20px; border: 1px solid #555; border-radius: 6px; background: #383838;">
+                            <summary style="cursor: pointer; padding: 10px 12px;">
                                 <input type="checkbox" id="show-imdb-weighted-score" style="margin-right: 8px;">
                                 <span>Show Weighted IMDb Score</span>
                                 <span title="Calculates an alternate IMDb score from the vote histogram instead of using only the default IMDb aggregate." style="display: inline-block; margin-left: 6px; width: 16px; height: 16px; line-height: 16px; text-align: center; border: 1px solid #777; border-radius: 50%; font-size: 11px; color: #ccc; cursor: help;">?</span>
-                            </label>
-                            <label style="display: block; margin-bottom: 10px;">
-                                <span style="display: block; margin-bottom: 5px;">Active weighting type:
-                                    <span title="Mean: plain average of all votes.&#10;Trimmed mean 5%: removes the lowest and highest 5% before averaging.&#10;Trimmed mean 10%: removes the lowest and highest 10% before averaging.&#10;Weighted median: the middle vote in the weighted distribution.&#10;Bayesian blend: blends the histogram mean toward a fixed prior for extra stability." style="display: inline-block; margin-left: 6px; width: 16px; height: 16px; line-height: 16px; text-align: center; border: 1px solid #777; border-radius: 50%; font-size: 11px; color: #ccc; cursor: help;">?</span>
-                                </span>
-                                <select id="imdb-weighted-score-type" style="
-                                    width: 100%;
-                                    padding: 5px;
-                                    background: #444;
-                                    color: #fff;
-                                    border: 1px solid #666;
-                                    border-radius: 3px;
-                                ">
-                                    <option value="trimmed5">Trimmed mean 5%</option>
-                                    <option value="trimmed10">Trimmed mean 10%</option>
-                                    <option value="median">Weighted median</option>
-                                    <option value="mean">Mean</option>
-                                    <option value="bayesian">Bayesian blend</option>
-                                </select>
-                            </label>
-                        </div>
+                            </summary>
+                            <div style="padding: 0 12px 12px; border-top: 1px solid #555;">
+                                <label style="display: block; margin-top: 12px;">
+                                    <span style="display: block; margin-bottom: 5px;">Active weighting type:
+                                        <span title="Mean: plain average of all votes.&#10;Trimmed mean 5%: removes the lowest and highest 5% before averaging.&#10;Trimmed mean 10%: removes the lowest and highest 10% before averaging.&#10;Weighted median: the middle vote in the weighted distribution.&#10;Bayesian blend: blends the histogram mean toward a fixed prior for extra stability." style="display: inline-block; margin-left: 6px; width: 16px; height: 16px; line-height: 16px; text-align: center; border: 1px solid #777; border-radius: 50%; font-size: 11px; color: #ccc; cursor: help;">?</span>
+                                    </span>
+                                    <select id="imdb-weighted-score-type" style="
+                                        width: 100%;
+                                        padding: 5px;
+                                        background: #444;
+                                        color: #fff;
+                                        border: 1px solid #666;
+                                        border-radius: 3px;
+                                    ">
+                                        <option value="trimmed5">Trimmed mean 5%</option>
+                                        <option value="trimmed10">Trimmed mean 10%</option>
+                                        <option value="median">Weighted median</option>
+                                        <option value="mean">Mean</option>
+                                        <option value="bayesian">Bayesian blend</option>
+                                    </select>
+                                </label>
+                            </div>
+                        </details>
 
-                        <div style="margin: 0 0 14px 20px; padding: 10px 12px; border: 1px solid #555; border-radius: 6px; background: #383838;">
-                            <label style="display: block; margin-bottom: 10px; cursor: pointer;">
+                        <details style="margin: 0 0 14px 20px; border: 1px solid #555; border-radius: 6px; background: #383838;">
+                            <summary style="cursor: pointer; padding: 10px 12px;">
                                 <input type="checkbox" id="show-imdb-demographic-score-override" style="margin-right: 8px;">
                                 <span>Replace IMDb User Score With Demographic Score</span>
                                 <span title="Uses a selected IMDb demographic score in the main IMDb Users card instead of the overall IMDb users aggregate." style="display: inline-block; margin-left: 6px; width: 16px; height: 16px; line-height: 16px; text-align: center; border: 1px solid #777; border-radius: 50%; font-size: 11px; color: #ccc; cursor: help;">?</span>
-                            </label>
-                            <label style="display: block;">
-                                <span style="display: block; margin-bottom: 5px;">Demographic source:</span>
-                                <select id="imdb-demographic-score-override-key" style="
-                                    width: 100%;
-                                    padding: 5px;
-                                    background: #444;
-                                    color: #fff;
-                                    border: 1px solid #666;
-                                    border-radius: 3px;
-                                ">
-                                    <option value="gender:FEMALE">Female</option>
-                                    <option value="gender:MALE">Male</option>
-                                    <option value="age:AGE_UNDER_18">UNDER-18</option>
-                                    <option value="age:AGE_18_29">18-29</option>
-                                    <option value="age:AGE_30_44">30-44</option>
-                                    <option value="age:AGE_45_PLUS">45-PLUS</option>
-                                    <option value="gender:FEMALE|age:AGE_UNDER_18">Female / UNDER-18</option>
-                                    <option value="gender:FEMALE|age:AGE_18_29">Female / 18-29</option>
-                                    <option value="gender:FEMALE|age:AGE_30_44">Female / 30-44</option>
-                                    <option value="gender:FEMALE|age:AGE_45_PLUS">Female / 45-PLUS</option>
-                                    <option value="gender:MALE|age:AGE_UNDER_18">Male / UNDER-18</option>
-                                    <option value="gender:MALE|age:AGE_18_29">Male / 18-29</option>
-                                    <option value="gender:MALE|age:AGE_30_44">Male / 30-44</option>
-                                    <option value="gender:MALE|age:AGE_45_PLUS">Male / 45-PLUS</option>
-                                </select>
-                            </label>
-                        </div>
-
-                        <label style="display: block; margin-bottom: 10px; cursor: pointer;">
-                            <input type="checkbox" id="show-imdb-demographics" style="margin-right: 8px;">
-                            <span>Show IMDb Demographics</span>
-                        </label>
-
-                        <label style="display: block; margin-bottom: 14px; cursor: pointer;">
-                            <input type="checkbox" id="show-imdb-country-averages" style="margin-right: 8px;">
-                            <span>Show Country Averages</span>
-                        </label>
+                            </summary>
+                            <div style="padding: 0 12px 12px; border-top: 1px solid #555;">
+                                <label style="display: block; margin-top: 12px;">
+                                    <span style="display: block; margin-bottom: 5px;">Demographic source:</span>
+                                    <select id="imdb-demographic-score-override-key" style="
+                                        width: 100%;
+                                        padding: 5px;
+                                        background: #444;
+                                        color: #fff;
+                                        border: 1px solid #666;
+                                        border-radius: 3px;
+                                    ">
+                                        <option value="gender:FEMALE">Female</option>
+                                        <option value="gender:MALE">Male</option>
+                                        <option value="age:AGE_UNDER_18">UNDER-18</option>
+                                        <option value="age:AGE_18_29">18-29</option>
+                                        <option value="age:AGE_30_44">30-44</option>
+                                        <option value="age:AGE_45_PLUS">45-PLUS</option>
+                                        <option value="gender:FEMALE|age:AGE_UNDER_18">Female / UNDER-18</option>
+                                        <option value="gender:FEMALE|age:AGE_18_29">Female / 18-29</option>
+                                        <option value="gender:FEMALE|age:AGE_30_44">Female / 30-44</option>
+                                        <option value="gender:FEMALE|age:AGE_45_PLUS">Female / 45-PLUS</option>
+                                        <option value="gender:MALE|age:AGE_UNDER_18">Male / UNDER-18</option>
+                                        <option value="gender:MALE|age:AGE_18_29">Male / 18-29</option>
+                                        <option value="gender:MALE|age:AGE_30_44">Male / 30-44</option>
+                                        <option value="gender:MALE|age:AGE_45_PLUS">Male / 45-PLUS</option>
+                                    </select>
+                                </label>
+                            </div>
+                        </details>
 
                         <label style="display: block; margin-bottom: 18px; cursor: pointer;">
                             <input type="checkbox" id="use-squeezed-ratings-tiles" style="margin-right: 8px;">
                             <span>Use Squeezed Tiles</span>
                         </label>
 
-                        <div style="margin-top: 18px;">
-                            <h4 style="color: #F2DB83; margin: 0 0 10px;">IMDb Demographics</h4>
-                            <p style="margin: 0 0 10px; font-size: 0.85em; color: #ccc;">
-                                Use the filters below to control which demographic rows appear.
-                            </p>
-                            <div style="display: grid; gap: 12px; margin-bottom: 12px;">
-                                <div>
-                                    <div style="margin-bottom: 6px; font-weight: bold;">Show demographic row types</div>
-                                    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
-                                        <label style="cursor: pointer;"><input type="checkbox" id="demographic-row-age-only" style="margin-right: 8px;">Age only</label>
-                                        <label style="cursor: pointer;"><input type="checkbox" id="demographic-row-gender-only" style="margin-right: 8px;">Gender only</label>
-                                        <label style="cursor: pointer;"><input type="checkbox" id="demographic-row-gender-age" style="margin-right: 8px;">Gender + age</label>
-                                        <label style="cursor: pointer;"><input type="checkbox" id="demographic-row-user-category-only" style="margin-right: 8px;">User category only</label>
-                                        <label style="cursor: pointer;"><input type="checkbox" id="demographic-row-country-only" style="margin-right: 8px;">Country only</label>
-                                        <label style="cursor: pointer;"><input type="checkbox" id="demographic-row-other" style="margin-right: 8px;">Other combinations</label>
+                        <details style="margin-top: 18px; border: 1px solid #555; border-radius: 6px; background: #383838;">
+                            <summary style="cursor: pointer; padding: 10px 12px;">
+                                <input type="checkbox" id="show-imdb-demographics" style="margin-right: 8px;">
+                                <span>IMDb Demographics</span>
+                            </summary>
+                            <div style="padding: 0 12px 12px; border-top: 1px solid #555;">
+                                <label style="display: block; margin: 12px 0 14px; cursor: pointer;">
+                                    <input type="checkbox" id="show-imdb-country-averages" style="margin-right: 8px;">
+                                    <span>Show Country Averages</span>
+                                </label>
+                                <p style="margin: 0 0 10px; font-size: 0.85em; color: #ccc;">
+                                    Use the filters below to control which demographic rows appear.
+                                </p>
+                                <div style="display: grid; gap: 12px; margin-bottom: 12px;">
+                                    <div>
+                                        <div style="margin-bottom: 6px; font-weight: bold;">Show demographic row types</div>
+                                        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
+                                            <label style="cursor: pointer;"><input type="checkbox" id="demographic-row-age-only" style="margin-right: 8px;">Age only</label>
+                                            <label style="cursor: pointer;"><input type="checkbox" id="demographic-row-gender-only" style="margin-right: 8px;">Gender only</label>
+                                            <label style="cursor: pointer;"><input type="checkbox" id="demographic-row-gender-age" style="margin-right: 8px;">Gender + age</label>
+                                            <label style="cursor: pointer;"><input type="checkbox" id="demographic-row-user-category-only" style="margin-right: 8px;">User category only</label>
+                                            <label style="cursor: pointer;"><input type="checkbox" id="demographic-row-country-only" style="margin-right: 8px;">Country only</label>
+                                            <label style="cursor: pointer;"><input type="checkbox" id="demographic-row-other" style="margin-right: 8px;">Other combinations</label>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div style="margin-bottom: 6px; font-weight: bold;">Show ages</div>
+                                        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
+                                            <label style="cursor: pointer;"><input type="checkbox" id="demographic-age-under-18" style="margin-right: 8px;">UNDER-18</label>
+                                            <label style="cursor: pointer;"><input type="checkbox" id="demographic-age-18-29" style="margin-right: 8px;">18-29</label>
+                                            <label style="cursor: pointer;"><input type="checkbox" id="demographic-age-30-44" style="margin-right: 8px;">30-44</label>
+                                            <label style="cursor: pointer;"><input type="checkbox" id="demographic-age-45-plus" style="margin-right: 8px;">45-PLUS</label>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div style="margin-bottom: 6px; font-weight: bold;">Show genders</div>
+                                        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
+                                            <label style="cursor: pointer;"><input type="checkbox" id="demographic-gender-female" style="margin-right: 8px;">Female</label>
+                                            <label style="cursor: pointer;"><input type="checkbox" id="demographic-gender-male" style="margin-right: 8px;">Male</label>
+                                        </div>
+                                    </div>
+                                    <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 140px); gap: 10px;">
+                                        <label style="display: block;">
+                                            <span style="display: block; margin-bottom: 5px;">Sort demographics by:</span>
+                                            <select id="imdb-demographics-sort-by" style="
+                                                width: 100%;
+                                                padding: 5px;
+                                                background: #444;
+                                                color: #fff;
+                                                border: 1px solid #666;
+                                                border-radius: 3px;
+                                            ">
+                                                <option value="label">Label</option>
+                                                <option value="rating">Rating</option>
+                                                <option value="votes">Votes</option>
+                                            </select>
+                                        </label>
+                                        <label style="display: block;">
+                                            <span style="display: block; margin-bottom: 5px;">Direction:</span>
+                                            <select id="imdb-demographics-sort-direction" style="
+                                                width: 100%;
+                                                padding: 5px;
+                                                background: #444;
+                                                color: #fff;
+                                                border: 1px solid #666;
+                                                border-radius: 3px;
+                                            ">
+                                                <option value="asc">Ascending</option>
+                                                <option value="desc">Descending</option>
+                                            </select>
+                                        </label>
                                     </div>
                                 </div>
-                                <div>
-                                    <div style="margin-bottom: 6px; font-weight: bold;">Show ages</div>
-                                    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
-                                        <label style="cursor: pointer;"><input type="checkbox" id="demographic-age-under-18" style="margin-right: 8px;">UNDER-18</label>
-                                        <label style="cursor: pointer;"><input type="checkbox" id="demographic-age-18-29" style="margin-right: 8px;">18-29</label>
-                                        <label style="cursor: pointer;"><input type="checkbox" id="demographic-age-30-44" style="margin-right: 8px;">30-44</label>
-                                        <label style="cursor: pointer;"><input type="checkbox" id="demographic-age-45-plus" style="margin-right: 8px;">45-PLUS</label>
-                                    </div>
-                                </div>
-                                <div>
-                                    <div style="margin-bottom: 6px; font-weight: bold;">Show genders</div>
-                                    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
-                                        <label style="cursor: pointer;"><input type="checkbox" id="demographic-gender-female" style="margin-right: 8px;">Female</label>
-                                        <label style="cursor: pointer;"><input type="checkbox" id="demographic-gender-male" style="margin-right: 8px;">Male</label>
-                                    </div>
-                                </div>
-                                <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 140px); gap: 10px;">
-                                    <label style="display: block;">
-                                        <span style="display: block; margin-bottom: 5px;">Sort demographics by:</span>
-                                        <select id="imdb-demographics-sort-by" style="
-                                            width: 100%;
-                                            padding: 5px;
-                                            background: #444;
-                                            color: #fff;
-                                            border: 1px solid #666;
-                                            border-radius: 3px;
-                                        ">
-                                            <option value="label">Label</option>
-                                            <option value="rating">Rating</option>
-                                            <option value="votes">Votes</option>
-                                        </select>
-                                    </label>
-                                    <label style="display: block;">
-                                        <span style="display: block; margin-bottom: 5px;">Direction:</span>
-                                        <select id="imdb-demographics-sort-direction" style="
-                                            width: 100%;
-                                            padding: 5px;
-                                            background: #444;
-                                            color: #fff;
-                                            border: 1px solid #666;
-                                            border-radius: 3px;
-                                        ">
-                                            <option value="asc">Ascending</option>
-                                            <option value="desc">Descending</option>
-                                        </select>
-                                    </label>
-                                </div>
+                                <label style="display: block; margin-top: 10px;">
+                                    <span style="display: block; margin-bottom: 5px;">IMDb Demographics Panel Height (px):</span>
+                                    <input type="number" id="imdb-demographics-height" min="120" max="600" step="1" style="
+                                        width: 90px;
+                                        padding: 5px;
+                                        background: #444;
+                                        color: #fff;
+                                        border: 1px solid #666;
+                                        border-radius: 3px;
+                                    ">
+                                </label>
                             </div>
-                        </div>
-
-                        <label style="display: block; margin-top: 10px; margin-bottom: 12px;">
-                            <span style="display: block; margin-bottom: 5px;">IMDb Demographics Panel Height (px):</span>
-                            <input type="number" id="imdb-demographics-height" min="120" max="600" step="1" style="
-                                width: 90px;
-                                padding: 5px;
-                                background: #444;
-                                color: #fff;
-                                border: 1px solid #666;
-                                border-radius: 3px;
-                            ">
-                        </label>
+                        </details>
 
                     </div>
 
@@ -1083,6 +1090,12 @@ function showSettingsPanel() {
     `;
 
     document.body.appendChild(panel);
+
+    panel.querySelectorAll('summary input, summary select, summary label').forEach((element) => {
+        element.addEventListener('click', (event) => {
+            event.stopPropagation();
+        });
+    });
 
     // Load current settings into the form
     loadSettingsIntoForm();
@@ -1636,13 +1649,14 @@ function ensureRatingsStyles() {
             flex-wrap: wrap;
             align-items: stretch;
             justify-content: flex-start;
+            gap: 8px;
         }
 
         .imdb-ratings-top.imdb-ratings-top-squeezed .imdb-ratings-card {
-            flex: 0 1 auto;
-            width: max-content;
+            flex: 1 1 145px;
             min-width: 145px;
             max-width: 100%;
+            padding: 10px;
         }
 
         .imdb-ratings-card-metacritic-expanded {
@@ -1654,8 +1668,9 @@ function ensureRatingsStyles() {
         }
 
         .imdb-ratings-top.imdb-ratings-top-squeezed .imdb-ratings-card-metacritic-expanded {
-            width: min(100%, 320px);
+            flex-basis: 240px;
             min-width: 240px;
+            flex-grow: 2;
         }
 
         .imdb-ratings-card h4,
@@ -3163,10 +3178,11 @@ function setupAdaptiveTopCardsLayout(container) {
         }
 
         const widthPerCard = (width - (gap * Math.max(0, cardCount - 1))) / cardCount;
-        const adaptiveMin = Math.max(145, Math.min(190, Math.floor(widthPerCard)));
+        const absoluteMinCardWidth = 145;
+        const preferredMaxCardWidth = 190;
+        const adaptiveMin = Math.max(absoluteMinCardWidth, Math.min(preferredMaxCardWidth, Math.floor(widthPerCard)));
         topCards.style.setProperty('--imdb-top-card-min', `${adaptiveMin}px`);
 
-        const absoluteMinCardWidth = 145;
         const maxColumnsThatFit = Math.max(
             1,
             Math.min(cardCount, Math.floor((width + gap) / (absoluteMinCardWidth + gap)))
