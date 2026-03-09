@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP - TMDB Trailer Selector
-// @version      1.5
+// @version      1.6
 // @description  Add a dropdown to switch between various TMDB videos
 // @match        https://passthepopcorn.me/torrents.php?id=*
 // @icon         data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADkAAAA5CAMAAAC7xnO3AAAAV1BMVEUAAAD///9oiM2CacFm5Mj/jGb842dn3auC3X/z82j/uWZw14xudcRwbsBmpdz83GZm4NBq26KP4Hrm9Wr/rmdmr91u2ZNmntln5L/902b/l2Zt1otnseEVRKmYAAAAeUlEQVRIx+3WtwqAMBCAYU2zpNlii+//nAZFCDooSIaQ+5fjhm89LoNCl7u+TpCvM8kopUNda81YVfVu78rS8rEtCkJI4/ZNKYSQkBJjfJerk4sv+SHnUxo1/ZMCJEiQIKOV8pKPe8s8aa317q3x7m2SxfUnxCWhAO24CSsei22B/wAAAABJRU5ErkJggg==
@@ -39,10 +39,14 @@
     const CACHE_KEY_PREFIX = 'ptp_tmdb_trailers_cache_v1_';
     const LOGO_CACHE_KEY_PREFIX = 'ptp_tmdb_logo_cache_v1_';
     const BACKDROP_CACHE_KEY_PREFIX = 'ptp_tmdb_backdrop_cache_v1_';
+    const RATINGS_CACHE_KEY_PREFIX = 'ptp_tmdb_ratings_cache_v1_';
     const API_KEY_PLACEHOLDER = '<REDACTED>';
     let settings = loadSettings();
     let columnBackgroundObserver = null;
     let columnBackgroundObserverTimer = null;
+    let latestTMDBRatings = null;
+    let tmdbRatingsPromise = null;
+    let tmdbRatingsPromiseImdbId = '';
 
     // Base64-encoded TMDB icon
     const tmdbIconBase64 = 'PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiB2aWV3Qm94PSIwIDAgNDg5LjA0IDM1LjQiPjxkZWZzPjxzdHlsZT4uY2xzLTF7ZmlsbDp1cmwoI2xpbmVhci1ncmFkaWVudCk7fTwvc3R5bGU+PGxpbmVhckdyYWRpZW50IGlkPSJsaW5lYXItZ3JhZGllbnQiIHkxPSIxNy43IiB4Mj0iNDg5LjA0IiB5Mj0iMTcuNyIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iIzkwY2VhMSIvPjxzdG9wIG9mZnNldD0iMC41NiIgc3RvcC1jb2xvcj0iIzNjYmVjOSIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzAwYjNlNSIvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjx0aXRsZT5Bc3NldCA1PC90aXRsZT48ZyBpZD0iTGF5ZXJfMiIgZGF0YS1uYW1lPSJMYXllciAyIj48ZyBpZD0iTGF5ZXJfMS0yIiBkYXRhLW5hbWU9IkxheWVyIDEiPjxwYXRoIGNsYXNzPSJjbHMtMSIgZD0iTTI5My41LDBoOC45bDguNzUsMjMuMmguMUwzMjAuMTUsMGg4LjM1TDMxMy45LDM1LjRoLTYuMjVabTQ2LjYsMGg3LjhWMzUuNGgtNy44Wm0yMi4yLDBoMjQuMDVWNy4ySDM3MC4xdjYuNmgxNS4zNVYyMUgzNzAuMXY3LjJoMTcuMTV2Ny4ySDM2Mi4zWm01NSwwSDQyOWEzMy41NCwzMy41NCwwLDAsMSw4LjA3LDFBMTguNTUsMTguNTUsMCwwLDEsNDQzLjc1LDRhMTUuMSwxNS4xLDAsMCwxLDQuNTIsNS41M0ExOC41LDE4LjUsMCwwLDEsNDUwLDE3LjhhMTYuOTEsMTYuOTEsMCwwLDEtMS42Myw3LjU4LDE2LjM3LDE2LjM3LDAsMCwxLTQuMzcsNS41LDE5LjUyLDE5LjUyLDAsMCwxLTYuMzUsMy4zN0EyNC41OSwyNC41OSwwLDAsMSw0MzAsMzUuNEg0MTcuMjlabTcuODEsMjguMmg0YTIxLjU3LDIxLjU3LDAsMCwwLDUtLjU1LDEwLjg3LDEwLjg3LDAsMCwwLDQtMS44Myw4LjY5LDguNjksMCwwLDAsMi42Ny0zLjM0LDExLjkyLDExLjkyLDAsMCwwLDEtNS4wOCw5Ljg3LDkuODcsMCwwLDAtMS00LjUyLDksOSwwLDAsMC0yLjYyLTMuMTgsMTEuNjgsMTEuNjgsMCwwLDAtMy44OC0xLjg4LDE3LjQzLDE3LjQzLDAsMCwwLTQuNjctLjYyaC00LjZaTTQ2MS4yNCwwaDEzLjJhMzQuNDIsMzQuNDIsMCwwLDEsNC42My4zMiwxMi45LDEyLjksMCwwLDEsNC4xNywxLjMsNy44OCw3Ljg4LDAsMCwxLDMsMi43M0E4LjM0LDguMzQsMCwwLDEsNDg3LjM5LDlhNy40Miw3LjQyLDAsMCwxLTEuNjcsNSw5LjI4LDkuMjgsMCwwLDEtNC40MywyLjgydi4xYTEwLDEwLDAsMCwxLDMuMTgsMSw4LjM4LDguMzgsMCwwLDEsMi40NSwxLjg1LDcuNzksNy43OSwwLDAsMSwxLjU3LDIuNjIsOS4xNiw5LjE2LDAsMCwxLC41NSwzLjIsOC41Miw4LjUyLDAsMCwxLTEuMiw0LjY4LDkuNDIsOS40MiwwLDAsMS0zLjEsMywxMy4zOCwxMy4zOCwwLDAsMS00LjI3LDEuNjUsMjMuMTEsMjMuMTEsMCwwLDEtNC43My41aC0xNC41Wk00NjksMTQuMTVoNS42NWE4LjE2LDguMTYsMCwwLDAsMS43OC0uMkE0Ljc4LDQuNzgsMCwwLDAsNDc4LDEzLjNhMy4zNCwzLjM0LDAsMCwwLDEuMTMtMS4yLDMuNjMsMy42MywwLDAsMCwuNDItMS44LDMuMjIsMy4yMiwwLDAsMC0uNDctMS44MiwzLjMzLDMuMzMsMCwwLDAtMS4yMy0xLjEzLDUuNzcsNS43NywwLDAsMC0xLjctLjU4LDEwLjc5LDEwLjc5LDAsMCwwLTEuODUtLjE3SDQ2OVptMCwxNC42NWg3YTguOTEsOC45MSwwLDAsMCwxLjgzLS4yLDQuNzgsNC43OCwwLDAsMCwxLjY3LS43LDQsNCwwLDAsMCwxLjIzLTEuMywzLjcxLDMuNzEsMCwwLDAsLjQ3LTIsMy4xMywzLjEzLDAsMCwwLS42Mi0yQTQsNCwwLDAsMCw0NzksMjEuNDUsNy44Myw3LjgzLDAsMCwwLDQ3NywyMC45YTE1LjEyLDE1LjEyLDAsMCwwLTIuMDUtLjE1SDQ2OVptLTI2NSw2LjUzSDI3MWExNy42NiwxNy42NiwwLDAsMCwxNy42Ni0xNy42NmgwQTE3LjY3LDE3LjY3LDAsMCwwLDI3MSwwSDIwNC4wNkExNy42NywxNy42NywwLDAsMCwxODYuNCwxNy42N2gwQTE3LjY2LDE3LjY2LDAsMCwwLDIwNC4wNiwzNS4zM1pNMTAuMSw2LjlIMFYwSDI4VjYuOUgxNy45VjM1LjRIMTAuMVpNMzksMGg3LjhWMTMuMkg2MS45VjBoNy44VjM1LjRINjEuOVYyMC4xSDQ2Ljc1VjM1LjRIMzlaTTgwLjIsMGgyNFY3LjJIODh2Ni42aDE1LjM1VjIxSDg4djcuMmgxNy4xNXY3LjJoLTI1Wm01NSwwSDE0N2w4LjE1LDIzLjFoLjFMMTYzLjQ1LDBIMTc1LjJWMzUuNGgtNy44VjguMjVoLS4xTDE1OCwzNS40aC01Ljk1bC05LTI3LjE1SDE0M1YzNS40aC03LjhaIi8+PC9nPjwvZz48L3N2Zz4=';
@@ -333,6 +337,10 @@
         return `${BACKDROP_CACHE_KEY_PREFIX}${imdbId}`;
     }
 
+    function getRatingsCacheKey(imdbId) {
+        return `${RATINGS_CACHE_KEY_PREFIX}${imdbId}`;
+    }
+
     function loadCachedTMDBLogo(imdbId) {
         if (typeof GM_getValue !== 'function') return null;
 
@@ -460,6 +468,190 @@
         } catch (error) {
             console.warn('Failed to save TMDB cache:', error);
         }
+    }
+
+    function loadCachedTMDBRatings(imdbId) {
+        if (typeof GM_getValue !== 'function') return null;
+
+        try {
+            const raw = GM_getValue(getRatingsCacheKey(imdbId), '');
+            if (!raw) return null;
+
+            const cached = JSON.parse(raw);
+            if (!cached || typeof cached !== 'object') return null;
+
+            const expiresAt = Number(cached.expiresAt || 0);
+            if (!expiresAt || Date.now() > expiresAt) {
+                if (typeof GM_deleteValue === 'function') {
+                    GM_deleteValue(getRatingsCacheKey(imdbId));
+                }
+                return null;
+            }
+
+            if (!cached.ratings || typeof cached.ratings !== 'object') return null;
+            return cached;
+        } catch (error) {
+            console.warn('Failed to load TMDB ratings cache:', error);
+            return null;
+        }
+    }
+
+    function saveCachedTMDBRatings(imdbId, ratings, movieIdValue, isTVShowValue) {
+        if (typeof GM_setValue !== 'function' || !ratings || typeof ratings !== 'object') return;
+
+        try {
+            const expiresAt = Date.now() + (settings.cacheTtlDays * 24 * 60 * 60 * 1000);
+            const payload = {
+                ratings,
+                movieId: movieIdValue || '',
+                isTVShow: isTVShowValue ? 1 : 0,
+                expiresAt
+            };
+            GM_setValue(getRatingsCacheKey(imdbId), JSON.stringify(payload));
+        } catch (error) {
+            console.warn('Failed to save TMDB ratings cache:', error);
+        }
+    }
+
+    function getTMDBMediaType() {
+        return isTVShow === 1 ? 'tv' : 'movie';
+    }
+
+    function createTMDBRatingsPayload(imdbId, result, mediaType) {
+        return {
+            imdbId,
+            tmdbId: result && result.id ? result.id : movieId || '',
+            mediaType,
+            title: result && (result.title || result.name) ? (result.title || result.name) : '',
+            voteAverage: Number(result && result.vote_average) || 0,
+            voteCount: Number(result && result.vote_count) || 0
+        };
+    }
+
+    function publishTMDBRatings(ratings, cacheSource) {
+        if (!ratings || typeof ratings !== 'object') return;
+
+        latestTMDBRatings = ratings;
+        document.dispatchEvent(new CustomEvent('tmdbRatingsReady', {
+            detail: {
+                ...ratings,
+                source: 'ptp-tmdb-trailers',
+                cacheSource
+            }
+        }));
+    }
+
+    function fetchTMDBRatings(imdbId) {
+        if (!settings.apiKey) return Promise.resolve(null);
+
+        if (latestTMDBRatings && latestTMDBRatings.imdbId === imdbId) {
+            return Promise.resolve(latestTMDBRatings);
+        }
+
+        const cached = loadCachedTMDBRatings(imdbId);
+        if (cached) {
+            if (!movieId && cached.movieId) {
+                movieId = cached.movieId;
+            }
+            if (cached.isTVShow !== undefined) {
+                isTVShow = cached.isTVShow ? 1 : 0;
+            }
+            publishTMDBRatings(cached.ratings, 'cache');
+            return Promise.resolve(cached.ratings);
+        }
+
+        if (tmdbRatingsPromise && tmdbRatingsPromiseImdbId === imdbId) {
+            return tmdbRatingsPromise;
+        }
+
+        const searchUrl = `https://api.themoviedb.org/3/find/${imdbId}?api_key=${settings.apiKey}&external_source=imdb_id`;
+        tmdbRatingsPromiseImdbId = imdbId;
+        tmdbRatingsPromise = fetch(searchUrl)
+            .then(response => {
+                if (!response.ok) throw new Error('Failed to fetch TMDB ratings');
+                return response.json();
+            })
+            .then(data => {
+                let match = null;
+                let mediaType = '';
+
+                if (data && data.movie_results && data.movie_results.length > 0) {
+                    match = data.movie_results[0];
+                    mediaType = 'movie';
+                    movieId = match.id || movieId;
+                    isTVShow = 0;
+                } else if (data && data.tv_results && data.tv_results.length > 0) {
+                    match = data.tv_results[0];
+                    mediaType = 'tv';
+                    movieId = match.id || movieId;
+                    isTVShow = 1;
+                } else {
+                    console.warn('No TMDB rating match found for IMDb ID:', imdbId);
+                    return null;
+                }
+
+                const ratings = createTMDBRatingsPayload(imdbId, match, mediaType);
+                saveCachedTMDBRatings(imdbId, ratings, movieId, isTVShow);
+                publishTMDBRatings(ratings, 'api');
+                return ratings;
+            })
+            .catch(error => {
+                console.warn('TMDB ratings lookup failed:', error);
+                return null;
+            })
+            .finally(() => {
+                tmdbRatingsPromise = null;
+                tmdbRatingsPromiseImdbId = '';
+            });
+
+        return tmdbRatingsPromise;
+    }
+
+    function respondWithTMDBRatings(requestId, imdbId, ratings) {
+        document.dispatchEvent(new CustomEvent('tmdbRatingsResponse', {
+            detail: {
+                requestId,
+                imdbId,
+                found: Boolean(ratings),
+                data: ratings,
+                source: 'ptp-tmdb-trailers'
+            }
+        }));
+    }
+
+    function registerTMDBRatingsEventBridge() {
+        document.addEventListener('requestTMDBRatings', (event) => {
+            const detail = event && event.detail ? event.detail : {};
+            const requestId = detail.requestId;
+            const imdbId = detail.imdbId || getImdbIdFromPage();
+
+            if (!imdbId) {
+                respondWithTMDBRatings(requestId, '', null);
+                return;
+            }
+
+            if (latestTMDBRatings && latestTMDBRatings.imdbId === imdbId) {
+                respondWithTMDBRatings(requestId, imdbId, latestTMDBRatings);
+                return;
+            }
+
+            const cached = loadCachedTMDBRatings(imdbId);
+            if (cached && cached.ratings) {
+                if (!movieId && cached.movieId) {
+                    movieId = cached.movieId;
+                }
+                if (cached.isTVShow !== undefined) {
+                    isTVShow = cached.isTVShow ? 1 : 0;
+                }
+                publishTMDBRatings(cached.ratings, 'cache');
+                respondWithTMDBRatings(requestId, imdbId, cached.ratings);
+                return;
+            }
+
+            fetchTMDBRatings(imdbId).then((ratings) => {
+                respondWithTMDBRatings(requestId, imdbId, ratings);
+            });
+        });
     }
 
     function pickBestTMDBLogo(logos) {
@@ -761,7 +953,7 @@
     function fetchAndApplyTMDBLogo(imdbId) {
         if (!settings.replaceSiteLogo || !movieId || !settings.apiKey) return;
 
-        const mediaType = isTVShow === 1 ? 'tv' : 'movie';
+        const mediaType = getTMDBMediaType();
         const logoUrl = `https://api.themoviedb.org/3/${mediaType}/${movieId}/images?api_key=${settings.apiKey}&include_image_language=en,null`;
 
         fetch(logoUrl)
@@ -782,7 +974,7 @@
     function fetchAndApplyTMDBBackdrops(imdbId) {
         if (!settings.replacePageBackground || !movieId || !settings.apiKey) return;
 
-        const mediaType = isTVShow === 1 ? 'tv' : 'movie';
+        const mediaType = getTMDBMediaType();
         const backdropUrl = `https://api.themoviedb.org/3/${mediaType}/${movieId}/images?api_key=${settings.apiKey}&include_image_language=en,null`;
 
         fetch(backdropUrl)
@@ -826,6 +1018,12 @@
         if (cached) {
             movieId = cached.movieId || '';
             isTVShow = cached.isTVShow ? 1 : 0;
+            const cachedRatings = loadCachedTMDBRatings(imdbId);
+            if (cachedRatings && cachedRatings.ratings) {
+                publishTMDBRatings(cachedRatings.ratings, 'cache');
+            } else {
+                fetchTMDBRatings(imdbId);
+            }
             callback(cached.videos || []);
             return;
         }
@@ -839,24 +1037,40 @@
                 return response.json();
             })
             .then(data => {
+                let mediaType = '';
+                let match = null;
+
                 if (data && data.movie_results && data.movie_results.length > 0) {
-                    movieId = data.movie_results[0].id;  // Save movieId for later (movie)
+                    match = data.movie_results[0];
+                    movieId = match.id;  // Save movieId for later (movie)
+                    isTVShow = 0;
+                    mediaType = 'movie';
                     console.warn(`TMDB Movie ID: ${movieId}`);
-                    const videoUrl = `https://api.themoviedb.org/3/movie/${movieId}/videos?api_key=${settings.apiKey}`;
-                    return fetch(videoUrl);
                 } else if (data && data.tv_results && data.tv_results.length > 0) {
-                    movieId = data.tv_results[0].id;  // Save tvId for later (TV show)
-                    console.warn(`TMDB TV Show ID: ${movieId}`);
-                    const videoUrl = `https://api.themoviedb.org/3/tv/${movieId}/videos?api_key=${settings.apiKey}`;
+                    match = data.tv_results[0];
+                    movieId = match.id;  // Save tvId for later (TV show)
                     isTVShow = 1;
-                    return fetch(videoUrl);
+                    mediaType = 'tv';
+                    console.warn(`TMDB TV Show ID: ${movieId}`);
                 } else {
                     console.warn('No TMDB movie or TV show found for the IMDb ID:', imdbId);
-                    return Promise.resolve({ results: [] });
+                    callback([]);
+                    return null;
                 }
+
+                const ratings = createTMDBRatingsPayload(imdbId, match, mediaType);
+                saveCachedTMDBRatings(imdbId, ratings, movieId, isTVShow);
+                publishTMDBRatings(ratings, 'api');
+
+                const videoUrl = `https://api.themoviedb.org/3/${mediaType}/${movieId}/videos?api_key=${settings.apiKey}`;
+                return fetch(videoUrl).then(response => {
+                    if (!response.ok) throw new Error('Failed to fetch TMDB videos');
+                    return response.json();
+                });
             })
-            .then(response => response.json())
             .then(data => {
+                if (!data) return;
+
                 const tmdbVideos = (data.results || [])
                     .map(video => ({
                         title: `${video.type}: ${video.name}`,
@@ -1198,6 +1412,8 @@
     }
 
     function boot() {
+        registerTMDBRatingsEventBridge();
+
         if (initializeWhenReady()) return;
 
         const observer = new MutationObserver(() => {
