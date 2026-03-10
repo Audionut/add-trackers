@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.3.3
+// @version      1.3.4
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -61,6 +61,8 @@ let SHOW_RATINGS_TMDB = false;
 let SHOW_RATINGS_LETTERBOXD = false;
 let SHOW_RATINGS_LETTERBOXD_HISTOGRAM = false;
 let SHOW_RATINGS_LETTERBOXD_WEIGHTED_SCORE = false;
+let DISCARD_HISTOGRAM_EXTREME_BINS = false;
+let SHARED_HISTOGRAM_TILE_HEIGHT = 120;
 let USE_SQUEEZED_RATINGS_TILES = false;
 let SHOW_IMDB_VOTE_HISTOGRAM = false;
 let SHOW_IMDB_WEIGHTED_SCORE = false;
@@ -258,6 +260,8 @@ const saveSettings = () => {
     GM.setValue('SHOW_RATINGS_LETTERBOXD', SHOW_RATINGS_LETTERBOXD);
     GM.setValue('SHOW_RATINGS_LETTERBOXD_HISTOGRAM', SHOW_RATINGS_LETTERBOXD_HISTOGRAM);
     GM.setValue('SHOW_RATINGS_LETTERBOXD_WEIGHTED_SCORE', SHOW_RATINGS_LETTERBOXD_WEIGHTED_SCORE);
+    GM.setValue('DISCARD_HISTOGRAM_EXTREME_BINS', DISCARD_HISTOGRAM_EXTREME_BINS);
+    GM.setValue('SHARED_HISTOGRAM_TILE_HEIGHT', SHARED_HISTOGRAM_TILE_HEIGHT);
     GM.setValue('SHOW_IMDB_VOTE_HISTOGRAM', SHOW_IMDB_VOTE_HISTOGRAM);
     GM.setValue('SHOW_IMDB_WEIGHTED_SCORE', SHOW_IMDB_WEIGHTED_SCORE);
     GM.setValue('SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE', SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE);
@@ -330,6 +334,8 @@ const loadSettings = async () => {
         'SHOW_RATINGS_LETTERBOXD_WEIGHTED_SCORE',
         await GM.getValue('SHOW_RATINGS_LETTERBOXD_HISTOGRAM', false)
     );
+    DISCARD_HISTOGRAM_EXTREME_BINS = await GM.getValue('DISCARD_HISTOGRAM_EXTREME_BINS', false);
+    SHARED_HISTOGRAM_TILE_HEIGHT = await GM.getValue('SHARED_HISTOGRAM_TILE_HEIGHT', 120);
     SHOW_IMDB_VOTE_HISTOGRAM = await GM.getValue('SHOW_IMDB_VOTE_HISTOGRAM', false);
     SHOW_IMDB_WEIGHTED_SCORE = await GM.getValue('SHOW_IMDB_WEIGHTED_SCORE', false);
     SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE = await GM.getValue('SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE', false);
@@ -783,6 +789,26 @@ function showSettingsPanel() {
                             <input type="checkbox" id="show-imdb-vote-histogram" style="margin-right: 8px;">
                             <span>Show IMDb Vote Histogram</span>
                         </label>
+                        <label style="display: block; margin: 0 0 12px 20px;">
+                            <span style="display: block; margin-bottom: 5px;">Shared Histogram Height:</span>
+                            <input type="number" id="shared-histogram-tile-height" min="80" max="320" step="4" style="
+                                width: 100%;
+                                padding: 5px;
+                                background: #444;
+                                color: #fff;
+                                border: 1px solid #666;
+                                border-radius: 3px;
+                            ">
+                            <span style="display: block; margin-top: 5px; font-size: 0.85em; color: #ccc;">Used when IMDb and Letterboxd histograms are shown side by side.</span>
+                        </label>
+
+                        <label style="display: block; margin-bottom: 4px; cursor: pointer; margin-left: 20px;">
+                            <input type="checkbox" id="discard-histogram-extreme-bins" style="margin-right: 8px;">
+                            <span>Smart Trim Histogram Extremes</span>
+                        </label>
+                        <p style="margin: 0 0 12px 26px; font-size: 0.85em; color: #ccc;">
+                            Only removes IMDb 1 and 10 votes, or Letterboxd 0.5 and 5.0 ratings, when the lowest bin has the highest vote count.
+                        </p>
 
                         <details style="margin: 0 0 14px 20px; border: 1px solid #555; border-radius: 6px; background: #383838;">
                             <summary style="cursor: pointer; padding: 10px 12px;">
@@ -1296,6 +1322,8 @@ function loadSettingsIntoForm() {
     document.getElementById('show-ratings-letterboxd-histogram').checked = SHOW_RATINGS_LETTERBOXD_HISTOGRAM;
     document.getElementById('show-ratings-letterboxd-weighted-score').checked = SHOW_RATINGS_LETTERBOXD_WEIGHTED_SCORE;
     document.getElementById('show-imdb-vote-histogram').checked = SHOW_IMDB_VOTE_HISTOGRAM;
+    document.getElementById('discard-histogram-extreme-bins').checked = DISCARD_HISTOGRAM_EXTREME_BINS;
+    document.getElementById('shared-histogram-tile-height').value = SHARED_HISTOGRAM_TILE_HEIGHT;
     document.getElementById('show-imdb-weighted-score').checked = SHOW_IMDB_WEIGHTED_SCORE;
     document.getElementById('imdb-weighted-score-type').value = IMDB_WEIGHTED_SCORE_TYPE;
     document.getElementById('show-imdb-demographic-score-override').checked = SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE;
@@ -1378,6 +1406,8 @@ function saveSettingsFromForm() {
     SHOW_RATINGS_LETTERBOXD_HISTOGRAM = document.getElementById('show-ratings-letterboxd-histogram').checked;
     SHOW_RATINGS_LETTERBOXD_WEIGHTED_SCORE = document.getElementById('show-ratings-letterboxd-weighted-score').checked;
     SHOW_IMDB_VOTE_HISTOGRAM = document.getElementById('show-imdb-vote-histogram').checked;
+    DISCARD_HISTOGRAM_EXTREME_BINS = document.getElementById('discard-histogram-extreme-bins').checked;
+    SHARED_HISTOGRAM_TILE_HEIGHT = parseInt(document.getElementById('shared-histogram-tile-height').value, 10) || 120;
     SHOW_IMDB_WEIGHTED_SCORE = document.getElementById('show-imdb-weighted-score').checked;
     SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE = document.getElementById('show-imdb-demographic-score-override').checked;
     SHOW_IMDB_DEMOGRAPHICS = document.getElementById('show-imdb-demographics').checked;
@@ -1480,6 +1510,8 @@ function handleResetAll() {
         SHOW_RATINGS_LETTERBOXD = false;
         SHOW_RATINGS_LETTERBOXD_HISTOGRAM = false;
         SHOW_RATINGS_LETTERBOXD_WEIGHTED_SCORE = false;
+        DISCARD_HISTOGRAM_EXTREME_BINS = false;
+        SHARED_HISTOGRAM_TILE_HEIGHT = 120;
         SHOW_IMDB_VOTE_HISTOGRAM = false;
         SHOW_IMDB_WEIGHTED_SCORE = false;
         SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE = false;
@@ -1636,6 +1668,26 @@ function ensureRatingsStyles() {
         .imdb-ratings-shell {
             display: grid;
             gap: 12px;
+        }
+
+        .imdb-ratings-header-controls {
+            margin-left: auto;
+            display: inline-flex;
+            align-items: center;
+            gap: 18px;
+            flex-wrap: wrap;
+        }
+
+        .imdb-ratings-header-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .imdb-ratings-header-toggle input {
+            margin: 0;
         }
 
         .imdb-ratings-consensus,
@@ -1825,17 +1877,33 @@ function ensureRatingsStyles() {
             align-items: start;
         }
 
+        .imdb-ratings-section-letterboxd-histogram {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .imdb-vote-histogram,
+        .imdb-letterboxd-histogram {
+            display: grid;
+            gap: 5px;
+            margin-top: 10px;
+        }
+
         .imdb-histogram-row {
             display: grid;
-            grid-template-columns: 22px minmax(0, 1fr) 78px;
+            grid-template-columns: 28px minmax(0, 1fr) 78px;
             gap: 8px;
             align-items: center;
-            margin-top: 5px;
             font-size: 12px;
         }
 
+        .imdb-letterboxd-histogram .imdb-histogram-row {
+            grid-template-columns: 34px minmax(0, 1fr) 78px;
+        }
+
         .imdb-histogram-track {
-            height: 9px;
+            height: 10px;
             background: rgba(255, 255, 255, 0.08);
             border-radius: 999px;
             overflow: hidden;
@@ -1846,62 +1914,30 @@ function ensureRatingsStyles() {
             background: linear-gradient(90deg, ${IMDB_ACCENT_COLOR}, #c4a33f);
         }
 
-        .imdb-letterboxd-histogram {
-            display: grid;
-            grid-template-columns: repeat(10, minmax(0, 1fr));
-            gap: 6px;
-            align-items: end;
-            height: 88px;
-            margin-top: 10px;
+        .imdb-ratings-section-imdb-histogram .imdb-vote-histogram {
+            height: 170px;
+            min-height: 170px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
         }
 
-        .imdb-letterboxd-bar {
-            position: relative;
-            display: grid;
-            grid-template-rows: minmax(0, 1fr) auto;
-            gap: 6px;
-            align-items: end;
-            height: 100%;
-            min-width: 0;
+        .imdb-ratings-section-imdb-histogram .imdb-histogram-row {
+            flex: 1 1 0;
+            min-height: 0;
         }
 
-        .imdb-letterboxd-bar-fill {
-            width: 100%;
-            min-height: 4px;
-            border-radius: 6px 6px 0 0;
-            background: linear-gradient(180deg, ${IMDB_ACCENT_COLOR}, #c4a33f);
+        .imdb-ratings-section-letterboxd-histogram .imdb-letterboxd-histogram {
+            flex: 1 1 auto;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
         }
 
-        .imdb-letterboxd-bar-label {
-            font-size: 10px;
-            line-height: 1.2;
-            text-align: center;
-            color: #a7a7a7;
-            white-space: nowrap;
-        }
-
-        .imdb-letterboxd-bar::after {
-            content: attr(data-count);
-            position: absolute;
-            left: 50%;
-            bottom: calc(100% + 8px);
-            transform: translateX(-50%);
-            padding: 4px 6px;
-            border-radius: 4px;
-            background: rgba(0, 0, 0, 0.9);
-            color: #fff;
-            font-size: 11px;
-            line-height: 1.2;
-            white-space: nowrap;
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.12s ease;
-            z-index: 3;
-        }
-
-        .imdb-letterboxd-bar:hover::after,
-        .imdb-letterboxd-bar:focus-visible::after {
-            opacity: 1;
+        .imdb-ratings-section-letterboxd-histogram .imdb-histogram-row {
+            flex: 1 1 0;
+            min-height: 0;
         }
 
         .imdb-chip-list {
@@ -2096,6 +2132,80 @@ function getOrderedHistogramValues(histogramValues) {
         .filter((item) => Number.isFinite(item?.rating) && Number.isFinite(item?.voteCount) && item.voteCount > 0)
         .slice()
         .sort((a, b) => a.rating - b.rating);
+}
+
+function shouldDiscardHistogramBin(sourceType, rating) {
+    if (!Number.isFinite(rating)) {
+        return false;
+    }
+
+    if (sourceType === 'imdb') {
+        return rating === 1 || rating === 10;
+    }
+
+    if (sourceType === 'letterboxd') {
+        return rating === 0.5 || rating === 5;
+    }
+
+    return false;
+}
+
+function isHistogramExtremeTrimActive(histogramValues, sourceType) {
+    if (!DISCARD_HISTOGRAM_EXTREME_BINS || !sourceType) {
+        return false;
+    }
+
+    const ordered = getOrderedHistogramValues(histogramValues);
+    if (!ordered.length) {
+        return false;
+    }
+
+    const lowestExtremeRating = sourceType === 'imdb'
+        ? 1
+        : (sourceType === 'letterboxd' ? 0.5 : null);
+    if (!Number.isFinite(lowestExtremeRating)) {
+        return false;
+    }
+
+    const lowestExtremeBin = ordered.find((item) => item.rating === lowestExtremeRating);
+    if (!lowestExtremeBin || lowestExtremeBin.voteCount <= 0) {
+        return false;
+    }
+
+    const highestVoteCount = ordered.reduce((max, item) => Math.max(max, item.voteCount), 0);
+    return lowestExtremeBin.voteCount === highestVoteCount;
+}
+
+function getAdjustedHistogramValues(histogramValues, sourceType = null) {
+    const ordered = getOrderedHistogramValues(histogramValues);
+    if (!isHistogramExtremeTrimActive(ordered, sourceType)) {
+        return ordered;
+    }
+
+    return ordered.filter((item) => !shouldDiscardHistogramBin(sourceType, item.rating));
+}
+
+function getHistogramVoteCount(histogramValues, sourceType = null) {
+    return getAdjustedHistogramValues(histogramValues, sourceType)
+        .reduce((total, item) => total + item.voteCount, 0);
+}
+
+function getHistogramMeanSummary(histogramValues, sourceType = null, displayScoreMultiplier = 1) {
+    const adjustedValues = getAdjustedHistogramValues(histogramValues, sourceType);
+    const totalVotes = adjustedValues.reduce((total, item) => total + item.voteCount, 0);
+    if (!(totalVotes > 0)) {
+        return null;
+    }
+
+    const score = calculateHistogramMean(adjustedValues);
+    if (!Number.isFinite(score)) {
+        return null;
+    }
+
+    return {
+        score: score * displayScoreMultiplier,
+        votes: totalVotes
+    };
 }
 
 function calculateHistogramMean(histogramValues) {
@@ -2381,50 +2491,59 @@ function getSortedDemographics(entries, overallVoteCount) {
         });
 }
 
-function buildHistogramHtml(histogramValues, isLoading = false) {
+function buildHistogramHtml(histogramValues, isLoading = false, sourceType = null) {
     if (isLoading) {
         return '<div class="imdb-muted">Loading histogram...</div>';
     }
-    if (!Array.isArray(histogramValues) || histogramValues.length === 0) {
+    const adjustedValues = getAdjustedHistogramValues(histogramValues, sourceType);
+    if (!adjustedValues.length) {
         return '<div class="imdb-muted">No histogram data.</div>';
     }
 
-    const maxVoteCount = histogramValues.reduce((max, item) => Math.max(max, item.voteCount || 0), 0);
-    const ordered = histogramValues.slice().sort((a, b) => b.rating - a.rating);
+    const maxVoteCount = adjustedValues.reduce((max, item) => Math.max(max, item.voteCount || 0), 0);
+    const ordered = adjustedValues.slice().sort((a, b) => b.rating - a.rating);
 
-    return ordered.map((item) => {
-        const width = maxVoteCount > 0 ? Math.max(2, Math.round((item.voteCount / maxVoteCount) * 100)) : 0;
-        return `
-            <div class="imdb-histogram-row">
-                <strong>${item.rating}</strong>
-                <div class="imdb-histogram-track">
-                    <div class="imdb-histogram-fill" style="width: ${width}%"></div>
-                </div>
-                <span>${formatCount(item.voteCount)}</span>
-            </div>
-        `;
-    }).join('');
+    return `
+        <div class="imdb-vote-histogram">
+            ${ordered.map((item) => {
+                const width = maxVoteCount > 0 ? Math.max(2, Math.round((item.voteCount / maxVoteCount) * 100)) : 0;
+                return `
+                    <div class="imdb-histogram-row">
+                        <strong>${item.rating}</strong>
+                        <div class="imdb-histogram-track">
+                            <div class="imdb-histogram-fill" style="width: ${width}%"></div>
+                        </div>
+                        <span>${formatCount(item.voteCount)}</span>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
 }
 
 function buildLetterboxdHistogramHtml(histogramValues, isLoading = false) {
     if (isLoading) {
         return '<div class="imdb-muted">Loading Letterboxd histogram...</div>';
     }
-    if (!Array.isArray(histogramValues) || histogramValues.length === 0) {
+    const adjustedValues = getAdjustedHistogramValues(histogramValues, 'letterboxd');
+    if (!adjustedValues.length) {
         return '<div class="imdb-muted">No Letterboxd histogram data.</div>';
     }
 
-    const maxVoteCount = histogramValues.reduce((max, item) => Math.max(max, item.voteCount || 0), 0);
-    const ordered = histogramValues.slice().sort((a, b) => a.rating - b.rating);
+    const maxVoteCount = adjustedValues.reduce((max, item) => Math.max(max, item.voteCount || 0), 0);
+    const ordered = adjustedValues.slice().sort((a, b) => b.rating - a.rating);
 
     return `
         <div class="imdb-letterboxd-histogram">
             ${ordered.map((item) => {
-                const height = maxVoteCount > 0 ? Math.max(4, Math.round((item.voteCount / maxVoteCount) * 100)) : 0;
+                const width = maxVoteCount > 0 ? Math.max(2, Math.round((item.voteCount / maxVoteCount) * 100)) : 0;
                 return `
-                    <div class="imdb-letterboxd-bar" title="${formatCount(item.voteCount)} ratings" data-count="${formatCount(item.voteCount)} ratings" tabindex="0">
-                        <div class="imdb-letterboxd-bar-fill" style="height: ${height}%"></div>
-                        <div class="imdb-letterboxd-bar-label">${Number(item.rating).toFixed(1)}</div>
+                    <div class="imdb-histogram-row">
+                        <strong>${Number(item.rating).toFixed(1)}</strong>
+                        <div class="imdb-histogram-track">
+                            <div class="imdb-histogram-fill" style="width: ${width}%"></div>
+                        </div>
+                        <span>${formatCount(item.voteCount)}</span>
                     </div>
                 `;
             }).join('')}
@@ -2864,14 +2983,18 @@ function getAggregateScoreSummary(imdbData, ptpData, supplemental) {
 
     const imdbPending = isPendingValue(imdbData);
     const histogramValues = imdbData?.aggregateRatingsBreakdown?.histogram?.histogramValues || [];
+    const adjustedImdbHistogramValues = getAdjustedHistogramValues(histogramValues, 'imdb');
     const demographicEntries = imdbData?.aggregateRatingsBreakdown?.ratingsSummaryByDemographics || [];
     const imdbScore = imdbData?.ratingsSummary?.aggregateRating;
-    const displayedImdbScore = getDemographicScoreOverrideSummary(demographicEntries)?.score ?? imdbScore;
+    const adjustedImdbSummary = getHistogramMeanSummary(histogramValues, 'imdb');
+    const displayedImdbScore = getDemographicScoreOverrideSummary(demographicEntries)?.score ?? (adjustedImdbSummary?.score ?? imdbScore);
     const configuredDemographicScore = getConfiguredDemographicScoreSummary(demographicEntries);
     const meta = supplemental?.metacritic;
     const rt = supplemental?.rottenTomatoes;
     const tmdb = supplemental?.tmdb;
     const lb = supplemental?.letterboxd;
+    const adjustedLetterboxdHistogramValues = getAdjustedHistogramValues(lb?.histogram || [], 'letterboxd');
+    const adjustedLetterboxdSummary = getHistogramMeanSummary(lb?.histogram || [], 'letterboxd', 2);
     const enabledSources = getEnabledAggregateSources();
     const allSources = [];
     let pending = false;
@@ -2908,13 +3031,13 @@ function getAggregateScoreSummary(imdbData, ptpData, supplemental) {
                     addSource(
                         displayedImdbScore,
                         SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE && configuredDemographicScore ? configuredDemographicScore.label : 'Users',
-                        SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE && configuredDemographicScore ? configuredDemographicScore.votes : imdbData?.ratingsSummary?.voteCount
+                        SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE && configuredDemographicScore ? configuredDemographicScore.votes : (adjustedImdbSummary?.votes ?? imdbData?.ratingsSummary?.voteCount)
                     );
                     return;
                 }
 
                 if (settings.option === 'overall') {
-                    addSource(imdbScore, 'Users', imdbData?.ratingsSummary?.voteCount);
+                    addSource(adjustedImdbSummary?.score ?? imdbScore, 'Users', adjustedImdbSummary?.votes ?? imdbData?.ratingsSummary?.voteCount);
                     return;
                 }
 
@@ -2926,9 +3049,9 @@ function getAggregateScoreSummary(imdbData, ptpData, supplemental) {
                 const weightedType = getAggregateWeightedScoreType(settings.option);
                 if (weightedType) {
                     addSource(
-                        calculateWeightedScoreFromHistogram(histogramValues, weightedType),
+                        calculateWeightedScoreFromHistogram(adjustedImdbHistogramValues, weightedType),
                         IMDB_WEIGHTED_SCORE_TYPE_LABELS[weightedType],
-                        imdbData?.ratingsSummary?.voteCount
+                        adjustedImdbSummary?.votes ?? imdbData?.ratingsSummary?.voteCount
                     );
                 }
                 return;
@@ -2988,17 +3111,21 @@ function getAggregateScoreSummary(imdbData, ptpData, supplemental) {
                 }
 
                 if (settings.option === 'user') {
-                    addSource(Number.isFinite(lb?.user?.score) ? lb.user.score / 10 : null, 'Users', lb?.user?.count);
+                    addSource(
+                        Number.isFinite(adjustedLetterboxdSummary?.score) ? adjustedLetterboxdSummary.score : (Number.isFinite(lb?.user?.score) ? lb.user.score / 10 : null),
+                        'Users',
+                        adjustedLetterboxdSummary?.votes ?? lb?.user?.count
+                    );
                     return;
                 }
 
                 const letterboxdWeightedType = getAggregateWeightedScoreType(settings.option);
                 if (letterboxdWeightedType) {
-                    const weightedScore = calculateWeightedScoreFromHistogram(lb?.histogram || [], letterboxdWeightedType);
+                    const weightedScore = calculateWeightedScoreFromHistogram(adjustedLetterboxdHistogramValues, letterboxdWeightedType);
                     addSource(
                         Number.isFinite(weightedScore) ? weightedScore * 2 : null,
                         IMDB_WEIGHTED_SCORE_TYPE_LABELS[letterboxdWeightedType],
-                        lb?.user?.count
+                        adjustedLetterboxdSummary?.votes ?? lb?.user?.count
                     );
                 }
                 return;
@@ -3139,6 +3266,7 @@ function buildTopCardsHtml(imdbId, imdbData, ptpData, supplemental) {
     const imdbScore = imdbData?.ratingsSummary?.aggregateRating;
     const imdbVotes = imdbData?.ratingsSummary?.voteCount;
     const histogramValues = imdbData?.aggregateRatingsBreakdown?.histogram?.histogramValues || [];
+    const adjustedImdbHistogramValues = getAdjustedHistogramValues(histogramValues, 'imdb');
     const demographicEntries = imdbData?.aggregateRatingsBreakdown?.ratingsSummaryByDemographics || [];
     const topRanking = imdbData?.ratingsSummary?.topRanking;
     const meterRank = imdbData?.meterRank;
@@ -3152,17 +3280,20 @@ function buildTopCardsHtml(imdbId, imdbData, ptpData, supplemental) {
     const rt = supplemental?.rottenTomatoes;
     const tmdb = supplemental?.tmdb;
     const lb = supplemental?.letterboxd;
+    const adjustedLetterboxdHistogramValues = getAdjustedHistogramValues(lb?.histogram || [], 'letterboxd');
     const imdbPending = isPendingValue(imdbData);
     const metaPending = SHOW_RATINGS_METACRITIC && isPendingValue(meta);
-    const weightedScore = getWeightedScoreSummary(histogramValues);
-    const letterboxdWeightedScore = getWeightedScoreSummary(lb?.histogram || [], {
+    const weightedScore = getWeightedScoreSummary(adjustedImdbHistogramValues);
+    const letterboxdWeightedScore = getWeightedScoreSummary(adjustedLetterboxdHistogramValues, {
         enabled: SHOW_RATINGS_LETTERBOXD_WEIGHTED_SCORE,
         sourceLabel: 'Letterboxd',
         displayScoreMultiplier: 2
     });
     const demographicScoreOverride = getDemographicScoreOverrideSummary(demographicEntries);
-    const primaryImdbScore = demographicScoreOverride?.score ?? imdbScore;
-    const primaryImdbVotes = demographicScoreOverride?.votes ?? imdbVotes;
+    const adjustedImdbSummary = getHistogramMeanSummary(histogramValues, 'imdb');
+    const adjustedLetterboxdSummary = getHistogramMeanSummary(lb?.histogram || [], 'letterboxd', 2);
+    const primaryImdbScore = demographicScoreOverride?.score ?? (adjustedImdbSummary?.score ?? imdbScore);
+    const primaryImdbVotes = demographicScoreOverride?.votes ?? (adjustedImdbSummary?.votes ?? imdbVotes);
     const primaryImdbMetaLabel = demographicScoreOverride?.label || 'IMDb Users';
     const rtPending = SHOW_RATINGS_ROTTEN_TOMATOES && isPendingValue(rt);
     const tmdbPending = SHOW_RATINGS_TMDB && isPendingValue(tmdb);
@@ -3186,6 +3317,14 @@ function buildTopCardsHtml(imdbId, imdbData, ptpData, supplemental) {
     const aggregateUsesVoteCountWeighting = !!aggregateScore?.usesVoteCountWeighting;
     const aggregateProtectsRottenTomatoes = !!aggregateScore?.protectedSources?.length;
     const aggregateDiscardSummary = getAggregateDiscardSummaryText(aggregateScore);
+    const showLetterboxdHistogramInDetailGrid = SHOW_IMDB_VOTE_HISTOGRAM && SHOW_RATINGS_LETTERBOXD_HISTOGRAM;
+    const imdbHistogramTrimActive = isHistogramExtremeTrimActive(histogramValues, 'imdb');
+    const letterboxdHistogramTrimActive = isHistogramExtremeTrimActive(lb?.histogram || [], 'letterboxd');
+    const imdbPrimaryScoreTooltip = demographicScoreOverride
+        ? `Replacing IMDb Users with ${demographicScoreOverride.label}.`
+        : (imdbHistogramTrimActive
+            ? 'IMDb Users score recalculated from the histogram with 1 and 10 votes removed.'
+            : 'IMDb Users aggregate rating.');
     const cards = [];
 
     if (hasIMDbUsersCardData(primaryImdbScore, primaryImdbVotes, topRanking, weightedScore, imdbPending)) {
@@ -3193,11 +3332,11 @@ function buildTopCardsHtml(imdbId, imdbData, ptpData, supplemental) {
             <div class="imdb-ratings-card">
                 <h4><a href="${imdbTitleUrl}" target="_blank" rel="noreferrer" style="color: inherit;">IMDb Users</a>${buildLegacyImdbAnchor(imdbId, 'IMDb Users')}</h4>
                 <div class="imdb-ratings-value imdb-weighted-score-inline">
-                    <span class="imdb-primary-score" title="${demographicScoreOverride ? `Replacing IMDb Users with ${demographicScoreOverride.label}.` : 'IMDb Users aggregate rating.'}">${imdbPending ? '...' : (Number.isFinite(primaryImdbScore) ? primaryImdbScore.toFixed(1) : 'None')}</span>
+                    <span class="imdb-primary-score" title="${imdbPrimaryScoreTooltip}">${imdbPending ? '...' : (Number.isFinite(primaryImdbScore) ? primaryImdbScore.toFixed(1) : 'None')}</span>
                     ${imdbPending || !weightedScore ? '' : `<span class="imdb-weighted-score-badge" title="${weightedScore.tooltip}">${weightedScore.score.toFixed(1)}</span>`}
                 </div>
                 <div class="imdb-ratings-meta">
-                    ${imdbPending ? 'Loading IMDb data...' : `${demographicScoreOverride || weightedScore ? `<div class="imdb-ratings-meta-top"><span>${demographicScoreOverride ? primaryImdbMetaLabel : '&nbsp;'}</span>${weightedScore ? '<span class="imdb-weighted-meta-label">Weighted</span>' : ''}</div>` : ''}<a href="${imdbRatingsUrl}" target="_blank" rel="noreferrer" style="color: inherit;">${formatCount(primaryImdbVotes)} votes</a><br>
+                    ${imdbPending ? 'Loading IMDb data...' : `${demographicScoreOverride || weightedScore || imdbHistogramTrimActive ? `<div class="imdb-ratings-meta-top"><span>${demographicScoreOverride ? primaryImdbMetaLabel : (imdbHistogramTrimActive ? 'Trimmed extremes' : '&nbsp;')}</span>${weightedScore ? '<span class="imdb-weighted-meta-label">Weighted</span>' : ''}</div>` : ''}<a href="${imdbRatingsUrl}" target="_blank" rel="noreferrer" style="color: inherit;">${formatCount(primaryImdbVotes)} votes</a><br>
                     ${topRanking?.rank ? `Top Rated rank #${formatCount(topRanking.rank)}` : 'No top ranking'}`}
                 </div>
             </div>
@@ -3309,13 +3448,13 @@ function buildTopCardsHtml(imdbId, imdbData, ptpData, supplemental) {
             <div class="imdb-ratings-card">
                 <h4>${lb?.url ? `<a href="${lb.url}" target="_blank" rel="noreferrer" style="color: inherit;">Letterboxd</a>` : 'Letterboxd'}</h4>
                 <div class="imdb-ratings-value${SHOW_RATINGS_LETTERBOXD_WEIGHTED_SCORE ? ' imdb-weighted-score-inline' : ''}">
-                    <span class="${SHOW_RATINGS_LETTERBOXD_WEIGHTED_SCORE ? 'imdb-primary-score' : ''}">${lbPending ? '...' : (Number.isFinite(lb?.user?.score) ? (lb.user.score / 10).toFixed(1) : 'None')}</span>
+                    <span class="${SHOW_RATINGS_LETTERBOXD_WEIGHTED_SCORE ? 'imdb-primary-score' : ''}" title="${letterboxdHistogramTrimActive ? 'Letterboxd score recalculated from the histogram with 0.5 and 5.0 ratings removed.' : 'Letterboxd user rating.'}">${lbPending ? '...' : (Number.isFinite(adjustedLetterboxdSummary?.score) ? adjustedLetterboxdSummary.score.toFixed(1) : (Number.isFinite(lb?.user?.score) ? (lb.user.score / 10).toFixed(1) : 'None'))}</span>
                     ${lbPending || !letterboxdWeightedScore ? '' : `<span class="imdb-weighted-score-badge" title="${letterboxdWeightedScore.tooltip}">${letterboxdWeightedScore.displayScore.toFixed(1)}</span>`}
                 </div>
-                ${SHOW_RATINGS_LETTERBOXD_HISTOGRAM
+                ${SHOW_RATINGS_LETTERBOXD_HISTOGRAM && !showLetterboxdHistogramInDetailGrid
                     ? buildLetterboxdHistogramHtml(lb?.histogram || [], lbPending)
                     : `<div class="imdb-ratings-meta">
-                        ${lbPending ? 'Loading Letterboxd...' : `Ratings: ${Number.isFinite(lb?.user?.count) ? `<a href="${lb.user.url}" target="_blank" rel="noreferrer">${formatCount(lb.user.count)}</a>` : 'Unknown'}<br>
+                        ${lbPending ? 'Loading Letterboxd...' : `${showLetterboxdHistogramInDetailGrid ? 'Histogram shown below<br>' : ''}${letterboxdHistogramTrimActive ? 'Trimmed extremes<br>' : ''}Ratings: ${Number.isFinite(adjustedLetterboxdSummary?.votes) ? `<a href="${lb.user.url}" target="_blank" rel="noreferrer">${formatCount(adjustedLetterboxdSummary.votes)}</a>` : (Number.isFinite(lb?.user?.count) ? `<a href="${lb.user.url}" target="_blank" rel="noreferrer">${formatCount(lb.user.count)}</a>` : 'Unknown')}<br>
                         Likes: ${Number.isFinite(lb?.likes) ? `<a href="${lb.likesUrl}" target="_blank" rel="noreferrer">${formatCount(lb.likes)}</a>` : 'Unknown'} | Fans: ${Number.isFinite(lb?.fans) ? `<a href="${lb.fansUrl}" target="_blank" rel="noreferrer">${formatCount(lb.fans)}</a>` : 'Unknown'}`}
                     </div>`
                 }
@@ -3366,13 +3505,25 @@ function buildBoxHtml(imdbId, imdbData, ptpData, supplemental) {
     const demographics = imdbData?.aggregateRatingsBreakdown?.ratingsSummaryByDemographics || [];
     const overallVoteCount = imdbData?.ratingsSummary?.voteCount || 0;
     const imdbPending = isPendingValue(imdbData);
+    const lb = supplemental?.letterboxd;
+    const lbPending = SHOW_RATINGS_LETTERBOXD && isPendingValue(lb);
+    const showLetterboxdHistogramInDetailGrid = SHOW_IMDB_VOTE_HISTOGRAM && SHOW_RATINGS_LETTERBOXD_HISTOGRAM;
     const detailSections = [];
 
     if (SHOW_IMDB_VOTE_HISTOGRAM) {
         detailSections.push(`
-            <div class="imdb-ratings-section">
+            <div class="imdb-ratings-section imdb-ratings-section-imdb-histogram">
                 <h4>IMDb Vote Histogram</h4>
-                ${buildHistogramHtml(histogramValues, imdbPending)}
+                ${buildHistogramHtml(histogramValues, imdbPending, 'imdb')}
+            </div>
+        `);
+    }
+
+    if (showLetterboxdHistogramInDetailGrid) {
+        detailSections.push(`
+            <div class="imdb-ratings-section imdb-ratings-section-letterboxd-histogram">
+                <h4>Letterboxd Histogram</h4>
+                ${buildLetterboxdHistogramHtml(lb?.histogram || [], lbPending)}
             </div>
         `);
     }
@@ -3515,9 +3666,55 @@ function setupAdaptiveTopCardsLayout(container) {
     }
 }
 
+function setupHistogramComparisonLayout(container) {
+    if (!container) {
+        return;
+    }
+
+    if (container._imdbHistogramComparisonResizeObserver) {
+        container._imdbHistogramComparisonResizeObserver.disconnect();
+        container._imdbHistogramComparisonResizeObserver = null;
+    }
+
+    const imdbSection = container.querySelector('.imdb-ratings-section-imdb-histogram');
+    const letterboxdSection = container.querySelector('.imdb-ratings-section-letterboxd-histogram');
+    if (!imdbSection || !letterboxdSection) {
+        return;
+    }
+
+    const apply = () => {
+        const imdbSectionRect = imdbSection.getBoundingClientRect();
+        const letterboxdSectionRect = letterboxdSection.getBoundingClientRect();
+        const sameRow = Math.abs(imdbSectionRect.top - letterboxdSectionRect.top) < 4;
+
+        if (!sameRow) {
+            letterboxdSection.style.removeProperty('min-height');
+            letterboxdSection.style.removeProperty('height');
+            letterboxdSection.style.removeProperty('overflow');
+            return;
+        }
+
+        const targetHeight = Math.max(80, SHARED_HISTOGRAM_TILE_HEIGHT);
+        letterboxdSection.style.height = `${targetHeight}px`;
+        letterboxdSection.style.overflow = 'hidden';
+    };
+
+    apply();
+
+    if (typeof ResizeObserver === 'function') {
+        const resizeObserver = new ResizeObserver(() => {
+            apply();
+        });
+        resizeObserver.observe(imdbSection);
+        resizeObserver.observe(letterboxdSection);
+        container._imdbHistogramComparisonResizeObserver = resizeObserver;
+    }
+}
+
 function renderRatingsBox(container, imdbId, imdbData, ptpData, supplemental, originalControls) {
     container.innerHTML = buildBoxHtml(imdbId, imdbData, ptpData, supplemental);
     setupAdaptiveTopCardsLayout(container);
+    setupHistogramComparisonLayout(container);
     hydratePtpVoteControls(container, originalControls);
 }
 
@@ -3536,13 +3733,60 @@ function replaceRatingsBox(oldTable, newTable) {
 function makeRatingsButton(text, onClick) {
     const button = document.createElement('a');
     button.href = '#';
-    button.style.float = 'right';
+    button.style.display = 'inline-flex';
+    button.style.alignItems = 'center';
     button.textContent = text;
     button.addEventListener('click', (event) => {
         event.preventDefault();
         onClick();
     });
     return button;
+}
+
+function ensureRatingsHeaderControls(mountedBox, imdbId, onRerender) {
+    const panel = mountedBox?.closest('.panel')
+        || mountedBox?.parentElement?.closest('.panel')
+        || mountedBox?.parentElement?.parentElement;
+    const heading = panel?.querySelector(':scope > .panel__heading') || panel?.querySelector('.panel__heading');
+    if (!panel || !heading) {
+        return;
+    }
+
+    heading.style.display = 'flex';
+    heading.style.alignItems = 'center';
+    heading.style.justifyContent = 'space-between';
+    heading.style.gap = '12px';
+
+    const title = heading.querySelector('.panel__heading__title');
+    if (title) {
+        title.style.flex = '1 1 auto';
+        title.style.minWidth = '0';
+    }
+
+    const existingRefreshButton = heading.querySelector('[data-imdb-graphql-ratings-refresh="1"]');
+    if (existingRefreshButton) {
+        existingRefreshButton.remove();
+    }
+
+    let controls = heading.querySelector('[data-imdb-ratings-header-controls="1"]');
+    if (!controls) {
+        controls = document.createElement('div');
+        controls.className = 'imdb-ratings-header-controls';
+        controls.dataset.imdbRatingsHeaderControls = '1';
+        heading.appendChild(controls);
+    }
+
+    controls.style.marginLeft = 'auto';
+    controls.style.flex = '0 0 auto';
+
+    let refreshButton = controls.querySelector('[data-imdb-graphql-ratings-refresh="1"]');
+    if (!refreshButton) {
+        refreshButton = makeRatingsButton('Refresh', () => {
+            clearRatingsCaches(imdbId);
+        });
+        refreshButton.dataset.imdbGraphqlRatingsRefresh = '1';
+        controls.appendChild(refreshButton);
+    }
 }
 
 function reinitializeVoter(personalRating) {
@@ -3573,9 +3817,6 @@ function buildRequestRatingsPanel(imdbId, imdbData, ptpData, supplemental, origi
     title.textContent = 'Ratings';
 
     heading.appendChild(title);
-    heading.appendChild(makeRatingsButton('Refresh', () => {
-        clearRatingsCaches(imdbId);
-    }));
 
     const body = document.createElement('div');
     body.className = 'panel__body';
@@ -3602,14 +3843,6 @@ function mountRatingsPanel(imdbId, ptpData, supplemental, originalControls) {
         replaceRatingsBox(ratingsTable, newRatingsBox);
         mountedBox = newRatingsBox;
         reinitializeVoter(ptpData.personalRating);
-
-        if (header && header.parentElement && !header.parentElement.querySelector('[data-imdb-graphql-ratings-refresh="1"]')) {
-            const refreshButton = makeRatingsButton('Refresh', () => {
-                clearRatingsCaches(imdbId);
-            });
-            refreshButton.dataset.imdbGraphqlRatingsRefresh = '1';
-            header.parentElement.appendChild(refreshButton);
-        }
     } else {
         const requestTable = document.getElementById('request-table');
         if (requestTable && requestTable.parentNode) {
@@ -5979,6 +6212,10 @@ function hasRequiredRatingsData(titleData) {
     const displayAwardsData = (titleData) => {
 
         const imdbId = titleData.id;
+        const existingAwardsPanel = document.getElementById('imdb-award');
+        if (existingAwardsPanel) {
+            existingAwardsPanel.remove();
+        }
 
         const wins = titleData.prestigiousAwardSummary?.wins ?? 0;
         const nominations = titleData.prestigiousAwardSummary?.nominations ?? 0;
@@ -6538,6 +6775,13 @@ function hasRequiredRatingsData(titleData) {
 
         // Return true if any award data exists
         return (wins > 0 || nominations > 0 || totalWins > 0 || totalNominations > 0);
+    };
+
+    const removeAwardsPanel = () => {
+        const existingAwardsPanel = document.getElementById('imdb-award');
+        if (existingAwardsPanel) {
+            existingAwardsPanel.remove();
+        }
     };
 
     const displayCastPhotos = (titleData, idToNameMap, namePhotos) => {
@@ -7104,6 +7348,10 @@ function hasRequiredRatingsData(titleData) {
         reinitializeVoter(ptpRatingsData.personalRating);
     };
 
+    if (ENABLE_IMDB_RATINGS_PANEL && mountedRatingsBox) {
+        ensureRatingsHeaderControls(mountedRatingsBox, imdbId, rerenderRatingsPanel);
+    }
+
     if (ENABLE_IMDB_RATINGS_PANEL && shouldFetchRottenTomatoesSupplementalData()) {
         fetchRottenTomatoesWithCache(imdbId)
             .then((data) => {
@@ -7215,7 +7463,8 @@ function hasRequiredRatingsData(titleData) {
                 if (hasAwardsData) {
                     displayAwardsData(titleData);
                 } else {
-                    console.warn("No awards data found - panel not displayed");
+                    removeAwardsPanel();
+                    console.warn("No awards data found - awards panel removed");
                 }
             }
 
