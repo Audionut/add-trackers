@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.3.4
+// @version      1.3.5
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -39,6 +39,7 @@ let SHOW_KEYWORDS = true;
 let KEYWORDS_PANEL_OPEN = false;
 let SHOW_PARENTS_GUIDE = true;
 let ENABLE_IMDB_RATINGS_PANEL = false;
+let ENABLE_IMDB_RATINGS_EXPORT = false;
 let SHOW_RATINGS_METACRITIC = true;
 let SHOW_RATINGS_METACRITIC_USER_SCORE = true;
 let SHOW_RATINGS_METACRITIC_BREAKDOWN = true;
@@ -120,6 +121,13 @@ const PTP_ID = (() => {
     const parsed = parseInt(candidate, 10);
     return Number.isFinite(parsed) ? parsed : null;
 })();
+const RATINGS_EXPORT_SOURCE = 'ptp-imdb-combined';
+const RATINGS_EXPORT_UPDATE_EVENT = 'imdbRatingsDataUpdate';
+const RATINGS_EXPORT_REQUEST_EVENT = 'requestIMDbRatingsData';
+const RATINGS_EXPORT_RESPONSE_EVENT = 'imdbRatingsDataResponse';
+const RATINGS_PROVIDER_KEYS = ['ptp', 'imdb', 'metacritic', 'rottenTomatoes', 'tmdb', 'letterboxd'];
+let latestRatingsExportSnapshot = null;
+let CURRENT_IMDB_ID = null;
 
 const DEFAULT_IMDB_DEMOGRAPHIC_ROW_TYPES_ENABLED = {
     ageOnly: true,
@@ -245,6 +253,7 @@ const saveSettings = () => {
     GM.setValue('KEYWORDS_PANEL_OPEN', KEYWORDS_PANEL_OPEN);
     GM.setValue('SHOW_PARENTS_GUIDE', SHOW_PARENTS_GUIDE);
     GM.setValue('ENABLE_IMDB_RATINGS_PANEL', ENABLE_IMDB_RATINGS_PANEL);
+    GM.setValue('ENABLE_IMDB_RATINGS_EXPORT', ENABLE_IMDB_RATINGS_EXPORT);
     GM.setValue('SHOW_RATINGS_METACRITIC', SHOW_RATINGS_METACRITIC);
     GM.setValue('SHOW_RATINGS_METACRITIC_USER_SCORE', SHOW_RATINGS_METACRITIC_USER_SCORE);
     GM.setValue('SHOW_RATINGS_METACRITIC_BREAKDOWN', SHOW_RATINGS_METACRITIC_BREAKDOWN);
@@ -311,6 +320,7 @@ const loadSettings = async () => {
     KEYWORDS_PANEL_OPEN = await GM.getValue('KEYWORDS_PANEL_OPEN', false);
     SHOW_PARENTS_GUIDE = await GM.getValue('SHOW_PARENTS_GUIDE', true);
     ENABLE_IMDB_RATINGS_PANEL = await GM.getValue('ENABLE_IMDB_RATINGS_PANEL', false);
+    ENABLE_IMDB_RATINGS_EXPORT = await GM.getValue('ENABLE_IMDB_RATINGS_EXPORT', false);
     SHOW_RATINGS_METACRITIC = await GM.getValue('SHOW_RATINGS_METACRITIC', true);
     SHOW_RATINGS_METACRITIC_USER_SCORE = await GM.getValue('SHOW_RATINGS_METACRITIC_USER_SCORE', true);
     SHOW_RATINGS_METACRITIC_BREAKDOWN = await GM.getValue('SHOW_RATINGS_METACRITIC_BREAKDOWN', true);
@@ -661,6 +671,11 @@ function showSettingsPanel() {
                         <label style="display: block; margin-bottom: 12px; cursor: pointer;">
                             <input type="checkbox" id="enable-imdb-ratings-panel" style="margin-right: 8px;">
                             <span>Enable IMDb Ratings + Ratings Panel Modifications</span>
+                        </label>
+
+                        <label style="display: block; margin-bottom: 12px; cursor: pointer;">
+                            <input type="checkbox" id="enable-imdb-ratings-export" style="margin-right: 8px;">
+                            <span>Enable ratings export for other scripts</span>
                         </label>
 
                         <label style="display: block; margin-bottom: 10px; cursor: pointer;">
@@ -1246,33 +1261,72 @@ function aggregateNeedsLetterboxdHistogram() {
     return getEnabledAggregateSources().some(([sourceKey, settings]) => sourceKey === 'letterboxd' && isAggregateWeightedOption(settings.option));
 }
 
+function shouldExportRatingsData() {
+    return !!ENABLE_IMDB_RATINGS_EXPORT;
+}
+
+function shouldRunRatingsDataPipeline() {
+    return ENABLE_IMDB_RATINGS_PANEL || shouldExportRatingsData();
+}
+
+function shouldFetchAllRatingsProviders() {
+    return shouldExportRatingsData();
+}
+
+function shouldIncludeCountryRatingsData() {
+    return SHOW_IMDB_COUNTRY_AVERAGES || shouldFetchAllRatingsProviders();
+}
+
 function shouldFetchRottenTomatoesSupplementalData() {
-    return SHOW_RATINGS_ROTTEN_TOMATOES || aggregateNeedsRottenTomatoesData();
+    return shouldFetchAllRatingsProviders() || SHOW_RATINGS_ROTTEN_TOMATOES || aggregateNeedsRottenTomatoesData();
 }
 
 function shouldFetchTMDbSupplementalData() {
-    return SHOW_RATINGS_TMDB || aggregateNeedsTMDbData();
+    return shouldFetchAllRatingsProviders() || SHOW_RATINGS_TMDB || aggregateNeedsTMDbData();
 }
 
 function shouldFetchLetterboxdSupplementalData() {
-    return SHOW_RATINGS_LETTERBOXD || aggregateNeedsLetterboxdData();
+    return shouldFetchAllRatingsProviders() || SHOW_RATINGS_LETTERBOXD || aggregateNeedsLetterboxdData();
 }
 
 function shouldIncludeHistogramData() {
-    return SHOW_IMDB_VOTE_HISTOGRAM || SHOW_IMDB_WEIGHTED_SCORE || aggregateNeedsImdbHistogram();
+    return shouldFetchAllRatingsProviders() || SHOW_IMDB_VOTE_HISTOGRAM || SHOW_IMDB_WEIGHTED_SCORE || aggregateNeedsImdbHistogram();
 }
 
 function shouldIncludeLetterboxdHistogramData() {
-    return SHOW_RATINGS_LETTERBOXD_HISTOGRAM || SHOW_RATINGS_LETTERBOXD_WEIGHTED_SCORE || aggregateNeedsLetterboxdHistogram();
+    return shouldFetchAllRatingsProviders() || SHOW_RATINGS_LETTERBOXD_HISTOGRAM || SHOW_RATINGS_LETTERBOXD_WEIGHTED_SCORE || aggregateNeedsLetterboxdHistogram();
 }
 
 function shouldFetchMetacriticSupplementalData() {
-    return (SHOW_RATINGS_METACRITIC && (SHOW_RATINGS_METACRITIC_USER_SCORE || SHOW_RATINGS_METACRITIC_BREAKDOWN))
+    return shouldFetchAllRatingsProviders()
+        || (SHOW_RATINGS_METACRITIC && (SHOW_RATINGS_METACRITIC_USER_SCORE || SHOW_RATINGS_METACRITIC_BREAKDOWN))
         || aggregateNeedsMetacriticUserData();
 }
 
 function shouldIncludeDemographicsData() {
-    return SHOW_IMDB_DEMOGRAPHICS || SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE || aggregateNeedsImdbDemographic();
+    return shouldFetchAllRatingsProviders() || SHOW_IMDB_DEMOGRAPHICS || SHOW_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE || aggregateNeedsImdbDemographic();
+}
+
+function getTargetRatingsProviderKeys() {
+    const providerKeys = ['ptp', 'imdb'];
+
+    if (shouldFetchMetacriticSupplementalData()) {
+        providerKeys.push('metacritic');
+    }
+
+    if (shouldFetchRottenTomatoesSupplementalData()) {
+        providerKeys.push('rottenTomatoes');
+    }
+
+    if (shouldFetchTMDbSupplementalData()) {
+        providerKeys.push('tmdb');
+    }
+
+    if (shouldFetchLetterboxdSupplementalData()) {
+        providerKeys.push('letterboxd');
+    }
+
+    return providerKeys;
 }
 
 function getEnabledWeightedScoreTypes() {
@@ -1307,6 +1361,7 @@ function loadSettingsIntoForm() {
     document.getElementById('keywords-open').checked = KEYWORDS_PANEL_OPEN;
     document.getElementById('show-parents-guide').checked = SHOW_PARENTS_GUIDE;
     document.getElementById('enable-imdb-ratings-panel').checked = ENABLE_IMDB_RATINGS_PANEL;
+    document.getElementById('enable-imdb-ratings-export').checked = ENABLE_IMDB_RATINGS_EXPORT;
     document.getElementById('show-ratings-metacritic').checked = SHOW_RATINGS_METACRITIC;
     document.getElementById('show-ratings-metacritic-user-score').checked = SHOW_RATINGS_METACRITIC_USER_SCORE;
     document.getElementById('show-ratings-metacritic-breakdown').checked = SHOW_RATINGS_METACRITIC_BREAKDOWN;
@@ -1388,6 +1443,7 @@ function saveSettingsFromForm() {
     KEYWORDS_PANEL_OPEN = document.getElementById('keywords-open').checked;
     SHOW_PARENTS_GUIDE = document.getElementById('show-parents-guide').checked;
     ENABLE_IMDB_RATINGS_PANEL = document.getElementById('enable-imdb-ratings-panel').checked;
+    ENABLE_IMDB_RATINGS_EXPORT = document.getElementById('enable-imdb-ratings-export').checked;
     SHOW_RATINGS_METACRITIC = document.getElementById('show-ratings-metacritic').checked;
     SHOW_RATINGS_METACRITIC_USER_SCORE = document.getElementById('show-ratings-metacritic-user-score').checked;
     SHOW_RATINGS_METACRITIC_BREAKDOWN = document.getElementById('show-ratings-metacritic-breakdown').checked;
@@ -1495,6 +1551,7 @@ function handleResetAll() {
         KEYWORDS_PANEL_OPEN = false;
         SHOW_PARENTS_GUIDE = true;
         ENABLE_IMDB_RATINGS_PANEL = false;
+        ENABLE_IMDB_RATINGS_EXPORT = false;
         SHOW_RATINGS_METACRITIC = true;
         SHOW_RATINGS_METACRITIC_USER_SCORE = true;
         SHOW_RATINGS_METACRITIC_BREAKDOWN = true;
@@ -1621,6 +1678,192 @@ function parseHtmlDocument(html) {
 
 function isPendingValue(value) {
     return value === undefined;
+}
+
+function cloneRatingsValue(value) {
+    if (value === undefined || value === null) {
+        return value;
+    }
+
+    return JSON.parse(JSON.stringify(value));
+}
+
+function createRatingsProviderEntry(status = 'unavailable', data = null, error = null, updatedAt = null) {
+    return { status, data, error, updatedAt };
+}
+
+function createRatingsProvidersMap(targetProviderKeys = []) {
+    const providers = {};
+    const targetProviderSet = new Set(targetProviderKeys);
+
+    RATINGS_PROVIDER_KEYS.forEach((providerKey) => {
+        providers[providerKey] = createRatingsProviderEntry(targetProviderSet.has(providerKey) ? 'pending' : 'unavailable');
+    });
+
+    return providers;
+}
+
+function cloneRatingsProvidersMap(providers) {
+    return RATINGS_PROVIDER_KEYS.reduce((result, providerKey) => {
+        const provider = providers?.[providerKey] || createRatingsProviderEntry();
+        result[providerKey] = {
+            status: provider.status,
+            data: cloneRatingsValue(provider.data),
+            error: provider.error,
+            updatedAt: provider.updatedAt
+        };
+        return result;
+    }, {});
+}
+
+function serializeRatingsError(error) {
+    if (!error) {
+        return null;
+    }
+
+    return error instanceof Error ? error.message : String(error);
+}
+
+function extractImdbRatingsPayload(titleData) {
+    if (!titleData) {
+        return null;
+    }
+
+    return {
+        id: titleData.id || null,
+        titleText: titleData.titleText || null,
+        releaseYear: titleData.releaseYear || null,
+        ratingsSummary: titleData.ratingsSummary || null,
+        aggregateRatingsBreakdown: titleData.aggregateRatingsBreakdown || null,
+        meterRank: titleData.meterRank || null,
+        metacritic: titleData.metacritic
+            ? {
+                url: titleData.metacritic.url || null,
+                metascore: titleData.metacritic.metascore || null
+            }
+            : titleData.metacritic ?? null
+    };
+}
+
+function hasRatingsSnapshotData(snapshot) {
+    return RATINGS_PROVIDER_KEYS.some((providerKey) => {
+        const provider = snapshot?.providers?.[providerKey];
+        return provider && (provider.status === 'ready' || provider.status === 'error');
+    });
+}
+
+function summarizeRatingsProviderStatuses(providers) {
+    return RATINGS_PROVIDER_KEYS.reduce((result, providerKey) => {
+        result[providerKey] = providers?.[providerKey]?.status || 'unavailable';
+        return result;
+    }, {});
+}
+
+function createRatingsExportController(imdbId, options = {}) {
+    const targetProviderKeys = Array.isArray(options.targetProviderKeys) ? options.targetProviderKeys : [];
+    const targetProviderSet = new Set(targetProviderKeys);
+    const shouldDispatchUpdates = !!options.shouldDispatchUpdates;
+    const snapshot = {
+        imdbId,
+        ptpId: PTP_ID,
+        source: RATINGS_EXPORT_SOURCE,
+        timestamp: Date.now(),
+        complete: false,
+        providers: createRatingsProvidersMap(targetProviderKeys)
+    };
+
+    const emitSnapshot = () => {
+        snapshot.timestamp = Date.now();
+        snapshot.complete = Array.from(targetProviderSet).every((providerKey) => snapshot.providers[providerKey]?.status !== 'pending');
+        latestRatingsExportSnapshot = {
+            imdbId: snapshot.imdbId,
+            ptpId: snapshot.ptpId,
+            source: snapshot.source,
+            timestamp: snapshot.timestamp,
+            complete: snapshot.complete,
+            providers: cloneRatingsProvidersMap(snapshot.providers)
+        };
+
+        if (!shouldDispatchUpdates) {
+            return;
+        }
+
+        console.log(`PTP IMDb Combined: Dispatching ${RATINGS_EXPORT_UPDATE_EVENT} for ${snapshot.imdbId}`, {
+            complete: latestRatingsExportSnapshot.complete,
+            providers: summarizeRatingsProviderStatuses(latestRatingsExportSnapshot.providers)
+        });
+        document.dispatchEvent(new CustomEvent(RATINGS_EXPORT_UPDATE_EVENT, {
+            detail: {
+                imdbId: latestRatingsExportSnapshot.imdbId,
+                ptpId: latestRatingsExportSnapshot.ptpId,
+                source: latestRatingsExportSnapshot.source,
+                timestamp: latestRatingsExportSnapshot.timestamp,
+                complete: latestRatingsExportSnapshot.complete,
+                providers: cloneRatingsProvidersMap(latestRatingsExportSnapshot.providers)
+            }
+        }));
+    };
+
+    const updateProvider = (providerKey, nextState) => {
+        if (!RATINGS_PROVIDER_KEYS.includes(providerKey)) {
+            return;
+        }
+
+        const currentState = snapshot.providers[providerKey] || createRatingsProviderEntry();
+        const nextData = Object.prototype.hasOwnProperty.call(nextState, 'data') ? cloneRatingsValue(nextState.data) : currentState.data;
+        const nextError = Object.prototype.hasOwnProperty.call(nextState, 'error') ? nextState.error : currentState.error;
+        const nextStatus = nextState.status || currentState.status;
+        if (
+            currentState.status === nextStatus
+            && currentState.error === nextError
+            && JSON.stringify(currentState.data) === JSON.stringify(nextData)
+        ) {
+            return;
+        }
+
+        const normalizedNextState = {
+            status: nextStatus,
+            data: nextData,
+            error: nextError,
+            updatedAt: Date.now()
+        };
+
+        snapshot.providers[providerKey] = normalizedNextState;
+        emitSnapshot();
+    };
+
+    return {
+        emitInitialSnapshot() {
+            emitSnapshot();
+        },
+        setReady(providerKey, data) {
+            updateProvider(providerKey, {
+                status: 'ready',
+                data,
+                error: null
+            });
+        },
+        setPending(providerKey) {
+            updateProvider(providerKey, {
+                status: 'pending',
+                error: null
+            });
+        },
+        setUnavailable(providerKey, data = null) {
+            updateProvider(providerKey, {
+                status: 'unavailable',
+                data,
+                error: null
+            });
+        },
+        setError(providerKey, error, data = null) {
+            updateProvider(providerKey, {
+                status: 'error',
+                data,
+                error: serializeRatingsError(error)
+            });
+        }
+    };
 }
 
 function parsePtpRating() {
@@ -4447,6 +4690,72 @@ async function getCache(key) {
     return null;
 }
 
+async function buildRatingsSnapshotFromCache(imdbId) {
+    const imdbDataCache = await getCache(`iMDB_data_${imdbId}`);
+    const supplementalCache = await getSupplementalRatingsCache(imdbId);
+    const isCurrentPage = latestRatingsExportSnapshot?.imdbId === imdbId || CURRENT_IMDB_ID === imdbId;
+    const ptpData = isCurrentPage ? parsePtpRating() : null;
+    const providers = createRatingsProvidersMap([]);
+
+    if (ptpData) {
+        providers.ptp = createRatingsProviderEntry('ready', ptpData, null, Date.now());
+    }
+
+    if (imdbDataCache?.data?.title) {
+        providers.imdb = createRatingsProviderEntry('ready', extractImdbRatingsPayload(imdbDataCache.data.title), null, Date.now());
+    }
+
+    if (supplementalCache && Object.prototype.hasOwnProperty.call(supplementalCache, 'metacritic')) {
+        providers.metacritic = createRatingsProviderEntry(
+            supplementalCache.metacritic === null ? 'unavailable' : 'ready',
+            supplementalCache.metacritic,
+            null,
+            Date.now()
+        );
+    }
+
+    if (supplementalCache && Object.prototype.hasOwnProperty.call(supplementalCache, 'rottenTomatoes')) {
+        providers.rottenTomatoes = createRatingsProviderEntry(
+            supplementalCache.rottenTomatoes === null ? 'unavailable' : 'ready',
+            supplementalCache.rottenTomatoes,
+            null,
+            Date.now()
+        );
+    }
+
+    if (supplementalCache && Object.prototype.hasOwnProperty.call(supplementalCache, 'tmdb')) {
+        providers.tmdb = createRatingsProviderEntry(
+            supplementalCache.tmdb === null ? 'unavailable' : 'ready',
+            supplementalCache.tmdb,
+            null,
+            Date.now()
+        );
+    }
+
+    if (supplementalCache && Object.prototype.hasOwnProperty.call(supplementalCache, 'letterboxd')) {
+        const letterboxdStatus = supplementalCache.letterboxd === null
+            ? (supplementalCache.letterboxdTransientErrorAt ? 'error' : 'unavailable')
+            : 'ready';
+        providers.letterboxd = createRatingsProviderEntry(
+            letterboxdStatus,
+            supplementalCache.letterboxd,
+            letterboxdStatus === 'error' ? 'Recent Letterboxd fetch error' : null,
+            Date.now()
+        );
+    }
+
+    const snapshot = {
+        imdbId,
+        ptpId: isCurrentPage ? PTP_ID : null,
+        source: RATINGS_EXPORT_SOURCE,
+        timestamp: Date.now(),
+        complete: true,
+        providers
+    };
+
+    return hasRatingsSnapshotData(snapshot) ? snapshot : null;
+}
+
 function fetchTMDBRatingsViaBridge(imdbId, timeoutMs = 5000) {
     return new Promise((resolve) => {
         const requestId = `tmdb-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -4513,7 +4822,7 @@ function hasRequiredRatingsData(titleData) {
         return false;
     }
 
-    if (!ENABLE_IMDB_RATINGS_PANEL) {
+    if (!shouldRunRatingsDataPipeline()) {
         return true;
     }
 
@@ -4525,7 +4834,7 @@ function hasRequiredRatingsData(titleData) {
         return false;
     }
 
-    if (SHOW_IMDB_COUNTRY_AVERAGES && !Array.isArray(titleData.aggregateRatingsBreakdown?.ratingsSummaryByCountry)) {
+    if (shouldIncludeCountryRatingsData() && !Array.isArray(titleData.aggregateRatingsBreakdown?.ratingsSummaryByCountry)) {
         return false;
     }
 
@@ -4635,6 +4944,7 @@ function hasRequiredRatingsData(titleData) {
     }
 
     console.log(`Successfully found IMDb ID: ${imdbId}`);
+    CURRENT_IMDB_ID = imdbId;
 
     // Compress and set cache with expiration
     const setCache = async (key, data) => {
@@ -5043,7 +5353,7 @@ function hasRequiredRatingsData(titleData) {
     };
 
     // Function to fetch data from IMDb API with caching and expiration
-    const fetchIMDBData = async (imdbId, afterCursor = null, allAwards = [], namesPromise = null, baseTitleData = null, creditsPrepared = false) => {
+    const fetchIMDBData = async (imdbId, afterCursor = null, allAwards = [], namesPromise = null, baseTitleData = null, creditsPrepared = false, ratingsRuntime = null) => {
         const cacheKey = `iMDB_data_${imdbId}`;
 
         const cachedData = await getCache(cacheKey);
@@ -5051,6 +5361,10 @@ function hasRequiredRatingsData(titleData) {
             console.log("Using cached compressed IMDb data");
             if (cachedData.data && cachedData.data.title && hasRequiredRatingsData(cachedData.data.title)) {
                 const titleData = cachedData.data.title;
+                if (ratingsRuntime && !ratingsRuntime.initialRatingsPublished) {
+                    ratingsRuntime.initialRatingsPublished = true;
+                    ratingsRuntime.onInitialRatingsData?.(extractImdbRatingsPayload(titleData));
+                }
                 const soundtracks = titleData.soundtrack.edges;
                 const uniqueIds = [];
                 soundtracks.forEach(edge => {
@@ -5553,7 +5867,7 @@ function hasRequiredRatingsData(titleData) {
                 first: 250,
                 after: afterCursor,
                 includeHistogram: shouldIncludeHistogramData(),
-                includeCountries: SHOW_IMDB_COUNTRY_AVERAGES,
+                includeCountries: shouldIncludeCountryRatingsData(),
                 includeDemographics: shouldIncludeDemographicsData()
             }
         };
@@ -5573,6 +5887,11 @@ function hasRequiredRatingsData(titleData) {
                         if (data && data.data && data.data.title) {
                             const pageTitleData = data.data.title;
                             const titleData = baseTitleData || pageTitleData;
+
+                            if (ratingsRuntime && !ratingsRuntime.initialRatingsPublished) {
+                                ratingsRuntime.initialRatingsPublished = true;
+                                ratingsRuntime.onInitialRatingsData?.(extractImdbRatingsPayload(titleData));
+                            }
 
                             if (!creditsPrepared) {
                                 // Merge principal credits once, then reuse during awards pagination.
@@ -5670,7 +5989,8 @@ function hasRequiredRatingsData(titleData) {
                                     allAwards,
                                     namesPromise,
                                     titleData,
-                                    creditsPrepared
+                                    creditsPrepared,
+                                    ratingsRuntime
                                 )
                                     .then(resolve)
                                     .catch(reject);
@@ -7326,7 +7646,8 @@ function hasRequiredRatingsData(titleData) {
         trailerContainer.dataset.imdbTrailerHandled = 'true';
     };
 
-    const ptpRatingsData = ENABLE_IMDB_RATINGS_PANEL ? parsePtpRating() : null;
+    const ratingsPipelineEnabled = shouldRunRatingsDataPipeline();
+    const ptpRatingsData = ratingsPipelineEnabled ? parsePtpRating() : null;
     const originalPtpVoteControls = ENABLE_IMDB_RATINGS_PANEL ? captureOriginalPtpVoteControls() : null;
     const supplementalRatings = {
         metacritic: shouldFetchMetacriticSupplementalData() ? undefined : null,
@@ -7334,10 +7655,26 @@ function hasRequiredRatingsData(titleData) {
         tmdb: shouldFetchTMDbSupplementalData() ? undefined : null,
         letterboxd: shouldFetchLetterboxdSupplementalData() ? undefined : null
     };
+    const ratingsExportController = ratingsPipelineEnabled
+        ? createRatingsExportController(imdbId, {
+            targetProviderKeys: getTargetRatingsProviderKeys(),
+            shouldDispatchUpdates: shouldExportRatingsData()
+        })
+        : null;
     const mountedRatingsBox = ENABLE_IMDB_RATINGS_PANEL
         ? mountRatingsPanel(imdbId, ptpRatingsData, supplementalRatings, originalPtpVoteControls)
         : null;
     let ratingsTitleData;
+
+    if (ratingsExportController) {
+        console.log(`PTP IMDb Combined: Ratings export enabled for ${imdbId}`);
+        if (ptpRatingsData) {
+            ratingsExportController.setReady('ptp', ptpRatingsData);
+        } else {
+            ratingsExportController.setUnavailable('ptp');
+        }
+        ratingsExportController.emitInitialSnapshot();
+    }
 
     const rerenderRatingsPanel = () => {
         if (!ENABLE_IMDB_RATINGS_PANEL || !mountedRatingsBox) {
@@ -7352,20 +7689,26 @@ function hasRequiredRatingsData(titleData) {
         ensureRatingsHeaderControls(mountedRatingsBox, imdbId, rerenderRatingsPanel);
     }
 
-    if (ENABLE_IMDB_RATINGS_PANEL && shouldFetchRottenTomatoesSupplementalData()) {
+    if (ratingsPipelineEnabled && shouldFetchRottenTomatoesSupplementalData()) {
         fetchRottenTomatoesWithCache(imdbId)
             .then((data) => {
                 supplementalRatings.rottenTomatoes = data;
+                if (data === null) {
+                    ratingsExportController?.setUnavailable('rottenTomatoes');
+                } else {
+                    ratingsExportController?.setReady('rottenTomatoes', data);
+                }
                 rerenderRatingsPanel();
             })
             .catch((error) => {
                 supplementalRatings.rottenTomatoes = null;
                 console.error('Failed to fetch Rotten Tomatoes data:', error);
+                ratingsExportController?.setError('rottenTomatoes', error);
                 rerenderRatingsPanel();
             });
     }
 
-    if (ENABLE_IMDB_RATINGS_PANEL && shouldFetchTMDbSupplementalData()) {
+    if (ratingsPipelineEnabled && shouldFetchTMDbSupplementalData()) {
         document.addEventListener('tmdbRatingsReady', (event) => {
             const detail = event.detail || {};
             if (detail.imdbId !== imdbId) {
@@ -7380,30 +7723,43 @@ function hasRequiredRatingsData(titleData) {
                 voteAverage: detail.voteAverage,
                 voteCount: detail.voteCount
             };
+            ratingsExportController?.setReady('tmdb', supplementalRatings.tmdb);
             rerenderRatingsPanel();
         });
 
         fetchTMDBRatingsViaBridge(imdbId)
             .then((data) => {
                 supplementalRatings.tmdb = data;
+                if (data === null) {
+                    ratingsExportController?.setUnavailable('tmdb');
+                } else {
+                    ratingsExportController?.setReady('tmdb', data);
+                }
                 rerenderRatingsPanel();
             })
             .catch((error) => {
                 supplementalRatings.tmdb = null;
                 console.error('Failed to fetch TMDb data:', error);
+                ratingsExportController?.setError('tmdb', error);
                 rerenderRatingsPanel();
             });
     }
 
-    if (ENABLE_IMDB_RATINGS_PANEL && shouldFetchLetterboxdSupplementalData()) {
+    if (ratingsPipelineEnabled && shouldFetchLetterboxdSupplementalData()) {
         fetchLetterboxdWithCache(imdbId)
             .then((data) => {
                 supplementalRatings.letterboxd = data;
+                if (data === null) {
+                    ratingsExportController?.setUnavailable('letterboxd');
+                } else {
+                    ratingsExportController?.setReady('letterboxd', data);
+                }
                 rerenderRatingsPanel();
             })
             .catch((error) => {
                 supplementalRatings.letterboxd = null;
                 console.error('Failed to fetch Letterboxd data:', error);
+                ratingsExportController?.setError('letterboxd', error);
                 rerenderRatingsPanel();
             });
     }
@@ -7411,29 +7767,44 @@ function hasRequiredRatingsData(titleData) {
     // Initialize panels
     const imdbTrailerDataPromise = SHOW_IMDB_TRAILERS ? fetchIMDbTrailerData(imdbId) : null;
 
-    fetchIMDBData(imdbId).then(async data => {
+    fetchIMDBData(imdbId, null, [], null, null, false, {
+        initialRatingsPublished: false,
+        onInitialRatingsData: (imdbRatingsData) => {
+            ratingsExportController?.setReady('imdb', imdbRatingsData);
+        }
+    }).then(async data => {
         const { titleData, processedSoundtracks, idToNameMap, namesData } = data;
         ratingsTitleData = titleData || null;
+        if (titleData) {
+            ratingsExportController?.setReady('imdb', extractImdbRatingsPayload(titleData));
+        }
         rerenderRatingsPanel();
 
-        if (ENABLE_IMDB_RATINGS_PANEL && shouldFetchMetacriticSupplementalData()) {
+        if (ratingsPipelineEnabled && shouldFetchMetacriticSupplementalData()) {
             const metacriticUrl = titleData?.metacritic?.url || null;
             if (metacriticUrl) {
                 fetchMetacriticWithCache(imdbId, metacriticUrl, {
-                    requireUserData: SHOW_RATINGS_METACRITIC_USER_SCORE || SHOW_RATINGS_METACRITIC_BREAKDOWN || aggregateNeedsMetacriticUserData(),
-                    requireBreakdown: SHOW_RATINGS_METACRITIC_BREAKDOWN
+                    requireUserData: shouldFetchAllRatingsProviders() || SHOW_RATINGS_METACRITIC_USER_SCORE || SHOW_RATINGS_METACRITIC_BREAKDOWN || aggregateNeedsMetacriticUserData(),
+                    requireBreakdown: shouldFetchAllRatingsProviders() || SHOW_RATINGS_METACRITIC_BREAKDOWN
                 })
                     .then((metaData) => {
                         supplementalRatings.metacritic = metaData;
+                        if (metaData === null) {
+                            ratingsExportController?.setUnavailable('metacritic');
+                        } else {
+                            ratingsExportController?.setReady('metacritic', metaData);
+                        }
                         rerenderRatingsPanel();
                     })
                     .catch((error) => {
                         supplementalRatings.metacritic = null;
                         console.error('Failed to fetch Metacritic data:', error);
+                        ratingsExportController?.setError('metacritic', error);
                         rerenderRatingsPanel();
                     });
             } else {
                 supplementalRatings.metacritic = null;
+                ratingsExportController?.setUnavailable('metacritic');
                 rerenderRatingsPanel();
             }
         }
@@ -7513,6 +7884,10 @@ function hasRequiredRatingsData(titleData) {
 
         } else {
             console.error("Failed to retrieve valid title data");
+            ratingsExportController?.setError('imdb', 'Failed to retrieve valid title data');
+            if (shouldFetchMetacriticSupplementalData()) {
+                ratingsExportController?.setUnavailable('metacritic');
+            }
 
             // **NEW: Dispatch error event when processing fails**
             document.dispatchEvent(new CustomEvent('imdbProcessingComplete', {
@@ -7528,6 +7903,10 @@ function hasRequiredRatingsData(titleData) {
     }).catch(err => {
         console.error("PTP IMDb Combined processing error:", err);
         ratingsTitleData = null;
+        ratingsExportController?.setError('imdb', err);
+        if (shouldFetchMetacriticSupplementalData()) {
+            ratingsExportController?.setUnavailable('metacritic');
+        }
         rerenderRatingsPanel();
 
         // **NEW: Dispatch error event when fetch fails**
@@ -7540,6 +7919,61 @@ function hasRequiredRatingsData(titleData) {
                 error: err.message || 'Unknown error'
             }
         }));
+    });
+
+    document.addEventListener(RATINGS_EXPORT_REQUEST_EVENT, async (event) => {
+        const { imdbId: requestedImdbId, requestId } = event.detail || {};
+
+        try {
+            const liveSnapshot = latestRatingsExportSnapshot && latestRatingsExportSnapshot.imdbId === requestedImdbId
+                ? {
+                    imdbId: latestRatingsExportSnapshot.imdbId,
+                    ptpId: latestRatingsExportSnapshot.ptpId,
+                    source: latestRatingsExportSnapshot.source,
+                    timestamp: latestRatingsExportSnapshot.timestamp,
+                    complete: latestRatingsExportSnapshot.complete,
+                    providers: cloneRatingsProvidersMap(latestRatingsExportSnapshot.providers)
+                }
+                : null;
+            const cachedSnapshot = liveSnapshot || await buildRatingsSnapshotFromCache(requestedImdbId);
+            const responseDetail = cachedSnapshot
+                ? {
+                    found: true,
+                    requestId,
+                    imdbId: cachedSnapshot.imdbId,
+                    ptpId: cachedSnapshot.ptpId,
+                    source: cachedSnapshot.source,
+                    timestamp: cachedSnapshot.timestamp,
+                    complete: cachedSnapshot.complete,
+                    providers: cloneRatingsProvidersMap(cachedSnapshot.providers)
+                }
+                : {
+                    found: false,
+                    requestId,
+                    imdbId: requestedImdbId,
+                    source: RATINGS_EXPORT_SOURCE
+                };
+
+            document.dispatchEvent(new CustomEvent(RATINGS_EXPORT_RESPONSE_EVENT, {
+                detail: responseDetail
+            }));
+            console.log(`PTP IMDb Combined: Sent ${RATINGS_EXPORT_RESPONSE_EVENT} for ${requestedImdbId} (requestId: ${requestId})`, {
+                found: !!responseDetail.found,
+                complete: responseDetail.complete ?? null,
+                providers: responseDetail.providers ? summarizeRatingsProviderStatuses(responseDetail.providers) : null
+            });
+        } catch (error) {
+            document.dispatchEvent(new CustomEvent(RATINGS_EXPORT_RESPONSE_EVENT, {
+                detail: {
+                    found: false,
+                    requestId,
+                    imdbId: requestedImdbId,
+                    source: RATINGS_EXPORT_SOURCE,
+                    error: serializeRatingsError(error)
+                }
+            }));
+            console.error(`PTP IMDb Combined: Failed ${RATINGS_EXPORT_RESPONSE_EVENT} for ${requestedImdbId} (requestId: ${requestId})`, error);
+        }
     });
 
     // Add IMDb cache sharing via document events
