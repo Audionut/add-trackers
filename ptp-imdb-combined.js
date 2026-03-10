@@ -3917,7 +3917,6 @@ function buildTopCardsHtml(imdbId, imdbData, ptpData, supplemental) {
                 </div>
                 <div class="imdb-ratings-meta">
                     ${ptpHistogramTrimActive || ptpWeightedScore ? `<div class="imdb-ratings-meta-top"><span>${ptpHistogramTrimActive ? 'Trimmed extremes' : '&nbsp;'}</span>${ptpWeightedScore ? '<span class="imdb-weighted-meta-label">Weighted</span>' : ''}</div>` : ''}
-                    ${showPtpHistogramInDetailGrid ? 'Histogram shown below<br>' : ''}
                     ${ptpHistogramPending ? 'Loading PTP histogram...<br>' : ''}
                     ${buildPtpVoteHtml(ptpData)}
                 </div>
@@ -4028,7 +4027,7 @@ function buildTopCardsHtml(imdbId, imdbData, ptpData, supplemental) {
                     ${lbPending || !letterboxdWeightedScore ? '' : `<span class="imdb-weighted-score-badge" title="${letterboxdWeightedScore.tooltip}">${letterboxdWeightedScore.displayScore.toFixed(1)}</span>`}
                 </div>
                 <div class="imdb-ratings-meta">
-                    ${lbPending ? 'Loading Letterboxd...' : `${showLetterboxdHistogramInDetailGrid ? 'Histogram shown below<br>' : ''}${letterboxdWeightedScore && letterboxdHistogramTrimActive ? 'Trimmed extremes<br>' : ''}Ratings: ${Number.isFinite(lb?.user?.count) ? `<a href="${lb.user.url}" target="_blank" rel="noreferrer">${formatCount(lb.user.count)}</a>` : 'Unknown'}<br>
+                    ${lbPending ? 'Loading Letterboxd...' : `${letterboxdHistogramTrimActive || letterboxdWeightedScore ? `<div class="imdb-ratings-meta-top"><span>${letterboxdHistogramTrimActive ? 'Trimmed extremes' : '&nbsp;'}</span>${letterboxdWeightedScore ? '<span class="imdb-weighted-meta-label">Weighted</span>' : ''}</div>` : ''}Ratings: ${Number.isFinite(lb?.user?.count) ? `<a href="${lb.user.url}" target="_blank" rel="noreferrer">${formatCount(lb.user.count)}</a>` : 'Unknown'}<br>
                     Likes: ${Number.isFinite(lb?.likes) ? `<a href="${lb.likesUrl}" target="_blank" rel="noreferrer">${formatCount(lb.likes)}</a>` : 'Unknown'} | Fans: ${Number.isFinite(lb?.fans) ? `<a href="${lb.fansUrl}" target="_blank" rel="noreferrer">${formatCount(lb.fans)}</a>` : 'Unknown'}`}
                 </div>
             </div>
