@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.3.6
+// @version      1.3.7
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -46,6 +46,7 @@ let SHOW_RATINGS_METACRITIC_BREAKDOWN = true;
 let SHOW_RATINGS_METACRITIC_REVIEW_SUMMARY = false;
 let RATINGS_METACRITIC_REVIEW_SUMMARY_SOURCE = 'both';
 let SHOW_RATINGS_AGGREGATE = false;
+let SHOW_RATINGS_AGGREGATE_TILE_DETAILS = true;
 let RATINGS_AGGREGATE_DROP_EXTREMES = false;
 let RATINGS_AGGREGATE_KEEP_ROTTEN_TOMATOES = false;
 let RATINGS_AGGREGATE_USE_VOTE_COUNT_WEIGHTING = false;
@@ -274,6 +275,7 @@ const saveSettings = () => {
     GM.setValue('SHOW_RATINGS_METACRITIC_REVIEW_SUMMARY', SHOW_RATINGS_METACRITIC_REVIEW_SUMMARY);
     GM.setValue('RATINGS_METACRITIC_REVIEW_SUMMARY_SOURCE', RATINGS_METACRITIC_REVIEW_SUMMARY_SOURCE);
     GM.setValue('SHOW_RATINGS_AGGREGATE', SHOW_RATINGS_AGGREGATE);
+    GM.setValue('SHOW_RATINGS_AGGREGATE_TILE_DETAILS', SHOW_RATINGS_AGGREGATE_TILE_DETAILS);
     GM.setValue('RATINGS_AGGREGATE_DROP_EXTREMES', RATINGS_AGGREGATE_DROP_EXTREMES);
     GM.setValue('RATINGS_AGGREGATE_KEEP_ROTTEN_TOMATOES', RATINGS_AGGREGATE_KEEP_ROTTEN_TOMATOES);
     GM.setValue('RATINGS_AGGREGATE_USE_VOTE_COUNT_WEIGHTING', RATINGS_AGGREGATE_USE_VOTE_COUNT_WEIGHTING);
@@ -347,6 +349,7 @@ const loadSettings = async () => {
         await GM.getValue('RATINGS_METACRITIC_REVIEW_SUMMARY_SOURCE', 'both')
     );
     SHOW_RATINGS_AGGREGATE = await GM.getValue('SHOW_RATINGS_AGGREGATE', false);
+    SHOW_RATINGS_AGGREGATE_TILE_DETAILS = await GM.getValue('SHOW_RATINGS_AGGREGATE_TILE_DETAILS', true);
     RATINGS_AGGREGATE_DROP_EXTREMES = await GM.getValue('RATINGS_AGGREGATE_DROP_EXTREMES', false);
     RATINGS_AGGREGATE_KEEP_ROTTEN_TOMATOES = await GM.getValue('RATINGS_AGGREGATE_KEEP_ROTTEN_TOMATOES', false);
     RATINGS_AGGREGATE_USE_VOTE_COUNT_WEIGHTING = await GM.getValue('RATINGS_AGGREGATE_USE_VOTE_COUNT_WEIGHTING', false);
@@ -755,6 +758,10 @@ function showSettingsPanel() {
                                 <label style="display: block; margin-bottom: 10px; cursor: pointer;">
                                     <input type="checkbox" id="ratings-aggregate-use-vote-count-weighting" style="margin-right: 8px;">
                                     <span title="Adjusts aggregate source weights by vote count. Fixed multipliers: under 100 votes x0.50, 100-499 x0.85, 500-999 x0.95, 1000+ x1.00.">Downweight Low-Vote Sources</span>
+                                </label>
+                                <label style="display: block; margin-bottom: 10px; cursor: pointer;">
+                                    <input type="checkbox" id="show-ratings-aggregate-tile-details" style="margin-right: 8px;">
+                                    <span>Show Aggregate Tile Detail Lines</span>
                                 </label>
                                 <label style="display: block; margin-bottom: 10px;">
                                     <span style="display: block; margin-bottom: 5px;">Aggregate method:</span>
@@ -1465,6 +1472,7 @@ function loadSettingsIntoForm() {
     document.getElementById('show-ratings-metacritic-review-summary').checked = SHOW_RATINGS_METACRITIC_REVIEW_SUMMARY;
     document.getElementById('ratings-metacritic-review-summary-source').value = RATINGS_METACRITIC_REVIEW_SUMMARY_SOURCE;
     document.getElementById('show-ratings-aggregate').checked = SHOW_RATINGS_AGGREGATE;
+    document.getElementById('show-ratings-aggregate-tile-details').checked = SHOW_RATINGS_AGGREGATE_TILE_DETAILS;
     document.getElementById('ratings-aggregate-drop-extremes').checked = RATINGS_AGGREGATE_DROP_EXTREMES;
     document.getElementById('ratings-aggregate-keep-rotten-tomatoes').checked = RATINGS_AGGREGATE_KEEP_ROTTEN_TOMATOES;
     document.getElementById('ratings-aggregate-use-vote-count-weighting').checked = RATINGS_AGGREGATE_USE_VOTE_COUNT_WEIGHTING;
@@ -1553,6 +1561,7 @@ function saveSettingsFromForm() {
         document.getElementById('ratings-metacritic-review-summary-source').value
     );
     SHOW_RATINGS_AGGREGATE = document.getElementById('show-ratings-aggregate').checked;
+    SHOW_RATINGS_AGGREGATE_TILE_DETAILS = document.getElementById('show-ratings-aggregate-tile-details').checked;
     RATINGS_AGGREGATE_DROP_EXTREMES = document.getElementById('ratings-aggregate-drop-extremes').checked;
     RATINGS_AGGREGATE_KEEP_ROTTEN_TOMATOES = document.getElementById('ratings-aggregate-keep-rotten-tomatoes').checked;
     RATINGS_AGGREGATE_USE_VOTE_COUNT_WEIGHTING = document.getElementById('ratings-aggregate-use-vote-count-weighting').checked;
@@ -1665,6 +1674,7 @@ function handleResetAll() {
         SHOW_RATINGS_METACRITIC_REVIEW_SUMMARY = false;
         RATINGS_METACRITIC_REVIEW_SUMMARY_SOURCE = 'both';
         SHOW_RATINGS_AGGREGATE = false;
+        SHOW_RATINGS_AGGREGATE_TILE_DETAILS = true;
         RATINGS_AGGREGATE_DROP_EXTREMES = false;
         RATINGS_AGGREGATE_KEEP_ROTTEN_TOMATOES = false;
         RATINGS_AGGREGATE_USE_VOTE_COUNT_WEIGHTING = false;
@@ -3128,7 +3138,7 @@ function getMetacriticReviewSummaryLabel(criticSummary, userSummary, source) {
     return 'Mixed';
 }
 
-function buildPtpVoteHtml(ptpData) {
+function buildPtpVoteHtml(ptpData, showWeightedLabel = false) {
     const personalScoreHtml = ptpData.personalRating !== null
         ? formatTenScale(ptpData.personalRating)
         : 'None';
@@ -3136,7 +3146,7 @@ function buildPtpVoteHtml(ptpData) {
     const ptpRatingsUrl = ptpData?.ratingsUrl || getPtpRatingsUrl() || '#';
 
     return `
-        <div>Personal: ${personalScoreHtml}</div>
+        ${buildRatingsMetaLineHtml(`Personal: ${personalScoreHtml}`, showWeightedLabel)}
         <div style="margin-top: 6px;">
             <a href="${ptpRatingsUrl}" class="imdb-ptp-trigger" title="${actionLabel}" data-ptp-vote-trigger="1">
                 <strong>${formatCount(ptpData.userCount)}</strong> votes
@@ -3144,6 +3154,26 @@ function buildPtpVoteHtml(ptpData) {
         </div>
         <div class="imdb-ptp-compat" data-ptp-vote-hook="1"></div>
     `;
+}
+
+function buildRatingsMetaTopHtml(leftLabel = '', showWeightedLabel = false) {
+    if (!leftLabel) {
+        return '';
+    }
+
+    return `<div class="imdb-ratings-meta-top"><span>${leftLabel}</span>${showWeightedLabel ? '<span class="imdb-weighted-meta-label">Weighted</span>' : ''}</div>`;
+}
+
+function buildRatingsMetaLineHtml(leftHtml = '', showWeightedLabel = false) {
+    if (!leftHtml) {
+        return '';
+    }
+
+    if (!showWeightedLabel) {
+        return `<div>${leftHtml}</div>`;
+    }
+
+    return `<div class="imdb-ratings-meta-top"><span>${leftHtml}</span><span class="imdb-weighted-meta-label">Weighted</span></div>`;
 }
 
 function hydratePtpVoteControls(container, originalControls) {
@@ -3876,6 +3906,13 @@ function buildTopCardsHtml(imdbId, imdbData, ptpData, supplemental) {
     const aggregateUsesVoteCountWeighting = !!aggregateScore?.usesVoteCountWeighting;
     const aggregateProtectsRottenTomatoes = !!aggregateScore?.protectedSources?.length;
     const aggregateDiscardSummary = getAggregateDiscardSummaryText(aggregateScore);
+    const aggregateTileDetailLines = [
+        aggregateScore?.methodLabel || '',
+        aggregateUsesWeightedSources && aggregateScore?.method !== 'average' ? 'Custom weights applied' : '',
+        aggregateUsesVoteCountWeighting ? 'Vote-count weighting applied' : '',
+        aggregateProtectsRottenTomatoes ? 'RT protected from discard' : '',
+        aggregateDiscardSummary || ''
+    ].filter(Boolean);
     const showPtpHistogramInDetailGrid = SHOW_RATINGS_PTP_HISTOGRAM;
     const showLetterboxdHistogramInDetailGrid = SHOW_RATINGS_LETTERBOXD_HISTOGRAM;
     const ptpHistogramTrimActive = isHistogramExtremeTrimActive(ptpData?.histogram || [], 'ptp');
@@ -3897,7 +3934,7 @@ function buildTopCardsHtml(imdbId, imdbData, ptpData, supplemental) {
                     ${imdbPending || !weightedScore ? '' : `<span class="imdb-weighted-score-badge" title="${weightedScore.tooltip}">${weightedScore.score.toFixed(1)}</span>`}
                 </div>
                 <div class="imdb-ratings-meta">
-                    ${imdbPending ? 'Loading IMDb data...' : `${demographicScoreOverride || weightedScore || imdbHistogramTrimActive ? `<div class="imdb-ratings-meta-top"><span>${demographicScoreOverride ? primaryImdbMetaLabel : (imdbHistogramTrimActive ? 'Trimmed extremes' : '&nbsp;')}</span>${weightedScore ? '<span class="imdb-weighted-meta-label">Weighted</span>' : ''}</div>` : ''}<a href="${imdbRatingsUrl}" target="_blank" rel="noreferrer" style="color: inherit;">${formatCount(primaryImdbVotes)} votes</a><br>
+                    ${imdbPending ? 'Loading IMDb data...' : `${buildRatingsMetaTopHtml(demographicScoreOverride ? primaryImdbMetaLabel : (imdbHistogramTrimActive ? 'Trimmed extremes' : ''), !!weightedScore)}<a href="${imdbRatingsUrl}" target="_blank" rel="noreferrer" style="color: inherit;">${formatCount(primaryImdbVotes)} votes</a><br>
                     ${topRanking?.rank ? `Top Rated rank #${formatCount(topRanking.rank)}` : 'No top ranking'}`}
                 </div>
             </div>
@@ -3916,9 +3953,9 @@ function buildTopCardsHtml(imdbId, imdbData, ptpData, supplemental) {
                     ${ptpHistogramPending || !ptpWeightedScore ? '' : `<span class="imdb-weighted-score-badge" title="${ptpWeightedScore.tooltip}">${ptpWeightedScore.displayScore.toFixed(1)}</span>`}
                 </div>
                 <div class="imdb-ratings-meta">
-                    ${ptpHistogramTrimActive || ptpWeightedScore ? `<div class="imdb-ratings-meta-top"><span>${ptpHistogramTrimActive ? 'Trimmed extremes' : '&nbsp;'}</span>${ptpWeightedScore ? '<span class="imdb-weighted-meta-label">Weighted</span>' : ''}</div>` : ''}
+                    ${buildRatingsMetaTopHtml(ptpHistogramTrimActive ? 'Trimmed extremes' : '', !!ptpWeightedScore)}
                     ${ptpHistogramPending ? 'Loading PTP histogram...<br>' : ''}
-                    ${buildPtpVoteHtml(ptpData)}
+                    ${buildPtpVoteHtml(ptpData, !ptpHistogramTrimActive && !!ptpWeightedScore)}
                 </div>
             </div>
         `);
@@ -4027,7 +4064,7 @@ function buildTopCardsHtml(imdbId, imdbData, ptpData, supplemental) {
                     ${lbPending || !letterboxdWeightedScore ? '' : `<span class="imdb-weighted-score-badge" title="${letterboxdWeightedScore.tooltip}">${letterboxdWeightedScore.displayScore.toFixed(1)}</span>`}
                 </div>
                 <div class="imdb-ratings-meta">
-                    ${lbPending ? 'Loading Letterboxd...' : `${letterboxdHistogramTrimActive || letterboxdWeightedScore ? `<div class="imdb-ratings-meta-top"><span>${letterboxdHistogramTrimActive ? 'Trimmed extremes' : '&nbsp;'}</span>${letterboxdWeightedScore ? '<span class="imdb-weighted-meta-label">Weighted</span>' : ''}</div>` : ''}Ratings: ${Number.isFinite(lb?.user?.count) ? `<a href="${lb.user.url}" target="_blank" rel="noreferrer">${formatCount(lb.user.count)}</a>` : 'Unknown'}<br>
+                    ${lbPending ? 'Loading Letterboxd...' : `${buildRatingsMetaTopHtml(letterboxdHistogramTrimActive ? 'Trimmed extremes' : '', !!letterboxdWeightedScore)}${buildRatingsMetaLineHtml(`Ratings: ${Number.isFinite(lb?.user?.count) ? `<a href="${lb.user.url}" target="_blank" rel="noreferrer">${formatCount(lb.user.count)}</a>` : 'Unknown'}`, !letterboxdHistogramTrimActive && !!letterboxdWeightedScore)}<br>
                     Likes: ${Number.isFinite(lb?.likes) ? `<a href="${lb.likesUrl}" target="_blank" rel="noreferrer">${formatCount(lb.likes)}</a>` : 'Unknown'} | Fans: ${Number.isFinite(lb?.fans) ? `<a href="${lb.fansUrl}" target="_blank" rel="noreferrer">${formatCount(lb.fans)}</a>` : 'Unknown'}`}
                 </div>
             </div>
@@ -4044,7 +4081,7 @@ function buildTopCardsHtml(imdbId, imdbData, ptpData, supplemental) {
                 <div class="imdb-ratings-meta" title="${aggregateTooltip}">
                     ${aggregateScore?.pending
                         ? 'Loading selected sources...'
-                        : `${aggregateScore.usedSources.length} source${aggregateScore.usedSources.length === 1 ? '' : 's'} used<br>${aggregateScore.methodLabel}${aggregateUsesWeightedSources && aggregateScore.method !== 'average' ? '<br>Custom weights applied' : ''}${aggregateUsesVoteCountWeighting ? '<br>Vote-count weighting applied' : ''}${aggregateProtectsRottenTomatoes ? '<br>RT protected from discard' : ''}${aggregateDiscardSummary ? `<br>${aggregateDiscardSummary}` : ''}`
+                        : `${aggregateScore.usedSources.length} source${aggregateScore.usedSources.length === 1 ? '' : 's'} used${SHOW_RATINGS_AGGREGATE_TILE_DETAILS && aggregateTileDetailLines.length ? `<br>${aggregateTileDetailLines.join('<br>')}` : ''}`
                     }
                 </div>
             </div>
@@ -4545,24 +4582,73 @@ function normalizeMetacriticScoreToken(token, type = null) {
 
     const normalizedToken = compactToken.startsWith('.')
         ? `0${compactToken}`
-        : (type === 'user' && /^\d$/.test(compactToken)
+        : (type === 'critic' && /^\d$/.test(compactToken)
             ? `0.${compactToken}`
             : compactToken);
     const parsedValue = Number.parseFloat(normalizedToken);
     return Number.isFinite(parsedValue) ? parsedValue : null;
 }
 
+function normalizeMetacriticParsedScore(value, type = null) {
+    if (!Number.isFinite(value)) {
+        return null;
+    }
+
+    if (type === 'user' && value > 0 && value < 1) {
+        return value * 10;
+    }
+
+    return value;
+}
+
+function normalizeMetacriticPayload(metacritic) {
+    if (!metacritic || typeof metacritic !== 'object') {
+        return metacritic;
+    }
+
+    const nextValue = {
+        ...metacritic,
+        critic: metacritic.critic && typeof metacritic.critic === 'object'
+            ? { ...metacritic.critic }
+            : metacritic.critic,
+        user: metacritic.user && typeof metacritic.user === 'object'
+            ? { ...metacritic.user }
+            : metacritic.user
+    };
+
+    if (nextValue.critic && typeof nextValue.critic === 'object') {
+        nextValue.critic.score = normalizeMetacriticParsedScore(nextValue.critic.score, 'critic');
+    }
+
+    if (nextValue.user && typeof nextValue.user === 'object') {
+        nextValue.user.score = normalizeMetacriticParsedScore(nextValue.user.score, 'user');
+    }
+
+    return nextValue;
+}
+
 function extractMetacriticScoreValue(doc, html, type) {
     const label = type === 'critic' ? 'Metascore' : 'User score';
+    if (type === 'user') {
+        const summaryHtmlMatch = html.match(/aria-label="User score\s+([\d.]+)\s+out of 10"[^>]*>\s*<span[^>]*>\s*([\d.]+)\s*<\/span>/i);
+        const summaryHtmlScore = normalizeMetacriticParsedScore(
+            normalizeMetacriticScoreToken(summaryHtmlMatch?.[2] || summaryHtmlMatch?.[1] || '', type),
+            type
+        );
+        if (Number.isFinite(summaryHtmlScore)) {
+            return summaryHtmlScore;
+        }
+    }
+
     const normalizedText = doc.body?.textContent?.replace(/\s+/g, ' ') || '';
     const textMatch = normalizedText.match(new RegExp(`${label}\\s+([\\d]+(?:\\s*\\.\\s*\\d+)?|\\.\\s*\\d+)\\s+out of\\s+${type === 'critic' ? '100' : '10'}`, 'i'));
-    const textScore = normalizeMetacriticScoreToken(textMatch?.[1] || '', type);
+    const textScore = normalizeMetacriticParsedScore(normalizeMetacriticScoreToken(textMatch?.[1] || '', type), type);
     if (Number.isFinite(textScore)) {
         return textScore;
     }
 
     const htmlMatch = html.match(new RegExp(`${label}\\s+([\\d.]+)\\s+out of\\s+${type === 'critic' ? '100' : '10'}`, 'i'));
-    return normalizeMetacriticScoreToken(htmlMatch?.[1] || '', type);
+    return normalizeMetacriticParsedScore(normalizeMetacriticScoreToken(htmlMatch?.[1] || '', type), type);
 }
 
 function parseMetacriticReviewPage(html, type, pageUrl) {
@@ -5020,15 +5106,19 @@ async function fetchRottenTomatoesWithCache(imdbId) {
 
 async function fetchMetacriticWithCache(imdbId, url, options = {}) {
     const cached = await getSupplementalRatingsCache(imdbId);
+    const normalizedCachedMetacritic = normalizeMetacriticPayload(cached?.metacritic);
     if (
         cached
         && Object.prototype.hasOwnProperty.call(cached, 'metacritic')
-        && hasValidMetacriticData(cached.metacritic, options)
+        && hasValidMetacriticData(normalizedCachedMetacritic, options)
     ) {
-        return cached.metacritic;
+        if (normalizedCachedMetacritic !== cached.metacritic) {
+            await mergeSupplementalRatingsCache(imdbId, { metacritic: normalizedCachedMetacritic });
+        }
+        return normalizedCachedMetacritic;
     }
 
-    const metacritic = await fetchMetacriticData(url, options);
+    const metacritic = normalizeMetacriticPayload(await fetchMetacriticData(url, options));
     await mergeSupplementalRatingsCache(imdbId, { metacritic });
     return metacritic;
 }
@@ -5623,7 +5713,37 @@ function hasRequiredRatingsData(titleData) {
         return rightBitrate - leftBitrate;
     };
 
-    const fetchIMDbTrailerData = async (imdbId) => {
+    const extractIMDbTrailerVideoIds = (titleNode) => {
+        if (!titleNode) {
+            return { latestTrailerId: null, uniqueVideoIds: [] };
+        }
+
+        const latestTrailerId = titleNode.latestTrailer && titleNode.latestTrailer.id ? titleNode.latestTrailer.id : null;
+        const allVideoIds = [];
+
+        if (latestTrailerId) {
+            allVideoIds.push(latestTrailerId);
+        }
+
+        const primaryVideoEdges = titleNode.primaryVideos && titleNode.primaryVideos.edges ? titleNode.primaryVideos.edges : [];
+        primaryVideoEdges.forEach((edge) => {
+            const id = edge && edge.node ? edge.node.id : null;
+            if (id) allVideoIds.push(id);
+        });
+
+        const videoStripEdges = titleNode.videoStrip && titleNode.videoStrip.edges ? titleNode.videoStrip.edges : [];
+        videoStripEdges.forEach((edge) => {
+            const id = edge && edge.node ? edge.node.id : null;
+            if (id) allVideoIds.push(id);
+        });
+
+        return {
+            latestTrailerId,
+            uniqueVideoIds: [...new Set(allVideoIds)]
+        };
+    };
+
+    const fetchIMDbTrailerData = async (imdbId, titleData = null) => {
         const cacheKey = `imdb_video_data_${imdbId}`;
 
         const cachedTrailerData = await getCache(cacheKey);
@@ -5632,46 +5752,33 @@ function hasRequiredRatingsData(titleData) {
         }
 
         try {
-            const titleVideoIdsQuery = `
-                query {
-                    title(id: ${JSON.stringify(imdbId)}) {
-                        id
-                        latestTrailer { id }
-                        primaryVideos(first: 20) {
-                            edges { node { id } }
-                        }
-                        videoStrip(first: 20) {
-                            edges { node { id } }
+            let { latestTrailerId, uniqueVideoIds } = extractIMDbTrailerVideoIds(titleData);
+
+            if (uniqueVideoIds.length === 0) {
+                const titleVideoIdsQuery = `
+                    query {
+                        title(id: ${JSON.stringify(imdbId)}) {
+                            id
+                            latestTrailer { id }
+                            primaryVideos(first: 20) {
+                                edges { node { id } }
+                            }
+                            videoStrip(first: 20) {
+                                edges { node { id } }
+                            }
                         }
                     }
+                `;
+
+                const titleVideoResponse = await fetchIMDbGraphQL(titleVideoIdsQuery);
+                const titleNode = titleVideoResponse && titleVideoResponse.data ? titleVideoResponse.data.title : null;
+                if (!titleNode) {
+                    return null;
                 }
-            `;
 
-            const titleVideoResponse = await fetchIMDbGraphQL(titleVideoIdsQuery);
-            const titleNode = titleVideoResponse && titleVideoResponse.data ? titleVideoResponse.data.title : null;
-            if (!titleNode) {
-                return null;
+                ({ latestTrailerId, uniqueVideoIds } = extractIMDbTrailerVideoIds(titleNode));
             }
 
-            const latestTrailerId = titleNode.latestTrailer && titleNode.latestTrailer.id ? titleNode.latestTrailer.id : null;
-            const allVideoIds = [];
-            if (latestTrailerId) {
-                allVideoIds.push(latestTrailerId);
-            }
-
-            const primaryVideoEdges = titleNode.primaryVideos && titleNode.primaryVideos.edges ? titleNode.primaryVideos.edges : [];
-            primaryVideoEdges.forEach((edge) => {
-                const id = edge && edge.node ? edge.node.id : null;
-                if (id) allVideoIds.push(id);
-            });
-
-            const videoStripEdges = titleNode.videoStrip && titleNode.videoStrip.edges ? titleNode.videoStrip.edges : [];
-            videoStripEdges.forEach((edge) => {
-                const id = edge && edge.node ? edge.node.id : null;
-                if (id) allVideoIds.push(id);
-            });
-
-            const uniqueVideoIds = [...new Set(allVideoIds)];
             if (uniqueVideoIds.length === 0) {
                 return null;
             }
@@ -5937,7 +6044,7 @@ function hasRequiredRatingsData(titleData) {
         const url = `https://api.graphql.imdb.com/`;
         const query = {
             query: `
-                query getTitleDetails($id: ID!, $first: Int!, $after: ID, $includeHistogram: Boolean!, $includeCountries: Boolean!, $includeDemographics: Boolean!) {
+                query getTitleDetails($id: ID!, $first: Int!, $after: ID, $includeHistogram: Boolean!, $includeCountries: Boolean!, $includeDemographics: Boolean!, $includeTrailerVideoIds: Boolean!) {
                     title(id: $id) {
                         soundtrack(first: 40) {
                             edges {
@@ -5972,6 +6079,23 @@ function hasRequiredRatingsData(titleData) {
                         }
                         releaseYear {
                             year
+                        }
+                        latestTrailer @include(if: $includeTrailerVideoIds) {
+                            id
+                        }
+                        primaryVideos(first: 20) @include(if: $includeTrailerVideoIds) {
+                            edges {
+                                node {
+                                    id
+                                }
+                            }
+                        }
+                        videoStrip(first: 20) @include(if: $includeTrailerVideoIds) {
+                            edges {
+                                node {
+                                    id
+                                }
+                            }
                         }
                         ratingsSummary {
                             aggregateRating
@@ -6349,7 +6473,8 @@ function hasRequiredRatingsData(titleData) {
                 after: afterCursor,
                 includeHistogram: shouldIncludeHistogramData(),
                 includeCountries: shouldIncludeCountryRatingsData(),
-                includeDemographics: shouldIncludeDemographicsData()
+                includeDemographics: shouldIncludeDemographicsData(),
+                includeTrailerVideoIds: SHOW_IMDB_TRAILERS
             }
         };
 
@@ -8259,8 +8384,6 @@ function hasRequiredRatingsData(titleData) {
     }
 
     // Initialize panels
-    const imdbTrailerDataPromise = SHOW_IMDB_TRAILERS ? fetchIMDbTrailerData(imdbId) : null;
-
     fetchIMDBData(imdbId, null, [], null, null, false, {
         initialRatingsPublished: false,
         onInitialRatingsData: (imdbRatingsData) => {
@@ -8358,7 +8481,7 @@ function hasRequiredRatingsData(titleData) {
                 displayCastPhotos(titleData, idToNameMap, namesData);
             }
 
-            await replacePTPTrailerWithIMDbVideos(imdbId, titleData, imdbTrailerDataPromise);
+            await replacePTPTrailerWithIMDbVideos(imdbId, titleData, SHOW_IMDB_TRAILERS ? fetchIMDbTrailerData(imdbId, titleData) : null);
 
             formatIMDbText();
 
