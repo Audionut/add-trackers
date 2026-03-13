@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Cross-Seed Checker
-// @version      0.1.4
+// @version      0.1.5
 // @author       Ignacio (additions by Audionut)
 // @description  Find cross-seedable and add cross-seed markers to non-ptp releases
 // @match        https://passthepopcorn.me/torrents.php*
@@ -379,17 +379,22 @@ function matchRows(ptpRows, ptpRowsData, otherRowsData, enablePCS, dnum, pnum) {
                 infoLinklistener(infoLink, ptpRows, matchingPTPRow);
             }
         } else if (enablePCS && otherRow.size) {
-            const matchingPTPRowPCS = PCSfinder(ptpRowsData, otherRow, pnum);
+            const matchingPTPRowPCS = PCSfinder(ptpRowsData, otherRow, pnum, dnum);
 
             if (matchingPTPRowPCS) {
                 const otherRowElement = document.querySelector(`.${otherRow.classid}`);
-                otherRowElement.classList.add('pcs-matched');
-                otherRowElement.setAttribute('data-pl-href', matchingPTPRowPCS.pl); // Add the href attribute
+                otherRowElement.classList.add(matchingPTPRowPCS.matchClass);
+                otherRowElement.setAttribute('data-pl-href', matchingPTPRowPCS.row.pl); // Add the href attribute
                 if (showMarkers) {
-                    const pcsLink = createLink('PCS', matchingPTPRowPCS.pl, 'Partial Cross-Seed compatibility - Re-verify File/Folder Structure', 'orange');
+                    const pcsLink = createLink(
+                        matchingPTPRowPCS.label,
+                        matchingPTPRowPCS.row.pl,
+                        matchingPTPRowPCS.title,
+                        matchingPTPRowPCS.color
+                    );
                     const infoLinkPCS = createInfoLink();
                     actionSpnupdater(otherRow, pcsLink, infoLinkPCS);
-                    infoLinklistener(infoLinkPCS, ptpRows, matchingPTPRowPCS);
+                    infoLinklistener(infoLinkPCS, ptpRows, matchingPTPRowPCS.row);
                 }
             } else {
                 unmatchedRows.push(otherRow);
@@ -465,32 +470,42 @@ function PCSfinder(ptpRowsData, otherRow, pnum, dnum) {
 
     const otherRowTitle = normalizeTitle(otherRow.parsedName.title || "");
     const otherRowResolution = otherRow.parsedName.resolution || "";
-    const otherRowHasDV = otherRowTitle.includes("DV");
+    const otherRowHasDV = otherRowTitle.includes("dv");
     const otherRowHasHDR = /HDR/i.test(otherRowTitle);
-    const otherRowHas3D = otherRowTitle.includes("3D");
+    const otherRowHas3D = otherRowTitle.includes("3d");
 
-    // Prioritize exact size match or rawName match
-    const exactMatch = ptpRowsData.find(ptpRow => {
+    const sameSizeMatch = ptpRowsData.find(ptpRow => {
         const ptpRowTitle = normalizeTitle(ptpRow.parsedName.title || "");
         const ptpRowResolution = ptpRow.parsedName.resolution || "";
-        const ptpRowHasDV = ptpRowTitle.includes("DV");
+        const ptpRowHasDV = ptpRowTitle.includes("dv");
         const ptpRowHasHDR = /HDR/i.test(ptpRowTitle);
-        const match = (ptpRow.size === otherRow.size) ||
-                      (ptpRow.rawName.toLowerCase() === otherRow.rawName.toLowerCase());
+        const ptpRowHas3D = ptpRowTitle.includes("3d");
+        const sizeDifference = Math.abs(ptpRow.size - otherRow.size);
+        const match = sizeDifference === 0 &&
+                      ptpRowResolution === otherRowResolution &&
+                      otherRowHasDV === ptpRowHasDV &&
+                      otherRowHas3D === ptpRowHas3D &&
+                      otherRowHasHDR === ptpRowHasHDR;
         return match;
     });
 
-    if (exactMatch) {
-        return exactMatch;
+    if (sameSizeMatch) {
+        return {
+            row: sameSizeMatch,
+            label: 'SCS',
+            matchClass: 'scs-matched',
+            title: 'Same-Size Cross-Seed compatibility - Exact size match, but failed strict TCS rules',
+            color: 'gold'
+        };
     }
 
     // Fallback to within tolerance size match with additional checks
     const toleranceMatch = ptpRowsData.find(ptpRow => {
         const ptpRowTitle = normalizeTitle(ptpRow.parsedName.title || "");
         const ptpRowResolution = ptpRow.parsedName.resolution || "";
-        const ptpRowHasDV = ptpRowTitle.includes("DV");
+        const ptpRowHasDV = ptpRowTitle.includes("dv");
         const ptpRowHasHDR = /HDR/i.test(ptpRowTitle);
-        const ptpRowHas3D = ptpRowTitle.includes("3D");
+        const ptpRowHas3D = ptpRowTitle.includes("3d");
         const sizeDifference = Math.abs(ptpRow.size - otherRow.size);
         const match = (otherRow.group.length === 0 || ptpRow.group.toLowerCase() === otherRow.group.toLowerCase()) &&
                       ptpRowResolution === otherRowResolution &&
@@ -502,7 +517,17 @@ function PCSfinder(ptpRowsData, otherRow, pnum, dnum) {
                       ptpRowTitle === otherRowTitle;
         return match;
     });
-    return toleranceMatch;
+    if (toleranceMatch) {
+        return {
+            row: toleranceMatch,
+            label: 'PCS',
+            matchClass: 'pcs-matched',
+            title: 'Partial Cross-Seed compatibility - Re-verify File/Folder Structure',
+            color: 'orange'
+        };
+    }
+
+    return null;
 }
 
     function normalizeTitle(title) {
@@ -606,6 +631,7 @@ function PCSfinder(ptpRowsData, otherRow, pnum, dnum) {
                 }
 
                 const rowsWithTCS = getMatchedRows('tcs-matched');
+                const rowsWithSCS = getMatchedRows('scs-matched');
                 const rowsWithPCS = getMatchedRows('pcs-matched');
                 const rowsWithPLAnchors = getRowsWithPLAnchors();
 
@@ -618,12 +644,16 @@ function PCSfinder(ptpRowsData, otherRow, pnum, dnum) {
                             const tcsAnchor = tcsRow.getAttribute('data-pl-href');
                             return tcsAnchor === plHref;
                         });
+                        const matchingSCSRows = rowsWithSCS.filter(scsRow => {
+                            const scsAnchor = scsRow.getAttribute('data-pl-href');
+                            return scsAnchor === plHref;
+                        });
                         const matchingPCSRows = rowsWithPCS.filter(pcsRow => {
                             const pcsAnchor = pcsRow.getAttribute('data-pl-href');
                             return pcsAnchor === plHref;
                         });
 
-                        const combinedRows = [...matchingTCSRows, ...matchingPCSRows]; // TCS rows first, then PCS rows
+                        const combinedRows = [...matchingTCSRows, ...matchingSCSRows, ...matchingPCSRows]; // TCS rows first, then SCS, then PCS rows
 
                         if (combinedRows.length > 0) {
                             let emptyRowAbovePl = plRow.previousElementSibling;
