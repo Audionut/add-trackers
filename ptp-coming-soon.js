@@ -11,10 +11,11 @@
 // @grant       GM_getValue
 // @grant       GM_setValue
 // @grant       GM_deleteValue
-// @version     0.1.9
+// @version     0.2.0
 // ==/UserScript==
 
 // v0.1.9 - added comingSoon graphql query and GM storage support
+// v0.2.0 - add option for poster links to point to Letterboxd instead of IMDb
 
 const LOG_LEVEL = "DEBUG";
 const GM_STORAGE_UNSET = "__upcoming_gm_storage_unset__";
@@ -29,6 +30,7 @@ const EDITABLE_STORAGE_KEYS = [
     "upcoming.toggled",
     "upcoming.country",
     "upcoming.tmdb-api-key",
+    "upcoming.poster-links-to-letterboxd",
     "upcoming.availability-indicator",
     "upcoming.default-tab",
     "upcoming.enabled-tabs",
@@ -132,6 +134,9 @@ if (storage.getItem("upcoming.country") === null) {
 if (storage.getItem("upcoming.tmdb-api-key") === null) {
     storage.setItem("upcoming.tmdb-api-key", "");
 }
+if (storage.getItem("upcoming.poster-links-to-letterboxd") === null) {
+    storage.setItem("upcoming.poster-links-to-letterboxd", false);
+}
 if (storage.getItem("upcoming.availability-indicator") === null) {
     storage.setItem("upcoming.availability-indicator", "text-color");
 }
@@ -172,6 +177,40 @@ normalizeStoredCountrySetting();
 
 function getTmdbApiKey() {
     return (storage.getItem("upcoming.tmdb-api-key") || "").trim();
+}
+
+
+function getPosterLinksToLetterboxd() {
+    return storage.getItem("upcoming.poster-links-to-letterboxd") === "true";
+}
+
+
+function getLetterboxdPosterUrl(movie) {
+    if (movie.imdbId) {
+        return `https://letterboxd.com/imdb/${movie.imdbId}`;
+    }
+
+    const searchTerms = [movie.title, movie.releaseDate ? movie.releaseDate.slice(-4) : ""]
+        .filter(Boolean)
+        .join(" ");
+    return `https://letterboxd.com/search/${encodeURIComponent(searchTerms)}/`;
+}
+
+
+function getPosterUrl(movie, fallbackUrl) {
+    if (getPosterLinksToLetterboxd()) {
+        return getLetterboxdPosterUrl(movie);
+    }
+
+    if (!fallbackUrl) {
+        return null;
+    }
+
+    if (fallbackUrl.includes("undefined") || fallbackUrl.includes("null")) {
+        return null;
+    }
+
+    return fallbackUrl;
 }
 
 
@@ -1255,6 +1294,7 @@ function addSettings() {
     // Individual settings:
     const countrySetting = createSetting("Country:", createCountryOption());
     const tmdbApiKeySetting = createSetting("TMDb API key:", createTmdbApiKeyOption());
+    const posterLinksSetting = createSetting("Poster links:", createPosterLinksOption());
     const defaultTabSetting = createSetting("Default tab:", createDefaultTabOption());
     const enabledTabSetting = createSetting("Enabled tabs:", createEnabledTabsOption());
     const availabilityIndicatorSetting = createSetting("Availability indicator:", createAvailabilityIndicatorOption());
@@ -1262,7 +1302,7 @@ function addSettings() {
     const cacheTTLSetting = createSetting("Cache time to live:", createCacheTTLOption());
     const storageEditorSetting = createSetting("Storage items:", createStorageEditor());
 
-    innerDiv.append(countrySetting, tmdbApiKeySetting, defaultTabSetting, enabledTabSetting, availabilityIndicatorSetting, navbarLocationSetting, cacheTTLSetting, storageEditorSetting, footerDiv);
+    innerDiv.append(countrySetting, tmdbApiKeySetting, posterLinksSetting, defaultTabSetting, enabledTabSetting, availabilityIndicatorSetting, navbarLocationSetting, cacheTTLSetting, storageEditorSetting, footerDiv);
     outerDiv.append(innerDiv);
     form.append(outerDiv);
     containerDiv.append(labelDiv, form);
@@ -1370,6 +1410,7 @@ function onSettingsChange(event) {
 
     const country = normalizeCountryCode(document.querySelector("#upcoming-country-selector").value);
     const tmdbApiKey = document.querySelector("#upcoming-tmdb-api-key").value.trim();
+    const posterLinksToLetterboxd = document.querySelector("#upcoming-poster-links-to-letterboxd").checked;
     const defaultTab = document.querySelector("#upcoming-setting-default-tab").value;
     const enabledTabs = Array.from(document.querySelectorAll("#upcoming-setting-enabled-tabs > label > input:checked")).map(x => x.value);
     const availabilityIndicator = document.querySelector("#upcoming-setting-availability-indicator").value;
@@ -1390,6 +1431,7 @@ function onSettingsChange(event) {
 
     storage.setItem("upcoming.country", country);
     storage.setItem("upcoming.tmdb-api-key", tmdbApiKey);
+    storage.setItem("upcoming.poster-links-to-letterboxd", posterLinksToLetterboxd);
     storage.setItem("upcoming.default-tab", defaultTab);
     storage.setItem("upcoming.enabled-tabs", JSON.stringify(enabledTabs));
     storage.setItem("upcoming.availability-indicator", availabilityIndicator);
@@ -1436,6 +1478,20 @@ function createAvailabilityIndicatorOption() {
     selector.innerHTML = '<option value="text-color">Text color</option><option value="icon">Icon</option>';
     selector.querySelector(`[value=${currentAvailabilityIndicator}]`).toggleAttribute("selected");
     return selector;
+}
+
+
+function createPosterLinksOption() {
+    const wrapper = document.createElement("label");
+    wrapper.className = "form__checkbox-label";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.id = "upcoming-poster-links-to-letterboxd";
+    checkbox.checked = getPosterLinksToLetterboxd();
+
+    wrapper.append(checkbox, " Link all posters to Letterboxd");
+    return wrapper;
 }
 
 
@@ -1889,6 +1945,8 @@ function imdbScoreToHTMLPercentage(imdbScore) {
 
 function createMovieListTable(movie) {
     const imdbUrl = `https://www.imdb.com/title/${movie.imdbId}`;
+    const fallbackPosterUrl = movie.imdbId ? imdbUrl : null;
+    const posterUrl = getPosterUrl(movie, fallbackPosterUrl);
     const imdbTrailerUrl = `https://www.imdb.com/title/${movie.imdbId}/videogallery`;
 
     const imdbLink = movie.imdbId
@@ -1922,8 +1980,8 @@ function createMovieListTable(movie) {
     const storyline = movie.storyline ? movie.storyline : "";
     const ptpMeta = movie.ptpLinkURL ? `<strong style="color: ${movie.ptpLinkColor}">${movie.ptpLinkText}</strong><br><a href="${movie.ptpLinkURL}">${movie.ptpLinkText2}</a>` : "";
 
-    const coverImage = movie.imdbId
-        ? `<a target="_blank" href="${imdbUrl}"><img src="${movie.image}" alt="${movie.title}"></a>`
+    const coverImage = posterUrl
+        ? `<a target="_blank" href="${posterUrl}"><img src="${movie.image}" alt="${movie.title}"></a>`
         : `<img src="${movie.image}" alt="${movie.title}">`;
 
     const imdbTrailerLink = movie.imdbId
@@ -2013,9 +2071,10 @@ function createMovieCalendarTable(isFirst) {
 
 
 function createMovieCalendarItem(id, movie) {
-    const coverLink = (id === "list" || id === "calendar")
+    const fallbackCoverLink = (id === "list" || id === "calendar")
         ? `https://www.imdb.com/title/${movie.imdbId}`
         : `https://www.dvdsreleasedates.com/movies/${movie.dvdId}/`;
+    const coverLink = getPosterUrl(movie, fallbackCoverLink);
 
     const tdCover = document.createElement("td");
     tdCover.className = "text--center";
@@ -2023,7 +2082,9 @@ function createMovieCalendarItem(id, movie) {
 
     const coverImage = document.createElement("a");
     coverImage.className = "last5-movies__link";
-    coverImage.href = coverLink;
+    if (coverLink) {
+        coverImage.href = coverLink;
+    }
     coverImage.setAttribute("target", "_blank");
     coverImage.style = `background-image: url('${movie.image}');`;
     coverImage.title = movie.title;
