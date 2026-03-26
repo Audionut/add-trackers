@@ -1,8 +1,12 @@
 // ==UserScript==
 // @name         Cleanup unit3d chat in theLounge
+// @namespace    https://github.com/Audionut/add-trackers
 // @version      1.0.0
 // @description  Hides certain useless chat messages in theLounge when using unit3d, such as emoji-only messages and repeated quoted messages.
+// @author       Audionut
 // @match        http://localhost:9005/*
+// @downloadURL  https://github.com/Audionut/add-trackers/raw/main/unit3d-lounge-cleaner.user.js
+// @updateURL    https://github.com/Audionut/add-trackers/raw/main/unit3d-lounge-cleaner.user.js
 // @grant        none
 // @run-at       document-end
 // ==/UserScript==
