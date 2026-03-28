@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Cleanup unit3d chat in theLounge
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.1.0
+// @version      1.2.0
 // @description  Hides certain useless chat messages in theLounge when using unit3d, such as emoji-only messages and repeated quoted messages.
 // @author       Audionut
 // @match        http://localhost:9005/*
@@ -21,7 +21,6 @@
     const FILTERED_ATTRIBUTE = 'data-emoji-gif-filtered';
     const STYLE_ID = 'emoji-gif-chat-cleaner-style';
     const QUOTE_PREFIX_RE = /^\s*(?:\[[^\]]+\]\s*)?/;
-    const RECENT_MESSAGES_WINDOW = 3;
     const INITIAL_READY_TIMEOUT_MS = 1500;
 
     const QUERY_ITEM_SELECTOR = '.channel-list-item[data-type="query"]';
@@ -111,7 +110,7 @@
     }
 
     function normalizeText(text) {
-        return (text || '').replace(/\u00A0/g, ' ').trim();
+        return (text || '').replaceAll('\u00A0', ' ').trim();
     }
 
     function stripBoilerplateText(text) {
@@ -279,8 +278,8 @@
     function stripEmojiLikeChars(text) {
         // Remove most pictographic/symbol emoji code points and collapse spacing.
         return normalizeText(text)
-            .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}]/gu, ' ')
-            .replace(/\s+/g, ' ')
+            .replaceAll(/(?:\u{27BF}\u{FE0F}|[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BE}\u{200D}])/gu, ' ')
+            .replaceAll(/\s+/g, ' ')
             .trim();
     }
 
@@ -593,7 +592,7 @@
         panel.querySelector('[data-action="cancel"]')?.addEventListener('click', closeSettingsPanel);
         panel.querySelector('[data-action="save"]')?.addEventListener('click', () => {
             const windowInput = panel.querySelector('input[name="recentMessagesWindow"]');
-            const windowVal = windowInput ? parseInt(windowInput.value, 10) : 3;
+            const windowVal = windowInput ? Number.parseInt(windowInput.value, 10) : 3;
             const next = {
                 hideEmojiOnly: Boolean(panel.querySelector('input[name="hideEmojiOnly"]:checked')),
                 hideGifLinksOnly: Boolean(panel.querySelector('input[name="hideGifLinksOnly"]:checked')),
@@ -623,10 +622,6 @@
         return getQueryItemsInNetwork(networkEl).some((el) =>
             PM_NOTIFICATION_CLASSES.some((cls) => el.classList.contains(cls))
         );
-    }
-
-    function queryItemHasNotification(queryEl) {
-        return PM_NOTIFICATION_CLASSES.some((cls) => queryEl.classList.contains(cls));
     }
 
     function scheduleNetworkSync(networkEl) {
@@ -698,9 +693,30 @@
         proxy.querySelectorAll('.close-tooltip, .add-channel-tooltip').forEach((el) => el.remove());
         proxy.querySelectorAll('button.close, button.add-channel').forEach((el) => el.remove());
 
+        const removeProxyFromPinnedList = () => {
+            const notifiedNetwork = proxy.closest(`#${NOTIFIED_PROXY_NETWORK_ID}`);
+            proxy.remove();
+
+            if (!(notifiedNetwork instanceof Element)) return;
+
+            const countEl = notifiedNetwork.querySelector('.lounge-cleaner-notified-count');
+            const remaining = notifiedNetwork.querySelectorAll('.lounge-cleaner-notified-proxy-item').length;
+
+            if (countEl) {
+                countEl.textContent = String(remaining);
+            }
+
+            if (remaining === 0) {
+                notifiedNetwork.remove();
+            }
+        };
+
         proxy.addEventListener('click', (event) => {
             event.preventDefault();
             event.stopPropagation();
+
+            // Remove the clicked item from the pinned list immediately for instant feedback.
+            removeProxyFromPinnedList();
 
             // Remove the highlight notification from original element
             PM_NOTIFICATION_CLASSES.forEach((cls) => originalEl.classList.remove(cls));
@@ -763,7 +779,7 @@
             // Deduplicate by data-item attribute
             const seenItems = new Set();
             const uniqueNotifiedItems = notifiedItems.filter((originalEl) => {
-                const itemId = originalEl.getAttribute('data-item');
+                const itemId = originalEl.dataset.item;
                 if (!itemId || seenItems.has(itemId)) {
                     return false;
                 }
@@ -1000,33 +1016,26 @@
     function applySettings() {
         processAllMessages();
 
-        if (!settings.pushNotifiedChannelsTop) {
-            stopNotifiedChannelsObserver();
-            teardownNotifiedChannelsProxy();
-        } else {
+        if (settings.pushNotifiedChannelsTop) {
             startNotifiedChannelsObserver();
             scheduleNotifiedChannelsSync();
+        } else {
+            stopNotifiedChannelsObserver();
+            teardownNotifiedChannelsProxy();
         }
 
         if (!settings.collapsePrivateMessages && !settings.pushNotifiedChannelsTop) {
             stopPmSidebarObserver();
             clearPmCollapserState();
-            return;
-        }
-
-        if (!settings.collapsePrivateMessages) {
+        } else if (!settings.collapsePrivateMessages) {
             stopPmSidebarObserver();
             clearPmCollapserState();
             initPmCollapserForAllNetworks();
             startPmSidebarObserver();
-            return;
-        }
-
-        if (settings.collapsePrivateMessages) {
+        } else if (settings.collapsePrivateMessages) {
             ensurePmStyles();
             initPmCollapserForAllNetworks();
             startPmSidebarObserver();
-            return;
         }
     }
 
