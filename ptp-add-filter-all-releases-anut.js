@@ -1975,7 +1975,7 @@ function toUnixTime(dateString) {
                 GM_xmlhttpRequest({
                     url: post_query_url,
                     method: method,
-                    data: (tracker === 'YUS' || tracker === 'OTW' || tracker === 'HHD') ? new URLSearchParams(postData).toString() : JSON.stringify(postData),
+                    data: (tracker === 'YUS' || tracker === 'OTW' || tracker === 'HHD' || tracker === 'FL') ? new URLSearchParams(postData).toString() : JSON.stringify(postData),
                     headers: headers,
                     onload: (res) => {
                         clearTimeout(timer);
