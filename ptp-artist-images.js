@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP Artist Image Enhancer
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.2
+// @version      1.3
 // @description  Fetch and display IMDb images and details for artists
 // @match        https://passthepopcorn.me/artist.php?id=*
 // @icon         https://passthepopcorn.me/favicon.ico
@@ -223,6 +223,8 @@
                 existingPanel = document.createElement('img');
                 existingPanel.className = 'sidebar-cover-image';
                 existingPanel.alt = nameData.nameText.text;
+                existingPanel.style.cursor = 'pointer';
+                existingPanel.onclick = () => lightbox.init(existingPanel, 900);
 
                 const newPanel = document.createElement('div');
                 newPanel.className = 'panel';
