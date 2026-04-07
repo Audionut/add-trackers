@@ -1,0 +1,17 @@
+{
+  "name": "add-trackers",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Lint and formatting config for userscripts",
+  "scripts": {
+    "lint": "eslint \"**/*.js\"",
+    "lint:fix": "eslint \"**/*.js\" --fix",
+    "format": "prettier \"**/*.{js,css,md,json}\" --write",
+    "format:check": "prettier \"**/*.{js,css,md,json}\" --check"
+  },
+  "devDependencies": {
+    "eslint": "^9.22.0",
+    "eslint-formatter-compact": "^9.0.1",
+    "prettier": "^3.5.3"
+  }
+}

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Cleanup unit3d chat in theLounge
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.2.0
+// @version      1.2.1
 // @description  Hides certain useless chat messages in theLounge when using unit3d, such as emoji-only messages and repeated quoted messages.
 // @author       Audionut
 // @match        http://localhost:9005/*
@@ -54,6 +54,8 @@
     let notifiedChannelsSyncTimer = null;
     let notifiedChannelsSuppressUntil = 0;
     let notifiedChannelsSyncing = false;
+    let proxyClickInProgress = false;
+    let lastProxyClickTime = 0;
 
     function normalizeSettings(candidate) {
         const safe = (candidate && typeof candidate === 'object') ? candidate : {};
@@ -715,28 +717,53 @@
             event.preventDefault();
             event.stopPropagation();
 
-            // Remove the clicked item from the pinned list immediately for instant feedback.
-            removeProxyFromPinnedList();
-
-            // Remove the highlight notification from original element
-            PM_NOTIFICATION_CLASSES.forEach((cls) => originalEl.classList.remove(cls));
-
-            // Temporarily unhide original element so click handlers work
-            const wasHidden = originalEl.classList.contains(NOTIFIED_HIDDEN_ORIGINAL_CLASS);
-            if (wasHidden) {
-                originalEl.classList.remove(NOTIFIED_HIDDEN_ORIGINAL_CLASS);
+            // Debounce rapid clicks (prevent double-clicks within 200ms)
+            const now = Date.now();
+            if (now - lastProxyClickTime < 200) {
+                return;
             }
+            lastProxyClickTime = now;
 
-            // Trigger click on original element
-            originalEl.click();
-
-            // Re-hide original element
-            if (wasHidden) {
-                originalEl.classList.add(NOTIFIED_HIDDEN_ORIGINAL_CLASS);
+            // Prevent concurrent click operations
+            if (proxyClickInProgress) {
+                return;
             }
+            proxyClickInProgress = true;
 
-            // Trigger sync to update/remove from notified proxy network
-            scheduleNotifiedChannelsSync();
+            try {
+                // Remove the clicked item from the pinned list immediately for instant feedback.
+                removeProxyFromPinnedList();
+
+                // Remove the highlight notification from original element
+                PM_NOTIFICATION_CLASSES.forEach((cls) => originalEl.classList.remove(cls));
+
+                // Temporarily unhide original element so click handlers work
+                const wasHidden = originalEl.classList.contains(NOTIFIED_HIDDEN_ORIGINAL_CLASS);
+                if (wasHidden) {
+                    originalEl.classList.remove(NOTIFIED_HIDDEN_ORIGINAL_CLASS);
+                }
+
+                // Suppress the observer from triggering during this click operation
+                notifiedChannelsSuppressUntil = Date.now() + 250;
+
+                // Trigger click on original element
+                originalEl.click();
+
+                // Re-hide original element
+                if (wasHidden) {
+                    originalEl.classList.add(NOTIFIED_HIDDEN_ORIGINAL_CLASS);
+                }
+
+                // Trigger sync after a delay to allow click to settle
+                setTimeout(() => {
+                    scheduleNotifiedChannelsSync();
+                }, 100);
+            } finally {
+                // Release the lock after a short delay
+                setTimeout(() => {
+                    proxyClickInProgress = false;
+                }, 250);
+            }
         });
 
         return proxy;
@@ -749,7 +776,8 @@
             return;
         }
 
-        if (Date.now() < notifiedChannelsSuppressUntil || notifiedChannelsSyncing) {
+        // Skip sync if a click is in progress or suppression is active
+        if (proxyClickInProgress || Date.now() < notifiedChannelsSuppressUntil || notifiedChannelsSyncing) {
             return;
         }
 
@@ -801,7 +829,10 @@
     }
 
     function scheduleNotifiedChannelsSync() {
-        if (notifiedChannelsSyncTimer) return;
+        // Clear any existing timer to debounce rapid calls
+        if (notifiedChannelsSyncTimer) {
+            clearTimeout(notifiedChannelsSyncTimer);
+        }
 
         notifiedChannelsSyncTimer = setTimeout(() => {
             notifiedChannelsSyncTimer = null;
