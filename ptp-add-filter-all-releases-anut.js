@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.6.1-A
+// @version      4.6.2-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -154,6 +154,8 @@
     red_api: { label: 'RED_API_TOKEN', type: 'text', default: '' },
     ras: { label: 'RAS *', type: 'checkbox', default: false, tooltip: 'Enter API key below' },
     ras_api: { label: 'RAS_API_TOKEN', type: 'text', default: '' },
+    rmc: { label: 'RMC *', type: 'checkbox', default: false, tooltip: 'Enter API key below' },
+    rmc_api: { label: 'RMC_API_TOKEN', type: 'text', default: '' },
     rfx: { label: 'RFX *', type: 'checkbox', default: false, tooltip: 'Enter API key below' },
     rfx_api: { label: 'RFX_API_TOKEN', type: 'text', default: '' },
     rtf: {
@@ -487,6 +489,7 @@
           phd: GM_config.fields.phd.node,
           red: GM_config.fields.red.node,
           ras: GM_config.fields.ras.node,
+          rmc: GM_config.fields.rmc.node,
           rfx: GM_config.fields.rfx.node,
           rtf: GM_config.fields.rtf.node,
           sp: GM_config.fields.sp.node,
@@ -632,7 +635,8 @@
       };
 
       const very_old_dict = {
-        RTF: GM_config.get('rtf')
+        RTF: GM_config.get('rtf'),
+        RMC: GM_config.get('rmc')
       };
 
       return {
@@ -711,6 +715,7 @@
     const SP_API_TOKEN = GM_config.get('sp_api');
     const HHD_API_TOKEN = GM_config.get('hhd_api');
     const LUME_API_TOKEN = GM_config.get('lume_api');
+    const RMC_API_TOKEN = GM_config.get('rmc_api');
 
     // We need to use XML response with TVV and have to define some parameters for it to work correctly.
     const TVV_AUTH_KEY = GM_config.get('tvv_auth'); // If you want to use TVV - find your authkey from a torrent download link
@@ -1130,7 +1135,8 @@
       RAS: 'data:image/png;base64,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',
       SP: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAw1BMVEUAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADQ+P/M8f/L7/+73f4aHyUOFBvW/v/X/P/U+//C5/+/5v/A4/+32/+20/GmyvCsyumTsdNre4pdboA/T2E0OTwsMTcgKTQsLzIcJjEWFhTS+f/O8//H7f/J7P/E6f+84P+11vi01fWrz/Ww0O+jxOeXttiGpsqBoMGSqLx9m7yLorl5kq1vg5ljfJlvf49AVGpWYGg3R1lAR04nMT0vMzcLDxQEBwsMCwoHCAnmygrtAAAAB3RSTlMA5bJ+ciy5LvMwCgAAAK9JREFUGNNlT9UOw0AMO2ibK4zKvHbMzPz/X7XrdZsqzQ+RE8uKjQrIlGBMqIw+kECgZkjlrpT72VQPSkW/u1qrn0vcD/ACuG5b3VHPeYKMaDYb7/w620S2lwBQRJYdS50GBtTYiTsJwuvmQGtzGtVjPjHCxtzTdX7Zq7k4ED7TYeMCCweEhYpMbiOcrApG+dsCD59Z+o0T+RvsyGwWAEi/6JnZ1GJQKuXSMBH6X/03UswNMDkCCoYAAAAASUVORK5CYII=',
       HHD: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABABAMAAABYR2ztAAAALVBMVEUAAACBIbd6fGrtFIPRH4iuHKHu8+5eYIkaPx1uOKuhXGvDPHOPPpHI1MmhoaHlI8cQAAAAAXRSTlMAQObYZgAAAvhJREFUSMfNkb9P20AUxx9X6qgBKpwl8naYRPxou3CZyBJhT7BUqFaXDBVDygJKMhSxWR0qj2FC2SKgCywVYSJLKsHWAXVAWSpVHSqW9m/gvfP5zk7+AZ4c5967z33f953hiUSuewyTsaSrzLbtzsT+C6wW4uWU024VJ4Ajp31oc7lsdSBnT7S1mwjNxywu7W53rEORtIsxwPGXtXFw0CqQjBMDHfTZbjkZg868ARaKsOJQUw20nO6RBoh3bExJ1Bg0HuiA7UguARYcgriagsKVb5JhaoGbRffQdFUXdmijuyZKqZs018easqSiIAsrtK+7FuT+MfZdOiJgygydtGe2wxPPHTW06W5TmSfpd9sMTUEZHhkaR9hkFiFTQL3Z92OKqQMwWweY8FTe1plem3hez5y6HcKPLMACjo9OcRnoRJ/BR0UOxdh4j20ov1Xr7ABwp3wjo2mFWr/p/VGZAKY9oNatBJbpvat96fg6pPQDWBz2ELhvNBrSpXHcYwGdtJqwH8KIfXpo30M5DXBWl0AIOwiAFaEdMwO1yyMwioG5B/xXwKo7CYAVA00cLR8EPQm8hhi4vyNgj4C9EIFyPUiugtWtBsZ/ev0MrdDaDctBEAz1B8Mp3oyif5//7ERfllGhEQEBPK8BH9DcrxB2Q5zV+jsK4ezSvdkub4KKdxzN7SMgHe5HVIFp368lwM0wBcxFpMmBXW1BEqUaAjkCXoYA+OTlnonpTYjo/0EXNrJA3odsnNXGCv63TMr83hhQ2sy29HUL3YOn0ytf5SYyR2Y8V+e6qddLJWtQSkuwc77o96u6cupxYGmJvqj4tbxIiJLYoHeFa8tiy/OpXj3BzL0S61JWrGnFNZipyJOo5ItEabFyca069BCn4qonkLnE1YAkMIvv0+Pxj/Rdl5OmkMrrp7IZ0ICosGWmoPakPFPVHgR2qZzEKn2hDibAM3HtYekV9r8+v+gLtQ+n1X68YmitpzxSXOrxhfrG+YGqrQ4GgxNzxTjm04hH8MDJxzSNwlIAAAAASUVORK5CYII=',
-      LUME: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABABAMAAABYR2ztAAAALVBMVEUAAACMoL5GUF9qeI4NDxEjKC8xOEN3iaKEl7NdaX0ZHiOKpsA8RVJRXGyYqMIaQNTeAAAAAXRSTlMAQObYZgAAAdRJREFUSMe9lLFKA0EQhldzRgwRHM8zxkBQsbBMiK1wwVKQCB5iqhxYi7EQ7AzYKAjxDSxtr04TO9PFwgcI+CDC7t7O7sydlWSaY2a/3f33n90T/xxe1I3O/xieAPgA91c54+U+SADgLm9cAnlEqQ8IwCEHDsAGtnpsAVBR0d81CkzAjVuyxCokhNh0gWtgxJtj0QBYPNrACgDUZbnVT4F1G2jr4ktPeJegTxpawKuqPcnasSZ2LAl6zlilHyp9sNqgKts6LbKDLhN7P2VeRWBBuWzyU5KLd1nYEMLZo47HiGWhgTOUGR2T78rcas8XBaj5cSYgMM6ygBpfgWw5ztaA3t4gMFAA2TIgPkBInKyi9dTJApkR6wl0yWGaN1Vz2ZUMkFei6bGquCOxXpyYm44SKqFgKhuml3ir8VImqYii8y5Q9wzANy6MAKYO0K7LW9lJJYwS/SzwaUlgaCQkWgLpV2Ak1HSnyJ3xTSOAAm1TjvFlEhHKXo+4gE5oEWXqgtvBZ7GogCkDvD079gWLJbAj4IA3Iz+oHBH078KdIC5wJ9AFJoIcgkehlcYRG8Pno3uWvQKRwKJkgB86hP9b3gjuBLrA2xFFTYDvqCvy4wL8UMw7fgFb2GyDX2EY5AAAAABJRU5ErkJggg=='
+      LUME: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABABAMAAABYR2ztAAAALVBMVEUAAACMoL5GUF9qeI4NDxEjKC8xOEN3iaKEl7NdaX0ZHiOKpsA8RVJRXGyYqMIaQNTeAAAAAXRSTlMAQObYZgAAAdRJREFUSMe9lLFKA0EQhldzRgwRHM8zxkBQsbBMiK1wwVKQCB5iqhxYi7EQ7AzYKAjxDSxtr04TO9PFwgcI+CDC7t7O7sydlWSaY2a/3f33n90T/xxe1I3O/xieAPgA91c54+U+SADgLm9cAnlEqQ8IwCEHDsAGtnpsAVBR0d81CkzAjVuyxCokhNh0gWtgxJtj0QBYPNrACgDUZbnVT4F1G2jr4ktPeJegTxpawKuqPcnasSZ2LAl6zlilHyp9sNqgKts6LbKDLhN7P2VeRWBBuWzyU5KLd1nYEMLZo47HiGWhgTOUGR2T78rcas8XBaj5cSYgMM6ygBpfgWw5ztaA3t4gMFAA2TIgPkBInKyi9dTJApkR6wl0yWGaN1Vz2ZUMkFei6bGquCOxXpyYm44SKqFgKhuml3ir8VImqYii8y5Q9wzANy6MAKYO0K7LW9lJJYwS/SzwaUlgaCQkWgLpV2Ak1HSnyJ3xTSOAAm1TjvFlEhHKXo+4gE5oEWXqgtvBZ7GogCkDvD079gWLJbAj4IA3Iz+oHBH078KdIC5wJ9AFJoIcgkehlcYRG8Pno3uWvQKRwKJkgB86hP9b3gjuBLrA2xFFTYDvqCvy4wL8UMw7fgFb2GyDX2EY5AAAAABJRU5ErkJggg==',
+      RMC: 'data:image/png;base64,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'
     };
 
     const get_tracker_icon = (tracker) => {
@@ -1153,7 +1159,8 @@
         tracker === 'YOINK' ||
         tracker === 'RAS' ||
         tracker === 'SP' ||
-        tracker === 'LUME'
+        tracker === 'LUME' ||
+        tracker === 'RMC'
       );
     };
 
@@ -2691,6 +2698,8 @@
           api_query_url = 'https://rastastugan.org/api/torrents/filter';
         } else if (tracker === 'LUME') {
           api_query_url = 'https://luminarr.me/api/torrents/filter';
+        } else if (tracker === 'RMC') {
+          api_query_url = 'https://retro-movies.club/api/torrents/filter';
         } else if (tracker === 'TVV') {
           if (easysearching) {
             query_url =
@@ -3075,7 +3084,8 @@
               YOINK: { Authorization: `Bearer ${YOINK_API_TOKEN}`, Accept: 'application/json' },
               RAS: { Authorization: `Bearer ${RAS_API_TOKEN}`, Accept: 'application/json' },
               HHD: { Authorization: `Bearer ${HHD_API_TOKEN}`, Accept: 'application/json' },
-              LUME: { Authorization: `Bearer ${LUME_API_TOKEN}`, Accept: 'application/json' }
+              LUME: { Authorization: `Bearer ${LUME_API_TOKEN}`, Accept: 'application/json' },
+              RMC: { Authorization: `Bearer ${RMC_API_TOKEN}`, Accept: 'application/json' }
             };
 
             const headers = apiHeadersMapping[tracker] || { Accept: 'application/json' };
@@ -4856,7 +4866,8 @@
         tracker === 'RAS' ||
         tracker === 'SP' ||
         tracker === 'HHD' ||
-        tracker === 'LUME'
+        tracker === 'LUME' ||
+        tracker === 'RMC'
       ) {
         torrent_objs = json.data
           .map((element) => {
@@ -6013,7 +6024,8 @@
               tracker === 'YOINK' ||
               tracker === 'RAS' ||
               tracker === 'HHD' ||
-              tracker === 'LUME'
+              tracker === 'LUME' ||
+              tracker === 'RMC'
             ) {
               if (get_api_internal(torrent.internal)) {
                 cln.querySelector('.torrent-info-link').innerHTML +=
@@ -6104,7 +6116,8 @@
               tracker === 'YOINK' ||
               tracker === 'RAS' ||
               tracker === 'HHD' ||
-              tracker === 'LUME'
+              tracker === 'LUME' ||
+              tracker === 'RMC'
             ) {
               if (get_api_internal(torrent.internal)) {
                 cln.querySelector('.torrent-info-link').innerHTML +=
@@ -6352,7 +6365,8 @@
           'RAS',
           'SP',
           'HHD',
-          'LUME'
+          'LUME',
+          'RMC'
         ];
         if (byteSizedTrackers.includes(torrent.site)) {
           cln.querySelector('.size-span').setAttribute('title', api_sized);
