@@ -2346,7 +2346,7 @@
           url: post_query_url,
           method: method,
           data:
-            tracker === 'YUS' || tracker === 'OTW' || tracker === 'HHD'
+            tracker === 'YUS' || tracker === 'OTW' || tracker === 'HHD' || tracker === 'FL'
               ? new URLSearchParams(postData).toString()
               : JSON.stringify(postData),
           headers: headers,
