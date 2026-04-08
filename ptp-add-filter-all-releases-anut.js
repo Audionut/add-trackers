@@ -2326,7 +2326,6 @@
         CinemaZ: 'GET',
         PHD: 'GET',
         TL: 'GET',
-        FL: 'GET',
         RED: 'GET',
         OPS: 'GET',
         AR: 'GET',
@@ -2346,7 +2345,7 @@
           url: post_query_url,
           method: method,
           data:
-            tracker === 'YUS' || tracker === 'OTW' || tracker === 'HHD' || tracker === 'FL'
+            tracker === 'YUS' || tracker === 'OTW' || tracker === 'HHD'
               ? new URLSearchParams(postData).toString()
               : JSON.stringify(postData),
           headers: headers,
