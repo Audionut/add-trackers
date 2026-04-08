@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.6.2-A
+// @version      4.6.3-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -2254,6 +2254,24 @@
       }
     };
 
+    const getFileListErrorMessage = (response) => {
+      const responseText = response?.responseText?.trim();
+
+      if (responseText) {
+        return responseText;
+      }
+
+      const errorMessages = {
+        400: 'Invalid search/filter',
+        401: 'Username and passkey cannot be empty',
+        403: 'Too many failed authentications or invalid passkey/username',
+        429: 'Rate limit reached',
+        503: 'Service unavailable'
+      };
+
+      return errorMessages[response.status] || `HTTP ${response.status} Error`;
+    };
+
     const post_json = async (post_query_url, tracker, postData, timeout = timer) => {
       const headersMapping = {
         ANT: {
@@ -2308,6 +2326,10 @@
           'Content-Type': 'application/x-www-form-urlencoded',
           Accept: 'application/json',
           Authorization: `Bearer ${HHD_API_TOKEN}`
+        },
+        FL: {
+          Accept: 'application/json',
+          Authorization: `Basic ${btoa(`${FL_USER_NAME}:${FL_PASS_KEY}`)}`
         }
         // Add more trackers and their headers as needed
       };
@@ -2342,13 +2364,9 @@
           reject(new Error(`Request timed out after ${timeout}ms`));
         }, timeout);
 
-        GM_xmlhttpRequest({
+        const request = {
           url: post_query_url,
           method: method,
-          data:
-            tracker === 'YUS' || tracker === 'OTW' || tracker === 'HHD'
-              ? new URLSearchParams(postData).toString()
-              : JSON.stringify(postData),
           headers: headers,
           onload: (res) => {
             clearTimeout(timer);
@@ -2366,7 +2384,16 @@
             clearTimeout(timer);
             reject(err);
           }
-        });
+        };
+
+        if (method !== 'GET' && method !== 'HEAD') {
+          request.data =
+            tracker === 'YUS' || tracker === 'OTW' || tracker === 'HHD'
+              ? new URLSearchParams(postData).toString()
+              : JSON.stringify(postData);
+        }
+
+        GM_xmlhttpRequest(request);
       })
         .then((response) => {
           if (response.status === 200) {
@@ -2375,6 +2402,17 @@
               displayAlert('TL returned a non-JSON response. Check login or rate limits.');
             }
             return parsed;
+          } else if (
+            tracker === 'FL' &&
+            [400, 401, 403, 429, 503].includes(response.status)
+          ) {
+            const errorMessage = getFileListErrorMessage(response);
+            if (debug) {
+              console.log(`Raw response from ${tracker}`, response.responseText);
+            }
+            console.warn(`${tracker} returned ${response.status}: ${errorMessage}`);
+            displayAlert(`${tracker} returned ${response.status}: ${errorMessage}`);
+            return null;
           } else if (response.status === 401) {
             const jsonResponse = parseJsonResponse(response, tracker);
             console.log(`raw response from ${tracker}`, response.responseText);
@@ -2764,12 +2802,8 @@
           post_query_url = 'https://privatehd.to/api/v1/jackett/torrents?imdb=' + imdb_id;
         } else if (tracker === 'FL') {
           post_query_url =
-            'https://filelist.io/api.php?username=' +
-            FL_USER_NAME +
-            '&passkey=' +
-            FL_PASS_KEY +
-            '&action=search-torrents&type=imdb&query=' +
-            imdb_id;
+            'https://filelist.io/api.php?action=search-torrents&type=imdb&query=' +
+            encodeURIComponent(imdb_id);
         } else if (tracker === 'CG') {
           query_url =
             'https://cinemageddon.net/browse.php?search=' + imdb_id + '&orderby=size&dir=DESC';
