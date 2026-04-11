@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      4.6.3-A
+// @version      4.6.4-A
 // @description  Add releases from other trackers
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -619,7 +619,8 @@
         RAS: GM_config.get('ras'),
         SP: GM_config.get('sp'),
         HHD: GM_config.get('hhd'),
-        LUME: GM_config.get('lume')
+        LUME: GM_config.get('lume'),
+        RMC: GM_config.get('rmc')
       };
 
       const movie_only_dict = {};
@@ -634,9 +635,12 @@
         TVV: GM_config.get('tvv')
       };
 
-      const very_old_dict = {
-        RTF: GM_config.get('rtf'),
+      const pre_2001_dict = {
         RMC: GM_config.get('rmc')
+      };
+
+      const very_old_dict = {
+        RTF: GM_config.get('rtf')
       };
 
       return {
@@ -644,6 +648,7 @@
         movie_only_dict,
         tv_dict,
         old_dict,
+        pre_2001_dict,
         very_old_dict
       };
     }
@@ -658,13 +663,14 @@
     }
 
     // Get trackers from the configuration
-    const { movie_dict, movie_only_dict, tv_dict, old_dict, very_old_dict } =
+    const { movie_dict, movie_only_dict, tv_dict, old_dict, pre_2001_dict, very_old_dict } =
       getTrackersFromConfig();
 
     const movie_trackers = [];
     const movie_only_trackers = [];
     const tv_trackers = [];
     const old_trackers = [];
+    const pre_2001_trackers = [];
     const very_old_trackers = [];
 
     // Fill trackers arrays
@@ -672,6 +678,7 @@
     fillTrackers(movie_only_dict, movie_only_trackers);
     fillTrackers(tv_dict, tv_trackers);
     fillTrackers(old_dict, old_trackers);
+    fillTrackers(pre_2001_dict, pre_2001_trackers);
     fillTrackers(very_old_dict, very_old_trackers);
 
     const BLU_API_TOKEN = GM_config.get('blu_api'); // if you want to use BLU - find your api key here: https://blutopia.cc/users/YOUR_USERNAME_HERE/apikeys
@@ -776,6 +783,12 @@
     const pageTitleText = pageTitleElement ? pageTitleElement.textContent : '';
     const matches = /\[(\d{4})\]/.exec(pageTitleText);
     const year = matches ? Number.parseInt(matches[1], 10) : null;
+    const imdbTags = Array.from(
+      document.querySelectorAll(".box_tags.panel ul.list--unstyled li a[href*='taglist=']")
+    )
+      .map((tagLink) => tagLink.textContent.toLowerCase().trim())
+      .filter(Boolean);
+    const otwGenreAllowed = imdbTags.includes('animation') || imdbTags.includes('family');
     // Start the array with the list of movie trackers.
     let trackers = movie_trackers.slice();
     let excludedTrackers = [];
@@ -824,7 +837,41 @@
         }
       });
     }
-    if (year && (year < 2014 || year > 2100)) {
+
+    if (trackers.includes('OTW') && !otwGenreAllowed) {
+      trackers = trackers.filter((tracker) => tracker !== 'OTW');
+      excludedTrackers.push({
+        tracker: 'OTW',
+        reason:
+          imdbTags.length > 0
+            ? `Excluded by OTW genre check (requires animation/family; IMDb tags: ${imdbTags.join(', ')})`
+            : 'Excluded by OTW genre check (requires animation/family; IMDb tags unavailable)'
+      });
+    }
+
+    const tenYearsAgoYear = new Date().getFullYear() - 10;
+
+    if (year && (year < 2001 || year > 2100)) {
+      pre_2001_trackers.forEach((tracker) => {
+        if (!trackers.includes(tracker)) {
+          trackers.push(tracker);
+        }
+      });
+    } else {
+      const initialTrackers = [...trackers]; // Make a copy to compare later
+      trackers = trackers.filter((tracker) => !pre_2001_trackers.includes(tracker));
+
+      initialTrackers.forEach((tracker) => {
+        if (!trackers.includes(tracker)) {
+          excludedTrackers.push({
+            tracker,
+            reason: `Excluded by year range check (Year: ${year})`
+          });
+        }
+      });
+    }
+
+    if (year && (year < tenYearsAgoYear || year > 2100)) {
       very_old_trackers.forEach((tracker) => {
         if (!trackers.includes(tracker)) {
           trackers.push(tracker);
@@ -845,7 +892,7 @@
     }
 
     // Remove old trackers from the included trackers array if the content matches the year range.
-    if (year && (year < 2019 || year > 2100)) {
+    if (year && (year < 2022 || year > 2100)) {
       if (isMiniSeries) {
         old_trackers.forEach((tracker) => {
           if (!trackers.includes(tracker)) {
@@ -2330,6 +2377,9 @@
         FL: {
           Accept: 'application/json',
           Authorization: `Basic ${btoa(`${FL_USER_NAME}:${FL_PASS_KEY}`)}`
+        },
+        NBL: {
+          Accept: 'application/json'
         }
         // Add more trackers and their headers as needed
       };
@@ -2349,6 +2399,7 @@
         PHD: 'GET',
         TL: 'GET',
         FL: 'GET',
+        NBL: 'GET',
         RED: 'GET',
         OPS: 'GET',
         AR: 'GET',
@@ -2759,40 +2810,25 @@
             imdb_id +
             '&page=1&itemsPerPage=50&sort=torrent.createdAt&direction=desc';
         } else if (tracker === 'NBL') {
-          post_query_url = 'https://nebulance.io/api.php';
+          const nblBase =
+            'https://nebulance.io/api.php?action=search&api_key=' +
+            encodeURIComponent(NBL_API_TOKEN) +
+            '&per_page=100&page=0';
+
           if (tvmazeId) {
-            postData = {
-              jsonrpc: '2.0',
-              id: generateGUID().substring(0, 8),
-              method: 'getTorrents',
-              params: [
-                NBL_API_TOKEN,
-                {
-                  tvmaze: tvmazeId
-                  //imdb: imdb_id
-                },
-                100, // Results per page
-                0, // Page number
-                1
-              ]
-            };
+            post_query_url = `${nblBase}&tvmaze=${encodeURIComponent(tvmazeId)}`;
+          } else if (imdb_id) {
+            post_query_url = `${nblBase}&imdb=${encodeURIComponent(imdb_id)}`;
           } else {
-            postData = {
-              jsonrpc: '2.0',
-              id: generateGUID().substring(0, 8),
-              method: 'getTorrents',
-              params: [
-                NBL_API_TOKEN,
-                {
-                  //tvmaze: tvmazeId
-                  series: show_nbl_name
-                  //imdb: imdb_id
-                },
-                6, // Results per page
-                0, // Page number
-                1
-              ]
-            };
+            const fallbackSeries = String(show_nbl_name || show_name || '').trim();
+            if (fallbackSeries.length >= 3) {
+              post_query_url = `${nblBase}&series=${encodeURIComponent(fallbackSeries)}`;
+            } else {
+              console.warn('NBL skipped: no valid tvmaze/imdb/series search term');
+              clearTimeout(timer);
+              resolve([]);
+              return;
+            }
           }
         } else if (tracker === 'AvistaZ') {
           post_query_url = 'https://avistaz.to/api/v1/jackett/torrents?imdb=' + imdb_id;
@@ -2952,8 +2988,18 @@
                           resolve(get_post_torrent_objects(tracker, result));
                         }
                     }
-                  } else if (result?.result && tracker === 'NBL') {
-                    if (result.result.count === 0) {
+                  } else if (tracker === 'NBL' && result?.error) {
+                    const nblMessage = result.error?.message || 'Unknown NBL API error';
+                    console.warn(`NBL API error: ${nblMessage}`);
+                    displayAlert(`NBL API error: ${nblMessage}`);
+                    resolve([]);
+                  } else if (tracker === 'NBL' && (Array.isArray(result?.items) || result?.count)) {
+                    const nblCount = Number.isFinite(Number(result?.count))
+                      ? Number(result.count)
+                      : Array.isArray(result?.items)
+                        ? result.items.length
+                        : 0;
+                    if (nblCount === 0) {
                       console.log('NBL reached successfully but no results were returned');
                       resolve([]);
                     } else {
@@ -3629,8 +3675,14 @@
         }
       } else if (tracker === 'NBL') {
         try {
-          if (postData.result && postData.result.items) {
-            torrent_objs = postData.result.items
+          const nblItems = Array.isArray(postData?.items)
+            ? postData.items
+            : Array.isArray(postData?.result?.items)
+              ? postData.result.items
+              : [];
+
+          if (nblItems.length > 0) {
+            torrent_objs = nblItems
               .map((d) => {
                 const size = Number.parseInt(d.size / (1024 * 1024)); // Convert size to MiB
                 const api_size = Number.parseInt(d.size); // Original size
@@ -3741,7 +3793,7 @@
                     return tempText;
                   };
 
-                  const id = d.group_id;
+                  const id = d.torrent_id || d.group_id;
                   const pageURL = 'https://nebulance.io/details.php?id=';
 
                   const inputTime = d.rls_utc;
