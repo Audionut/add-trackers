@@ -828,6 +828,17 @@ tr[id^="torrent_"] img.bbcode__image[style] {
 .sidebar .bbcode__image {
   max-width: 100%; }
 
+#lightbox img,
+#lightbox img.ptp-hdr-converted {
+  display: block;
+  width: auto !important;
+  max-width: calc(100vw - 48px) !important;
+  height: auto !important;
+  max-height: calc(100vh - 48px) !important;
+  object-fit: contain;
+  margin: 0 auto;
+}
+
 /* Tonemapping approximation for torrent panel screenshots.
  * Approximates FFmpeg Möbius tonemapping with desat=10.0:
  *   - highlights are compressed hard toward white (brightness + gamma pull-down)

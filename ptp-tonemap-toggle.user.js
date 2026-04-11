@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Tonemap Toggle
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.3.1
+// @version      0.3.2
 // @description  Adds per-panel toggles for tonemapping and Firefox HDR-black recovery on BBCode images. Requires widescreen.css to be active.
 // @author       Audionut
 // @match        https://passthepopcorn.me/*
@@ -127,6 +127,22 @@
         return output;
     }
 
+    function patchFfmpegCoreSource(source) {
+        return source
+            .replace(
+                'function printErr(message){if(!message.startsWith("Aborted(native code called abort())"))Module["logger"]({type:"stderr",message:message})}',
+                'function printErr(message){const text=typeof message==="string"?message:String(message);if(!text.startsWith("Aborted(native code called abort())"))Module["logger"]({type:"stderr",message:text})}'
+            )
+            .replace(
+                'catch(e){if(!e.message.startsWith("Aborted")){throw e}}return Module["ret"]}',
+                'catch(e){const message=typeof e?.message==="string"?e.message:String(e);if(!message.startsWith("Aborted")){throw e}}return Module["ret"]}'
+            )
+            .replace(
+                'catch(e){if(!e.message.startsWith("Aborted")){throw e}}return Module["ret"]}function setLogger',
+                'catch(e){const message=typeof e?.message==="string"?e.message:String(e);if(!message.startsWith("Aborted")){throw e}}return Module["ret"]}function setLogger'
+            );
+    }
+
     async function loadFfmpegWasmModule() {
         if (ffmpegWasmState.disabled) {
             return null;
@@ -161,20 +177,20 @@
                     ffmpegWasmState.blobUrls.forEach(url => URL.revokeObjectURL(url));
                     ffmpegWasmState.blobUrls = [];
 
-                    const [classesText, constText, errorsText, utilsText, workerText, coreJsBuffer, coreWasmBuffer] = await Promise.all([
+                    const [classesText, constText, errorsText, utilsText, workerText, coreJsText, coreWasmBuffer] = await Promise.all([
                         fetchTextAsset(`${candidate.esmBaseUrl}/classes.js`),
                         fetchTextAsset(`${candidate.esmBaseUrl}/const.js`),
                         fetchTextAsset(`${candidate.esmBaseUrl}/errors.js`),
                         fetchTextAsset(`${candidate.esmBaseUrl}/utils.js`),
                         fetchTextAsset(`${candidate.esmBaseUrl}/worker.js`),
-                        fetchBinaryAsset(candidate.coreJsUrl),
+                        fetchTextAsset(candidate.coreJsUrl),
                         fetchBinaryAsset(candidate.coreWasmUrl)
                     ]);
 
                     const constUrl = createBlobUrl(constText, 'text/javascript');
                     const errorsUrl = createBlobUrl(errorsText, 'text/javascript');
                     const utilsUrl = createBlobUrl(utilsText, 'text/javascript');
-                    const coreJsUrl = createBlobUrl(coreJsBuffer, 'text/javascript');
+                    const coreJsUrl = createBlobUrl(patchFfmpegCoreSource(coreJsText), 'text/javascript');
                     const coreWasmUrl = createBlobUrl(coreWasmBuffer, 'application/wasm');
 
                     const workerPatched = replaceModuleImports(workerText, {
@@ -982,30 +998,35 @@
         const sourceBlob = await fetchBlob(src);
         const inputBytes = new Uint8Array(await sourceBlob.arrayBuffer());
         const sourceWidthHint = img.naturalWidth || 3840;
-        const targetWidth = Math.max(320, getTargetRenderWidth(img, sourceWidthHint));
         const inputName = `input-${Date.now()}-${Math.random().toString(36).slice(2)}.png`;
         const outputName = `output-${Date.now()}-${Math.random().toString(36).slice(2)}.png`;
         const filter = [
-            'zscale=transfer=linear:npl=100',
+            'format=gbrpf32le',
+            'setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc:range=pc',
+            'zscale=transfer=linear:primaries=bt2020:matrix=bt2020nc:npl=100',
             `tonemap=tonemap=mobius:param=${HDR_TONEMAP_MOBIUS_PARAM}:desat=${HDR_TONEMAP_DESAT}:peak=${HDR_TONEMAP_PEAK}`,
             'zscale=transfer=bt709:primaries=bt709:matrix=bt709:range=tv',
-            `scale=${targetWidth}:-2:flags=lanczos:force_original_aspect_ratio=decrease`,
             'format=rgb24'
         ].join(',');
+        const command = [
+            '-i',
+            inputName,
+            '-vf',
+            filter,
+            '-frames:v',
+            '1',
+            outputName
+        ];
 
         try {
             await ffmpeg.writeFile(inputName, inputBytes);
-            await ffmpeg.exec([
-                '-i',
-                inputName,
-                '-vf',
-                filter,
-                '-frames:v',
-                '1',
-                outputName
-            ]);
+            log('ffmpeg.wasm tonemap exec', { src, targetWidth: sourceWidthHint, command, fullResolution: true });
+            const exitCode = await ffmpeg.exec(command);
+            if (exitCode !== 0) {
+                throw new Error(`ffmpeg exited with code ${exitCode}`);
+            }
             const outputData = await ffmpeg.readFile(outputName);
-            log('ffmpeg.wasm tonemap success', { src, targetWidth, outputBytes: outputData.length });
+            log('ffmpeg.wasm tonemap success', { src, targetWidth: sourceWidthHint, outputBytes: outputData.length, fullResolution: true });
             return URL.createObjectURL(new Blob([outputData], { type: 'image/png' }));
         } catch (error) {
             logError('ffmpeg.wasm tonemap failed', { src, error: String(error) });
@@ -1022,9 +1043,7 @@
     }
 
     async function getToneMappedHdrUrl(src, img) {
-        const sourceWidthHint = img.naturalWidth || 3840;
-        const targetWidth = Math.max(320, getTargetRenderWidth(img, sourceWidthHint));
-        const cacheKey = `${src}|${targetWidth}`;
+        const cacheKey = `${src}|full-resolution`;
         if (convertedSourceCache.has(cacheKey)) {
             return convertedSourceCache.get(cacheKey);
         }
@@ -1037,15 +1056,14 @@
 
             const blob = await fetchBlob(src);
             const metadata = await readPngHdrMetadata(blob);
-            log('hdr metadata', { src, ...metadata, targetWidth });
+            log('hdr metadata', { src, ...metadata, targetWidth: metadata.width || img.naturalWidth || 3840, fullResolution: true });
             if (!metadata.isPqBt2020Png) {
                 return null;
             }
 
             const decoded = await decodePngRgbFromBlob(blob);
-            const scale = Math.min(1, targetWidth / decoded.width);
-            const width = Math.max(1, Math.round(decoded.width * scale));
-            const height = Math.max(1, Math.round(decoded.height * scale));
+            const width = decoded.width;
+            const height = decoded.height;
             const outputCanvas = document.createElement('canvas');
             outputCanvas.width = width;
             outputCanvas.height = height;
