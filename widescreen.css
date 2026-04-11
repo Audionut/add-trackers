@@ -828,6 +828,97 @@ tr[id^="torrent_"] img.bbcode__image[style] {
 .sidebar .bbcode__image {
   max-width: 100%; }
 
+/* Tonemapping approximation for torrent panel screenshots.
+ * Approximates FFmpeg Möbius tonemapping with desat=10.0:
+ *   - highlights are compressed hard toward white (brightness + gamma pull-down)
+ *   - midtone saturation is boosted to replicate the punchy look that
+ *     Möbius produces by desaturating only the very brightest values.
+ * Toggled on/off by the .ptp-tonemap-off class on <html> (see ptp-tonemap-toggle.user.js). */
+:root {
+  --tonemap-contrast:   1.15;   /* Möbius has a steeper mid-tone shoulder */
+  --tonemap-brightness: 0.93;   /* compress highlights harder toward white  */
+  --tonemap-saturate:   1.22;   /* boost midtones — mirrors desat=10 making mids pop */
+  --tonemap-gamma:      0.95;   /* roll off the very top of the luminance range */
+  --hdr-blackfix-brightness: 1.80;
+  --hdr-blackfix-contrast:   1.08;
+  --hdr-blackfix-saturate:   1.12;
+}
+
+html:not(.ptp-tonemap-off) .movie-page__torrent__panel .bbcode-table-guard img.bbcode__image:not(.ptp-hdr-converted),
+html:not(.ptp-tonemap-off) .movie-page__torrent__panel img.bbcode__image:not(.ptp-hdr-converted),
+html:not(.ptp-tonemap-off) .movie-page__torrent_panel img.bbcode__image:not(.ptp-hdr-converted),
+html:not(.ptp-tonemap-off) tr[id^="torrent_"] img.bbcode__image:not(.ptp-hdr-converted) {
+  filter:
+    brightness(var(--tonemap-brightness))
+    contrast(var(--tonemap-contrast))
+    saturate(var(--tonemap-saturate))
+    brightness(var(--tonemap-gamma)); }
+
+/* On HDR-capable displays let images breathe a bit more */
+@media (dynamic-range: high) {
+  html:not(.ptp-tonemap-off) .movie-page__torrent__panel .bbcode-table-guard img.bbcode__image:not(.ptp-hdr-converted),
+  html:not(.ptp-tonemap-off) .movie-page__torrent__panel img.bbcode__image:not(.ptp-hdr-converted),
+  html:not(.ptp-tonemap-off) .movie-page__torrent_panel img.bbcode__image:not(.ptp-hdr-converted),
+  html:not(.ptp-tonemap-off) tr[id^="torrent_"] img.bbcode__image:not(.ptp-hdr-converted) {
+    filter:
+      brightness(1.00)
+      contrast(1.04)
+      saturate(0.96)
+      brightness(1.00); } }
+
+/* Extra recovery for Firefox-rendered HDR/HLG-like PNGs that appear near-black.
+ * Added per-image by ptp-tonemap-toggle.user.js when a crushed-luminance
+ * heuristic matches, and can be disabled with html.ptp-hdr-blackfix-off. */
+html:not(.ptp-hdr-blackfix-off) .movie-page__torrent__panel .bbcode-table-guard img.bbcode__image.ptp-hdr-blackfix,
+html:not(.ptp-hdr-blackfix-off) .movie-page__torrent__panel img.bbcode__image.ptp-hdr-blackfix,
+html:not(.ptp-hdr-blackfix-off) .movie-page__torrent_panel img.bbcode__image.ptp-hdr-blackfix,
+html:not(.ptp-hdr-blackfix-off) tr[id^="torrent_"] img.bbcode__image.ptp-hdr-blackfix,
+html:not(.ptp-hdr-blackfix-off) #lightbox img.ptp-hdr-blackfix {
+  filter:
+    url(#ptp-hdr-blackfix-gamma)
+    brightness(var(--hdr-blackfix-brightness))
+    contrast(var(--hdr-blackfix-contrast))
+    saturate(var(--hdr-blackfix-saturate)) !important; }
+
+.ptp-tonemap-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px 0; }
+
+/* Toggle button injected by ptp-tonemap-toggle.user.js */
+.ptp-tonemap-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-family: Tahoma, Helvetica, Geneva, sans-serif;
+  color: #b5b5b5;
+  background-color: #212121;
+  border: solid thin #3a3c3f;
+  border-radius: 5px;
+  cursor: pointer;
+  user-select: none; }
+
+.ptp-tonemap-toggle:hover {
+  color: white;
+  background-color: #2c2c2c; }
+
+.ptp-tonemap-toggle__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #418b00;
+  flex-shrink: 0; }
+
+html.ptp-tonemap-off .ptp-tonemap-toggle__dot {
+  background-color: #666; }
+
+html.ptp-hdr-blackfix-off .ptp-hdr-blackfix-toggle .ptp-tonemap-toggle__dot {
+  background-color: #666; }
+
 .bbcode-text-preview {
   border: solid thin #555555;
   padding: 0.5em; }
