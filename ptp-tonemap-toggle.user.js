@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Tonemap Toggle
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.3.0
+// @version      0.3.1
 // @description  Adds per-panel toggles for tonemapping and Firefox HDR-black recovery on BBCode images. Requires widescreen.css to be active.
 // @author       Audionut
 // @match        https://passthepopcorn.me/*
@@ -11,7 +11,10 @@
 // @grant        GM.getValue
 // @grant        GM.setValue
 // @grant        GM_xmlhttpRequest
+// @grant        unsafeWindow
 // @connect      ptpimg.me
+// @connect      audionut.github.io
+// @connect      cdn.jsdelivr.net
 // @run-at       document-end
 // ==/UserScript==
 
@@ -46,20 +49,22 @@
     const HDR_DEBAND_THRESHOLD = 14;
     const HDR_DEBAND_RANGE = 1;
     const HDR_DEBAND_BRIGHTNESS_FLOOR = 110;
-    const LOCAL_FFMPEG_WASM_BASE_URL = 'https://raw.githubusercontent.com/Audionut/add-trackers/main/vendor/ffmpeg-wasm';
-    const CDN_FFMPEG_WASM_BASE_URL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd';
-    const LOCAL_FFMPEG_WASM_SCRIPT_URL = `${LOCAL_FFMPEG_WASM_BASE_URL}/ffmpeg.js`;
-    const CDN_FFMPEG_WASM_SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js';
+    const LOCAL_FFMPEG_WASM_BASE_URL = 'https://audionut.github.io/add-trackers/vendor/ffmpeg-wasm';
+    const LOCAL_FFMPEG_WASM_ESM_BASE_URL = `${LOCAL_FFMPEG_WASM_BASE_URL}/esm`;
+    const CDN_FFMPEG_WASM_ESM_BASE_URL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm';
+    const CDN_FFMPEG_CORE_BASE_URL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm';
     const analyzedImages = new WeakSet();
     const pendingImages = new WeakSet();
     const sourceDecisionCache = new Map();
     const convertedSourceCache = new Map();
     const ffmpegWasmState = {
-        scriptLoaded: false,
-        scriptPromise: null,
         instance: null,
         loadPromise: null,
+        module: null,
+        modulePromise: null,
+        blobUrls: [],
         assetBaseUrl: null,
+        assetLabel: null,
         disabled: false
     };
     let lastClickedHdrSource = '';
@@ -68,7 +73,6 @@
     let tonemapEnabled = await GM.getValue(TONEMAP_PREF_KEY, true);
     let hdrFixEnabled = await GM.getValue(HDR_FIX_PREF_KEY, true);
     let debugEnabled = await GM.getValue(DEBUG_PREF_KEY, true);
-
     function log(...args) {
         if (debugEnabled) {
             console.log('[PTP Tonemap]', ...args);
@@ -81,73 +85,139 @@
         }
     }
 
-    function loadExternalScript(url) {
+    function gmRequest(url, responseType = 'text') {
         return new Promise((resolve, reject) => {
-            const existing = document.querySelector(`script[data-ptp-ffmpeg-src="${url}"]`);
-            if (existing) {
-                existing.addEventListener('load', () => resolve(), { once: true });
-                existing.addEventListener('error', () => reject(new Error(`Failed to load ${url}`)), { once: true });
-                if (existing.dataset.ptpLoaded === '1') {
-                    resolve();
-                }
-                return;
-            }
-
-            const script = document.createElement('script');
-            script.src = url;
-            script.async = true;
-            script.dataset.ptpFfmpegSrc = url;
-            script.addEventListener('load', () => {
-                script.dataset.ptpLoaded = '1';
-                resolve();
-            }, { once: true });
-            script.addEventListener('error', () => reject(new Error(`Failed to load ${url}`)), { once: true });
-            document.head.appendChild(script);
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url,
+                responseType,
+                onload: response => {
+                    if (response.status >= 200 && response.status < 300) {
+                        resolve(response);
+                    } else {
+                        reject(new Error(`HTTP ${response.status} for ${url}`));
+                    }
+                },
+                onerror: () => reject(new Error(`Request failed for ${url}`))
+            });
         });
     }
 
-    async function ensureFfmpegWasmScriptLoaded() {
+    async function fetchTextAsset(url) {
+        const response = await gmRequest(url, 'text');
+        return response.responseText ?? response.response;
+    }
+
+    async function fetchBinaryAsset(url) {
+        const response = await gmRequest(url, 'arraybuffer');
+        return response.response;
+    }
+
+    function createBlobUrl(content, type) {
+        const blobUrl = URL.createObjectURL(new Blob([content], { type }));
+        ffmpegWasmState.blobUrls.push(blobUrl);
+        return blobUrl;
+    }
+
+    function replaceModuleImports(source, replacements) {
+        let output = source;
+        for (const [from, to] of Object.entries(replacements)) {
+            output = output.replaceAll(from, to);
+        }
+        return output;
+    }
+
+    async function loadFfmpegWasmModule() {
         if (ffmpegWasmState.disabled) {
-            return false;
+            return null;
         }
 
-        if (ffmpegWasmState.scriptLoaded && window.FFmpegWASM?.FFmpeg) {
-            return true;
+        if (ffmpegWasmState.module) {
+            return ffmpegWasmState.module;
         }
 
-        if (ffmpegWasmState.scriptPromise) {
-            return ffmpegWasmState.scriptPromise;
+        if (ffmpegWasmState.modulePromise) {
+            return ffmpegWasmState.modulePromise;
         }
 
-        ffmpegWasmState.scriptPromise = (async () => {
+        ffmpegWasmState.modulePromise = (async () => {
             const candidates = [
-                { scriptUrl: LOCAL_FFMPEG_WASM_SCRIPT_URL, assetBaseUrl: LOCAL_FFMPEG_WASM_BASE_URL },
-                { scriptUrl: CDN_FFMPEG_WASM_SCRIPT_URL, assetBaseUrl: CDN_FFMPEG_WASM_BASE_URL }
+                {
+                    label: 'local',
+                    esmBaseUrl: LOCAL_FFMPEG_WASM_ESM_BASE_URL,
+                    coreJsUrl: `${LOCAL_FFMPEG_WASM_BASE_URL}/ffmpeg-core.js`,
+                    coreWasmUrl: `${LOCAL_FFMPEG_WASM_BASE_URL}/ffmpeg-core.wasm`
+                },
+                {
+                    label: 'cdn',
+                    esmBaseUrl: CDN_FFMPEG_WASM_ESM_BASE_URL,
+                    coreJsUrl: `${CDN_FFMPEG_CORE_BASE_URL}/ffmpeg-core.js`,
+                    coreWasmUrl: `${CDN_FFMPEG_CORE_BASE_URL}/ffmpeg-core.wasm`
+                }
             ];
 
             for (const candidate of candidates) {
                 try {
-                    await loadExternalScript(candidate.scriptUrl);
-                    if (!window.FFmpegWASM?.FFmpeg) {
-                        throw new Error('FFmpegWASM global missing after script load');
+                    ffmpegWasmState.blobUrls.forEach(url => URL.revokeObjectURL(url));
+                    ffmpegWasmState.blobUrls = [];
+
+                    const [classesText, constText, errorsText, utilsText, workerText, coreJsBuffer, coreWasmBuffer] = await Promise.all([
+                        fetchTextAsset(`${candidate.esmBaseUrl}/classes.js`),
+                        fetchTextAsset(`${candidate.esmBaseUrl}/const.js`),
+                        fetchTextAsset(`${candidate.esmBaseUrl}/errors.js`),
+                        fetchTextAsset(`${candidate.esmBaseUrl}/utils.js`),
+                        fetchTextAsset(`${candidate.esmBaseUrl}/worker.js`),
+                        fetchBinaryAsset(candidate.coreJsUrl),
+                        fetchBinaryAsset(candidate.coreWasmUrl)
+                    ]);
+
+                    const constUrl = createBlobUrl(constText, 'text/javascript');
+                    const errorsUrl = createBlobUrl(errorsText, 'text/javascript');
+                    const utilsUrl = createBlobUrl(utilsText, 'text/javascript');
+                    const coreJsUrl = createBlobUrl(coreJsBuffer, 'text/javascript');
+                    const coreWasmUrl = createBlobUrl(coreWasmBuffer, 'application/wasm');
+
+                    const workerPatched = replaceModuleImports(workerText, {
+                        './const.js': constUrl,
+                        './errors.js': errorsUrl
+                    });
+                    const workerUrl = createBlobUrl(workerPatched, 'text/javascript');
+
+                    const classesPatched = replaceModuleImports(classesText, {
+                        './const.js': constUrl,
+                        './utils.js': utilsUrl,
+                        './errors.js': errorsUrl
+                    });
+                    const classesUrl = createBlobUrl(classesPatched, 'text/javascript');
+
+                    const module = await import(/* webpackIgnore: true */ classesUrl);
+                    if (!module?.FFmpeg) {
+                        throw new Error('FFmpeg module missing FFmpeg export');
                     }
-                    ffmpegWasmState.scriptLoaded = true;
-                    ffmpegWasmState.assetBaseUrl = candidate.assetBaseUrl;
-                    log('ffmpeg.wasm script loaded', candidate);
-                    return true;
+
+                    ffmpegWasmState.module = {
+                        FFmpeg: module.FFmpeg,
+                        classWorkerURL: workerUrl,
+                        coreURL: coreJsUrl,
+                        wasmURL: coreWasmUrl
+                    };
+                    ffmpegWasmState.assetBaseUrl = candidate.esmBaseUrl;
+                    ffmpegWasmState.assetLabel = candidate.label;
+                    log('ffmpeg.wasm module ready', { candidate: candidate.label });
+                    return ffmpegWasmState.module;
                 } catch (error) {
-                    logError('ffmpeg.wasm script load failed', { candidate, error: String(error) });
+                    logError('ffmpeg.wasm module load failed', { candidate: candidate.label, error: String(error) });
                 }
             }
 
             ffmpegWasmState.disabled = true;
-            return false;
+            return null;
         })();
 
         try {
-            return await ffmpegWasmState.scriptPromise;
+            return await ffmpegWasmState.modulePromise;
         } finally {
-            ffmpegWasmState.scriptPromise = null;
+            ffmpegWasmState.modulePromise = null;
         }
     }
 
@@ -165,13 +235,13 @@
         }
 
         ffmpegWasmState.loadPromise = (async () => {
-            const loaded = await ensureFfmpegWasmScriptLoaded();
-            if (!loaded || !window.FFmpegWASM?.FFmpeg) {
+            const module = await loadFfmpegWasmModule();
+            if (!module?.FFmpeg) {
                 ffmpegWasmState.disabled = true;
                 return null;
             }
 
-            const ffmpeg = new window.FFmpegWASM.FFmpeg();
+            const ffmpeg = new module.FFmpeg();
             if (debugEnabled) {
                 ffmpeg.on('log', event => {
                     log('ffmpeg.wasm', event.message);
@@ -180,15 +250,23 @@
 
             try {
                 await ffmpeg.load({
-                    coreURL: `${ffmpegWasmState.assetBaseUrl}/ffmpeg-core.js`,
-                    wasmURL: `${ffmpegWasmState.assetBaseUrl}/ffmpeg-core.wasm`
+                    classWorkerURL: module.classWorkerURL,
+                    coreURL: module.coreURL,
+                    wasmURL: module.wasmURL
                 });
                 ffmpegWasmState.instance = ffmpeg;
-                log('ffmpeg.wasm ready', { assetBaseUrl: ffmpegWasmState.assetBaseUrl });
+                log('ffmpeg.wasm ready', {
+                    assetBaseUrl: ffmpegWasmState.assetBaseUrl,
+                    assetLabel: ffmpegWasmState.assetLabel
+                });
                 return ffmpeg;
             } catch (error) {
                 ffmpegWasmState.disabled = true;
-                logError('ffmpeg.wasm load failed', { error: String(error), assetBaseUrl: ffmpegWasmState.assetBaseUrl });
+                logError('ffmpeg.wasm load failed', {
+                    error: String(error),
+                    assetBaseUrl: ffmpegWasmState.assetBaseUrl,
+                    assetLabel: ffmpegWasmState.assetLabel
+                });
                 return null;
             }
         })();
