@@ -13,5 +13,9 @@
     "eslint": "^9.22.0",
     "eslint-formatter-compact": "^9.0.1",
     "prettier": "^3.5.3"
+  },
+  "dependencies": {
+    "@ffmpeg/core": "^0.12.10",
+    "@ffmpeg/ffmpeg": "^0.12.10"
   }
 }

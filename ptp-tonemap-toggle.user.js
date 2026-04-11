@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Tonemap Toggle
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.2.1
+// @version      0.3.0
 // @description  Adds per-panel toggles for tonemapping and Firefox HDR-black recovery on BBCode images. Requires widescreen.css to be active.
 // @author       Audionut
 // @match        https://passthepopcorn.me/*
@@ -46,10 +46,22 @@
     const HDR_DEBAND_THRESHOLD = 14;
     const HDR_DEBAND_RANGE = 1;
     const HDR_DEBAND_BRIGHTNESS_FLOOR = 110;
+    const LOCAL_FFMPEG_WASM_BASE_URL = 'https://raw.githubusercontent.com/Audionut/add-trackers/main/vendor/ffmpeg-wasm';
+    const CDN_FFMPEG_WASM_BASE_URL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd';
+    const LOCAL_FFMPEG_WASM_SCRIPT_URL = `${LOCAL_FFMPEG_WASM_BASE_URL}/ffmpeg.js`;
+    const CDN_FFMPEG_WASM_SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js';
     const analyzedImages = new WeakSet();
     const pendingImages = new WeakSet();
     const sourceDecisionCache = new Map();
     const convertedSourceCache = new Map();
+    const ffmpegWasmState = {
+        scriptLoaded: false,
+        scriptPromise: null,
+        instance: null,
+        loadPromise: null,
+        assetBaseUrl: null,
+        disabled: false
+    };
     let lastClickedHdrSource = '';
     let lastClickedConvertedSrc = '';
 
@@ -66,6 +78,125 @@
     function logError(...args) {
         if (debugEnabled) {
             console.error('[PTP Tonemap]', ...args);
+        }
+    }
+
+    function loadExternalScript(url) {
+        return new Promise((resolve, reject) => {
+            const existing = document.querySelector(`script[data-ptp-ffmpeg-src="${url}"]`);
+            if (existing) {
+                existing.addEventListener('load', () => resolve(), { once: true });
+                existing.addEventListener('error', () => reject(new Error(`Failed to load ${url}`)), { once: true });
+                if (existing.dataset.ptpLoaded === '1') {
+                    resolve();
+                }
+                return;
+            }
+
+            const script = document.createElement('script');
+            script.src = url;
+            script.async = true;
+            script.dataset.ptpFfmpegSrc = url;
+            script.addEventListener('load', () => {
+                script.dataset.ptpLoaded = '1';
+                resolve();
+            }, { once: true });
+            script.addEventListener('error', () => reject(new Error(`Failed to load ${url}`)), { once: true });
+            document.head.appendChild(script);
+        });
+    }
+
+    async function ensureFfmpegWasmScriptLoaded() {
+        if (ffmpegWasmState.disabled) {
+            return false;
+        }
+
+        if (ffmpegWasmState.scriptLoaded && window.FFmpegWASM?.FFmpeg) {
+            return true;
+        }
+
+        if (ffmpegWasmState.scriptPromise) {
+            return ffmpegWasmState.scriptPromise;
+        }
+
+        ffmpegWasmState.scriptPromise = (async () => {
+            const candidates = [
+                { scriptUrl: LOCAL_FFMPEG_WASM_SCRIPT_URL, assetBaseUrl: LOCAL_FFMPEG_WASM_BASE_URL },
+                { scriptUrl: CDN_FFMPEG_WASM_SCRIPT_URL, assetBaseUrl: CDN_FFMPEG_WASM_BASE_URL }
+            ];
+
+            for (const candidate of candidates) {
+                try {
+                    await loadExternalScript(candidate.scriptUrl);
+                    if (!window.FFmpegWASM?.FFmpeg) {
+                        throw new Error('FFmpegWASM global missing after script load');
+                    }
+                    ffmpegWasmState.scriptLoaded = true;
+                    ffmpegWasmState.assetBaseUrl = candidate.assetBaseUrl;
+                    log('ffmpeg.wasm script loaded', candidate);
+                    return true;
+                } catch (error) {
+                    logError('ffmpeg.wasm script load failed', { candidate, error: String(error) });
+                }
+            }
+
+            ffmpegWasmState.disabled = true;
+            return false;
+        })();
+
+        try {
+            return await ffmpegWasmState.scriptPromise;
+        } finally {
+            ffmpegWasmState.scriptPromise = null;
+        }
+    }
+
+    async function ensureFfmpegWasmReady() {
+        if (ffmpegWasmState.disabled) {
+            return null;
+        }
+
+        if (ffmpegWasmState.instance) {
+            return ffmpegWasmState.instance;
+        }
+
+        if (ffmpegWasmState.loadPromise) {
+            return ffmpegWasmState.loadPromise;
+        }
+
+        ffmpegWasmState.loadPromise = (async () => {
+            const loaded = await ensureFfmpegWasmScriptLoaded();
+            if (!loaded || !window.FFmpegWASM?.FFmpeg) {
+                ffmpegWasmState.disabled = true;
+                return null;
+            }
+
+            const ffmpeg = new window.FFmpegWASM.FFmpeg();
+            if (debugEnabled) {
+                ffmpeg.on('log', event => {
+                    log('ffmpeg.wasm', event.message);
+                });
+            }
+
+            try {
+                await ffmpeg.load({
+                    coreURL: `${ffmpegWasmState.assetBaseUrl}/ffmpeg-core.js`,
+                    wasmURL: `${ffmpegWasmState.assetBaseUrl}/ffmpeg-core.wasm`
+                });
+                ffmpegWasmState.instance = ffmpeg;
+                log('ffmpeg.wasm ready', { assetBaseUrl: ffmpegWasmState.assetBaseUrl });
+                return ffmpeg;
+            } catch (error) {
+                ffmpegWasmState.disabled = true;
+                logError('ffmpeg.wasm load failed', { error: String(error), assetBaseUrl: ffmpegWasmState.assetBaseUrl });
+                return null;
+            }
+        })();
+
+        try {
+            return await ffmpegWasmState.loadPromise;
+        } finally {
+            ffmpegWasmState.loadPromise = null;
         }
     }
 
@@ -764,6 +895,54 @@
         return Math.min(sourceWidth, Math.max(rectWidth || 0, 1450));
     }
 
+    async function getToneMappedHdrUrlFromFfmpegWasm(src, img) {
+        const ffmpeg = await ensureFfmpegWasmReady();
+        if (!ffmpeg) {
+            return null;
+        }
+
+        const sourceBlob = await fetchBlob(src);
+        const inputBytes = new Uint8Array(await sourceBlob.arrayBuffer());
+        const sourceWidthHint = img.naturalWidth || 3840;
+        const targetWidth = Math.max(320, getTargetRenderWidth(img, sourceWidthHint));
+        const inputName = `input-${Date.now()}-${Math.random().toString(36).slice(2)}.png`;
+        const outputName = `output-${Date.now()}-${Math.random().toString(36).slice(2)}.png`;
+        const filter = [
+            'zscale=transfer=linear:npl=100',
+            `tonemap=tonemap=mobius:param=${HDR_TONEMAP_MOBIUS_PARAM}:desat=${HDR_TONEMAP_DESAT}:peak=${HDR_TONEMAP_PEAK}`,
+            'zscale=transfer=bt709:primaries=bt709:matrix=bt709:range=tv',
+            `scale=${targetWidth}:-2:flags=lanczos:force_original_aspect_ratio=decrease`,
+            'format=rgb24'
+        ].join(',');
+
+        try {
+            await ffmpeg.writeFile(inputName, inputBytes);
+            await ffmpeg.exec([
+                '-i',
+                inputName,
+                '-vf',
+                filter,
+                '-frames:v',
+                '1',
+                outputName
+            ]);
+            const outputData = await ffmpeg.readFile(outputName);
+            log('ffmpeg.wasm tonemap success', { src, targetWidth, outputBytes: outputData.length });
+            return URL.createObjectURL(new Blob([outputData], { type: 'image/png' }));
+        } catch (error) {
+            logError('ffmpeg.wasm tonemap failed', { src, error: String(error) });
+            ffmpegWasmState.disabled = true;
+            return null;
+        } finally {
+            try {
+                await ffmpeg.deleteFile(inputName);
+            } catch {}
+            try {
+                await ffmpeg.deleteFile(outputName);
+            } catch {}
+        }
+    }
+
     async function getToneMappedHdrUrl(src, img) {
         const sourceWidthHint = img.naturalWidth || 3840;
         const targetWidth = Math.max(320, getTargetRenderWidth(img, sourceWidthHint));
@@ -773,6 +952,11 @@
         }
 
         const promise = (async () => {
+            const wasmUrl = await getToneMappedHdrUrlFromFfmpegWasm(src, img);
+            if (wasmUrl) {
+                return wasmUrl;
+            }
+
             const blob = await fetchBlob(src);
             const metadata = await readPngHdrMetadata(blob);
             log('hdr metadata', { src, ...metadata, targetWidth });
