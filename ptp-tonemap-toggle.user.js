@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         PTP - Tonemap Toggle
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.3.2
-// @description  Adds per-panel toggles for tonemapping and Firefox HDR-black recovery on BBCode images. Requires widescreen.css to be active.
+// @version      0.4.0
+// @description  Adds per-panel toggles for tonemapping and Firefox HDR-black recovery on BBCode images.
 // @author       Audionut
 // @match        https://passthepopcorn.me/*
 // @icon         https://passthepopcorn.me/favicon.ico
@@ -10,6 +10,8 @@
 // @updateURL    https://github.com/Audionut/add-trackers/raw/main/ptp-tonemap-toggle.user.js
 // @grant        GM.getValue
 // @grant        GM.setValue
+// @grant        GM.registerMenuCommand
+// @grant        GM_registerMenuCommand
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
 // @connect      ptpimg.me
@@ -25,6 +27,7 @@
   const TONEMAP_ON_CLASS = 'ptp-tonemap-enabled';
   const HDR_FIX_PREF_KEY = 'ptpHdrBlackFixEnabledByTorrent';
   const HDR_FIX_ON_CLASS = 'ptp-hdr-blackfix-enabled';
+  const HDR_SETTINGS_PREF_KEY = 'ptpHdrSettingsV1';
   const DEBUG_PREF_KEY = 'ptpHdrDebug';
   const PANEL_SELECTOR = '.movie-page__torrent__panel, .movie-page__torrent_panel';
   const DETAIL_ROW_SELECTOR = 'tr[id^="torrent_"]';
@@ -32,20 +35,20 @@
   const TORRENT_CONTAINER_SELECTOR = `${PANEL_SELECTOR}, ${DETAIL_ROW_SELECTOR}`;
   const IMAGE_SELECTOR = 'img.bbcode__image';
   const IS_FIREFOX = /firefox/i.test(navigator.userAgent);
-  const FORCE_HDR_FIX_FOR_PTPIMG_PNG = true;
-  const HDR_FIX_SVG_ID = 'ptp-hdr-blackfix-gamma';
-  const HDR_FIX_INLINE_FILTER = `url("#${HDR_FIX_SVG_ID}") brightness(1.80) contrast(1.08) saturate(1.12)`;
-  const HDR_REFERENCE_WHITE_SCALE = 150;
-  const HDR_TONEMAP_MOBIUS_PARAM = 0.3;
-  const HDR_TONEMAP_DESAT = 10;
-  const HDR_TONEMAP_PEAK = 12;
-  const HDR_POST_BRIGHTNESS = 1;
-  const HDR_POST_GAMMA = 1;
-  const HDR_POST_SATURATION = 1;
-  const HDR_DITHER_STRENGTH = 0.75 / 255;
-  const HDR_DEBAND_THRESHOLD = 14;
-  const HDR_DEBAND_RANGE = 1;
-  const HDR_DEBAND_BRIGHTNESS_FLOOR = 110;
+  const TONEMAP_SVG_ID = 'ptp-tonemap-gamma';
+  const TONEMAP_STYLE_ID = 'ptp-tonemap-adjustments-style';
+  const TONEMAP_UI_STYLE_ID = 'ptp-tonemap-ui-style';
+  const DEFAULT_HDR_SETTINGS = {
+    tonemapOnlyContrast: 1,
+    tonemapOnlyBrightness: 1,
+    tonemapOnlySaturation: 2,
+    tonemapOnlyGammaExponent: 1.2,
+    forceHdrFixForPtpimgPng: true,
+    ffmpegWorkers: 2,
+    tonemapMobiusParam: 0.3,
+    tonemapDesat: 10,
+    tonemapPeak: 12
+  };
   const LOCAL_FFMPEG_WASM_BASE_URL = 'https://audionut.github.io/add-trackers/vendor/ffmpeg-wasm';
   const LOCAL_FFMPEG_WASM_ESM_BASE_URL = `${LOCAL_FFMPEG_WASM_BASE_URL}/esm`;
   const CDN_FFMPEG_WASM_ESM_BASE_URL =
@@ -53,13 +56,13 @@
   const CDN_FFMPEG_CORE_BASE_URL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm';
   const analyzedImages = new WeakSet();
   const pendingImages = new WeakSet();
-  const sourceDecisionCache = new Map();
+  const queuedImages = new WeakMap();
+  const imageAnalysisQueue = [];
   const convertedSourceCache = new Map();
   const ffmpegWasmState = {
-    instance: null,
-    loadPromise: null,
     module: null,
     modulePromise: null,
+    pool: [],
     blobUrls: [],
     assetBaseUrl: null,
     assetLabel: null,
@@ -68,10 +71,19 @@
   let lastClickedHdrSource = '';
   let lastClickedConvertedSrc = '';
   let lastClickedTorrentId = '';
+  let hasSavedHdrSettingsThisSession = false;
+  let activeImageQueueWorkers = 0;
 
   const tonemapEnabledByTorrent = normalizeTorrentStateMap(await GM.getValue(TONEMAP_PREF_KEY, {}));
   const hdrFixEnabledByTorrent = normalizeTorrentStateMap(await GM.getValue(HDR_FIX_PREF_KEY, {}));
+  let hdrSettings = normalizeHdrSettings(await GM.getValue(HDR_SETTINGS_PREF_KEY, {}));
   let debugEnabled = await GM.getValue(DEBUG_PREF_KEY, true);
+
+  Object.keys(hdrFixEnabledByTorrent).forEach((torrentId) => {
+    if (hdrFixEnabledByTorrent[torrentId]) {
+      tonemapEnabledByTorrent[torrentId] = false;
+    }
+  });
 
   function normalizeTorrentStateMap(value) {
     if (!value || typeof value !== 'object') {
@@ -81,6 +93,354 @@
     return Object.fromEntries(
       Object.entries(value).map(([torrentId, enabled]) => [String(torrentId), Boolean(enabled)])
     );
+  }
+
+  function clampNumber(value, fallback, min, max) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+      return fallback;
+    }
+    return Math.min(max, Math.max(min, numeric));
+  }
+
+  function normalizeHdrSettings(value) {
+    const input = value && typeof value === 'object' ? value : {};
+    return {
+      tonemapOnlyContrast: clampNumber(
+        input.tonemapOnlyContrast,
+        DEFAULT_HDR_SETTINGS.tonemapOnlyContrast,
+        0.1,
+        3
+      ),
+      tonemapOnlyBrightness: clampNumber(
+        input.tonemapOnlyBrightness,
+        DEFAULT_HDR_SETTINGS.tonemapOnlyBrightness,
+        0,
+        3
+      ),
+      tonemapOnlySaturation: clampNumber(
+        input.tonemapOnlySaturation,
+        DEFAULT_HDR_SETTINGS.tonemapOnlySaturation,
+        0,
+        3
+      ),
+      tonemapOnlyGammaExponent: clampNumber(
+        input.tonemapOnlyGammaExponent,
+        DEFAULT_HDR_SETTINGS.tonemapOnlyGammaExponent,
+        0.05,
+        4
+      ),
+      forceHdrFixForPtpimgPng: Boolean(input.forceHdrFixForPtpimgPng ?? DEFAULT_HDR_SETTINGS.forceHdrFixForPtpimgPng),
+      ffmpegWorkers: Math.round(
+        clampNumber(
+          input.ffmpegWorkers ?? input.concurrentImageJobs,
+          DEFAULT_HDR_SETTINGS.ffmpegWorkers,
+          1,
+          6
+        )
+      ),
+      tonemapMobiusParam: clampNumber(
+        input.tonemapMobiusParam,
+        DEFAULT_HDR_SETTINGS.tonemapMobiusParam,
+        0,
+        4
+      ),
+      tonemapDesat: clampNumber(input.tonemapDesat, DEFAULT_HDR_SETTINGS.tonemapDesat, 0, 1000),
+      tonemapPeak: clampNumber(input.tonemapPeak, DEFAULT_HDR_SETTINGS.tonemapPeak, 0.1, 1000)
+    };
+  }
+
+  async function saveHdrSettings(nextSettings) {
+    hdrSettings = normalizeHdrSettings(nextSettings);
+    await GM.setValue(HDR_SETTINGS_PREF_KEY, hdrSettings);
+  }
+
+  function removeTonemapSvgFilter() {
+    const filter = document.getElementById(TONEMAP_SVG_ID);
+    const svg = filter?.closest('svg');
+    if (svg) {
+      svg.remove();
+      return;
+    }
+    filter?.remove();
+  }
+
+  function updateTonemapAdjustmentStyle() {
+    ensureTonemapSvgFilter();
+    let style = document.getElementById(TONEMAP_STYLE_ID);
+    if (!(style instanceof HTMLStyleElement)) {
+      style = document.createElement('style');
+      style.id = TONEMAP_STYLE_ID;
+      (document.head || document.documentElement).appendChild(style);
+    }
+
+    style.textContent = `
+      ${IMAGE_SELECTOR}[data-ptp-tonemap-active="1"] {
+        filter: url("#${TONEMAP_SVG_ID}") brightness(${hdrSettings.tonemapOnlyBrightness}) contrast(${hdrSettings.tonemapOnlyContrast}) saturate(${hdrSettings.tonemapOnlySaturation}) !important;
+      }
+    `;
+  }
+
+  function ensureTonemapUiStyle() {
+    let style = document.getElementById(TONEMAP_UI_STYLE_ID);
+    if (!(style instanceof HTMLStyleElement)) {
+      style = document.createElement('style');
+      style.id = TONEMAP_UI_STYLE_ID;
+      (document.head || document.documentElement).appendChild(style);
+    }
+
+    style.textContent = `
+      .ptp-tonemap-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin: 0 0 8px 0;
+      }
+
+      .ptp-tonemap-toggle {
+        appearance: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        margin: 0;
+        padding: 3px 10px;
+        font-size: 11px;
+        line-height: 1.3;
+        font-family: Tahoma, Helvetica, Geneva, sans-serif;
+        color: #b5b5b5;
+        background: #212121;
+        border: 1px solid #3a3c3f;
+        border-radius: 5px;
+        box-shadow: none;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .ptp-tonemap-toggle:hover {
+        color: #ffffff;
+        background: #2c2c2c;
+      }
+
+      .ptp-tonemap-toggle:focus-visible {
+        outline: 1px solid #7aa2ff;
+        outline-offset: 1px;
+      }
+
+      .ptp-tonemap-toggle__dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #418b00;
+        flex-shrink: 0;
+      }
+
+      .ptp-tonemap-toggle:not(.is-enabled) .ptp-tonemap-toggle__dot,
+      .ptp-hdr-blackfix-toggle:not(.is-enabled) .ptp-tonemap-toggle__dot {
+        background: #666666;
+      }
+    `;
+  }
+
+  function clearHdrCachesForSource(src) {
+    if (!src) {
+      return;
+    }
+
+    convertedSourceCache.delete(`${src}|full-resolution`);
+  }
+
+  function clearImageAnalysisState(img) {
+    pendingImages.delete(img);
+    analyzedImages.delete(img);
+    img.dataset.ptpHdrFixApplied = '0';
+    img.dataset.ptpHdrFixRendered = '0';
+    img.dataset.ptpHdrFixMode = 'refresh-pending';
+    syncTonemapStateForImage(img);
+  }
+
+  function refreshImages(images) {
+    images.forEach((img) => {
+      const originalSrc = normalizeUrlCandidate(img.dataset.ptpHdrOriginalSrc || '');
+      const fallbackSrc = normalizeUrlCandidate(getEligibleHdrFixSource(img) || getImageSrc(img));
+      const sourceForRefresh = originalSrc || fallbackSrc;
+
+      clearHdrCachesForSource(sourceForRefresh);
+      restoreOriginalImageSource(img);
+      clearImageAnalysisState(img);
+      queueImageAnalysis(img, true);
+    });
+  }
+
+  function refreshAllHdrImages(options = {}) {
+    const { automatic = false } = options;
+    if (automatic && !hasSavedHdrSettingsThisSession) {
+      return;
+    }
+
+    refreshImages(getRelevantImages());
+    if (lastClickedConvertedSrc) {
+      lastClickedConvertedSrc = '';
+    }
+  }
+
+  function openHdrSettingsModal() {
+    let modal = document.getElementById('ptp-hdr-settings-modal');
+    if (modal) {
+      modal.style.display = 'flex';
+      return;
+    }
+
+    modal = document.createElement('div');
+    modal.id = 'ptp-hdr-settings-modal';
+    modal.style.position = 'fixed';
+    modal.style.inset = '0';
+    modal.style.backgroundColor = 'rgba(0, 0, 0, 0.6)';
+    modal.style.display = 'flex';
+    modal.style.alignItems = 'center';
+    modal.style.justifyContent = 'center';
+    modal.style.zIndex = '100000';
+
+    const panel = document.createElement('div');
+    panel.style.width = 'min(700px, 96vw)';
+    panel.style.maxHeight = '92vh';
+    panel.style.overflow = 'auto';
+    panel.style.background = '#1f1f1f';
+    panel.style.color = '#e7e7e7';
+    panel.style.border = '1px solid #444';
+    panel.style.borderRadius = '8px';
+    panel.style.padding = '16px';
+    panel.style.boxSizing = 'border-box';
+
+    panel.innerHTML = `
+      <div style="font-size: 18px; margin-bottom: 12px;">PTP Tonemap HDR Settings</div>
+      <div style="margin-bottom: 12px; border:1px solid #3a3a3a; border-radius:6px; padding:10px;">
+        <div style="font-size: 14px; font-weight: 700; margin-bottom: 8px; color:#9ad3ff;">Tonemapping Only</div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+          <div>
+            <label for="ptp-tonemap-only-contrast" style="display:block; margin-bottom:4px;">Contrast (0.1-3)</label>
+            <input id="ptp-tonemap-only-contrast" type="number" min="0.1" max="3" step="0.01" style="width:100%; box-sizing:border-box; padding:6px;" />
+          </div>
+          <div>
+            <label for="ptp-tonemap-only-brightness" style="display:block; margin-bottom:4px;">Brightness (0-3)</label>
+            <input id="ptp-tonemap-only-brightness" type="number" min="0" max="3" step="0.01" style="width:100%; box-sizing:border-box; padding:6px;" />
+          </div>
+          <div>
+            <label for="ptp-tonemap-only-saturation" style="display:block; margin-bottom:4px;">Saturation (0-3)</label>
+            <input id="ptp-tonemap-only-saturation" type="number" min="0" max="3" step="0.01" style="width:100%; box-sizing:border-box; padding:6px;" />
+          </div>
+          <div>
+            <label for="ptp-tonemap-only-gamma" style="display:block; margin-bottom:4px;">Gamma Exponent</label>
+            <input id="ptp-tonemap-only-gamma" type="number" min="0.05" max="4" step="0.01" style="width:100%; box-sizing:border-box; padding:6px;" />
+          </div>
+        </div>
+      </div>
+      <div style="margin-bottom: 12px; border:1px solid #3a3a3a; border-radius:6px; padding:10px;">
+        <div style="font-size: 14px; font-weight: 700; margin-bottom: 8px; color:#ffd89a;">HDR Fix</div>
+        <div style="font-size: 12px; color:#c7c7c7; margin-bottom: 8px;">FFmpeg conversion</div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+          <label style="display:flex; align-items:center; gap:8px; grid-column:1 / -1;">
+            <input id="ptp-hdr-force-fix" type="checkbox" />
+            Force tonemap conversion for ptpimg PNG sources
+          </label>
+          <div>
+            <label for="ptp-hdr-tonemap-mobius" style="display:block; margin-bottom:4px;">Mobius Param</label>
+            <input id="ptp-hdr-tonemap-mobius" type="number" min="0" max="4" step="0.01" style="width:100%; box-sizing:border-box; padding:6px;" />
+          </div>
+          <div>
+            <label for="ptp-hdr-tonemap-desat" style="display:block; margin-bottom:4px;">Desaturation</label>
+            <input id="ptp-hdr-tonemap-desat" type="number" min="0" max="1000" step="0.1" style="width:100%; box-sizing:border-box; padding:6px;" />
+          </div>
+          <div>
+            <label for="ptp-hdr-tonemap-peak" style="display:block; margin-bottom:4px;">Peak</label>
+            <input id="ptp-hdr-tonemap-peak" type="number" min="0.1" max="1000" step="0.1" style="width:100%; box-sizing:border-box; padding:6px;" />
+          </div>
+          <div>
+            <label for="ptp-hdr-ffmpeg-workers" style="display:block; margin-bottom:4px;">FFmpeg Workers (1-6)</label>
+            <input id="ptp-hdr-ffmpeg-workers" type="number" min="1" max="6" step="1" style="width:100%; box-sizing:border-box; padding:6px;" />
+          </div>
+        </div>
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button id="ptp-hdr-settings-cancel" type="button">Cancel</button>
+        <button id="ptp-hdr-settings-defaults" type="button">Reset Defaults</button>
+        <button id="ptp-hdr-settings-save" type="button">Save</button>
+      </div>
+    `;
+
+    modal.appendChild(panel);
+    document.body.appendChild(modal);
+
+    const tonemapOnlyContrastInput = panel.querySelector('#ptp-tonemap-only-contrast');
+    const tonemapOnlyBrightnessInput = panel.querySelector('#ptp-tonemap-only-brightness');
+    const tonemapOnlySaturationInput = panel.querySelector('#ptp-tonemap-only-saturation');
+    const tonemapOnlyGammaInput = panel.querySelector('#ptp-tonemap-only-gamma');
+    const forceFixInput = panel.querySelector('#ptp-hdr-force-fix');
+    const tonemapMobiusInput = panel.querySelector('#ptp-hdr-tonemap-mobius');
+    const tonemapDesatInput = panel.querySelector('#ptp-hdr-tonemap-desat');
+    const tonemapPeakInput = panel.querySelector('#ptp-hdr-tonemap-peak');
+    const ffmpegWorkersInput = panel.querySelector('#ptp-hdr-ffmpeg-workers');
+    const cancelButton = panel.querySelector('#ptp-hdr-settings-cancel');
+    const defaultsButton = panel.querySelector('#ptp-hdr-settings-defaults');
+    const saveButton = panel.querySelector('#ptp-hdr-settings-save');
+
+    const fillFromSettings = (value) => {
+      tonemapOnlyContrastInput.value = String(value.tonemapOnlyContrast);
+      tonemapOnlyBrightnessInput.value = String(value.tonemapOnlyBrightness);
+      tonemapOnlySaturationInput.value = String(value.tonemapOnlySaturation);
+      tonemapOnlyGammaInput.value = String(value.tonemapOnlyGammaExponent);
+      forceFixInput.checked = Boolean(value.forceHdrFixForPtpimgPng);
+      tonemapMobiusInput.value = String(value.tonemapMobiusParam);
+      tonemapDesatInput.value = String(value.tonemapDesat);
+      tonemapPeakInput.value = String(value.tonemapPeak);
+      ffmpegWorkersInput.value = String(value.ffmpegWorkers);
+    };
+
+    fillFromSettings(hdrSettings);
+
+    const closeModal = () => {
+      modal.style.display = 'none';
+    };
+
+    cancelButton.addEventListener('click', closeModal);
+    modal.addEventListener('click', (event) => {
+      if (event.target === modal) {
+        closeModal();
+      }
+    });
+
+    defaultsButton.addEventListener('click', () => {
+      fillFromSettings(DEFAULT_HDR_SETTINGS);
+    });
+
+    saveButton.addEventListener('click', async () => {
+      const nextSettings = normalizeHdrSettings({
+        tonemapOnlyContrast: Number.parseFloat(tonemapOnlyContrastInput.value),
+        tonemapOnlyBrightness: Number.parseFloat(tonemapOnlyBrightnessInput.value),
+        tonemapOnlySaturation: Number.parseFloat(tonemapOnlySaturationInput.value),
+        tonemapOnlyGammaExponent: Number.parseFloat(tonemapOnlyGammaInput.value),
+        forceHdrFixForPtpimgPng: forceFixInput.checked,
+        ffmpegWorkers: Number.parseInt(ffmpegWorkersInput.value, 10),
+        tonemapMobiusParam: Number.parseFloat(tonemapMobiusInput.value),
+        tonemapDesat: Number.parseFloat(tonemapDesatInput.value),
+        tonemapPeak: Number.parseFloat(tonemapPeakInput.value)
+      });
+
+      await saveHdrSettings(nextSettings);
+      hasSavedHdrSettingsThisSession = true;
+      removeTonemapSvgFilter();
+      updateTonemapAdjustmentStyle();
+      refreshAllHdrImages({ automatic: true });
+      kickImageQueueWorkers();
+      closeModal();
+    });
+  }
+
+  const registerMenuCommand =
+    (typeof GM === 'object' && typeof GM.registerMenuCommand === 'function'
+      ? GM.registerMenuCommand.bind(GM)
+      : null) || globalThis.GM_registerMenuCommand;
+  if (typeof registerMenuCommand === 'function') {
+    registerMenuCommand('PTP Tonemap HDR Settings', openHdrSettingsModal);
   }
 
   function log(...args) {
@@ -258,26 +618,16 @@
     }
   }
 
-  async function ensureFfmpegWasmReady() {
-    if (ffmpegWasmState.disabled) {
-      return null;
+  async function ensureFfmpegPoolEntryLoaded(entry, module) {
+    if (entry.ffmpeg) {
+      return entry.ffmpeg;
     }
 
-    if (ffmpegWasmState.instance) {
-      return ffmpegWasmState.instance;
+    if (entry.loadPromise) {
+      return entry.loadPromise;
     }
 
-    if (ffmpegWasmState.loadPromise) {
-      return ffmpegWasmState.loadPromise;
-    }
-
-    ffmpegWasmState.loadPromise = (async () => {
-      const module = await loadFfmpegWasmModule();
-      if (!module?.FFmpeg) {
-        ffmpegWasmState.disabled = true;
-        return null;
-      }
-
+    entry.loadPromise = (async () => {
       const ffmpeg = new module.FFmpeg();
       if (debugEnabled) {
         ffmpeg.on('log', (event) => {
@@ -285,33 +635,84 @@
         });
       }
 
-      try {
-        await ffmpeg.load({
-          classWorkerURL: module.classWorkerURL,
-          coreURL: module.coreURL,
-          wasmURL: module.wasmURL
-        });
-        ffmpegWasmState.instance = ffmpeg;
-        log('ffmpeg.wasm ready', {
-          assetBaseUrl: ffmpegWasmState.assetBaseUrl,
-          assetLabel: ffmpegWasmState.assetLabel
-        });
-        return ffmpeg;
-      } catch (error) {
-        ffmpegWasmState.disabled = true;
-        logError('ffmpeg.wasm load failed', {
-          error: String(error),
-          assetBaseUrl: ffmpegWasmState.assetBaseUrl,
-          assetLabel: ffmpegWasmState.assetLabel
-        });
-        return null;
-      }
+      await ffmpeg.load({
+        classWorkerURL: module.classWorkerURL,
+        coreURL: module.coreURL,
+        wasmURL: module.wasmURL
+      });
+      entry.ffmpeg = ffmpeg;
+      log('ffmpeg.wasm worker ready', {
+        assetBaseUrl: ffmpegWasmState.assetBaseUrl,
+        assetLabel: ffmpegWasmState.assetLabel
+      });
+      return ffmpeg;
     })();
 
     try {
-      return await ffmpegWasmState.loadPromise;
+      return await entry.loadPromise;
     } finally {
-      ffmpegWasmState.loadPromise = null;
+      entry.loadPromise = null;
+    }
+  }
+
+  function ensureFfmpegPoolSize(minSize) {
+    while (ffmpegWasmState.pool.length < minSize) {
+      ffmpegWasmState.pool.push({
+        ffmpeg: null,
+        loadPromise: null,
+        busy: false
+      });
+    }
+  }
+
+  async function acquireFfmpegWasmInstance() {
+    if (ffmpegWasmState.disabled) {
+      return null;
+    }
+
+    const module = await loadFfmpegWasmModule();
+    if (!module?.FFmpeg) {
+      ffmpegWasmState.disabled = true;
+      return null;
+    }
+
+    while (true) {
+      const poolSize = getMaxConcurrentImageJobs();
+      ensureFfmpegPoolSize(poolSize);
+
+      for (let index = 0; index < poolSize; index += 1) {
+        const entry = ffmpegWasmState.pool[index];
+        if (entry.busy) {
+          continue;
+        }
+
+        entry.busy = true;
+        try {
+          const ffmpeg = await ensureFfmpegPoolEntryLoaded(entry, module);
+          if (!ffmpeg) {
+            entry.busy = false;
+            continue;
+          }
+
+          return {
+            ffmpeg,
+            release: () => {
+              entry.busy = false;
+            }
+          };
+        } catch (error) {
+          entry.busy = false;
+          ffmpegWasmState.disabled = true;
+          logError('ffmpeg.wasm worker load failed', {
+            error: String(error),
+            assetBaseUrl: ffmpegWasmState.assetBaseUrl,
+            assetLabel: ffmpegWasmState.assetLabel
+          });
+          return null;
+        }
+      }
+
+      await waitForNextPaint();
     }
   }
 
@@ -360,14 +761,6 @@
     }
 
     return '';
-  }
-
-  function getTorrentContainer(element) {
-    if (!(element instanceof Element)) {
-      return null;
-    }
-
-    return element.closest(TORRENT_CONTAINER_SELECTOR);
   }
 
   function getTorrentId(element) {
@@ -431,10 +824,27 @@
     }
 
     if (img.closest('#lightbox')) {
-      return Boolean(lastClickedTorrentId && torrentHasHdrMetadata(lastClickedTorrentId));
+      return isLightboxImageForLastClickedSource(img);
     }
 
     return Boolean(img.closest(`${PANEL_SELECTOR}[${ELIGIBLE_PANEL_ATTRIBUTE}="1"]`));
+  }
+
+  function isLightboxImageForLastClickedSource(img) {
+    if (!(img instanceof HTMLImageElement) || !img.closest('#lightbox')) {
+      return false;
+    }
+
+    if (!lastClickedTorrentId || !lastClickedHdrSource || !torrentHasHdrMetadata(lastClickedTorrentId)) {
+      return false;
+    }
+
+    const targetSource = normalizeUrlCandidate(lastClickedHdrSource);
+    if (!targetSource) {
+      return false;
+    }
+
+    return getImageSourceCandidates(img).includes(targetSource);
   }
 
   function getRelevantImages() {
@@ -453,7 +863,7 @@
       });
 
     document.querySelectorAll('#lightbox img').forEach((img) => {
-      if (!seen.has(img)) {
+      if (!seen.has(img) && isLightboxImageForLastClickedSource(img)) {
         seen.add(img);
         images.push(img);
       }
@@ -491,19 +901,75 @@
     };
   }
 
+  function syncTonemapStateForImage(img) {
+    if (!(img instanceof HTMLImageElement)) {
+      return;
+    }
+
+    const { torrentId, tonemapEnabled, hdrFixEnabled } = getImageToggleState(img);
+    const tonemapActive =
+      Boolean(torrentId) &&
+      tonemapEnabled &&
+      !hdrFixEnabled &&
+      shouldProcessImage(img) &&
+      !img.classList.contains('ptp-hdr-converted') &&
+      !img.classList.contains('ptp-hdr-blackfix') &&
+      !String(img.dataset.ptpHdrFixRendered || '').startsWith('converted') &&
+      img.dataset.ptpHdrFixApplied !== '1';
+
+    img.dataset.ptpTonemapActive = tonemapActive ? '1' : '0';
+  }
+
+  function syncTonemapStateForTorrent(torrentId) {
+    if (!torrentId) {
+      return;
+    }
+
+    document.querySelectorAll(IMAGE_SELECTOR).forEach((img) => {
+      if (getTorrentId(img) === torrentId) {
+        syncTonemapStateForImage(img);
+      }
+    });
+  }
+
+  function syncTonemapStateForImages(images) {
+    images.forEach((img) => syncTonemapStateForImage(img));
+  }
+
   function applyStateToContainer(container, torrentId = getTorrentId(container)) {
     if (!(container instanceof Element) || !torrentId) {
       return;
     }
 
-    container.classList.toggle(TONEMAP_ON_CLASS, isTonemapEnabledForTorrent(torrentId));
-    container.classList.toggle(HDR_FIX_ON_CLASS, isHdrFixEnabledForTorrent(torrentId));
+    const tonemapEnabled = isTonemapEnabledForTorrent(torrentId);
+    const hdrFixEnabled = isHdrFixEnabledForTorrent(torrentId);
+
+    container.classList.toggle(TONEMAP_ON_CLASS, tonemapEnabled && !hdrFixEnabled);
+    container.classList.toggle(HDR_FIX_ON_CLASS, hdrFixEnabled);
   }
 
   function applyState() {
     document.querySelectorAll(TORRENT_CONTAINER_SELECTOR).forEach((container) => {
       applyStateToContainer(container);
     });
+
+    document.querySelectorAll(IMAGE_SELECTOR).forEach((img) => {
+      syncTonemapStateForImage(img);
+    });
+  }
+
+  function applyStateForTorrent(torrentId) {
+    if (!torrentId) {
+      return;
+    }
+
+    document.querySelectorAll(TORRENT_CONTAINER_SELECTOR).forEach((container) => {
+      if (getTorrentId(container) === torrentId) {
+        applyStateToContainer(container, torrentId);
+      }
+    });
+
+    syncTonemapStateForTorrent(torrentId);
   }
 
   function updateButtons(panel, torrentId = getTorrentId(panel)) {
@@ -511,7 +977,7 @@
       return;
     }
 
-    panel.querySelectorAll('.ptp-tonemap-toggle:not(.ptp-hdr-blackfix-toggle)').forEach((btn) => {
+    panel.querySelectorAll('.ptp-tonemap-main-toggle').forEach((btn) => {
       btn.classList.toggle('is-enabled', isTonemapEnabledForTorrent(torrentId));
       btn.querySelector('.ptp-tonemap-toggle__label').textContent = isTonemapEnabledForTorrent(
         torrentId
@@ -536,10 +1002,18 @@
       return;
     }
 
-    tonemapEnabledByTorrent[torrentId] = !isTonemapEnabledForTorrent(torrentId);
+    const nextEnabled = !isTonemapEnabledForTorrent(torrentId);
+    tonemapEnabledByTorrent[torrentId] = nextEnabled;
+    if (nextEnabled) {
+      hdrFixEnabledByTorrent[torrentId] = false;
+      await GM.setValue(HDR_FIX_PREF_KEY, hdrFixEnabledByTorrent);
+    }
     await GM.setValue(TONEMAP_PREF_KEY, tonemapEnabledByTorrent);
-    applyStateToContainer(getTorrentContainer(panel) || panel, torrentId);
+    applyStateForTorrent(torrentId);
     updateButtons(panel, torrentId);
+    if (nextEnabled) {
+      forceApplyHdrFixToCurrentImages();
+    }
   }
 
   async function toggleHdrBlackFixForPanel(panel) {
@@ -548,9 +1022,14 @@
       return;
     }
 
-    hdrFixEnabledByTorrent[torrentId] = !isHdrFixEnabledForTorrent(torrentId);
+    const nextEnabled = !isHdrFixEnabledForTorrent(torrentId);
+    hdrFixEnabledByTorrent[torrentId] = nextEnabled;
+    if (nextEnabled) {
+      tonemapEnabledByTorrent[torrentId] = false;
+      await GM.setValue(TONEMAP_PREF_KEY, tonemapEnabledByTorrent);
+    }
     await GM.setValue(HDR_FIX_PREF_KEY, hdrFixEnabledByTorrent);
-    applyStateToContainer(getTorrentContainer(panel) || panel, torrentId);
+    applyStateForTorrent(torrentId);
     updateButtons(panel, torrentId);
     log('HDR Black Fix toggled', {
       torrentId,
@@ -578,12 +1057,14 @@
       }
       if (!hdrFixEnabled) {
         restoreOriginalImageSource(img);
-        removeInlineHdrFix(img);
         img.dataset.ptpHdrFixApplied = '0';
         img.dataset.ptpHdrFixMode = 'disabled-toggle-pass';
+        syncTonemapStateForImage(img);
         changed += 1;
       }
     });
+
+    syncTonemapStateForImages(images);
 
     log('forceApplyHdrFixToCurrentImages', {
       totalInPanels: images.length,
@@ -593,29 +1074,8 @@
     });
   }
 
-  function applyInlineHdrFix(img) {
-    ensureHdrFixSvgFilter();
-    if (!Object.hasOwn(img.dataset, 'ptpOriginalFilter')) {
-      img.dataset.ptpOriginalFilter = img.style.getPropertyValue('filter') || '';
-      img.dataset.ptpOriginalFilterPriority = img.style.getPropertyPriority('filter') || '';
-    }
-    img.classList.add('ptp-hdr-blackfix');
-    img.style.setProperty('filter', HDR_FIX_INLINE_FILTER, 'important');
-  }
-
-  function removeInlineHdrFix(img) {
-    img.classList.remove('ptp-hdr-blackfix');
-    const original = img.dataset.ptpOriginalFilter || '';
-    const originalPriority = img.dataset.ptpOriginalFilterPriority || '';
-    if (original) {
-      img.style.setProperty('filter', original, originalPriority);
-    } else {
-      img.style.removeProperty('filter');
-    }
-  }
-
-  function ensureHdrFixSvgFilter() {
-    if (document.getElementById(HDR_FIX_SVG_ID)) {
+  function ensureTonemapSvgFilter() {
+    if (document.getElementById(TONEMAP_SVG_ID)) {
       return;
     }
 
@@ -631,7 +1091,7 @@
 
     const defs = document.createElementNS(svgNs, 'defs');
     const filter = document.createElementNS(svgNs, 'filter');
-    filter.setAttribute('id', HDR_FIX_SVG_ID);
+    filter.setAttribute('id', TONEMAP_SVG_ID);
     filter.setAttribute('color-interpolation-filters', 'sRGB');
 
     const componentTransfer = document.createElementNS(svgNs, 'feComponentTransfer');
@@ -639,7 +1099,7 @@
       const func = document.createElementNS(svgNs, `feFunc${channel}`);
       func.setAttribute('type', 'gamma');
       func.setAttribute('amplitude', '1');
-      func.setAttribute('exponent', '0.58');
+      func.setAttribute('exponent', String(hdrSettings.tonemapOnlyGammaExponent));
       func.setAttribute('offset', '0');
       componentTransfer.appendChild(func);
     });
@@ -656,7 +1116,7 @@
 
   function makeTonemapButton(panel, torrentId = getTorrentId(panel)) {
     const btn = document.createElement('button');
-    btn.className = 'ptp-tonemap-toggle';
+    btn.className = 'ptp-tonemap-toggle ptp-tonemap-main-toggle';
     btn.type = 'button';
 
     const dot = document.createElement('span');
@@ -815,429 +1275,13 @@
     });
   }
 
-  async function readPngHdrMetadata(blob) {
-    const bytes = new Uint8Array(await blob.arrayBuffer());
-    const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-    if (bytes.length < 8 || signature.some((value, index) => bytes[index] !== value)) {
-      return { isPqBt2020Png: false };
-    }
-
-    let offset = 8;
-    let bitDepth = null;
-    let colourPrimaries = null;
-    let transferCharacteristics = null;
-
-    while (offset + 8 <= bytes.length) {
-      const length =
-        (bytes[offset] << 24) |
-        (bytes[offset + 1] << 16) |
-        (bytes[offset + 2] << 8) |
-        bytes[offset + 3];
-      const type = String.fromCodePoint(
-        bytes[offset + 4],
-        bytes[offset + 5],
-        bytes[offset + 6],
-        bytes[offset + 7]
-      );
-      const dataOffset = offset + 8;
-      const nextOffset = dataOffset + length + 4;
-      if (nextOffset > bytes.length) {
-        break;
-      }
-
-      if (type === 'IHDR' && length >= 10) {
-        bitDepth = bytes[dataOffset + 8];
-      } else if (type === 'cICP' && length >= 4) {
-        colourPrimaries = bytes[dataOffset];
-        transferCharacteristics = bytes[dataOffset + 1];
-      } else if (type === 'IDAT') {
-        break;
-      }
-
-      offset = nextOffset;
-    }
-
-    return {
-      bitDepth,
-      colourPrimaries,
-      transferCharacteristics,
-      isPqBt2020Png: colourPrimaries === 9 && transferCharacteristics === 16
-    };
-  }
-
-  async function inflateZlib(data) {
-    if (typeof DecompressionStream !== 'function') {
-      throw new TypeError('DecompressionStream is not available in this browser');
-    }
-
-    const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate'));
-    const response = new Response(stream);
-    return new Uint8Array(await response.arrayBuffer());
-  }
-
-  function paethPredictor(a, b, c) {
-    const p = a + b - c;
-    const pa = Math.abs(p - a);
-    const pb = Math.abs(p - b);
-    const pc = Math.abs(p - c);
-    if (pa <= pb && pa <= pc) {
-      return a;
-    }
-    if (pb <= pc) {
-      return b;
-    }
-    return c;
-  }
-
-  async function decodePngRgbFromBlob(blob) {
-    const bytes = new Uint8Array(await blob.arrayBuffer());
-    const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-    if (bytes.length < 8 || signature.some((value, index) => bytes[index] !== value)) {
-      throw new Error('Not a PNG file');
-    }
-
-    let offset = 8;
-    let width = 0;
-    let height = 0;
-    let bitDepth = 0;
-    let colorType = 0;
-    let compressionMethod = 0;
-    let filterMethod = 0;
-    let interlaceMethod = 0;
-    const idatParts = [];
-
-    while (offset + 8 <= bytes.length) {
-      const length =
-        (bytes[offset] << 24) |
-        (bytes[offset + 1] << 16) |
-        (bytes[offset + 2] << 8) |
-        bytes[offset + 3];
-      const type = String.fromCodePoint(
-        bytes[offset + 4],
-        bytes[offset + 5],
-        bytes[offset + 6],
-        bytes[offset + 7]
-      );
-      const dataOffset = offset + 8;
-      const nextOffset = dataOffset + length + 4;
-      if (nextOffset > bytes.length) {
-        throw new Error(`Corrupt PNG chunk: ${type}`);
-      }
-
-      if (type === 'IHDR') {
-        width =
-          (bytes[dataOffset] << 24) |
-          (bytes[dataOffset + 1] << 16) |
-          (bytes[dataOffset + 2] << 8) |
-          bytes[dataOffset + 3];
-        height =
-          (bytes[dataOffset + 4] << 24) |
-          (bytes[dataOffset + 5] << 16) |
-          (bytes[dataOffset + 6] << 8) |
-          bytes[dataOffset + 7];
-        bitDepth = bytes[dataOffset + 8];
-        colorType = bytes[dataOffset + 9];
-        compressionMethod = bytes[dataOffset + 10];
-        filterMethod = bytes[dataOffset + 11];
-        interlaceMethod = bytes[dataOffset + 12];
-      } else if (type === 'IDAT') {
-        idatParts.push(bytes.slice(dataOffset, dataOffset + length));
-      } else if (type === 'IEND') {
-        break;
-      }
-
-      offset = nextOffset;
-    }
-
-    if (!width || !height) {
-      throw new Error('PNG missing IHDR');
-    }
-    if (
-      bitDepth !== 8 ||
-      colorType !== 2 ||
-      compressionMethod !== 0 ||
-      filterMethod !== 0 ||
-      interlaceMethod !== 0
-    ) {
-      throw new Error(
-        `Unsupported PNG format: bitDepth=${bitDepth} colorType=${colorType} interlace=${interlaceMethod}`
-      );
-    }
-
-    const compressedLength = idatParts.reduce((sum, part) => sum + part.length, 0);
-    const compressed = new Uint8Array(compressedLength);
-    let writeOffset = 0;
-    idatParts.forEach((part) => {
-      compressed.set(part, writeOffset);
-      writeOffset += part.length;
-    });
-
-    const inflated = await inflateZlib(compressed);
-    const bytesPerPixel = 3;
-    const stride = width * bytesPerPixel;
-    const expectedLength = (stride + 1) * height;
-    if (inflated.length < expectedLength) {
-      throw new Error(
-        `Inflated PNG data too short: got ${inflated.length}, expected ${expectedLength}`
-      );
-    }
-
-    const rgb = new Uint8ClampedArray(width * height * 4);
-    const prev = new Uint8Array(stride);
-    const current = new Uint8Array(stride);
-    let srcOffset = 0;
-
-    for (let y = 0; y < height; y += 1) {
-      const filterType = inflated[srcOffset];
-      srcOffset += 1;
-
-      for (let x = 0; x < stride; x += 1) {
-        const raw = inflated[srcOffset + x];
-        const left = x >= bytesPerPixel ? current[x - bytesPerPixel] : 0;
-        const up = prev[x];
-        const upLeft = x >= bytesPerPixel ? prev[x - bytesPerPixel] : 0;
-        let value = raw;
-
-        switch (filterType) {
-          case 0:
-            break;
-          case 1:
-            value = (raw + left) & 0xff;
-            break;
-          case 2:
-            value = (raw + up) & 0xff;
-            break;
-          case 3:
-            value = (raw + Math.floor((left + up) / 2)) & 0xff;
-            break;
-          case 4:
-            value = (raw + paethPredictor(left, up, upLeft)) & 0xff;
-            break;
-          default:
-            throw new Error(`Unsupported PNG filter type: ${filterType}`);
-        }
-
-        current[x] = value;
-      }
-
-      srcOffset += stride;
-
-      for (let x = 0; x < width; x += 1) {
-        const srcIndex = x * bytesPerPixel;
-        const dstIndex = (y * width + x) * 4;
-        rgb[dstIndex] = current[srcIndex];
-        rgb[dstIndex + 1] = current[srcIndex + 1];
-        rgb[dstIndex + 2] = current[srcIndex + 2];
-        rgb[dstIndex + 3] = 255;
-      }
-
-      prev.set(current);
-    }
-
-    return new ImageData(rgb, width, height);
-  }
-
-  function canvasToBlob(canvas, type = 'image/png', quality) {
-    return new Promise((resolve, reject) => {
-      canvas.toBlob(
-        (blob) => {
-          if (blob) {
-            resolve(blob);
-            return;
-          }
-          reject(new Error('Canvas export returned no blob'));
-        },
-        type,
-        quality
-      );
-    });
-  }
-
-  function pqToLinear(value) {
-    const m1 = 2610 / 16384;
-    const m2 = 2523 / 32;
-    const c1 = 3424 / 4096;
-    const c2 = 2413 / 128;
-    const c3 = 2392 / 128;
-    const vp = Math.pow(Math.max(value, 0), 1 / m2);
-    const numerator = Math.max(vp - c1, 0);
-    const denominator = c2 - c3 * vp;
-    if (denominator <= 0) {
-      return 0;
-    }
-    return Math.pow(numerator / denominator, 1 / m1);
-  }
-
-  function linearToSrgb(value) {
-    const clamped = Math.min(Math.max(value, 0), 1);
-    if (clamped <= 0.0031308) {
-      return clamped * 12.92;
-    }
-    return 1.055 * Math.pow(clamped, 1 / 2.4) - 0.055;
-  }
-
-  function applyPostTonemapTrim(r, g, b) {
-    let sr = Math.pow(Math.min(Math.max(r, 0), 1), HDR_POST_GAMMA) * HDR_POST_BRIGHTNESS;
-    let sg = Math.pow(Math.min(Math.max(g, 0), 1), HDR_POST_GAMMA) * HDR_POST_BRIGHTNESS;
-    let sb = Math.pow(Math.min(Math.max(b, 0), 1), HDR_POST_GAMMA) * HDR_POST_BRIGHTNESS;
-
-    const luma = 0.2126 * sr + 0.7152 * sg + 0.0722 * sb;
-    sr = luma + (sr - luma) * HDR_POST_SATURATION;
-    sg = luma + (sg - luma) * HDR_POST_SATURATION;
-    sb = luma + (sb - luma) * HDR_POST_SATURATION;
-
-    return [
-      Math.min(Math.max(sr, 0), 1),
-      Math.min(Math.max(sg, 0), 1),
-      Math.min(Math.max(sb, 0), 1)
-    ];
-  }
-
-  function getOrderedDither(x, y) {
-    const bayer4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
-    const index = ((y & 3) << 2) | (x & 3);
-    return (bayer4[index] / 16 - 0.5) * HDR_DITHER_STRENGTH;
-  }
-
-  function applyHighlightDeband(imageData) {
-    const { data, width, height } = imageData;
-    const source = new Uint8ClampedArray(data);
-
-    for (let y = HDR_DEBAND_RANGE; y < height - HDR_DEBAND_RANGE; y += 1) {
-      for (let x = HDR_DEBAND_RANGE; x < width - HDR_DEBAND_RANGE; x += 1) {
-        const index = (y * width + x) * 4;
-        const centerR = source[index];
-        const centerG = source[index + 1];
-        const centerB = source[index + 2];
-        const centerLuma = 0.2126 * centerR + 0.7152 * centerG + 0.0722 * centerB;
-
-        if (centerLuma < HDR_DEBAND_BRIGHTNESS_FLOOR) {
-          continue;
-        }
-
-        let minLuma = centerLuma;
-        let maxLuma = centerLuma;
-        let sumR = 0;
-        let sumG = 0;
-        let sumB = 0;
-        let count = 0;
-
-        for (let oy = -HDR_DEBAND_RANGE; oy <= HDR_DEBAND_RANGE; oy += 1) {
-          for (let ox = -HDR_DEBAND_RANGE; ox <= HDR_DEBAND_RANGE; ox += 1) {
-            const sampleIndex = ((y + oy) * width + (x + ox)) * 4;
-            const r = source[sampleIndex];
-            const g = source[sampleIndex + 1];
-            const b = source[sampleIndex + 2];
-            const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-            minLuma = Math.min(minLuma, luma);
-            maxLuma = Math.max(maxLuma, luma);
-            sumR += r;
-            sumG += g;
-            sumB += b;
-            count += 1;
-          }
-        }
-
-        if (maxLuma - minLuma > HDR_DEBAND_THRESHOLD) {
-          continue;
-        }
-
-        data[index] = Math.round(sumR / count);
-        data[index + 1] = Math.round(sumG / count);
-        data[index + 2] = Math.round(sumB / count);
-      }
-    }
-
-    return imageData;
-  }
-
-  function mobiusTonemap(value, transition, peak) {
-    if (value <= transition) {
-      return value;
-    }
-
-    const a =
-      (-transition * transition * (peak - 1)) /
-      (transition * transition - 2 * transition + peak);
-    const b =
-      (transition * transition - 2 * transition * peak + peak) / Math.max(peak - 1, 1e-6);
-    return (
-      ((b * b + 2 * b * transition + transition * transition) / (b - a)) *
-      ((value + a) / (value + b))
-    );
-  }
-
-  function toneMapPqBt2020PixelToSdr(r8, g8, b8, x, y) {
-    const r2020 = pqToLinear(r8 / 255) * HDR_REFERENCE_WHITE_SCALE;
-    const g2020 = pqToLinear(g8 / 255) * HDR_REFERENCE_WHITE_SCALE;
-    const b2020 = pqToLinear(b8 / 255) * HDR_REFERENCE_WHITE_SCALE;
-
-    let r = 1.6605 * r2020 - 0.5876 * g2020 - 0.0728 * b2020;
-    let g = -0.1246 * r2020 + 1.1329 * g2020 - 0.0083 * b2020;
-    let b = -0.0182 * r2020 - 0.1006 * g2020 + 1.1187 * b2020;
-
-    const luma = 0.2627 * r + 0.678 * g + 0.0593 * b;
-    if (HDR_TONEMAP_DESAT > 0 && luma > HDR_TONEMAP_DESAT) {
-      const overbright = Math.max(luma - HDR_TONEMAP_DESAT, 0) / Math.max(luma, 1e-6);
-      r = r * (1 - overbright) + luma * overbright;
-      g = g * (1 - overbright) + luma * overbright;
-      b = b * (1 - overbright) + luma * overbright;
-    }
-
-    const sigOrig = Math.max(r, g, b, 1e-6);
-    const sig = mobiusTonemap(sigOrig, HDR_TONEMAP_MOBIUS_PARAM, HDR_TONEMAP_PEAK);
-    const scale = sig / sigOrig;
-
-    r = Math.max(r * scale, 0);
-    g = Math.max(g * scale, 0);
-    b = Math.max(b * scale, 0);
-
-    const [sr, sg, sb] = applyPostTonemapTrim(linearToSrgb(r), linearToSrgb(g), linearToSrgb(b));
-
-    const dither = getOrderedDither(x, y);
-
-    return [
-      Math.round(Math.min(Math.max(sr + dither, 0), 1) * 255),
-      Math.round(Math.min(Math.max(sg + dither, 0), 1) * 255),
-      Math.round(Math.min(Math.max(sb + dither, 0), 1) * 255)
-    ];
-  }
-
-  function toneMapHdrPqBt2020ToSdrResized(sourceImageData, targetWidth, targetHeight) {
-    const src = sourceImageData.data;
-    const srcWidth = sourceImageData.width;
-    const srcHeight = sourceImageData.height;
-    const output = new Uint8ClampedArray(targetWidth * targetHeight * 4);
-
-    for (let y = 0; y < targetHeight; y += 1) {
-      const srcY = Math.min(srcHeight - 1, Math.floor(((y + 0.5) * srcHeight) / targetHeight));
-      for (let x = 0; x < targetWidth; x += 1) {
-        const srcX = Math.min(srcWidth - 1, Math.floor(((x + 0.5) * srcWidth) / targetWidth));
-        const srcIndex = (srcY * srcWidth + srcX) * 4;
-        const dstIndex = (y * targetWidth + x) * 4;
-        const [r, g, b] = toneMapPqBt2020PixelToSdr(
-          src[srcIndex],
-          src[srcIndex + 1],
-          src[srcIndex + 2],
-          x,
-          y
-        );
-        output[dstIndex] = r;
-        output[dstIndex + 1] = g;
-        output[dstIndex + 2] = b;
-        output[dstIndex + 3] = 255;
-      }
-    }
-
-    return applyHighlightDeband(new ImageData(output, targetWidth, targetHeight));
-  }
-
   async function getToneMappedHdrUrlFromFfmpegWasm(src, img) {
-    const ffmpeg = await ensureFfmpegWasmReady();
-    if (!ffmpeg) {
+    const lease = await acquireFfmpegWasmInstance();
+    if (!lease?.ffmpeg) {
       return null;
     }
 
+    const { ffmpeg, release } = lease;
     const sourceBlob = await fetchBlob(src);
     const inputBytes = new Uint8Array(await sourceBlob.arrayBuffer());
     const sourceWidthHint = img.naturalWidth || 3840;
@@ -1247,7 +1291,7 @@
       'format=gbrpf32le',
       'setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc:range=pc',
       'zscale=transfer=linear:primaries=bt2020:matrix=bt2020nc:npl=100',
-      `tonemap=tonemap=mobius:param=${HDR_TONEMAP_MOBIUS_PARAM}:desat=${HDR_TONEMAP_DESAT}:peak=${HDR_TONEMAP_PEAK}`,
+      `tonemap=tonemap=mobius:param=${hdrSettings.tonemapMobiusParam}:desat=${hdrSettings.tonemapDesat}:peak=${hdrSettings.tonemapPeak}`,
       'zscale=transfer=bt709:primaries=bt709:matrix=bt709:range=tv',
       'format=rgb24'
     ].join(',');
@@ -1284,6 +1328,7 @@
       try {
         await ffmpeg.deleteFile(outputName);
       } catch {}
+      release();
     }
   }
 
@@ -1294,38 +1339,7 @@
     }
 
     const promise = (async () => {
-      const wasmUrl = await getToneMappedHdrUrlFromFfmpegWasm(src, img);
-      if (wasmUrl) {
-        return wasmUrl;
-      }
-
-      const blob = await fetchBlob(src);
-      const metadata = await readPngHdrMetadata(blob);
-      log('hdr metadata', {
-        src,
-        ...metadata,
-        targetWidth: metadata.width || img.naturalWidth || 3840,
-        fullResolution: true
-      });
-      if (!metadata.isPqBt2020Png) {
-        return null;
-      }
-
-      const decoded = await decodePngRgbFromBlob(blob);
-      const width = decoded.width;
-      const height = decoded.height;
-      const outputCanvas = document.createElement('canvas');
-      outputCanvas.width = width;
-      outputCanvas.height = height;
-      const outputCtx = outputCanvas.getContext('2d', { willReadFrequently: true });
-      if (!outputCtx) {
-        throw new Error('Could not acquire 2D context');
-      }
-
-      const outputImageData = toneMapHdrPqBt2020ToSdrResized(decoded, width, height);
-      outputCtx.putImageData(outputImageData, 0, 0);
-      const outputBlob = await canvasToBlob(outputCanvas, 'image/png');
-      return URL.createObjectURL(outputBlob);
+      return getToneMappedHdrUrlFromFfmpegWasm(src, img);
     })();
 
     convertedSourceCache.set(cacheKey, promise);
@@ -1351,8 +1365,10 @@
       img.removeAttribute('srcset');
     }
     img.classList.remove('ptp-hdr-converted');
+    img.style.removeProperty('filter');
     img.dataset.ptpHdrFixRendered = '0';
     img.dataset.ptpHdrFixMode = 'restored-original';
+    syncTonemapStateForImage(img);
   }
 
   async function applyTrueHdrFix(img, src, hdrFixEnabled) {
@@ -1364,106 +1380,13 @@
 
     img.classList.add('ptp-hdr-converted');
     img.classList.remove('ptp-hdr-blackfix');
-    img.style.removeProperty('filter');
+    img.dataset.ptpTonemapActive = '0';
+    img.style.setProperty('filter', 'none', 'important');
     img.src = convertedUrl;
     img.removeAttribute('srcset');
     img.dataset.ptpHdrFixRendered = 'converted';
     img.dataset.ptpHdrFixMode = 'pq-bt2020-to-sdr';
     return true;
-  }
-
-  async function decodeToCanvas(blob) {
-    const canvas = document.createElement('canvas');
-    const size = 64;
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-
-    if (!ctx) {
-      throw new Error('Could not acquire 2D context');
-    }
-
-    if (typeof createImageBitmap === 'function') {
-      const bitmap = await createImageBitmap(blob);
-      ctx.drawImage(bitmap, 0, 0, size, size);
-      bitmap.close();
-      return ctx.getImageData(0, 0, size, size).data;
-    }
-
-    const objectUrl = URL.createObjectURL(blob);
-    try {
-      const image = await new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => resolve(img);
-        img.onerror = () => reject(new Error('Image decode failed'));
-        img.src = objectUrl;
-      });
-      ctx.drawImage(image, 0, 0, size, size);
-      return ctx.getImageData(0, 0, size, size).data;
-    } finally {
-      URL.revokeObjectURL(objectUrl);
-    }
-  }
-
-  function analyzeLuminance(data) {
-    let totalLuma = 0;
-    let veryDark = 0;
-    let midBright = 0;
-    const pixels = data.length / 4;
-
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-      totalLuma += luma;
-
-      if (luma < 22) {
-        veryDark += 1;
-      }
-      if (luma > 85) {
-        midBright += 1;
-      }
-    }
-
-    const avgLuma = totalLuma / pixels;
-    const veryDarkRatio = veryDark / pixels;
-    const midBrightRatio = midBright / pixels;
-    const isCrushed = avgLuma < 28 && veryDarkRatio > 0.84 && midBrightRatio < 0.03;
-
-    return {
-      isCrushed,
-      avgLuma: Number(avgLuma.toFixed(2)),
-      veryDarkRatio: Number(veryDarkRatio.toFixed(4)),
-      midBrightRatio: Number(midBrightRatio.toFixed(4))
-    };
-  }
-
-  async function shouldApplyHdrFixForSource(src) {
-    if (sourceDecisionCache.has(src)) {
-      return sourceDecisionCache.get(src);
-    }
-
-    const decisionPromise = (async () => {
-      try {
-        const blob = await fetchBlob(src);
-        const pixelData = await decodeToCanvas(blob);
-        const analysis = analyzeLuminance(pixelData);
-        log('luminance analysis', { src, ...analysis });
-        return analysis;
-      } catch (error) {
-        logError('failed to analyze source', { src, error: String(error) });
-        return {
-          isCrushed: false,
-          avgLuma: null,
-          veryDarkRatio: null,
-          midBrightRatio: null
-        };
-      }
-    })();
-
-    sourceDecisionCache.set(src, decisionPromise);
-    return decisionPromise;
   }
 
   function getImageSrc(img) {
@@ -1495,7 +1418,6 @@
       log('skipping non-ptpimg png image', { displaySrc, sourceCandidates });
       if (force && !hdrFixEnabled) {
         restoreOriginalImageSource(img);
-        removeInlineHdrFix(img);
       }
       analyzedImages.add(img);
       return;
@@ -1510,19 +1432,20 @@
 
     if (!hdrFixEnabled) {
       restoreOriginalImageSource(img);
-      removeInlineHdrFix(img);
       img.dataset.ptpHdrFixApplied = '0';
       img.dataset.ptpHdrFixMode = 'disabled';
+      syncTonemapStateForImage(img);
       analyzedImages.add(img);
       return;
     }
 
     pendingImages.add(img);
     try {
-      if (FORCE_HDR_FIX_FOR_PTPIMG_PNG) {
+      if (hdrSettings.forceHdrFixForPtpimgPng) {
         const converted = await applyTrueHdrFix(img, src, hdrFixEnabled);
         if (converted) {
           img.dataset.ptpHdrFixApplied = '1';
+          img.dataset.ptpTonemapActive = '0';
           log('image converted hdr fix', {
             src,
             rendered: img.dataset.ptpHdrFixMode,
@@ -1532,30 +1455,18 @@
         }
       }
 
-      const analysis = await shouldApplyHdrFixForSource(src);
-      if (analysis.isCrushed) {
-        applyInlineHdrFix(img);
-      } else {
-        restoreOriginalImageSource(img);
-        removeInlineHdrFix(img);
-      }
-      img.dataset.ptpHdrFixApplied = analysis.isCrushed ? '1' : '0';
-      img.dataset.ptpHdrFixAvgLuma = String(analysis.avgLuma);
-      img.dataset.ptpHdrFixVeryDark = String(analysis.veryDarkRatio);
-      img.dataset.ptpHdrFixMidBright = String(analysis.midBrightRatio);
-
-      const computedFilter = getComputedStyle(img).filter;
+      restoreOriginalImageSource(img);
+      img.dataset.ptpHdrFixApplied = '0';
+      img.dataset.ptpHdrFixRendered = '0';
+      img.dataset.ptpHdrFixMode = 'conversion-unavailable';
+      syncTonemapStateForImage(img);
 
       log('image analyzed', {
         src,
-        applied: analysis.isCrushed,
-        avgLuma: analysis.avgLuma,
-        veryDarkRatio: analysis.veryDarkRatio,
-        midBrightRatio: analysis.midBrightRatio,
+        applied: false,
         torrentId,
         hdrFixEnabled,
-        hasFixClass: img.classList.contains('ptp-hdr-blackfix'),
-        computedFilter
+        rendered: img.dataset.ptpHdrFixMode
       });
     } finally {
       pendingImages.delete(img);
@@ -1563,13 +1474,70 @@
     }
   }
 
-  function queueImageAnalysis(img, force = false) {
-    if (!IS_FIREFOX) {
+  function waitForNextPaint() {
+    return new Promise((resolve) => {
+      requestAnimationFrame(() => resolve());
+    });
+  }
+
+  function getMaxConcurrentImageJobs() {
+    return Math.max(1, Math.floor(hdrSettings.ffmpegWorkers || DEFAULT_HDR_SETTINGS.ffmpegWorkers));
+  }
+
+  async function runImageQueueWorker() {
+    activeImageQueueWorkers += 1;
+    try {
+      while (imageAnalysisQueue.length > 0) {
+        const img = imageAnalysisQueue.shift();
+        if (!(img instanceof HTMLImageElement)) {
+          continue;
+        }
+
+        const force = Boolean(queuedImages.get(img));
+        queuedImages.delete(img);
+        await analyzeImage(img, force);
+        await waitForNextPaint();
+      }
+    } finally {
+      activeImageQueueWorkers -= 1;
+      if (imageAnalysisQueue.length > 0) {
+        kickImageQueueWorkers();
+      }
+    }
+  }
+
+  function kickImageQueueWorkers() {
+    const maxWorkers = getMaxConcurrentImageJobs();
+    while (activeImageQueueWorkers < maxWorkers && imageAnalysisQueue.length > 0) {
+      void runImageQueueWorker();
+    }
+  }
+
+  function enqueueImageAnalysis(img, force = false) {
+    if (!(img instanceof HTMLImageElement)) {
       return;
     }
 
+    const existingForce = queuedImages.get(img);
+    if (existingForce !== undefined) {
+      queuedImages.set(img, Boolean(existingForce || force));
+      return;
+    }
+
+    queuedImages.set(img, Boolean(force));
+    imageAnalysisQueue.push(img);
+    kickImageQueueWorkers();
+  }
+
+  function queueImageAnalysis(img, force = false) {
     if (!(img instanceof HTMLImageElement)) {
       log('queueImageAnalysis skip: non-image target', { nodeName: img?.nodeName || null });
+      return;
+    }
+
+    syncTonemapStateForImage(img);
+
+    if (!IS_FIREFOX) {
       return;
     }
 
@@ -1578,12 +1546,14 @@
     }
 
     if (
-      img.closest('#lightbox') &&
+      isLightboxImageForLastClickedSource(img) &&
       isHdrFixEnabledForTorrent(lastClickedTorrentId) &&
       lastClickedConvertedSrc
     ) {
       img.dataset.ptpHdrOriginalSrc = img.getAttribute('src') || img.src || lastClickedHdrSource;
       img.classList.add('ptp-hdr-converted');
+      img.dataset.ptpTonemapActive = '0';
+      img.style.setProperty('filter', 'none', 'important');
       img.src = lastClickedConvertedSrc;
       img.removeAttribute('srcset');
       img.dataset.ptpHdrFixRendered = 'converted-lightbox';
@@ -1597,14 +1567,14 @@
     }
 
     if (img.complete) {
-      void analyzeImage(img, force);
+      enqueueImageAnalysis(img, force);
       return;
     }
 
     img.addEventListener(
       'load',
       () => {
-        void analyzeImage(img, force);
+        enqueueImageAnalysis(img, force);
       },
       { once: true }
     );
@@ -1677,6 +1647,8 @@
     ).length,
     debugEnabled
   });
+  ensureTonemapUiStyle();
+  updateTonemapAdjustmentStyle();
   applyState();
   injectButtons();
   forceApplyHdrFixToCurrentImages();
@@ -1723,22 +1695,62 @@
     });
   }
 
+  function isEligibleHdrPanel(panel) {
+    if (!(panel instanceof Element) || !panel.matches(PANEL_SELECTOR)) {
+      return false;
+    }
+
+    const torrentId = getTorrentId(panel);
+    return Boolean(torrentId && torrentHasHdrMetadata(torrentId));
+  }
+
+  function shouldRefreshForAddedElement(node) {
+    if (!(node instanceof Element)) {
+      return false;
+    }
+
+    if (node.matches('#lightbox')) {
+      return true;
+    }
+
+    if (node.matches(PANEL_SELECTOR)) {
+      return isEligibleHdrPanel(node);
+    }
+
+    if (node.matches(IMAGE_SELECTOR)) {
+      const panel = node.closest(PANEL_SELECTOR);
+      if (isEligibleHdrPanel(panel)) {
+        return true;
+      }
+
+      return Boolean(node.closest('#lightbox') && isLightboxImageForLastClickedSource(node));
+    }
+
+    if (node.querySelector?.('#lightbox img')) {
+      return true;
+    }
+
+    const nestedPanels = node.querySelectorAll?.(PANEL_SELECTOR) || [];
+    if ([...nestedPanels].some((panel) => isEligibleHdrPanel(panel))) {
+      return true;
+    }
+
+    const nestedImages = node.querySelectorAll?.(IMAGE_SELECTOR) || [];
+    if (
+      [...nestedImages].some((img) => {
+        const panel = img.closest(PANEL_SELECTOR);
+        return isEligibleHdrPanel(panel) || Boolean(img.closest('#lightbox') && isLightboxImageForLastClickedSource(img));
+      })
+    ) {
+      return true;
+    }
+
+    return false;
+  }
+
   const observer = new MutationObserver((mutations) => {
     const shouldRefresh = mutations.some((mutation) =>
-      [...mutation.addedNodes].some((node) => {
-        if (!(node instanceof Element)) {
-          return false;
-        }
-
-        return (
-          node.matches?.(PANEL_SELECTOR) ||
-          node.matches?.(IMAGE_SELECTOR) ||
-          node.matches?.('#lightbox') ||
-          Boolean(node.querySelector?.(PANEL_SELECTOR)) ||
-          Boolean(node.querySelector?.(IMAGE_SELECTOR)) ||
-          Boolean(node.querySelector?.('#lightbox img'))
-        );
-      })
+      [...mutation.addedNodes].some((node) => shouldRefreshForAddedElement(node))
     );
 
     if (shouldRefresh) {
