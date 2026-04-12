@@ -720,7 +720,7 @@ th {
 
 .table--panel-like > thead > tr {
   background:
-    url('images/blackgrad.png') repeat-x scroll 0 0%,
+    url('https://passthepopcorn.me/static/styles/dark/images/blackgrad.png') repeat-x scroll 0 0%,
     none repeat scroll 0 0 #080909;
 }
 
@@ -832,7 +832,7 @@ th {
   position: absolute;
   right: 0;
   top: 0;
-  background-image: url('/static/common/symbols/seen-overlay.png');
+  background-image: url('https://passthepopcorn.me/static/common/symbols/seen-overlay.png');
   background-size: cover;
   width: 22px;
   height: 22px;
@@ -993,7 +993,7 @@ tr[id^='torrent_'] img.bbcode__image[style] {
 }
 
 .bbcode-toolbar__button {
-  background: #dddddd url('/static/common/bbcode_buttons5.png') no-repeat center center;
+  background: #dddddd url('https://passthepopcorn.me/static/common/bbcode_buttons5.png') no-repeat center center;
   width: 24px;
   height: 24px;
   float: left;
@@ -1002,7 +1002,7 @@ tr[id^='torrent_'] img.bbcode__image[style] {
 }
 
 .bbcode-toolbar__button:hover {
-  background: white url('/static/common/bbcode_buttons5.png') no-repeat top left;
+  background: white url('https://passthepopcorn.me/static/common/bbcode_buttons5.png') no-repeat top left;
   border: 4px solid white;
 }
 
@@ -1195,7 +1195,7 @@ tr[id^='torrent_'] img.bbcode__image[style] {
   position: absolute;
   right: 0;
   top: 0;
-  background-image: url('/static/common/symbols/seen-overlay.png');
+  background-image: url('https://passthepopcorn.me/static/common/symbols/seen-overlay.png');
   background-size: cover;
   width: 32px;
   height: 32px;
@@ -1358,7 +1358,7 @@ tr[id^='torrent_'] img.bbcode__image[style] {
 
 .forum-post__heading {
   background:
-    url('images/blackgrad.png') repeat-x scroll 0 0%,
+    url('https://passthepopcorn.me/static/styles/dark/images/blackgrad.png') repeat-x scroll 0 0%,
     none repeat scroll 0 0 #080909;
   padding: 4px;
 }
@@ -1407,37 +1407,37 @@ tr[id^='torrent_'] img.bbcode__image[style] {
 }
 
 .forum-topic--is-read {
-  background: url(/static/forums/read.png) no-repeat center center;
-  background-image: url(/static/forums/read.png);
+  background: url('https://passthepopcorn.me/static/forums/read.png') no-repeat center center;
+  background-image: url('https://passthepopcorn.me/static/forums/read.png');
 }
 
 .forum-topic--is-unread {
-  background: url(/static/forums/unread.png) no-repeat center center;
-  background-image: url(/static/forums/unread.png);
+  background: url('https://passthepopcorn.me/static/forums/unread.png') no-repeat center center;
+  background-image: url('https://passthepopcorn.me/static/forums/unread.png');
 }
 
 .forum-topic--is-read-locked-sticky {
-  background: url(/static/forums/locked_sticky_read.png) no-repeat center center;
+  background: url('https://passthepopcorn.me/static/forums/locked_sticky_read.png') no-repeat center center;
 }
 
 .forum-topic--is-read-sticky {
-  background: url(/static/forums/sticky_read.png) no-repeat center center;
+  background: url('https://passthepopcorn.me/static/forums/sticky_read.png') no-repeat center center;
 }
 
 .forum-topic--is-read-locked {
-  background: url(/static/forums/locked_read.png) no-repeat center center;
+  background: url('https://passthepopcorn.me/static/forums/locked_read.png') no-repeat center center;
 }
 
 .forum-topic--is-unread-locked-sticky {
-  background: url(/static/forums/locked_sticky_unread.png) no-repeat center center;
+  background: url('https://passthepopcorn.me/static/forums/locked_sticky_unread.png') no-repeat center center;
 }
 
 .forum-topic--is-unread-sticky {
-  background: url(/static/forums/sticky_unread.png) no-repeat center center;
+  background: url('https://passthepopcorn.me/static/forums/sticky_unread.png') no-repeat center center;
 }
 
 .forum-topic--is-unread-locked {
-  background: url(/static/forums/locked_unread.png) no-repeat center center;
+  background: url('https://passthepopcorn.me/static/forums/locked_unread.png') no-repeat center center;
 }
 
 .forum-topic__new {
@@ -1448,7 +1448,8 @@ tr[id^='torrent_'] img.bbcode__image[style] {
   float: left;
   background-color: #2a2a2a;
   background-image:
-    url('/static/styles/dark/images/go_last_read.png'), url('/static/forums/go_last_read.png');
+    url('https://passthepopcorn.me/static/styles/dark/images/go_last_read.png'),
+    url('https://passthepopcorn.me/static/forums/go_last_read.png');
   background-repeat: no-repeat, no-repeat;
   background-position:
     center center,
@@ -1593,7 +1594,7 @@ tr[id^='torrent_'] img.bbcode__image[style] {
   position: absolute;
   right: 0;
   top: 0;
-  background-image: url('/static/common/symbols/seen-overlay.png');
+  background-image: url('https://passthepopcorn.me/static/common/symbols/seen-overlay.png');
   background-size: cover;
   width: 46px;
   height: 46px;
@@ -1749,7 +1750,7 @@ tr[id^='torrent_'] img.bbcode__image[style] {
 }
 
 #simplemodal-container a.modalCloseImg {
-  background: url(/static/common/simplemodal_close.png) no-repeat;
+  background: url('https://passthepopcorn.me/static/common/simplemodal_close.png') no-repeat;
   width: 25px;
   height: 29px;
   display: inline;
@@ -1851,11 +1852,11 @@ body.lightbox__scroll-lock {
   bottom: 0;
   margin: auto;
   pointer-events: none;
-  background-image: url('/static/common/symbols/play-big.png');
+  background-image: url('https://passthepopcorn.me/static/common/symbols/play-big.png');
 }
 
 .light-youtube-embed:hover::after {
-  background-image: url('/static/common/symbols/play-big-hover.png');
+  background-image: url('https://passthepopcorn.me/static/common/symbols/play-big-hover.png');
 }
 
 .log__message--deleted {
@@ -1985,7 +1986,7 @@ html.busy-cursor * {
 }
 
 .large-torrent-list-group-opener {
-  background: url('images/show.png') no-repeat center center;
+  background: url('https://passthepopcorn.me/static/styles/dark/images/show.png') no-repeat center center;
   width: 28px;
   height: 28px;
 }
@@ -2199,7 +2200,7 @@ html.busy-cursor * {
 
 .panel__heading {
   background:
-    url('images/blackgrad.png') repeat-x scroll 0 0%,
+    url('https://passthepopcorn.me/static/styles/dark/images/blackgrad.png') repeat-x scroll 0 0%,
     none repeat scroll 0 0 #080909;
   border-bottom: thin solid #555555;
   padding: 4px;
@@ -2247,7 +2248,7 @@ html.busy-cursor * {
   width: 2px;
   height: 9px;
   background-color: #6f97c8;
-  background-image: url('images/bar_left.gif');
+  background-image: url('https://passthepopcorn.me/static/styles/dark/images/bar_left.gif');
   background-position: center center;
   background-repeat: no-repeat;
   margin: 0px;
@@ -2258,7 +2259,7 @@ html.busy-cursor * {
   float: left;
   height: 9px;
   background-color: #6f97c8;
-  background-image: linear-gradient(to bottom, #9ac2f0 0%, #6f97c8 100%), url('images/bar.gif');
+  background-image: linear-gradient(to bottom, #9ac2f0 0%, #6f97c8 100%), url('https://passthepopcorn.me/static/styles/dark/images/bar.gif');
   background-repeat: repeat;
   background-position: center center;
   margin: 0px;
@@ -2270,7 +2271,7 @@ html.busy-cursor * {
   width: 2px;
   height: 9px;
   background-color: #6f97c8;
-  background-image: url('images/bar_right.gif');
+  background-image: url('https://passthepopcorn.me/static/styles/dark/images/bar_right.gif');
   background-position: center center;
   background-repeat: no-repeat;
   margin: 0px;
@@ -2521,7 +2522,7 @@ html.busy-cursor * {
 
 .search-bar {
   width: min(var(--layout-width), 100%);
-  background: url('images/blackgrad.png') repeat-x;
+  background: url('https://passthepopcorn.me/static/styles/dark/images/blackgrad.png') repeat-x;
   padding: 0.6em;
   margin-left: auto;
   margin-right: auto;
@@ -2640,7 +2641,7 @@ html.busy-cursor * {
 .site-logo {
   position: relative;
   top: 20px;
-  background: url('/static/styles/dark/images/logo-new.png') top center no-repeat;
+  background: url('https://passthepopcorn.me/static/styles/dark/images/logo-new.png') top center no-repeat;
   width: 700px;
   height: 124px;
   margin: 0 auto 20px auto;
@@ -2699,7 +2700,7 @@ html.busy-cursor * {
   position: absolute;
   right: 0;
   top: 0;
-  background-image: url('/static/common/symbols/seen-overlay.png');
+  background-image: url('https://passthepopcorn.me/static/common/symbols/seen-overlay.png');
   background-size: cover;
   width: 26px;
   height: 26px;
@@ -2785,7 +2786,7 @@ span.spoiler-show img {
   margin: 0;
   padding: 0;
   list-style: none;
-  background: url('/static/common/stars/stars.png') repeat-x;
+  background: url('https://passthepopcorn.me/static/common/stars/stars.png') repeat-x;
   cursor: pointer;
 }
 
@@ -2817,12 +2818,12 @@ span.spoiler-show img {
 }
 
 .star-rating__current-user {
-  background: url('/static/common/stars/stars.png') left 125px;
+  background: url('https://passthepopcorn.me/static/common/stars/stars.png') left 125px;
   z-index: 19;
 }
 
 .star-rating__site {
-  background: url('/static/common/stars/stars.png') left 100px;
+  background: url('https://passthepopcorn.me/static/common/stars/stars.png') left 100px;
   z-index: 18;
 }
 
@@ -2833,7 +2834,7 @@ span.spoiler-show img {
 .star-rating--big {
   width: 300px;
   height: 40px;
-  background: url('../../common/stars/stars2_big_light_v2.png') repeat-x;
+  background: url('https://passthepopcorn.me/static/common/stars/stars2_big_light_v2.png') repeat-x;
 }
 
 .star-rating__current-user--big {
@@ -2842,7 +2843,7 @@ span.spoiler-show img {
 }
 
 .star-rating__current-user--big {
-  background: url('../../common/stars/stars2_big_light_v2.png') left 220px;
+  background: url('https://passthepopcorn.me/static/common/stars/stars2_big_light_v2.png') left 220px;
 }
 
 .star-rating-container--big {
@@ -2964,7 +2965,7 @@ span.spoiler-show img {
   width: var(--user-info-bar-width);
   min-height: 28px;
   transform: translateX(-50%);
-  background: url('images/blackgrad.png') repeat-x;
+  background: url('https://passthepopcorn.me/static/styles/dark/images/blackgrad.png') repeat-x;
   padding: 0 1px 1px 1px;
   margin: 0 auto;
   text-align: center;
