@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP - TMDB Trailer Selector
-// @version      1.6
+// @version      1.7
 // @description  Add a dropdown to switch between various TMDB videos
 // @match        https://passthepopcorn.me/torrents.php?id=*
 // @icon         data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADkAAAA5CAMAAAC7xnO3AAAAV1BMVEUAAAD///9oiM2CacFm5Mj/jGb842dn3auC3X/z82j/uWZw14xudcRwbsBmpdz83GZm4NBq26KP4Hrm9Wr/rmdmr91u2ZNmntln5L/902b/l2Zt1otnseEVRKmYAAAAeUlEQVRIx+3WtwqAMBCAYU2zpNlii+//nAZFCDooSIaQ+5fjhm89LoNCl7u+TpCvM8kopUNda81YVfVu78rS8rEtCkJI4/ZNKYSQkBJjfJerk4sv+SHnUxo1/ZMCJEiQIKOV8pKPe8s8aa317q3x7m2SxfUnxCWhAO24CSsei22B/wAAAABJRU5ErkJggg==
@@ -20,6 +20,8 @@
     const DEFAULT_SETTINGS = {
         apiKey: '',
         cacheTtlDays: 28,
+        enableTrailerHandling: true,
+        showVideoPanelTMDBLogo: true,
         replaceSiteLogo: false,
         replacePageBackground: false,
         logoPlacement: 'title',
@@ -67,6 +69,12 @@
         const ttl = Number.parseInt(normalized.cacheTtlDays, 10);
         normalized.cacheTtlDays = Number.isFinite(ttl) && ttl > 0 ? ttl : DEFAULT_SETTINGS.cacheTtlDays;
         normalized.apiKey = String(normalized.apiKey || '').trim();
+        normalized.enableTrailerHandling = Object.hasOwn(normalized, 'enableTrailerHandling')
+            ? Boolean(normalized.enableTrailerHandling)
+            : DEFAULT_SETTINGS.enableTrailerHandling;
+        normalized.showVideoPanelTMDBLogo = Object.hasOwn(normalized, 'showVideoPanelTMDBLogo')
+            ? Boolean(normalized.showVideoPanelTMDBLogo)
+            : DEFAULT_SETTINGS.showVideoPanelTMDBLogo;
         normalized.replaceSiteLogo = Boolean(normalized.replaceSiteLogo);
         normalized.replacePageBackground = Boolean(normalized.replacePageBackground);
         normalized.logoPlacement = normalized.logoPlacement === 'site' ? 'site' : 'title';
@@ -163,6 +171,18 @@
             </div>
             <div style="margin-bottom: 12px;">
                 <label style="display:flex; align-items:center; gap:8px;">
+                    <input id="ptp-tmdb-enable-trailer-handling" type="checkbox" />
+                    Enable trailer handling on page (selector, playback swap, TMDB trailer links)
+                </label>
+            </div>
+            <div style="margin-bottom: 12px;">
+                <label style="display:flex; align-items:center; gap:8px;">
+                    <input id="ptp-tmdb-show-video-panel-tmdb-logo" type="checkbox" />
+                    Show TMDB logo/link in video panel controls
+                </label>
+            </div>
+            <div style="margin-bottom: 12px;">
+                <label style="display:flex; align-items:center; gap:8px;">
                     <input id="ptp-tmdb-replace-logo" type="checkbox" />
                     Replace site logo with TMDB logo when available
                 </label>
@@ -219,6 +239,8 @@
 
         const apiKeyInput = panel.querySelector('#ptp-tmdb-api-key');
         const ttlInput = panel.querySelector('#ptp-tmdb-cache-ttl');
+        const enableTrailerHandlingInput = panel.querySelector('#ptp-tmdb-enable-trailer-handling');
+        const showVideoPanelTMDBLogoInput = panel.querySelector('#ptp-tmdb-show-video-panel-tmdb-logo');
         const replaceLogoInput = panel.querySelector('#ptp-tmdb-replace-logo');
         const logoPlacementInput = panel.querySelector('#ptp-tmdb-logo-placement');
         const hiddenSiteLogoSpacerInput = panel.querySelector('#ptp-tmdb-hidden-site-logo-spacer');
@@ -237,6 +259,8 @@
 
         apiKeyInput.value = settings.apiKey ? API_KEY_PLACEHOLDER : '';
         ttlInput.value = String(settings.cacheTtlDays || DEFAULT_SETTINGS.cacheTtlDays);
+        enableTrailerHandlingInput.checked = settings.enableTrailerHandling !== false;
+        showVideoPanelTMDBLogoInput.checked = settings.showVideoPanelTMDBLogo !== false;
         replaceLogoInput.checked = Boolean(settings.replaceSiteLogo);
         logoPlacementInput.value = settings.logoPlacement || 'title';
         hiddenSiteLogoSpacerInput.value = String(settings.hiddenSiteLogoSpacerPx ?? DEFAULT_SETTINGS.hiddenSiteLogoSpacerPx);
@@ -300,6 +324,8 @@
                     return inputValue;
                 })(),
                 cacheTtlDays: ttl,
+                enableTrailerHandling: enableTrailerHandlingInput.checked,
+                showVideoPanelTMDBLogo: showVideoPanelTMDBLogoInput.checked,
                 replaceSiteLogo: replaceLogoInput.checked,
                 replacePageBackground: replaceBackgroundInput.checked,
                 logoPlacement: logoPlacementInput.value,
@@ -1042,13 +1068,13 @@
 
                 if (data && data.movie_results && data.movie_results.length > 0) {
                     match = data.movie_results[0];
-                    movieId = match.id;  // Save movieId for later (movie)
+                    movieId = match.id; // Save movieId for later (movie)
                     isTVShow = 0;
                     mediaType = 'movie';
                     console.warn(`TMDB Movie ID: ${movieId}`);
                 } else if (data && data.tv_results && data.tv_results.length > 0) {
                     match = data.tv_results[0];
-                    movieId = match.id;  // Save tvId for later (TV show)
+                    movieId = match.id; // Save tvId for later (TV show)
                     isTVShow = 1;
                     mediaType = 'tv';
                     console.warn(`TMDB TV Show ID: ${movieId}`);
@@ -1158,7 +1184,7 @@
     async function copyToClipboard(text, node) {
         try {
             await navigator.clipboard.writeText(text);
-            showinfo("YouTube link copied!", node);  // Use the pop-up instead of alert
+            showinfo("YouTube link copied!", node); // Use the pop-up instead of alert
         } catch (err) {
             showinfo("Failed to copy link.\nCheck console for errors.", node);
             console.error('Failed to copy text: ', err);
@@ -1194,12 +1220,19 @@
         }
         anchorNode.style.alignItems = 'center';
 
-        const tmdbLink = addTMDBLink(isTVShow);
         const rightControls = document.createElement('div');
         rightControls.style.display = 'inline-flex';
         rightControls.style.alignItems = 'center';
         rightControls.style.marginLeft = 'auto';
-        rightControls.appendChild(tmdbLink);
+
+        if (settings.showVideoPanelTMDBLogo !== false) {
+            const tmdbLink = addTMDBLink(isTVShow);
+            rightControls.appendChild(tmdbLink);
+            copyLinkButton.style.marginLeft = '10px';
+        } else {
+            copyLinkButton.style.marginLeft = '0';
+        }
+
         rightControls.appendChild(copyLinkButton);
         anchorNode.appendChild(rightControls);
     }
@@ -1334,9 +1367,9 @@
     function addTMDBLink(isTVShow) {
         const tmdbLink = document.createElement('a');
         if (isTVShow === 1) {
-            tmdbLink.href = `https://www.themoviedb.org/tv/${movieId}`;  // TV show link
+            tmdbLink.href = `https://www.themoviedb.org/tv/${movieId}`; // TV show link
         } else {
-            tmdbLink.href = `https://www.themoviedb.org/movie/${movieId}`;  // Movie link
+            tmdbLink.href = `https://www.themoviedb.org/movie/${movieId}`; // Movie link
         }
         tmdbLink.target = '_blank';
         tmdbLink.style.marginLeft = '10px';
@@ -1369,6 +1402,15 @@
         console.log('TMDB Video Selector Loaded.');
         applyCachedLogoEarly(imdbId);
         applyCachedBackdropEarly(imdbId);
+
+        // Allow running as ratings/metadata provider only without altering trailer UI.
+        if (settings.enableTrailerHandling === false) {
+            fetchTMDBRatings(imdbId).then(() => {
+                fetchAndApplyTMDBLogo(imdbId);
+                fetchAndApplyTMDBBackdrops(imdbId);
+            });
+            return true;
+        }
 
         const originalIframe = videoDiv.innerHTML;
         let originalLoaded = true;
