@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Tonemap Toggle
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.4.0
+// @version      0.4.1
 // @description  Adds per-panel toggles for tonemapping and Firefox HDR-black recovery on BBCode images.
 // @author       Audionut
 // @match        https://passthepopcorn.me/*
@@ -59,6 +59,8 @@
   const queuedImages = new WeakMap();
   const imageAnalysisQueue = [];
   const convertedSourceCache = new Map();
+  const tonemapTrackedSourcesByTorrent = new Map();
+  const tonemapSourceToTorrent = new Map();
   const ffmpegWasmState = {
     module: null,
     modulePromise: null,
@@ -175,7 +177,8 @@
     }
 
     style.textContent = `
-      ${IMAGE_SELECTOR}[data-ptp-tonemap-active="1"] {
+      ${IMAGE_SELECTOR}[data-ptp-tonemap-active="1"],
+      #lightbox img[data-ptp-tonemap-active="1"] {
         filter: url("#${TONEMAP_SVG_ID}") brightness(${hdrSettings.tonemapOnlyBrightness}) contrast(${hdrSettings.tonemapOnlyContrast}) saturate(${hdrSettings.tonemapOnlySaturation}) !important;
       }
     `;
@@ -824,10 +827,82 @@
     }
 
     if (img.closest('#lightbox')) {
-      return isLightboxImageForLastClickedSource(img);
+      return (
+        isLightboxImageForLastClickedSource(img) ||
+        isLightboxImageForTrackedTonemapSource(img) ||
+        isLightboxTonemapContextActive()
+      );
     }
 
     return Boolean(img.closest(`${PANEL_SELECTOR}[${ELIGIBLE_PANEL_ATTRIBUTE}="1"]`));
+  }
+
+  function isLightboxImageForTrackedTonemapSource(img) {
+    if (!(img instanceof HTMLImageElement) || !img.closest('#lightbox')) {
+      return false;
+    }
+
+    return Boolean(getTrackedTonemapTorrentIdForImage(img));
+  }
+
+  function getTrackedTonemapTorrentIdForImage(img) {
+    if (!(img instanceof HTMLImageElement)) {
+      return '';
+    }
+
+    const candidates = getImageSourceCandidates(img);
+    if (!candidates.length) {
+      return '';
+    }
+
+    for (const candidate of candidates) {
+      const mappedTorrentId = tonemapSourceToTorrent.get(candidate);
+      if (
+        mappedTorrentId &&
+        isTonemapEnabledForTorrent(mappedTorrentId) &&
+        !isHdrFixEnabledForTorrent(mappedTorrentId)
+      ) {
+        return mappedTorrentId;
+      }
+    }
+
+    for (const [torrentId, trackedSources] of tonemapTrackedSourcesByTorrent.entries()) {
+      if (!trackedSources || trackedSources.size === 0) {
+        continue;
+      }
+
+      if (!isTonemapEnabledForTorrent(torrentId) || isHdrFixEnabledForTorrent(torrentId)) {
+        continue;
+      }
+
+      if (candidates.some((candidate) => trackedSources.has(candidate))) {
+        return torrentId;
+      }
+    }
+
+    return '';
+  }
+
+  function getLightboxContextTorrentId(img) {
+    const trackedTorrentId = getTrackedTonemapTorrentIdForImage(img);
+    if (trackedTorrentId) {
+      return trackedTorrentId;
+    }
+
+    if (!lastClickedTorrentId || !torrentHasHdrMetadata(lastClickedTorrentId)) {
+      return '';
+    }
+
+    return lastClickedTorrentId;
+  }
+
+  function isLightboxTonemapContextActive() {
+    return (
+      Boolean(lastClickedTorrentId) &&
+      torrentHasHdrMetadata(lastClickedTorrentId) &&
+      isTonemapEnabledForTorrent(lastClickedTorrentId) &&
+      !isHdrFixEnabledForTorrent(lastClickedTorrentId)
+    );
   }
 
   function isLightboxImageForLastClickedSource(img) {
@@ -863,7 +938,7 @@
       });
 
     document.querySelectorAll('#lightbox img').forEach((img) => {
-      if (!seen.has(img) && isLightboxImageForLastClickedSource(img)) {
+      if (!seen.has(img) && (isLightboxImageForLastClickedSource(img) || isLightboxImageForTrackedTonemapSource(img))) {
         seen.add(img);
         images.push(img);
       }
@@ -893,12 +968,29 @@
   }
 
   function getImageToggleState(img) {
-    const torrentId = getTorrentId(img);
+    const torrentId = getTorrentId(img) || (img.closest('#lightbox') ? getLightboxContextTorrentId(img) : '');
     return {
       torrentId,
       tonemapEnabled: isTonemapEnabledForTorrent(torrentId),
       hdrFixEnabled: isHdrFixEnabledForTorrent(torrentId)
     };
+  }
+
+  function rememberTonemapSourceCandidates(img, torrentId) {
+    if (!(img instanceof HTMLImageElement) || !torrentId) {
+      return;
+    }
+
+    let trackedSources = tonemapTrackedSourcesByTorrent.get(torrentId);
+    if (!trackedSources) {
+      trackedSources = new Set();
+      tonemapTrackedSourcesByTorrent.set(torrentId, trackedSources);
+    }
+
+    getImageSourceCandidates(img).forEach((candidate) => {
+      trackedSources.add(candidate);
+      tonemapSourceToTorrent.set(candidate, torrentId);
+    });
   }
 
   function syncTonemapStateForImage(img) {
@@ -907,7 +999,15 @@
     }
 
     const { torrentId, tonemapEnabled, hdrFixEnabled } = getImageToggleState(img);
-    const tonemapActive =
+    const tonemapActiveInLightbox =
+      Boolean(img.closest('#lightbox')) &&
+      isLightboxTonemapContextActive() &&
+      !img.classList.contains('ptp-hdr-converted') &&
+      !img.classList.contains('ptp-hdr-blackfix') &&
+      !String(img.dataset.ptpHdrFixRendered || '').startsWith('converted') &&
+      img.dataset.ptpHdrFixApplied !== '1';
+
+    const tonemapActiveByImageState =
       Boolean(torrentId) &&
       tonemapEnabled &&
       !hdrFixEnabled &&
@@ -917,7 +1017,13 @@
       !String(img.dataset.ptpHdrFixRendered || '').startsWith('converted') &&
       img.dataset.ptpHdrFixApplied !== '1';
 
+    const tonemapActive = tonemapActiveInLightbox || tonemapActiveByImageState;
+
     img.dataset.ptpTonemapActive = tonemapActive ? '1' : '0';
+
+    if (tonemapActive && !img.closest('#lightbox')) {
+      rememberTonemapSourceCandidates(img, torrentId);
+    }
   }
 
   function syncTonemapStateForTorrent(torrentId) {
@@ -1663,25 +1769,62 @@
         return;
       }
 
+      const torrentId = getTorrentId(img);
+      if (torrentId) {
+        lastClickedTorrentId = torrentId;
+        if (isTonemapEnabledForTorrent(torrentId) && !isHdrFixEnabledForTorrent(torrentId)) {
+          rememberTonemapSourceCandidates(img, torrentId);
+        }
+      }
+
       const src = getEligibleHdrFixSource(img);
       if (!src) {
+        lastClickedHdrSource = '';
+        lastClickedConvertedSrc = img.currentSrc || img.src || '';
+        log('remembered tonemap click target', {
+          torrentId: lastClickedTorrentId,
+          currentSrc: lastClickedConvertedSrc
+        });
+        scheduleLightboxSync();
         return;
       }
 
       lastClickedHdrSource = src;
       lastClickedConvertedSrc = img.currentSrc || img.src || '';
-      lastClickedTorrentId = getTorrentId(img);
       log('remembered hdr click target', {
         torrentId: lastClickedTorrentId,
         src: lastClickedHdrSource,
         currentSrc: lastClickedConvertedSrc
       });
+      scheduleLightboxSync();
     },
     true
   );
 
   // Watch for dynamically opened torrent panels (expand/collapse)
   let refreshScheduled = false;
+  let lightboxSyncScheduled = false;
+
+  function syncLightboxImages() {
+    document.querySelectorAll('#lightbox img').forEach((img) => {
+      syncTonemapStateForImage(img);
+    });
+  }
+
+  function scheduleLightboxSync() {
+    if (lightboxSyncScheduled) {
+      return;
+    }
+
+    lightboxSyncScheduled = true;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        lightboxSyncScheduled = false;
+        syncLightboxImages();
+      });
+    });
+  }
+
   function scheduleRefresh() {
     if (refreshScheduled) {
       return;
@@ -1692,6 +1835,7 @@
       refreshScheduled = false;
       injectButtons();
       scanImages();
+      scheduleLightboxSync();
     });
   }
 
@@ -1717,13 +1861,20 @@
       return isEligibleHdrPanel(node);
     }
 
+    if (node.matches('#lightbox img')) {
+      return true;
+    }
+
     if (node.matches(IMAGE_SELECTOR)) {
       const panel = node.closest(PANEL_SELECTOR);
       if (isEligibleHdrPanel(panel)) {
         return true;
       }
 
-      return Boolean(node.closest('#lightbox') && isLightboxImageForLastClickedSource(node));
+      return Boolean(
+        node.closest('#lightbox') &&
+          (isLightboxImageForLastClickedSource(node) || isLightboxImageForTrackedTonemapSource(node))
+      );
     }
 
     if (node.querySelector?.('#lightbox img')) {
@@ -1739,7 +1890,13 @@
     if (
       [...nestedImages].some((img) => {
         const panel = img.closest(PANEL_SELECTOR);
-        return isEligibleHdrPanel(panel) || Boolean(img.closest('#lightbox') && isLightboxImageForLastClickedSource(img));
+        return (
+          isEligibleHdrPanel(panel) ||
+          Boolean(
+            img.closest('#lightbox') &&
+              (isLightboxImageForLastClickedSource(img) || isLightboxImageForTrackedTonemapSource(img))
+          )
+        );
       })
     ) {
       return true;
@@ -1749,13 +1906,26 @@
   }
 
   const observer = new MutationObserver((mutations) => {
-    const shouldRefresh = mutations.some((mutation) =>
-      [...mutation.addedNodes].some((node) => shouldRefreshForAddedElement(node))
-    );
+    const shouldRefresh = mutations.some((mutation) => {
+      if (mutation.type === 'attributes') {
+        const target = mutation.target;
+        return Boolean(
+          target instanceof Element && (target.matches('#lightbox') || target.matches('#lightbox img'))
+        );
+      }
+
+      return [...mutation.addedNodes].some((node) => shouldRefreshForAddedElement(node));
+    });
 
     if (shouldRefresh) {
       scheduleRefresh();
+      scheduleLightboxSync();
     }
   });
-  observer.observe(document.body, { childList: true, subtree: true });
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['src', 'srcset', 'class', 'style']
+  });
 })();
