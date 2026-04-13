@@ -30,6 +30,7 @@ html {
   --search-bar-field-width: 180px;
   --search-bar-field-gap: 10px;
   --search-bar-font-size: 1.1em;
+  --torrent-row-font-size: 1em;
   --bbcode-image-default-width: 1450px;
   --cover-movie-width: 176px;
   --cover-movie-height: 246px;
@@ -41,11 +42,15 @@ html {
   --cover-movie-index-narrow-height: 540px;
   --cover-movie-centered-width: 330px;
   --cover-movie-centered-height: 490px;
+  --bookmarks-huge-movie-width: 280px;
+  --bookmarks-huge-movie-height: 440px;
+  --torrents-huge-movie-width: 256px;
+  --torrents-huge-movie-height: 400px;
   --basic-movie-cover-width: 250px;
   --small-cover-movie-width: 140px;
   --small-cover-movie-height: 196px;
-  --small-cover-movie-smaller-width: 280px;
-  --small-cover-movie-smaller-height: 440px;
+  --small-cover-movie-smaller-width: var(--bookmarks-huge-movie-width);
+  --small-cover-movie-smaller-height: var(--bookmarks-huge-movie-height);
 }
 
 /**
@@ -893,6 +898,7 @@ th {
 }
 
 .basic-movie-list__torrent-row {
+  font-size: var(--torrent-row-font-size);
   height: 1em;
 }
 
@@ -1580,13 +1586,13 @@ tr[id^='torrent_'] img.bbcode__image[style] {
 .huge-movie-list__movie__cover {
   position: relative;
   float: left;
-  width: 256px;
+  width: var(--torrents-huge-movie-width);
 }
 
 .huge-movie-list__movie__cover__link {
   display: block;
-  height: 360px;
-  width: 256px;
+  height: var(--torrents-huge-movie-height);
+  width: var(--torrents-huge-movie-width);
 }
 
 .huge-movie-list__movie__cover__link--seen::after {
@@ -1601,7 +1607,7 @@ tr[id^='torrent_'] img.bbcode__image[style] {
 }
 
 .huge-movie-list__movie__details {
-  margin-left: 256px;
+  margin-left: var(--torrents-huge-movie-width);
   position: relative;
   padding: 0 0 0 10px;
 }
@@ -2667,8 +2673,8 @@ html.busy-cursor * {
 }
 
 .small-cover-movie-list__movie__link--smaller {
-  width: var(--small-cover-movie-smaller-width);
-  height: var(--small-cover-movie-smaller-height);
+  width: var(--bookmarks-huge-movie-width);
+  height: var(--bookmarks-huge-movie-height);
 }
 
 .js-small-cover-movie-list__container {

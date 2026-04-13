@@ -29,17 +29,64 @@
     { name: 'layout-width', label: 'Layout Width', defaultValue: 2000, min: 1200, max: 3200 },
     { name: 'main-menu-width', label: 'Main Menu Width', defaultValue: 1500, min: 900, max: 2600 },
     { name: 'sidebar-width', label: 'Sidebar Width', defaultValue: 450, min: 260, max: 800 },
+    { name: 'sidebar-gap', label: 'Sidebar Gap', defaultValue: 5, min: 0, max: 40 },
     { name: 'bbcode-image-default-width', label: 'BBCode Image Width', defaultValue: 1450, min: 800, max: 2800 },
     { name: 'search-bar-field-width', label: 'Search Field Width', defaultValue: 180, min: 120, max: 420 },
-    { name: 'cover-movie-width', label: 'Cover Width', defaultValue: 176, min: 100, max: 360 },
-    { name: 'cover-movie-narrow-width', label: 'Cover Narrow Width', defaultValue: 168, min: 96, max: 340 },
-    { name: 'cover-movie-index-width', label: 'Cover Index Width', defaultValue: 370, min: 200, max: 620 },
-    { name: 'cover-movie-index-narrow-width', label: 'Cover Index Narrow Width', defaultValue: 350, min: 190, max: 600 },
-    { name: 'cover-movie-centered-width', label: 'Cover Centered Width', defaultValue: 330, min: 180, max: 560 },
-    { name: 'basic-movie-cover-width', label: 'Basic Cover Width', defaultValue: 250, min: 140, max: 480 },
-    { name: 'small-cover-movie-width', label: 'Small Cover Width', defaultValue: 140, min: 80, max: 260 },
-    { name: 'small-cover-movie-smaller-width', label: 'Small Cover Bigger Width', defaultValue: 280, min: 160, max: 520 }
+    { name: 'cover-movie-width', label: 'Cover View Poster Width', defaultValue: 176, min: 100, max: 360 },
+    { name: 'cover-movie-narrow-width', label: 'Cover View Narrow Poster Width', defaultValue: 168, min: 96, max: 340 },
+    { name: 'cover-movie-index-width', label: 'Cover View Index Poster Width', defaultValue: 370, min: 200, max: 620 },
+    { name: 'cover-movie-index-narrow-width', label: 'Cover View Index Narrow Poster Width', defaultValue: 350, min: 190, max: 600 },
+    { name: 'cover-movie-centered-width', label: 'Cover View Centered Poster Width', defaultValue: 330, min: 180, max: 560 },
+    { name: 'basic-movie-cover-width', label: 'List/Compact View Poster Width', defaultValue: 250, min: 140, max: 480 },
+    { name: 'small-cover-movie-width', label: 'Small Cover View Poster Width', defaultValue: 140, min: 80, max: 260 },
+    { name: 'bookmarks-huge-movie-width', label: 'Bookmarks Huge Movie Width', defaultValue: 280, min: 160, max: 520 },
+    { name: 'torrents-huge-movie-width', label: 'Torrents Huge Movie Width', defaultValue: 256, min: 140, max: 480 }
   ];
+
+  const FONT_SIZE_VARS = [
+    {
+      name: 'user-info-bar-font-size',
+      label: 'User Info Bar Font Size',
+      defaultValue: 13,
+      min: 8,
+      max: 24,
+      unit: 'pt',
+      linkedByDefault: false
+    },
+    {
+      name: 'main-menu-font-size',
+      label: 'Main Menu Font Size',
+      defaultValue: 20,
+      min: 10,
+      max: 40,
+      unit: 'px',
+      linkedByDefault: false
+    },
+    {
+      name: 'search-bar-font-size',
+      label: 'Search Bar Font Size',
+      defaultValue: 1.1,
+      min: 0.7,
+      max: 2,
+      step: 0.1,
+      precision: 1,
+      unit: 'em',
+      linkedByDefault: false
+    },
+    {
+      name: 'torrent-row-font-size',
+      label: 'Torrent Row Font Size',
+      defaultValue: 1,
+      min: 0.7,
+      max: 2,
+      step: 0.05,
+      precision: 2,
+      unit: 'em',
+      linkedByDefault: false
+    }
+  ];
+
+  const SETTING_VARS = [...WIDTH_VARS, ...FONT_SIZE_VARS];
 
   const HEIGHT_FROM_WIDTH = [
     {
@@ -79,10 +126,16 @@
       heightDefault: 196
     },
     {
-      widthVar: 'small-cover-movie-smaller-width',
+      widthVar: 'bookmarks-huge-movie-width',
       widthDefault: 280,
-      heightVar: 'small-cover-movie-smaller-height',
+      heightVar: 'bookmarks-huge-movie-height',
       heightDefault: 440
+    },
+    {
+      widthVar: 'torrents-huge-movie-width',
+      widthDefault: 256,
+      heightVar: 'torrents-huge-movie-height',
+      heightDefault: 400
     }
   ];
 
@@ -90,17 +143,29 @@
     [
       'cover-movie-width',
       'cover-movie-narrow-width',
-      'small-cover-movie-width'
+      'cover-movie-centered-width'
     ],
     [
       'cover-movie-index-width',
-      'cover-movie-index-narrow-width'
+      'cover-movie-index-narrow-width',
+      'torrents-huge-movie-width'
     ],
     [
-      'cover-movie-centered-width',
-      'small-cover-movie-smaller-width'
+      'small-cover-movie-width',
+      'bookmarks-huge-movie-width'
     ]
   ];
+
+  const PREVIEW_LABELS = {
+    'cover-movie-width': 'Cover view poster',
+    'cover-movie-narrow-width': 'Cover view narrow poster',
+    'cover-movie-index-width': 'Cover view index poster',
+    'cover-movie-index-narrow-width': 'Cover view index narrow poster',
+    'cover-movie-centered-width': 'Cover view centered poster',
+    'small-cover-movie-width': 'Small cover view poster',
+    'bookmarks-huge-movie-width': 'Bookmarks huge movie poster',
+    'torrents-huge-movie-width': 'Torrents huge view poster'
+  };
 
   const DIRECT_WIDTH_BINDINGS = [
     {
@@ -349,13 +414,16 @@ html.js-widescreen-controls-active #content.page__main-content {
 }
 
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-stage {
+  display: flex;
+  justify-content: center;
   transform-origin: top center;
 }
 
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-canvas {
   display: flex;
-  gap: 0;
-  align-items: stretch;
+  flex-direction: column;
+  gap: 12px;
+  box-sizing: border-box;
   border: 1px solid #4b5055;
   border-radius: 6px;
   overflow: hidden;
@@ -363,22 +431,134 @@ html.js-widescreen-controls-active #content.page__main-content {
   box-shadow: inset 0 0 0 1px rgba(190, 220, 238, 0.08);
 }
 
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-wrapper-meta {
+  padding: 12px 12px 0;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 148px;
+  align-self: center;
+  box-sizing: border-box;
+  padding: 14px 0 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  background: linear-gradient(180deg, rgba(26, 29, 33, 0.92), rgba(18, 20, 23, 0.94));
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-content
+  > .widescreen-controls__layout-block-title,
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-content
+  > .widescreen-controls__layout-block-size {
+  padding: 0 12px;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 auto;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-header-row {
+  height: 14px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(140, 173, 188, 0.26), rgba(87, 119, 133, 0.16));
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-header-row--wide {
+  width: 78%;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-header-row--mid {
+  width: 58%;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-columns {
+  display: flex;
+  align-items: stretch;
+  margin: 0 auto;
+}
+
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-main,
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-sidebar {
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-sidebar,
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-gap {
   min-height: 132px;
   box-sizing: border-box;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-main,
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-sidebar {
   padding: 14px 12px;
 }
 
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-main {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  gap: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
   background: linear-gradient(180deg, rgba(43, 52, 60, 0.8), rgba(31, 38, 44, 0.82));
 }
 
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-row {
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  background: rgba(9, 12, 15, 0.34);
+  font-size: var(--torrent-row-font-size);
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-row
+  .torrent-info-link {
+  color: #d8d8d8;
+  text-decoration: none;
+  line-height: 1.45;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-row
+  .torrent-info-link:hover {
+  text-decoration: none;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-row
+  .tag-separator {
+  opacity: 0.65;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-gap {
+  position: relative;
+  min-width: 4px;
+  background: rgba(122, 155, 171, 0.18);
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-gap::before {
+  content: '';
+  position: absolute;
+  inset: 10px 0;
+  border-left: 1px dashed rgba(173, 218, 238, 0.45);
+  border-right: 1px dashed rgba(173, 218, 238, 0.25);
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-gap-label {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  color: #d4dde2;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+}
+
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-sidebar {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
   background: linear-gradient(180deg, rgba(52, 58, 64, 0.88), rgba(36, 41, 47, 0.9));
 }
 
@@ -493,6 +673,30 @@ html.js-widescreen-controls-active #content.page__main-content {
     return n;
   }
 
+  function clampSettingValue(value, variable, fallback) {
+    const n = Number.parseFloat(value);
+    if (!Number.isFinite(n)) return fallback;
+    let clean = n;
+    if (clean < variable.min) clean = variable.min;
+    if (clean > variable.max) clean = variable.max;
+    if (typeof variable.precision === 'number') {
+      return Number(clean.toFixed(variable.precision));
+    }
+    return Math.round(clean);
+  }
+
+  function scaleSettingValue(variable, scale) {
+    const scaled = (Number(variable.defaultValue) * scale) / 100;
+    return clampSettingValue(scaled, variable, variable.defaultValue);
+  }
+
+  function formatSettingValue(value, variable) {
+    if (typeof variable.precision === 'number') {
+      return value.toFixed(variable.precision);
+    }
+    return String(value);
+  }
+
   function normalizeUrlValue(value) {
     return typeof value === 'string' ? value.trim() : '';
   }
@@ -539,12 +743,13 @@ html.js-widescreen-controls-active #content.page__main-content {
     const overrides = {};
     const linkedVariables = {};
 
-    for (const variable of WIDTH_VARS) {
+    for (const variable of SETTING_VARS) {
       const rawValue = parsed && parsed.overrides ? parsed.overrides[variable.name] : undefined;
-      overrides[variable.name] = clampInt(rawValue, variable.min, variable.max, variable.defaultValue);
+      overrides[variable.name] = clampSettingValue(rawValue, variable, variable.defaultValue);
 
       const rawLinked = parsed && parsed.linkedVariables ? parsed.linkedVariables[variable.name] : undefined;
-      linkedVariables[variable.name] = typeof rawLinked === 'boolean' ? rawLinked : true;
+      linkedVariables[variable.name] =
+        typeof rawLinked === 'boolean' ? rawLinked : variable.linkedByDefault !== false;
     }
 
     const logoImageUrl = normalizeUrlValue(parsed && parsed.logoImageUrl);
@@ -575,6 +780,7 @@ html.js-widescreen-controls-active #content.page__main-content {
 
   let state = loadState();
   const previewListeners = new Set();
+  let previewRefreshTimerId = 0;
 
   function isVariableLinked(currentState, variableName) {
     const variableLinked = currentState.linkedVariables && currentState.linkedVariables[variableName] !== false;
@@ -583,19 +789,20 @@ html.js-widescreen-controls-active #content.page__main-content {
 
   function computeFinalDimensions(currentState) {
     const scale = clampInt(currentState.scale, 50, 200, 100);
+    const settings = {};
     const widths = {};
     const heights = {};
 
-    for (const variable of WIDTH_VARS) {
-      const linkedValue = Math.round((variable.defaultValue * scale) / 100);
-      const fallbackValue = clampInt(variable.defaultValue, variable.min, variable.max, variable.defaultValue);
-      const overrideValue = clampInt(
-        currentState.overrides[variable.name],
-        variable.min,
-        variable.max,
-        fallbackValue
-      );
-      widths[variable.name] = isVariableLinked(currentState, variable.name) ? linkedValue : overrideValue;
+    for (const variable of SETTING_VARS) {
+      const fallbackValue = clampSettingValue(variable.defaultValue, variable, variable.defaultValue);
+      const overrideValue = clampSettingValue(currentState.overrides[variable.name], variable, fallbackValue);
+      const linkedValue = scaleSettingValue(variable, scale);
+      const resolvedValue = isVariableLinked(currentState, variable.name) ? linkedValue : overrideValue;
+
+      settings[variable.name] = resolvedValue;
+      if (WIDTH_VARS.includes(variable)) {
+        widths[variable.name] = resolvedValue;
+      }
     }
 
     for (const pair of HEIGHT_FROM_WIDTH) {
@@ -606,7 +813,7 @@ html.js-widescreen-controls-active #content.page__main-content {
       heights[pair.heightVar] = Math.max(1, Math.round(widthValue * ratio));
     }
 
-    return { widths, heights };
+    return { settings, widths, heights };
   }
 
   function emitPreviewUpdate(dimensions) {
@@ -625,21 +832,57 @@ html.js-widescreen-controls-active #content.page__main-content {
     listener(computeFinalDimensions(state));
   }
 
-  function getComputedWidthValue(variableName, fallbackValue) {
-    const cssValue = getComputedStyle(document.documentElement).getPropertyValue(`--${variableName}`).trim();
-    const match = /^(\d+)/.exec(cssValue);
+  function schedulePreviewRefresh() {
+    if (previewRefreshTimerId) {
+      globalThis.clearTimeout(previewRefreshTimerId);
+    }
+
+    previewRefreshTimerId = globalThis.setTimeout(function () {
+      previewRefreshTimerId = 0;
+      emitPreviewUpdate(computeFinalDimensions(state));
+    }, 0);
+  }
+
+  function getComputedSettingValue(variable, fallbackValue) {
+    const cssValue = getComputedStyle(document.documentElement).getPropertyValue(`--${variable.name}`).trim();
+    const match = /^(-?\d+(?:\.\d+)?)/.exec(cssValue);
     if (!match) return fallbackValue;
-    return clampInt(match[1], 1, 5000, fallbackValue);
+    return clampSettingValue(match[1], variable, fallbackValue);
+  }
+
+  function parsePixelValue(value) {
+    const numeric = Number.parseFloat(String(value || '').trim());
+    return Number.isFinite(numeric) ? numeric : 0;
+  }
+
+  function getLayoutPreviewMetrics(dimensions) {
+    const contentElement = document.querySelector('#content.page__main-content');
+    const contentStyles = contentElement ? getComputedStyle(contentElement) : null;
+    const rootStyles = getComputedStyle(document.documentElement);
+    const sidebarGap = Number.isFinite(dimensions && dimensions.widths && dimensions.widths['sidebar-gap'])
+      ? dimensions.widths['sidebar-gap']
+      : parsePixelValue(rootStyles.getPropertyValue('--sidebar-gap'));
+    const contentHorizontalInset = contentStyles
+      ? parsePixelValue(contentStyles.paddingLeft) +
+        parsePixelValue(contentStyles.paddingRight) +
+        parsePixelValue(contentStyles.borderLeftWidth) +
+        parsePixelValue(contentStyles.borderRightWidth)
+      : 0;
+
+    return {
+      sidebarGap: Math.max(0, Math.round(sidebarGap)),
+      contentHorizontalInset: Math.max(0, Math.round(contentHorizontalInset))
+    };
   }
 
   function initDefaultsFromCss() {
     const overrides = { ...state.overrides };
     let changed = false;
 
-    for (const variable of WIDTH_VARS) {
-      const valueFromCss = getComputedWidthValue(variable.name, variable.defaultValue);
+    for (const variable of SETTING_VARS) {
+      const valueFromCss = getComputedSettingValue(variable, variable.defaultValue);
       if (overrides[variable.name] === variable.defaultValue && valueFromCss !== variable.defaultValue) {
-        overrides[variable.name] = clampInt(valueFromCss, variable.min, variable.max, variable.defaultValue);
+        overrides[variable.name] = clampSettingValue(valueFromCss, variable, variable.defaultValue);
         changed = true;
       }
     }
@@ -654,8 +897,8 @@ html.js-widescreen-controls-active #content.page__main-content {
     const root = document.documentElement;
     const dimensions = computeFinalDimensions(currentState);
 
-    for (const variable of WIDTH_VARS) {
-      root.style.setProperty(`--${variable.name}`, `${dimensions.widths[variable.name]}px`);
+    for (const variable of SETTING_VARS) {
+      root.style.setProperty(`--${variable.name}`, `${dimensions.settings[variable.name]}${variable.unit || 'px'}`);
     }
 
     for (const pair of HEIGHT_FROM_WIDTH) {
@@ -802,7 +1045,7 @@ html.js-widescreen-controls-active #content.page__main-content {
 
     const description = document.createElement('p');
     description.className = 'widescreen-controls__description';
-    description.textContent = 'Adjust width variables from widescreen.css. Keep linked scaling enabled to scale all widths together.';
+    description.textContent = 'Adjust widescreen width and font-size variables. Keep linked scaling enabled to scale all linked settings together.';
 
     const linkedRow = document.createElement('div');
     linkedRow.className = 'widescreen-controls__row widescreen-controls__row--linked';
@@ -859,7 +1102,7 @@ html.js-widescreen-controls-active #content.page__main-content {
     controlsList.className = 'widescreen-controls__list';
 
     const controlsByName = {};
-    for (const variable of WIDTH_VARS) {
+    for (const variable of SETTING_VARS) {
       controlsList.appendChild(makeRangeRow(variable, controlsByName));
     }
 
@@ -1011,6 +1254,44 @@ html.js-widescreen-controls-active #content.page__main-content {
     const layoutCanvas = document.createElement('div');
     layoutCanvas.className = 'widescreen-controls__layout-canvas';
 
+    const wrapperMeta = document.createElement('div');
+    wrapperMeta.className = 'widescreen-controls__layout-wrapper-meta';
+
+    const wrapperHeading = document.createElement('div');
+    wrapperHeading.className = 'widescreen-controls__layout-block-title';
+    wrapperHeading.textContent = 'Wrapper';
+
+    const wrapperSize = document.createElement('div');
+    wrapperSize.className = 'widescreen-controls__layout-block-size';
+
+    wrapperMeta.appendChild(wrapperHeading);
+    wrapperMeta.appendChild(wrapperSize);
+
+    const contentShell = document.createElement('div');
+    contentShell.className = 'widescreen-controls__layout-content';
+
+    const contentHeading = document.createElement('div');
+    contentHeading.className = 'widescreen-controls__layout-block-title';
+    contentHeading.textContent = 'Content';
+
+    const contentSize = document.createElement('div');
+    contentSize.className = 'widescreen-controls__layout-block-size';
+
+    const headerBlock = document.createElement('div');
+    headerBlock.className = 'widescreen-controls__layout-header';
+
+    const headerRowWide = document.createElement('div');
+    headerRowWide.className = 'widescreen-controls__layout-header-row widescreen-controls__layout-header-row--wide';
+
+    const headerRowMid = document.createElement('div');
+    headerRowMid.className = 'widescreen-controls__layout-header-row widescreen-controls__layout-header-row--mid';
+
+    headerBlock.appendChild(headerRowWide);
+    headerBlock.appendChild(headerRowMid);
+
+    const layoutColumns = document.createElement('div');
+    layoutColumns.className = 'widescreen-controls__layout-columns';
+
     const mainColumn = document.createElement('div');
     mainColumn.className = 'widescreen-controls__layout-main';
 
@@ -1020,6 +1301,43 @@ html.js-widescreen-controls-active #content.page__main-content {
 
     const mainSize = document.createElement('div');
     mainSize.className = 'widescreen-controls__layout-block-size';
+
+    const torrentRowPreview = document.createElement('div');
+    torrentRowPreview.className = 'widescreen-controls__layout-torrent-row basic-movie-list__torrent-row';
+
+    const torrentInfoLink = document.createElement('a');
+    torrentInfoLink.href = '#';
+    torrentInfoLink.className = 'torrent-info-link ptp-improved-tags';
+
+    const torrentTokens = [
+      { text: '720p', attr: '720p' },
+      { text: 'WEB-DL (Movies Anywhere)', attr: 'WEB' },
+      { text: 'Atmos', attr: 'Dolby Atmos', style: { color: 'rgb(25, 118, 210)' } },
+      { text: 'x264', attr: 'x264' },
+      { text: 'MKV', attr: 'MKV' },
+      { text: 'BYNDR', attr: 'Release Group', style: { color: 'rgb(171, 71, 188)' } }
+    ];
+
+    torrentTokens.forEach(function (token, index) {
+      const span = document.createElement('span');
+      span.textContent = token.text;
+      span.setAttribute('data-attr', token.attr);
+      if (token.style) {
+        for (const [propertyName, propertyValue] of Object.entries(token.style)) {
+          span.style.setProperty(propertyName, propertyValue);
+        }
+      }
+      torrentInfoLink.appendChild(span);
+
+      if (index < torrentTokens.length - 1) {
+        const separator = document.createElement('span');
+        separator.className = 'tag-separator';
+        separator.textContent = ' / ';
+        torrentInfoLink.appendChild(separator);
+      }
+    });
+
+    torrentRowPreview.appendChild(torrentInfoLink);
 
     const bbcodeWrap = document.createElement('div');
     bbcodeWrap.className = 'widescreen-controls__layout-bbcode-wrap';
@@ -1039,7 +1357,17 @@ html.js-widescreen-controls-active #content.page__main-content {
     bbcodeWrap.appendChild(bbcodeBox);
     mainColumn.appendChild(mainHeading);
     mainColumn.appendChild(mainSize);
+    mainColumn.appendChild(torrentRowPreview);
     mainColumn.appendChild(bbcodeWrap);
+
+    const gap = document.createElement('div');
+    gap.className = 'widescreen-controls__layout-gap';
+
+    const gapLabel = document.createElement('div');
+    gapLabel.className = 'widescreen-controls__layout-gap-label';
+    gapLabel.textContent = 'Gap';
+
+    gap.appendChild(gapLabel);
 
     const sidebar = document.createElement('div');
     sidebar.className = 'widescreen-controls__layout-sidebar';
@@ -1054,78 +1382,64 @@ html.js-widescreen-controls-active #content.page__main-content {
     sidebar.appendChild(sidebarHeading);
     sidebar.appendChild(sidebarSize);
 
-    layoutCanvas.appendChild(mainColumn);
-    layoutCanvas.appendChild(sidebar);
+    layoutColumns.appendChild(mainColumn);
+    layoutColumns.appendChild(gap);
+    layoutColumns.appendChild(sidebar);
+
+    layoutCanvas.appendChild(wrapperMeta);
+    contentShell.appendChild(contentHeading);
+    contentShell.appendChild(contentSize);
+    contentShell.appendChild(headerBlock);
+    contentShell.appendChild(layoutColumns);
+    layoutCanvas.appendChild(contentShell);
     layoutStage.appendChild(layoutCanvas);
     layoutFrame.appendChild(layoutStage);
     layoutPreview.appendChild(layoutFrame);
-
-    const layoutLegend = document.createElement('div');
-    layoutLegend.className = 'widescreen-controls__layout-legend';
-
-    const layoutMetrics = [
-      { label: 'Layout', key: 'layout-width' },
-      { label: 'Main column', key: 'main-column' },
-      { label: 'BBCode', key: 'bbcode-image-default-width' },
-      { label: 'Sidebar', key: 'sidebar-width' }
-    ].map(function (metric) {
-      const metricElement = document.createElement('div');
-      metricElement.className = 'widescreen-controls__layout-metric';
-
-      const metricLabel = document.createElement('div');
-      metricLabel.className = 'widescreen-controls__layout-metric-label';
-      metricLabel.textContent = metric.label;
-
-      const metricValue = document.createElement('div');
-      metricValue.className = 'widescreen-controls__layout-metric-value';
-
-      metricElement.appendChild(metricLabel);
-      metricElement.appendChild(metricValue);
-      layoutLegend.appendChild(metricElement);
-
-      return { key: metric.key, value: metricValue };
-    });
-
-    layoutPreview.appendChild(layoutLegend);
     torrentsPreviewPanel.preview.appendChild(layoutPreview);
 
     function updateLayoutPreview(dimensions) {
-      const layoutWidth = dimensions.widths['layout-width'];
+      const wrapperWidth = dimensions.widths['layout-width'];
       const sidebarWidth = dimensions.widths['sidebar-width'];
       const bbcodeWidth = dimensions.widths['bbcode-image-default-width'];
-      const mainColumnWidth = Math.max(0, layoutWidth - sidebarWidth);
-      if (!Number.isFinite(layoutWidth) || !Number.isFinite(sidebarWidth) || !Number.isFinite(bbcodeWidth)) return;
+      if (!Number.isFinite(wrapperWidth) || !Number.isFinite(sidebarWidth) || !Number.isFinite(bbcodeWidth)) return;
+
+      const previewMetrics = getLayoutPreviewMetrics(dimensions);
+      const contentInnerWidth = Math.max(0, wrapperWidth - previewMetrics.contentHorizontalInset);
+      const mainColumnWidth = Math.max(0, contentInnerWidth - sidebarWidth - previewMetrics.sidebarGap);
+      const clampedBbcodeWidth = Math.min(bbcodeWidth, mainColumnWidth);
 
       const availableWidth = Math.max(80, layoutFrame.clientWidth - 24);
-      const fitScale = Math.min(1, availableWidth / Math.max(layoutWidth, 1));
-      const scaledLayoutWidth = Math.max(40, Math.round(layoutWidth * fitScale));
-      const scaledSidebarWidth = Math.round(sidebarWidth * fitScale);
-      const scaledMainColumnWidth = Math.max(20, scaledLayoutWidth - scaledSidebarWidth);
-      const clampedBbcodeWidth = Math.min(bbcodeWidth, mainColumnWidth);
+      const fitScale = Math.min(1, availableWidth / Math.max(wrapperWidth, 1));
+      const scaledWrapperWidth = Math.max(40, Math.round(wrapperWidth * fitScale));
+      const scaledContentWidth = Math.max(24, Math.round(contentInnerWidth * fitScale));
+      const scaledSidebarWidth = Math.max(20, Math.round(sidebarWidth * fitScale));
+      const scaledGapWidth = Math.max(
+        previewMetrics.sidebarGap > 0 ? 4 : 0,
+        Math.round(previewMetrics.sidebarGap * fitScale)
+      );
+      const scaledMainColumnWidth = Math.max(20, scaledContentWidth - scaledSidebarWidth - scaledGapWidth);
       const scaledBbcodeWidth = Math.max(12, Math.round(clampedBbcodeWidth * fitScale));
 
-      layoutStage.style.width = `${scaledLayoutWidth}px`;
-      layoutCanvas.style.width = `${scaledLayoutWidth}px`;
+      layoutStage.style.width = `${scaledWrapperWidth}px`;
+      layoutCanvas.style.width = `${scaledWrapperWidth}px`;
+      contentShell.style.width = `${scaledContentWidth}px`;
+      headerBlock.style.width = `${scaledContentWidth}px`;
+      layoutColumns.style.width = `${scaledContentWidth}px`;
       mainColumn.style.width = `${scaledMainColumnWidth}px`;
-      sidebar.style.width = `${Math.max(20, scaledSidebarWidth)}px`;
+      gap.style.width = `${scaledGapWidth}px`;
+      sidebar.style.width = `${scaledSidebarWidth}px`;
       bbcodeBox.style.width = `${Math.min(scaledBbcodeWidth, scaledMainColumnWidth)}px`;
 
+      wrapperSize.textContent = `Wrapper: ${wrapperWidth}px`;
+      contentSize.textContent = `Content inner: ${contentInnerWidth}px`;
       mainSize.textContent = `Main column: ${mainColumnWidth}px`;
-      bbcodeSize.textContent = `BBCode: ${bbcodeWidth}px`;
+      bbcodeSize.textContent = `BBCode: ${clampedBbcodeWidth}px`;
       sidebarSize.textContent = `Sidebar: ${sidebarWidth}px`;
-
-      for (const metric of layoutMetrics) {
-        if (metric.key === 'main-column') {
-          metric.value.textContent = `${mainColumnWidth}px`;
-        } else {
-          metric.value.textContent = `${dimensions.widths[metric.key]}px`;
-        }
-      }
     }
 
     const coverPreviewPanel = createPreviewPanel(
-      'Preview',
-      'Live size preview for cover variables.'
+      'View Mode Poster Preview',
+      'Live size preview grouped by the site view mode selector (Cover, Small cover, Huge, List, Compact list).'
     );
 
     const previewGrid = document.createElement('div');
@@ -1147,7 +1461,7 @@ html.js-widescreen-controls-active #content.page__main-content {
 
       const label = document.createElement('div');
       label.className = 'widescreen-controls__preview-label';
-      label.textContent = pair.widthVar.replace(/-width$/, '').replaceAll('-', ' ');
+      label.textContent = PREVIEW_LABELS[pair.widthVar] || pair.widthVar.replace(/-width$/, '').replaceAll('-', ' ');
 
       const frame = document.createElement('div');
       frame.className = 'widescreen-controls__preview-frame';
@@ -1213,6 +1527,7 @@ html.js-widescreen-controls-active #content.page__main-content {
     panel.appendChild(coverPreviewPanel.previewPanel);
 
     refreshIndividualControls(controlsByName, state);
+    schedulePreviewRefresh();
 
     return panel;
   }
@@ -1250,6 +1565,10 @@ html.js-widescreen-controls-active #content.page__main-content {
         document.body.classList.toggle('js-widescreen-controls-active', isWide);
       }
       document.documentElement.classList.toggle('js-widescreen-controls-active', isWide);
+
+      if (isWide) {
+        schedulePreviewRefresh();
+      }
 
       if (updateHash) {
         const newUrl = new URL(location.href);
@@ -1305,25 +1624,26 @@ html.js-widescreen-controls-active #content.page__main-content {
     range.type = 'range';
     range.min = String(variable.min);
     range.max = String(variable.max);
-    range.step = '1';
-    range.value = String(state.overrides[variable.name]);
+    range.step = String(variable.step || 1);
+    range.value = formatSettingValue(state.overrides[variable.name], variable);
 
     const number = document.createElement('input');
     number.className = 'widescreen-controls__number';
     number.type = 'number';
     number.min = String(variable.min);
     number.max = String(variable.max);
-    number.step = '1';
-    number.value = String(state.overrides[variable.name]);
+    number.step = String(variable.step || 1);
+    number.value = formatSettingValue(state.overrides[variable.name], variable);
 
     const unit = document.createElement('span');
     unit.className = 'widescreen-controls__unit';
-    unit.textContent = 'px';
+    unit.textContent = variable.unit || 'px';
 
     function updateValue(rawValue) {
-      const clean = clampInt(rawValue, variable.min, variable.max, variable.defaultValue);
-      range.value = String(clean);
-      number.value = String(clean);
+      const clean = clampSettingValue(rawValue, variable, variable.defaultValue);
+      const formatted = formatSettingValue(clean, variable);
+      range.value = formatted;
+      number.value = formatted;
       state.overrides[variable.name] = clean;
       applySettings(state);
       refreshIndividualControls(controlsByName, state);
@@ -1341,8 +1661,8 @@ html.js-widescreen-controls-active #content.page__main-content {
 
       // Preserve the current visual value when detaching from global scaling.
       if (!rowLinkToggle.checked) {
-        const currentWidth = dimensions.widths[variable.name];
-        state.overrides[variable.name] = clampInt(currentWidth, variable.min, variable.max, variable.defaultValue);
+        const currentValue = dimensions.settings[variable.name];
+        state.overrides[variable.name] = clampSettingValue(currentValue, variable, variable.defaultValue);
       }
 
       applySettings(state);
@@ -1437,16 +1757,17 @@ html.js-widescreen-controls-active #content.page__main-content {
   function refreshIndividualControls(controlsByName, currentState) {
     const dimensions = computeFinalDimensions(currentState);
 
-    for (const variable of WIDTH_VARS) {
+    for (const variable of SETTING_VARS) {
       const controls = controlsByName[variable.name];
       if (!controls) continue;
 
       const linkedForVariable = currentState.linkedVariables && currentState.linkedVariables[variable.name] !== false;
       const usingGlobal = isVariableLinked(currentState, variable.name);
-      const value = clampInt(dimensions.widths[variable.name], variable.min, variable.max, variable.defaultValue);
+      const value = clampSettingValue(dimensions.settings[variable.name], variable, variable.defaultValue);
+      const formatted = formatSettingValue(value, variable);
 
-      controls.range.value = String(value);
-      controls.number.value = String(value);
+      controls.range.value = formatted;
+      controls.number.value = formatted;
 
       controls.rowLinkToggle.checked = linkedForVariable;
       controls.rowLinkToggle.disabled = !currentState.linked;
