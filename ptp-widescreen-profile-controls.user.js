@@ -398,168 +398,120 @@ html.js-widescreen-controls-active #content.page__main-content {
   text-align: center;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-preview {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-frame {
   min-height: 180px;
-  padding: 12px;
-  overflow: hidden;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: auto;
+  padding: 15px 19px;
   border: 1px dashed #5a5a5a;
   border-radius: 4px;
-  background: radial-gradient(circle at 50% 40%, #2b2b2b, #181818);
+  background: black;
+  --preview-sidebar-width: var(--sidebar-width);
+  --preview-sidebar-gap: var(--sidebar-gap);
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-stage {
-  display: flex;
-  justify-content: center;
-  transform-origin: top center;
-}
-
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-canvas {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  box-sizing: border-box;
-  border: 1px solid #4b5055;
-  border-radius: 6px;
-  overflow: hidden;
-  background: linear-gradient(180deg, rgba(32, 34, 36, 0.95), rgba(24, 26, 28, 0.95));
-  box-shadow: inset 0 0 0 1px rgba(190, 220, 238, 0.08);
-}
-
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-wrapper-meta {
-  padding: 12px 12px 0;
-}
-
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-content {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-height: 148px;
-  align-self: center;
-  box-sizing: border-box;
-  padding: 14px 0 0;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 6px;
-  background: linear-gradient(180deg, rgba(26, 29, 33, 0.92), rgba(18, 20, 23, 0.94));
-}
-
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-content
-  > .widescreen-controls__layout-block-title,
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-content
-  > .widescreen-controls__layout-block-size {
-  padding: 0 12px;
-}
-
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-header {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 0 auto;
-}
-
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-header-row {
-  height: 14px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, rgba(140, 173, 188, 0.26), rgba(87, 119, 133, 0.16));
-}
-
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-header-row--wide {
-  width: 78%;
-}
-
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-header-row--mid {
-  width: 58%;
-}
-
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-columns {
-  display: flex;
-  align-items: stretch;
-  margin: 0 auto;
-}
-
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-main,
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-sidebar,
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-gap {
-  min-height: 132px;
-  box-sizing: border-box;
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-frame::after {
+  content: '';
+  display: block;
+  clear: both;
 }
 
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-main,
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-sidebar {
-  padding: 14px 12px;
+  box-sizing: border-box;
 }
 
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-main {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 6px;
-  background: linear-gradient(180deg, rgba(43, 52, 60, 0.8), rgba(31, 38, 44, 0.82));
+  margin-bottom: 0;
+  margin-right: calc(var(--preview-sidebar-width) + var(--preview-sidebar-gap));
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-row {
-  padding: 10px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  overflow: hidden;
   border-radius: 4px;
-  background: rgba(9, 12, 15, 0.34);
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-table
+  th,
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-table
+  td {
+  padding: 4px 6px;
+  border: 1px solid #555555;
+  box-sizing: border-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-table
+  thead
+  > tr {
+  background: linear-gradient(180deg, rgba(20, 22, 22, 0.95), rgba(8, 9, 9, 0.95));
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-table
+  tbody
+  > tr {
+  background: rgba(51, 51, 51, 0.78);
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-table
+  .basic-movie-list__torrent-edition {
+  font-size: 12px;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-table
+  .basic-movie-list__torrent-row {
   font-size: var(--torrent-row-font-size);
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-row
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-table
+  .basic-movie-list__torrent__action {
+  float: right;
+  margin-left: 10px;
+  color: #d0d0d0;
+  font-size: 11px;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-table
+  .widescreen-controls__layout-torrent-cell--main {
+  white-space: normal;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-table
+  .widescreen-controls__layout-torrent-cell--main
   .torrent-info-link {
   color: #d8d8d8;
   text-decoration: none;
   line-height: 1.45;
+  white-space: normal;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-row
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-table
+  .basic-movie-list__torrent-edition__sub {
+  color: #d0d0d0;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-table
   .torrent-info-link:hover {
   text-decoration: none;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-row
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-table
   .tag-separator {
   opacity: 0.65;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-gap {
-  position: relative;
-  min-width: 4px;
-  background: rgba(122, 155, 171, 0.18);
-}
-
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-gap::before {
-  content: '';
-  position: absolute;
-  inset: 10px 0;
-  border-left: 1px dashed rgba(173, 218, 238, 0.45);
-  border-right: 1px dashed rgba(173, 218, 238, 0.25);
-}
-
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-gap-label {
-  position: absolute;
-  left: 50%;
-  bottom: 8px;
-  transform: translateX(-50%);
-  color: #d4dde2;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-}
-
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-sidebar {
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 6px;
-  background: linear-gradient(180deg, rgba(52, 58, 64, 0.88), rgba(36, 41, 47, 0.9));
+  width: var(--preview-sidebar-width);
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-sidebar .panel {
+  margin-bottom: 10px;
 }
 
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-block-title {
@@ -576,6 +528,11 @@ html.js-widescreen-controls-active #content.page__main-content {
   font-size: 11px;
 }
 
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-main-meta,
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-sidebar-meta {
+  margin-bottom: 8px;
+}
+
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-bbcode-wrap {
   margin-top: 14px;
   padding: 10px;
@@ -586,6 +543,7 @@ html.js-widescreen-controls-active #content.page__main-content {
 
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-bbcode {
   height: 70px;
+  width: min(var(--bbcode-image-default-width), 100%);
   border: 1px solid #83b6c8;
   border-radius: 4px;
   background: linear-gradient(140deg, rgba(58, 84, 100, 0.55), rgba(39, 59, 74, 0.55));
@@ -1242,58 +1200,24 @@ html.js-widescreen-controls-active #content.page__main-content {
       'Scaled mock of layout width, main column, BBCode area, and sidebar from a torrents page.'
     );
 
-    const layoutPreview = document.createElement('div');
-    layoutPreview.className = 'widescreen-controls__layout-preview';
-
     const layoutFrame = document.createElement('div');
     layoutFrame.className = 'widescreen-controls__layout-frame';
 
-    const layoutStage = document.createElement('div');
-    layoutStage.className = 'widescreen-controls__layout-stage';
-
-    const layoutCanvas = document.createElement('div');
-    layoutCanvas.className = 'widescreen-controls__layout-canvas';
-
-    const wrapperMeta = document.createElement('div');
-    wrapperMeta.className = 'widescreen-controls__layout-wrapper-meta';
-
-    const wrapperHeading = document.createElement('div');
+    const wrapperHeading = document.createElement('h3');
     wrapperHeading.className = 'widescreen-controls__layout-block-title';
-    wrapperHeading.textContent = 'Wrapper';
+    wrapperHeading.textContent = 'Layout Width';
 
-    const wrapperSize = document.createElement('div');
+    const wrapperSize = document.createElement('p');
     wrapperSize.className = 'widescreen-controls__layout-block-size';
 
-    wrapperMeta.appendChild(wrapperHeading);
-    wrapperMeta.appendChild(wrapperSize);
-
-    const contentShell = document.createElement('div');
-    contentShell.className = 'widescreen-controls__layout-content';
-
-    const contentHeading = document.createElement('div');
-    contentHeading.className = 'widescreen-controls__layout-block-title';
-    contentHeading.textContent = 'Content';
-
-    const contentSize = document.createElement('div');
-    contentSize.className = 'widescreen-controls__layout-block-size';
-
-    const headerBlock = document.createElement('div');
-    headerBlock.className = 'widescreen-controls__layout-header';
-
-    const headerRowWide = document.createElement('div');
-    headerRowWide.className = 'widescreen-controls__layout-header-row widescreen-controls__layout-header-row--wide';
-
-    const headerRowMid = document.createElement('div');
-    headerRowMid.className = 'widescreen-controls__layout-header-row widescreen-controls__layout-header-row--mid';
-
-    headerBlock.appendChild(headerRowWide);
-    headerBlock.appendChild(headerRowMid);
-
-    const layoutColumns = document.createElement('div');
-    layoutColumns.className = 'widescreen-controls__layout-columns';
+    torrentsPreviewPanel.preview.appendChild(wrapperHeading);
+    torrentsPreviewPanel.preview.appendChild(wrapperSize);
 
     const mainColumn = document.createElement('div');
-    mainColumn.className = 'widescreen-controls__layout-main';
+    mainColumn.className = 'main-column widescreen-controls__layout-main';
+
+    const mainMeta = document.createElement('div');
+    mainMeta.className = 'widescreen-controls__layout-main-meta';
 
     const mainHeading = document.createElement('div');
     mainHeading.className = 'widescreen-controls__layout-block-title';
@@ -1302,8 +1226,70 @@ html.js-widescreen-controls-active #content.page__main-content {
     const mainSize = document.createElement('div');
     mainSize.className = 'widescreen-controls__layout-block-size';
 
-    const torrentRowPreview = document.createElement('div');
-    torrentRowPreview.className = 'widescreen-controls__layout-torrent-row basic-movie-list__torrent-row';
+    mainMeta.appendChild(mainHeading);
+    mainMeta.appendChild(mainSize);
+
+    const torrentTablePreview = document.createElement('table');
+    torrentTablePreview.className =
+      'widescreen-controls__layout-torrent-table table table--panel-like table--bordered movie-page__torrent-table';
+
+    const torrentTableHead = document.createElement('thead');
+    const torrentHeaderRow = document.createElement('tr');
+    const torrentHeaderCells = [
+      { text: 'Torrents (7)', width: '70%' },
+      { text: 'Time' },
+      { text: 'Size' },
+      { text: 'Sn' },
+      { text: 'Sd' },
+      { text: 'Le' }
+    ];
+    torrentHeaderCells.forEach(function (cell) {
+      const th = document.createElement('th');
+      th.textContent = cell.text;
+      if (cell.width) {
+        th.style.width = cell.width;
+      }
+      torrentHeaderRow.appendChild(th);
+    });
+    torrentTableHead.appendChild(torrentHeaderRow);
+
+    const torrentTableBody = document.createElement('tbody');
+    const torrentEditionRow = document.createElement('tr');
+    torrentEditionRow.className = 'group_torrent';
+
+    const torrentEditionCell = document.createElement('td');
+    torrentEditionCell.className = 'basic-movie-list__torrent-edition';
+    torrentEditionCell.colSpan = 6;
+
+    const editionMain = document.createElement('span');
+    editionMain.className = 'basic-movie-list__torrent-edition__main';
+    editionMain.textContent = 'Feature Film';
+
+    const editionSub = document.createElement('span');
+    editionSub.className = 'basic-movie-list__torrent-edition__sub';
+    editionSub.textContent = 'High Definition';
+
+    torrentEditionCell.appendChild(editionMain);
+    torrentEditionCell.appendChild(document.createTextNode(' - '));
+    torrentEditionCell.appendChild(editionSub);
+    torrentEditionRow.appendChild(torrentEditionCell);
+
+    const torrentDataRow = document.createElement('tr');
+    torrentDataRow.className = 'group_torrent group_torrent_header basic-movie-list__torrent-row';
+
+    const torrentMainCell = document.createElement('td');
+    torrentMainCell.className = 'widescreen-controls__layout-torrent-cell--main';
+
+    const torrentAction = document.createElement('span');
+    torrentAction.className = 'basic-movie-list__torrent__action';
+    torrentAction.textContent = '[DL | RP | PL]';
+
+    const torrentApproved = document.createElement('span');
+    torrentApproved.textContent = ' ☑ ';
+    torrentApproved.style.color = '#c8d36a';
+
+    torrentMainCell.appendChild(torrentAction);
+    torrentMainCell.appendChild(torrentApproved);
 
     const torrentInfoLink = document.createElement('a');
     torrentInfoLink.href = '#';
@@ -1321,7 +1307,7 @@ html.js-widescreen-controls-active #content.page__main-content {
     torrentTokens.forEach(function (token, index) {
       const span = document.createElement('span');
       span.textContent = token.text;
-      span.setAttribute('data-attr', token.attr);
+      span.dataset.attr = token.attr;
       if (token.style) {
         for (const [propertyName, propertyValue] of Object.entries(token.style)) {
           span.style.setProperty(propertyName, propertyValue);
@@ -1337,7 +1323,35 @@ html.js-widescreen-controls-active #content.page__main-content {
       }
     });
 
-    torrentRowPreview.appendChild(torrentInfoLink);
+    torrentMainCell.appendChild(torrentInfoLink);
+
+    const torrentTimeCell = document.createElement('td');
+    torrentTimeCell.className = 'time-cell';
+    torrentTimeCell.textContent = '8 days ago';
+
+    const torrentSizeCell = document.createElement('td');
+    torrentSizeCell.textContent = '6.52 GiB';
+
+    const torrentSnatchesCell = document.createElement('td');
+    torrentSnatchesCell.textContent = '213';
+
+    const torrentSeedersCell = document.createElement('td');
+    torrentSeedersCell.textContent = '192';
+
+    const torrentLeechersCell = document.createElement('td');
+    torrentLeechersCell.textContent = '9';
+
+    torrentDataRow.appendChild(torrentMainCell);
+    torrentDataRow.appendChild(torrentTimeCell);
+    torrentDataRow.appendChild(torrentSizeCell);
+    torrentDataRow.appendChild(torrentSnatchesCell);
+    torrentDataRow.appendChild(torrentSeedersCell);
+    torrentDataRow.appendChild(torrentLeechersCell);
+
+    torrentTableBody.appendChild(torrentEditionRow);
+    torrentTableBody.appendChild(torrentDataRow);
+    torrentTablePreview.appendChild(torrentTableHead);
+    torrentTablePreview.appendChild(torrentTableBody);
 
     const bbcodeWrap = document.createElement('div');
     bbcodeWrap.className = 'widescreen-controls__layout-bbcode-wrap';
@@ -1355,22 +1369,15 @@ html.js-widescreen-controls-active #content.page__main-content {
     bbcodeWrap.appendChild(bbcodeHeading);
     bbcodeWrap.appendChild(bbcodeSize);
     bbcodeWrap.appendChild(bbcodeBox);
-    mainColumn.appendChild(mainHeading);
-    mainColumn.appendChild(mainSize);
-    mainColumn.appendChild(torrentRowPreview);
+    mainColumn.appendChild(mainMeta);
+    mainColumn.appendChild(torrentTablePreview);
     mainColumn.appendChild(bbcodeWrap);
 
-    const gap = document.createElement('div');
-    gap.className = 'widescreen-controls__layout-gap';
-
-    const gapLabel = document.createElement('div');
-    gapLabel.className = 'widescreen-controls__layout-gap-label';
-    gapLabel.textContent = 'Gap';
-
-    gap.appendChild(gapLabel);
-
     const sidebar = document.createElement('div');
-    sidebar.className = 'widescreen-controls__layout-sidebar';
+    sidebar.className = 'sidebar widescreen-controls__layout-sidebar';
+
+    const sidebarMeta = document.createElement('div');
+    sidebarMeta.className = 'widescreen-controls__layout-sidebar-meta';
 
     const sidebarHeading = document.createElement('div');
     sidebarHeading.className = 'widescreen-controls__layout-block-title';
@@ -1379,23 +1386,77 @@ html.js-widescreen-controls-active #content.page__main-content {
     const sidebarSize = document.createElement('div');
     sidebarSize.className = 'widescreen-controls__layout-block-size';
 
-    sidebar.appendChild(sidebarHeading);
-    sidebar.appendChild(sidebarSize);
+    sidebarMeta.appendChild(sidebarHeading);
+    sidebarMeta.appendChild(sidebarSize);
 
-    layoutColumns.appendChild(mainColumn);
-    layoutColumns.appendChild(gap);
-    layoutColumns.appendChild(sidebar);
+    const coverPanel = document.createElement('div');
+    coverPanel.className = 'box_albumart panel';
 
-    layoutCanvas.appendChild(wrapperMeta);
-    contentShell.appendChild(contentHeading);
-    contentShell.appendChild(contentSize);
-    contentShell.appendChild(headerBlock);
-    contentShell.appendChild(layoutColumns);
-    layoutCanvas.appendChild(contentShell);
-    layoutStage.appendChild(layoutCanvas);
-    layoutFrame.appendChild(layoutStage);
-    layoutPreview.appendChild(layoutFrame);
-    torrentsPreviewPanel.preview.appendChild(layoutPreview);
+    const coverHeading = document.createElement('div');
+    coverHeading.className = 'panel__heading';
+
+    const coverHeadingTitle = document.createElement('span');
+    coverHeadingTitle.className = 'panel__heading__title';
+    coverHeadingTitle.textContent = 'Cover';
+
+    coverHeading.appendChild(coverHeadingTitle);
+
+    const coverBody = document.createElement('div');
+    coverBody.className = 'panel__body';
+
+    const coverImage = document.createElement('img');
+    coverImage.className = 'sidebar-cover-image';
+    coverImage.alt = 'Cover preview';
+    coverImage.src = 'https://ptpimg.me/67h402.jpg';
+
+    coverBody.appendChild(coverImage);
+    coverPanel.appendChild(coverHeading);
+    coverPanel.appendChild(coverBody);
+
+    const movieInfoPanel = document.createElement('div');
+    movieInfoPanel.className = 'panel';
+    movieInfoPanel.id = 'movieinfo-preview';
+
+    const movieInfoHeading = document.createElement('div');
+    movieInfoHeading.className = 'panel__heading';
+
+    const movieInfoHeadingTitle = document.createElement('span');
+    movieInfoHeadingTitle.className = 'panel__heading__title';
+    movieInfoHeadingTitle.textContent = 'Movie Info';
+
+    movieInfoHeading.appendChild(movieInfoHeadingTitle);
+
+    const movieInfoBody = document.createElement('div');
+    movieInfoBody.className = 'panel__body';
+
+    const movieInfoLines = [
+      ['Directors:', 'James Cameron'],
+      ['Writers:', 'Rick Jaffa, Amanda Silver, Josh Friedman'],
+      ['Producers:', 'Richard Baneham, Maria Battle-Campbell'],
+      ['Composers:', 'Simon Franglen'],
+      ['Cinematographers:', 'Russell Carpenter'],
+      ['Runtime:', '3h 17mn']
+    ];
+
+    movieInfoLines.forEach(function ([labelText, valueText]) {
+      const line = document.createElement('div');
+      const strong = document.createElement('strong');
+      strong.textContent = labelText;
+      line.appendChild(strong);
+      line.appendChild(document.createTextNode(` ${valueText}`));
+      movieInfoBody.appendChild(line);
+    });
+
+    movieInfoPanel.appendChild(movieInfoHeading);
+    movieInfoPanel.appendChild(movieInfoBody);
+
+    sidebar.appendChild(sidebarMeta);
+    sidebar.appendChild(coverPanel);
+    sidebar.appendChild(movieInfoPanel);
+
+    layoutFrame.appendChild(sidebar);
+    layoutFrame.appendChild(mainColumn);
+    torrentsPreviewPanel.previewPanel.appendChild(layoutFrame);
 
     function updateLayoutPreview(dimensions) {
       const wrapperWidth = dimensions.widths['layout-width'];
@@ -1413,25 +1474,14 @@ html.js-widescreen-controls-active #content.page__main-content {
       const scaledWrapperWidth = Math.max(40, Math.round(wrapperWidth * fitScale));
       const scaledContentWidth = Math.max(24, Math.round(contentInnerWidth * fitScale));
       const scaledSidebarWidth = Math.max(20, Math.round(sidebarWidth * fitScale));
-      const scaledGapWidth = Math.max(
-        previewMetrics.sidebarGap > 0 ? 4 : 0,
-        Math.round(previewMetrics.sidebarGap * fitScale)
-      );
-      const scaledMainColumnWidth = Math.max(20, scaledContentWidth - scaledSidebarWidth - scaledGapWidth);
-      const scaledBbcodeWidth = Math.max(12, Math.round(clampedBbcodeWidth * fitScale));
+        const scaledGapWidth = Math.max(
+          previewMetrics.sidebarGap > 0 ? 4 : 0,
+          Math.round(previewMetrics.sidebarGap * fitScale)
+        );
+        layoutFrame.style.setProperty('--preview-sidebar-width', `${scaledSidebarWidth}px`);
+        layoutFrame.style.setProperty('--preview-sidebar-gap', `${scaledGapWidth}px`);
 
-      layoutStage.style.width = `${scaledWrapperWidth}px`;
-      layoutCanvas.style.width = `${scaledWrapperWidth}px`;
-      contentShell.style.width = `${scaledContentWidth}px`;
-      headerBlock.style.width = `${scaledContentWidth}px`;
-      layoutColumns.style.width = `${scaledContentWidth}px`;
-      mainColumn.style.width = `${scaledMainColumnWidth}px`;
-      gap.style.width = `${scaledGapWidth}px`;
-      sidebar.style.width = `${scaledSidebarWidth}px`;
-      bbcodeBox.style.width = `${Math.min(scaledBbcodeWidth, scaledMainColumnWidth)}px`;
-
-      wrapperSize.textContent = `Wrapper: ${wrapperWidth}px`;
-      contentSize.textContent = `Content inner: ${contentInnerWidth}px`;
+        wrapperSize.textContent = `Layout Width: ${wrapperWidth}px`;
       mainSize.textContent = `Main column: ${mainColumnWidth}px`;
       bbcodeSize.textContent = `BBCode: ${clampedBbcodeWidth}px`;
       sidebarSize.textContent = `Sidebar: ${sidebarWidth}px`;
