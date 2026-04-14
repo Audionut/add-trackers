@@ -203,34 +203,10 @@
     const style = document.createElement('style');
     style.id = CONTROLS_STYLE_ID;
     style.textContent = `
-#content.page__main-content.js-widescreen-controls-active > .thin,
-#content.page__main-content.js-widescreen-controls-active > .thin > .tabs,
-#content.page__main-content.js-widescreen-controls-active > .thin > .tabs > .tabs__panels,
-#content.page__main-content.js-widescreen-controls-active > .thin > .tabs > .tabs__bar {
-  width: var(--layout-width) !important;
-  min-width: var(--layout-width) !important;
-  max-width: none !important;
-  margin-left: auto;
-  margin-right: auto;
-}
-
-#content.page__main-content.js-widescreen-controls-active {
-  width: auto !important;
-  min-width: 1140px !important;
-  max-width: none !important;
-}
-
-body.js-widescreen-controls-active #content.page__main-content,
-html.js-widescreen-controls-active #content.page__main-content {
-  width: auto !important;
-  min-width: 1140px !important;
-  max-width: none !important;
-}
-
 .tabs__panel.js-widescreen-controls-tab-panel,
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel {
-  width: var(--layout-width);
-  min-width: var(--layout-width);
+  width: var(--widescreen-preview-content-width, var(--layout-width));
+  min-width: var(--widescreen-preview-content-width, var(--layout-width));
   margin-left: auto;
   margin-right: auto;
 }
@@ -340,31 +316,12 @@ html.js-widescreen-controls-active #content.page__main-content {
   min-height: 18px;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__preview {
-  padding-top: 2px;
-}
-
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__preview-title {
-  margin: 0 0 6px;
-  font-size: 16px;
-}
-
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__preview-subtitle {
-  margin: 0 0 10px;
-  color: #a8a8a8;
-  font-size: 12px;
-}
-
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__preview-tabs {
   margin-top: 0;
 }
 
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__preview-tabs-panel {
   margin-top: 14px;
-}
-
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__preview-content-panel {
-  margin-top: 10px;
 }
 
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__preview-tab-bar {
@@ -395,57 +352,46 @@ html.js-widescreen-controls-active #content.page__main-content {
   box-shadow: inset 0 0 0 1px rgba(131, 182, 200, 0.18);
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__preview-tab-panels {
-  display: block;
-}
-
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__preview-tab-panel {
-  display: none;
-}
-
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__preview-tab-panel--active {
-  display: block;
-}
-
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__preview-grid {
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__preview-grid {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  margin-top: 10px;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__preview-row {
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__preview-row {
   display: grid;
   grid-template-columns: repeat(var(--preview-row-columns, 1), minmax(0, 1fr));
   gap: 10px;
 }
 
 @media (max-width: 1300px) {
-  .tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__preview-row {
+  .tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__preview-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 760px) {
-  .tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__preview-row {
+  .tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__preview-row {
     grid-template-columns: 1fr;
   }
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__preview-item {
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__preview-item {
   border: 1px solid #3a3c3f;
   border-radius: 6px;
   background: #1b1b1b;
   padding: 8px;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__preview-label {
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__preview-label {
   color: #d9d9d9;
   font-size: 12px;
   text-transform: capitalize;
   margin-bottom: 8px;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__preview-frame {
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__preview-frame {
   min-height: 96px;
   height: auto;
   display: flex;
@@ -457,7 +403,7 @@ html.js-widescreen-controls-active #content.page__main-content {
   background: radial-gradient(circle at 50% 40%, #2b2b2b, #181818);
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__preview-box {
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__preview-box {
   display: block;
   flex: 0 0 auto;
   border: 1px solid #83b6c8;
@@ -465,61 +411,56 @@ html.js-widescreen-controls-active #content.page__main-content {
   box-shadow: inset 0 0 0 1px rgba(173, 218, 238, 0.2);
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__preview-size {
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__preview-size {
   margin-top: 7px;
   color: #afafaf;
   font-size: 11px;
   text-align: center;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-frame {
-  min-height: 180px;
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-page {
+  min-width: 0;
   width: 100%;
   box-sizing: border-box;
-  overflow: auto;
-  padding: 15px 19px;
-  border: 1px dashed #5a5a5a;
-  border-radius: 4px;
-  background: black;
+  margin-top: 10px;
+  overflow-x: auto;
+  overflow-y: visible;
+  padding: 0;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-frame::after {
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-page::after {
   content: '';
   display: block;
   clear: both;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-page {
-  min-width: 0;
-}
-
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-main,
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-sidebar {
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-main,
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-sidebar {
   box-sizing: border-box;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-page-title {
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-page-title {
   margin: 0 0 8px;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-page-title .artist-info-link {
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-page-title .artist-info-link {
   color: inherit;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-linkbox {
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-linkbox {
   margin-bottom: 12px;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-linkbox .linkbox__link {
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-linkbox .linkbox__link {
   white-space: nowrap;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-main {
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-main {
   margin-bottom: 0;
   margin-right: 0;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-table {
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-torrent-table {
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
@@ -527,9 +468,9 @@ html.js-widescreen-controls-active #content.page__main-content {
   border-radius: 4px;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-table
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-torrent-table
   th,
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-table
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-torrent-table
   td {
   padding: 4px 6px;
   border: 1px solid #555555;
@@ -539,29 +480,29 @@ html.js-widescreen-controls-active #content.page__main-content {
   white-space: nowrap;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-table
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-torrent-table
   thead
   > tr {
   background: linear-gradient(180deg, rgba(20, 22, 22, 0.95), rgba(8, 9, 9, 0.95));
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-table
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-torrent-table
   tbody
   > tr {
   background: rgba(51, 51, 51, 0.78);
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-table
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-torrent-table
   .basic-movie-list__torrent-edition {
   font-size: 12px;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-table
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-torrent-table
   .basic-movie-list__torrent-row {
   font-size: var(--torrent-row-font-size);
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-table
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-torrent-table
   .basic-movie-list__torrent__action {
   float: right;
   margin-left: 10px;
@@ -569,12 +510,12 @@ html.js-widescreen-controls-active #content.page__main-content {
   font-size: 11px;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-table
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-torrent-table
   .widescreen-controls__layout-torrent-cell--main {
   white-space: normal;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-table
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-torrent-table
   .widescreen-controls__layout-torrent-cell--main
   .torrent-info-link {
   color: #d8d8d8;
@@ -583,30 +524,30 @@ html.js-widescreen-controls-active #content.page__main-content {
   white-space: normal;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-table
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-torrent-table
   .basic-movie-list__torrent-edition__sub {
   color: #d0d0d0;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-table
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-torrent-table
   .torrent-info-link:hover {
   text-decoration: none;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-table
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-torrent-table
   .tag-separator {
   opacity: 0.65;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-sidebar {
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-sidebar {
   width: var(--preview-sidebar-width);
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-sidebar .panel {
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-sidebar .panel {
   margin-bottom: 10px;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-block-title {
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-block-title {
   color: #f0f0f0;
   font-size: 12px;
   font-weight: 600;
@@ -614,18 +555,18 @@ html.js-widescreen-controls-active #content.page__main-content {
   letter-spacing: 0.04em;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-block-size {
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-block-size {
   margin-top: 4px;
   color: #c2c2c2;
   font-size: 11px;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-main-meta,
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-sidebar-meta {
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-main-meta,
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-sidebar-meta {
   margin-bottom: 8px;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-bbcode-wrap {
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-bbcode-wrap {
   margin-top: 14px;
   padding: 10px;
   border: 1px dashed rgba(173, 218, 238, 0.35);
@@ -633,7 +574,7 @@ html.js-widescreen-controls-active #content.page__main-content {
   background: rgba(15, 18, 21, 0.26);
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-bbcode {
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-bbcode {
   height: 70px;
   width: min(var(--bbcode-image-default-width), 100%);
   border: 1px solid #83b6c8;
@@ -642,53 +583,46 @@ html.js-widescreen-controls-active #content.page__main-content {
   box-shadow: inset 0 0 0 1px rgba(173, 218, 238, 0.2);
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-legend {
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-legend {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-metric {
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-metric {
   border: 1px solid #3a3c3f;
   border-radius: 6px;
   background: #1b1b1b;
   padding: 8px 10px;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-metric-label {
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-metric-label {
   color: #d9d9d9;
   font-size: 12px;
 }
 
-.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-metric-value {
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-metric-value {
   margin-top: 4px;
   color: #afafaf;
   font-size: 11px;
 }
 
 @media (max-width: 760px) {
-  .tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-legend {
+  .tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-legend {
     grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 1000px) {
-  #content.page__main-content.js-widescreen-controls-active > .thin,
-  #content.page__main-content.js-widescreen-controls-active > .thin > .tabs,
-  #content.page__main-content.js-widescreen-controls-active > .thin > .tabs > .tabs__panels,
-  #content.page__main-content.js-widescreen-controls-active > .thin > .tabs > .tabs__bar {
-    width: var(--layout-width) !important;
-    min-width: var(--layout-width) !important;
-  }
-
   .tabs__panels {
     overflow-x: auto;
   }
 
   .tabs__panel.js-widescreen-controls-tab-panel,
-  .tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel {
-    width: var(--layout-width);
-    min-width: var(--layout-width);
+  .tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-page,
+  .tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__preview-grid {
+    width: var(--widescreen-preview-content-width, var(--layout-width));
+    min-width: var(--widescreen-preview-content-width, var(--layout-width));
   }
 
   .js-widescreen-controls-panel.widescreen-controls {
@@ -1265,48 +1199,10 @@ html.js-widescreen-controls-active #content.page__main-content {
     buttonRow.appendChild(resetButton);
     buttonRow.appendChild(status);
 
-    function createPreviewPanel(titleText, subtitleText) {
-      const previewPanel = document.createElement('div');
-      previewPanel.className = 'panel widescreen-preview-panel';
-
-      const preview = document.createElement('div');
-      preview.className = 'panel__body widescreen-controls__preview';
-
-      const previewTitle = document.createElement('h3');
-      previewTitle.className = 'widescreen-controls__preview-title';
-      previewTitle.textContent = titleText;
-
-      const previewSubtitle = document.createElement('p');
-      previewSubtitle.className = 'widescreen-controls__preview-subtitle';
-      previewSubtitle.textContent = subtitleText;
-
-      preview.appendChild(previewTitle);
-      preview.appendChild(previewSubtitle);
-      previewPanel.appendChild(preview);
-
-      return { previewPanel, preview };
-    }
-
-    const torrentsPreviewPanel = createPreviewPanel(
-      'Torrents Layout Preview',
-      'Scaled mock of layout width, main column, BBCode area, and sidebar from a torrents page.'
-    );
-
-    const layoutFrame = document.createElement('div');
-    layoutFrame.className = 'widescreen-controls__layout-frame';
+    let previewTabsPanel = null;
 
     const layoutPage = document.createElement('div');
     layoutPage.className = 'thin widescreen-controls__layout-page';
-
-    const wrapperHeading = document.createElement('h3');
-    wrapperHeading.className = 'widescreen-controls__layout-block-title';
-    wrapperHeading.textContent = 'Layout Width';
-
-    const wrapperSize = document.createElement('p');
-    wrapperSize.className = 'widescreen-controls__layout-block-size';
-
-    torrentsPreviewPanel.preview.appendChild(wrapperHeading);
-    torrentsPreviewPanel.preview.appendChild(wrapperSize);
 
     const pageTitle = document.createElement('h2');
     pageTitle.className = 'page__title widescreen-controls__layout-page-title';
@@ -1586,8 +1482,6 @@ html.js-widescreen-controls-active #content.page__main-content {
     layoutPage.appendChild(linkbox);
     layoutPage.appendChild(sidebar);
     layoutPage.appendChild(mainColumn);
-    layoutFrame.appendChild(layoutPage);
-    torrentsPreviewPanel.previewPanel.appendChild(layoutFrame);
 
     function updateLayoutPreview(dimensions) {
       const wrapperWidth = dimensions.widths['layout-width'];
@@ -1600,28 +1494,25 @@ html.js-widescreen-controls-active #content.page__main-content {
       const mainColumnWidth = Math.max(0, contentInnerWidth - sidebarWidth - previewMetrics.sidebarGap);
       const clampedBbcodeWidth = Math.min(bbcodeWidth, mainColumnWidth);
 
-      const availableWidth = Math.max(80, layoutFrame.clientWidth - 24);
+      const availableWidth = Math.max(80, layoutPage.parentElement ? layoutPage.parentElement.clientWidth : layoutPage.clientWidth);
       const fitScale = Math.min(1, availableWidth / Math.max(wrapperWidth, 1));
-      const scaledWrapperWidth = Math.max(40, Math.round(wrapperWidth * fitScale));
-      const scaledContentWidth = Math.max(24, Math.round(contentInnerWidth * fitScale));
       const scaledSidebarWidth = Math.max(20, Math.round(sidebarWidth * fitScale));
-        const scaledGapWidth = Math.max(
-          previewMetrics.sidebarGap > 0 ? 4 : 0,
-          Math.round(previewMetrics.sidebarGap * fitScale)
-        );
-      sidebar.style.width = `${scaledSidebarWidth}px`;
-      mainColumn.style.marginRight = `${scaledSidebarWidth + scaledGapWidth}px`;
+      const scaledGapWidth = Math.max(
+        previewMetrics.sidebarGap > 0 ? 4 : 0,
+        Math.round(previewMetrics.sidebarGap * fitScale)
+      );
+      document.documentElement.style.setProperty('--widescreen-preview-content-width', `${contentInnerWidth}px`);
+      layoutPage.style.width = `${contentInnerWidth}px`;
+      if (previewTabsPanel) {
+        previewTabsPanel.style.width = `${contentInnerWidth}px`;
+      }
+      sidebar.style.width = `${sidebarWidth}px`;
+      mainColumn.style.marginRight = `${sidebarWidth + previewMetrics.sidebarGap}px`;
 
-      wrapperSize.textContent = `Layout Width: ${wrapperWidth}px`;
       mainSize.textContent = `Main column: ${mainColumnWidth}px`;
       bbcodeSize.textContent = `BBCode: ${clampedBbcodeWidth}px`;
       sidebarSize.textContent = `Sidebar: ${sidebarWidth}px`;
     }
-
-    const coverPreviewPanel = createPreviewPanel(
-      'View Mode Poster Preview',
-      'Live size preview grouped by the site view mode selector (Cover, Small cover, Huge, List, Compact list).'
-    );
 
     const previewGrid = document.createElement('div');
     previewGrid.className = 'widescreen-controls__preview-grid';
@@ -1694,28 +1585,20 @@ html.js-widescreen-controls-active #content.page__main-content {
       updateCoverPreview(dimensions);
     });
 
-    const previewTabsPanel = document.createElement('div');
+    previewTabsPanel = document.createElement('div');
     previewTabsPanel.className = 'panel widescreen-controls__preview-tabs-panel';
 
     const previewTabsPanelBody = document.createElement('div');
     previewTabsPanelBody.className = 'panel__body widescreen-controls__preview-tabs';
 
-    const previewContentPanel = document.createElement('div');
-    previewContentPanel.className = 'widescreen-controls__preview-content-panel';
-
     const previewTabBar = document.createElement('div');
     previewTabBar.className = 'widescreen-controls__preview-tab-bar';
-
-    const previewTabPanels = document.createElement('div');
-    previewTabPanels.className = 'widescreen-controls__preview-tab-panels';
-
-    coverPreviewPanel.preview.appendChild(previewGrid);
 
     const previewTabDefinitions = [
       {
         key: 'layout',
         label: 'Torrents Layout Preview',
-        panel: torrentsPreviewPanel.previewPanel,
+        panel: layoutPage,
         onActivate: function () {
           schedulePreviewRefresh();
         }
@@ -1723,7 +1606,7 @@ html.js-widescreen-controls-active #content.page__main-content {
       {
         key: 'posters',
         label: 'View Mode Poster Preview',
-        panel: coverPreviewPanel.previewPanel,
+        panel: previewGrid,
         onActivate: function () {
           schedulePreviewRefresh();
         }
@@ -1738,12 +1621,18 @@ html.js-widescreen-controls-active #content.page__main-content {
         const controls = previewTabsByKey[definition.key];
         if (!controls) continue;
         controls.button.classList.toggle('widescreen-controls__preview-tab--active', isActive);
-        controls.panel.classList.toggle('widescreen-controls__preview-tab-panel--active', isActive);
       }
 
       const activeDefinition = previewTabDefinitions.find(function (definition) {
         return definition.key === key;
       });
+      const currentPreview = panel.querySelector('.thin.widescreen-controls__layout-page, .widescreen-controls__preview-grid');
+      if (activeDefinition && currentPreview !== activeDefinition.panel) {
+        if (currentPreview) {
+          currentPreview.remove();
+        }
+        panel.appendChild(activeDefinition.panel);
+      }
       if (activeDefinition && typeof activeDefinition.onActivate === 'function') {
         activeDefinition.onActivate();
       }
@@ -1761,18 +1650,12 @@ html.js-widescreen-controls-active #content.page__main-content {
         setActivePreviewTab(definition.key);
       });
 
-      const previewTabPanel = document.createElement('div');
-      previewTabPanel.className = 'widescreen-controls__preview-tab-panel';
-      previewTabPanel.appendChild(definition.panel);
-
       previewTabBar.appendChild(button);
-      previewTabPanels.appendChild(previewTabPanel);
-      previewTabsByKey[definition.key] = { button, panel: previewTabPanel };
+      previewTabsByKey[definition.key] = { button };
     });
 
     previewTabsPanelBody.appendChild(previewTabBar);
     previewTabsPanel.appendChild(previewTabsPanelBody);
-    previewContentPanel.appendChild(previewTabPanels);
 
     body.appendChild(title);
     body.appendChild(description);
@@ -1784,7 +1667,6 @@ html.js-widescreen-controls-active #content.page__main-content {
     wrapper.appendChild(body);
     panel.appendChild(wrapper);
     panel.appendChild(previewTabsPanel);
-    panel.appendChild(previewContentPanel);
 
     setActivePreviewTab('layout');
 
@@ -1819,14 +1701,6 @@ html.js-widescreen-controls-active #content.page__main-content {
 
       stylesheetPanel.classList.toggle('tabs__panel--active', !isWide);
       widescreenPanel.classList.toggle('tabs__panel--active', isWide);
-
-      if (contentRoot) {
-        contentRoot.classList.toggle('js-widescreen-controls-active', isWide);
-      }
-      if (document.body) {
-        document.body.classList.toggle('js-widescreen-controls-active', isWide);
-      }
-      document.documentElement.classList.toggle('js-widescreen-controls-active', isWide);
 
       if (isWide) {
         schedulePreviewRefresh();
