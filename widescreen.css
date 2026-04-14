@@ -31,6 +31,8 @@ html {
   --search-bar-field-gap: 10px;
   --search-bar-font-size: 1.1em;
   --torrent-row-font-size: 1em;
+  --page-title-font-size: 2em;
+  --linkbox-font-size: 1em;
   --bbcode-image-default-width: 1450px;
   --cover-movie-width: 176px;
   --cover-movie-height: 246px;
@@ -1985,6 +1987,7 @@ html.busy-cursor * {
 .linkbox {
   text-align: center;
   margin: 5px 5px 10px 5px;
+  font-size: var(--linkbox-font-size);
 }
 
 .linkbox__link--current {
@@ -2172,6 +2175,7 @@ html.busy-cursor * {
 
 .page__title {
   text-align: center;
+  font-size: var(--page-title-font-size);
 }
 
 .page__main-content {

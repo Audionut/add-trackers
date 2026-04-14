@@ -83,6 +83,28 @@
       precision: 2,
       unit: 'em',
       linkedByDefault: false
+    },
+    {
+      name: 'page-title-font-size',
+      label: 'Page Title Font Size',
+      defaultValue: 2,
+      min: 1,
+      max: 4,
+      step: 0.1,
+      precision: 1,
+      unit: 'em',
+      linkedByDefault: false
+    },
+    {
+      name: 'linkbox-font-size',
+      label: 'Linkbox Font Size',
+      defaultValue: 1,
+      min: 0.7,
+      max: 2,
+      step: 0.1,
+      precision: 1,
+      unit: 'em',
+      linkedByDefault: false
     }
   ];
 
@@ -459,8 +481,6 @@ html.js-widescreen-controls-active #content.page__main-content {
   border: 1px dashed #5a5a5a;
   border-radius: 4px;
   background: black;
-  --preview-sidebar-width: var(--sidebar-width);
-  --preview-sidebar-gap: var(--sidebar-gap);
 }
 
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-frame::after {
@@ -469,14 +489,34 @@ html.js-widescreen-controls-active #content.page__main-content {
   clear: both;
 }
 
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-page {
+  min-width: 0;
+}
+
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-main,
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-sidebar {
   box-sizing: border-box;
 }
 
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-page-title {
+  margin: 0 0 8px;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-page-title .artist-info-link {
+  color: inherit;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-linkbox {
+  margin-bottom: 12px;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-linkbox .linkbox__link {
+  white-space: nowrap;
+}
+
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-main {
   margin-bottom: 0;
-  margin-right: calc(var(--preview-sidebar-width) + var(--preview-sidebar-gap));
+  margin-right: 0;
 }
 
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__layout-torrent-table {
@@ -1255,6 +1295,9 @@ html.js-widescreen-controls-active #content.page__main-content {
     const layoutFrame = document.createElement('div');
     layoutFrame.className = 'widescreen-controls__layout-frame';
 
+    const layoutPage = document.createElement('div');
+    layoutPage.className = 'thin widescreen-controls__layout-page';
+
     const wrapperHeading = document.createElement('h3');
     wrapperHeading.className = 'widescreen-controls__layout-block-title';
     wrapperHeading.textContent = 'Layout Width';
@@ -1264,6 +1307,39 @@ html.js-widescreen-controls-active #content.page__main-content {
 
     torrentsPreviewPanel.preview.appendChild(wrapperHeading);
     torrentsPreviewPanel.preview.appendChild(wrapperSize);
+
+    const pageTitle = document.createElement('h2');
+    pageTitle.className = 'page__title widescreen-controls__layout-page-title';
+    pageTitle.appendChild(document.createTextNode('Avatar: Fire and Ash [2025] by '));
+
+    const artistInfoLink = document.createElement('a');
+    artistInfoLink.className = 'artist-info-link';
+    artistInfoLink.href = 'artist.php?id=87';
+    artistInfoLink.textContent = 'James Cameron';
+    pageTitle.appendChild(artistInfoLink);
+
+    const linkbox = document.createElement('div');
+    linkbox.className = 'linkbox widescreen-controls__layout-linkbox';
+
+    const linkboxLinks = [
+      ['[Edit description]', 'torrents.php?action=editgroup&groupid=409178'],
+      ['[View history]', 'torrents.php?action=history&groupid=409178'],
+      ['[Bookmark]', '#'],
+      ['[Profile Film]', 'bonus.php?store=profilefilmconfirm&id=409178'],
+      ['[Add format]', 'upload.php?groupid=409178'],
+      ['[Request format]', 'requests.php?action=new&groupid=409178'],
+      ['[I will encode this]', '#'],
+      ['[Refresh Data]', 'torrents.php?action=imdb&groupid=409178&auth=fd77c0a924fa767e5b5a1324f5e4822c'],
+      ['[Subscribe]', '#']
+    ];
+
+    linkboxLinks.forEach(function ([labelText, href]) {
+      const link = document.createElement('a');
+      link.className = 'linkbox__link';
+      link.href = href;
+      link.textContent = labelText;
+      linkbox.appendChild(link);
+    });
 
     const mainColumn = document.createElement('div');
     mainColumn.className = 'main-column widescreen-controls__layout-main';
@@ -1506,8 +1582,11 @@ html.js-widescreen-controls-active #content.page__main-content {
     sidebar.appendChild(coverPanel);
     sidebar.appendChild(movieInfoPanel);
 
-    layoutFrame.appendChild(sidebar);
-    layoutFrame.appendChild(mainColumn);
+    layoutPage.appendChild(pageTitle);
+    layoutPage.appendChild(linkbox);
+    layoutPage.appendChild(sidebar);
+    layoutPage.appendChild(mainColumn);
+    layoutFrame.appendChild(layoutPage);
     torrentsPreviewPanel.previewPanel.appendChild(layoutFrame);
 
     function updateLayoutPreview(dimensions) {
@@ -1530,10 +1609,10 @@ html.js-widescreen-controls-active #content.page__main-content {
           previewMetrics.sidebarGap > 0 ? 4 : 0,
           Math.round(previewMetrics.sidebarGap * fitScale)
         );
-        layoutFrame.style.setProperty('--preview-sidebar-width', `${scaledSidebarWidth}px`);
-        layoutFrame.style.setProperty('--preview-sidebar-gap', `${scaledGapWidth}px`);
+      sidebar.style.width = `${scaledSidebarWidth}px`;
+      mainColumn.style.marginRight = `${scaledSidebarWidth + scaledGapWidth}px`;
 
-        wrapperSize.textContent = `Layout Width: ${wrapperWidth}px`;
+      wrapperSize.textContent = `Layout Width: ${wrapperWidth}px`;
       mainSize.textContent = `Main column: ${mainColumnWidth}px`;
       bbcodeSize.textContent = `BBCode: ${clampedBbcodeWidth}px`;
       sidebarSize.textContent = `Sidebar: ${sidebarWidth}px`;
