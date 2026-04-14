@@ -189,6 +189,15 @@
     'torrents-huge-movie-width': 'Torrents huge view poster'
   };
 
+  const TORRENTS_LAYOUT_PREVIEW_VARIABLE_NAMES = new Set([
+    'sidebar-width',
+    'sidebar-gap',
+    'bbcode-image-default-width',
+    'torrent-row-font-size',
+    'page-title-font-size',
+    'linkbox-font-size'
+  ]);
+
   const DIRECT_WIDTH_BINDINGS = [
     {
       variableName: 'main-menu-width',
@@ -217,6 +226,25 @@
   margin-left: auto;
   margin-right: auto;
   margin-bottom: 14px;
+}
+
+.widescreen-controls__preview-options-panel {
+  width: 1040px;
+  min-width: 1040px;
+  margin: 10px auto 14px;
+}
+
+.widescreen-controls__preview-options-panel[hidden] {
+  display: none !important;
+}
+
+.widescreen-controls__preview-options-title {
+  margin: 0 0 10px;
+}
+
+.widescreen-controls__preview-options-description {
+  margin: 0 0 12px;
+  color: #b8b8b8;
 }
 
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel {
@@ -626,6 +654,11 @@
   }
 
   .js-widescreen-controls-panel.widescreen-controls {
+    width: 1040px;
+    min-width: 1040px;
+  }
+
+  .widescreen-controls__preview-options-panel {
     width: 1040px;
     min-width: 1040px;
   }
@@ -1087,7 +1120,10 @@
 
     const controlsByName = {};
     for (const variable of SETTING_VARS) {
-      controlsList.appendChild(makeRangeRow(variable, controlsByName));
+      const row = makeRangeRow(variable, controlsByName);
+      if (!TORRENTS_LAYOUT_PREVIEW_VARIABLE_NAMES.has(variable.name)) {
+        controlsList.appendChild(row);
+      }
     }
 
     const assetsList = document.createElement('div');
@@ -1199,6 +1235,64 @@
     buttonRow.appendChild(resetButton);
     buttonRow.appendChild(status);
 
+    const previewOptionsPanel = document.createElement('div');
+    previewOptionsPanel.className = 'panel form--horizontal widescreen-controls__preview-options-panel';
+    previewOptionsPanel.hidden = true;
+
+    const previewOptionsBody = document.createElement('div');
+    previewOptionsBody.className = 'panel__body';
+
+    const previewOptionsTitle = document.createElement('h2');
+    previewOptionsTitle.className = 'widescreen-controls__preview-options-title';
+    previewOptionsTitle.textContent = 'Preview Options';
+
+    const previewOptionsDescription = document.createElement('p');
+    previewOptionsDescription.className = 'widescreen-controls__preview-options-description';
+    previewOptionsDescription.textContent = 'Options specific to the active preview.';
+
+    const previewOptionsList = document.createElement('div');
+    previewOptionsList.className = 'widescreen-controls__list';
+
+    const previewOptionsActions = document.createElement('div');
+    previewOptionsActions.className = 'widescreen-controls__actions';
+
+    const resetPreviewOptionsButton = document.createElement('button');
+    resetPreviewOptionsButton.type = 'button';
+    resetPreviewOptionsButton.textContent = 'Reset Preview Options';
+
+    resetPreviewOptionsButton.addEventListener('click', function () {
+      for (const variable of SETTING_VARS) {
+        if (!TORRENTS_LAYOUT_PREVIEW_VARIABLE_NAMES.has(variable.name)) continue;
+        state.overrides[variable.name] = variable.defaultValue;
+        if (!state.linkedVariables) {
+          state.linkedVariables = {};
+        }
+        if (variable.linkedByDefault === false) {
+          state.linkedVariables[variable.name] = false;
+        } else {
+          delete state.linkedVariables[variable.name];
+        }
+      }
+      applySettings(state);
+      refreshIndividualControls(controlsByName, state);
+      saveState(state);
+      flashStatus('Preview options reset');
+    });
+
+    for (const variable of SETTING_VARS) {
+      if (!TORRENTS_LAYOUT_PREVIEW_VARIABLE_NAMES.has(variable.name)) continue;
+      const controls = controlsByName[variable.name];
+      if (!controls) continue;
+      previewOptionsList.appendChild(controls.row);
+    }
+
+    previewOptionsActions.appendChild(resetPreviewOptionsButton);
+    previewOptionsBody.appendChild(previewOptionsTitle);
+    previewOptionsBody.appendChild(previewOptionsDescription);
+    previewOptionsBody.appendChild(previewOptionsList);
+    previewOptionsBody.appendChild(previewOptionsActions);
+    previewOptionsPanel.appendChild(previewOptionsBody);
+
     let previewTabsPanel = null;
 
     const layoutPage = document.createElement('div');
@@ -1208,33 +1302,29 @@
     pageTitle.className = 'page__title widescreen-controls__layout-page-title';
     pageTitle.appendChild(document.createTextNode('Avatar: Fire and Ash [2025] by '));
 
-    const artistInfoLink = document.createElement('a');
-    artistInfoLink.className = 'artist-info-link';
-    artistInfoLink.href = 'artist.php?id=87';
-    artistInfoLink.textContent = 'James Cameron';
-    pageTitle.appendChild(artistInfoLink);
+    const artistInfoText = document.createElement('span');
+    artistInfoText.className = 'artist-info-link';
+    artistInfoText.textContent = 'James Cameron';
+    pageTitle.appendChild(artistInfoText);
 
     const linkbox = document.createElement('div');
     linkbox.className = 'linkbox widescreen-controls__layout-linkbox';
 
-    const linkboxLinks = [
-      ['[Edit description]', 'torrents.php?action=editgroup&groupid=409178'],
-      ['[View history]', 'torrents.php?action=history&groupid=409178'],
-      ['[Bookmark]', '#'],
-      ['[Profile Film]', 'bonus.php?store=profilefilmconfirm&id=409178'],
-      ['[Add format]', 'upload.php?groupid=409178'],
-      ['[Request format]', 'requests.php?action=new&groupid=409178'],
-      ['[I will encode this]', '#'],
-      ['[Refresh Data]', 'torrents.php?action=imdb&groupid=409178&auth=fd77c0a924fa767e5b5a1324f5e4822c'],
-      ['[Subscribe]', '#']
-    ];
-
-    linkboxLinks.forEach(function ([labelText, href]) {
-      const link = document.createElement('a');
-      link.className = 'linkbox__link';
-      link.href = href;
-      link.textContent = labelText;
-      linkbox.appendChild(link);
+    [
+      '[Edit description]',
+      '[View history]',
+      '[Bookmark]',
+      '[Profile Film]',
+      '[Add format]',
+      '[Request format]',
+      '[I will encode this]',
+      '[Refresh Data]',
+      '[Subscribe]'
+    ].forEach(function (labelText) {
+      const linkText = document.createElement('span');
+      linkText.className = 'linkbox__link';
+      linkText.textContent = labelText;
+      linkbox.appendChild(linkText);
     });
 
     const mainColumn = document.createElement('div');
@@ -1633,6 +1723,7 @@
         }
         panel.appendChild(activeDefinition.panel);
       }
+      previewOptionsPanel.hidden = key !== 'layout';
       if (activeDefinition && typeof activeDefinition.onActivate === 'function') {
         activeDefinition.onActivate();
       }
@@ -1667,6 +1758,7 @@
     wrapper.appendChild(body);
     panel.appendChild(wrapper);
     panel.appendChild(previewTabsPanel);
+    panel.appendChild(previewOptionsPanel);
 
     setActivePreviewTab('layout');
 
