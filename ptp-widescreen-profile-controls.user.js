@@ -333,6 +333,58 @@ html.js-widescreen-controls-active #content.page__main-content {
   font-size: 12px;
 }
 
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__preview-tabs {
+  margin-top: 0;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__preview-tabs-panel {
+  margin-top: 14px;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__preview-content-panel {
+  margin-top: 10px;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__preview-tab-bar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__preview-tab {
+  border: 1px solid #4a4d50;
+  border-radius: 6px;
+  background: linear-gradient(180deg, rgba(34, 36, 38, 0.95), rgba(18, 19, 20, 0.95));
+  color: #d7d7d7;
+  font-size: 12px;
+  line-height: 1.2;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__preview-tab:hover {
+  border-color: #6c7277;
+  color: #f0f0f0;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__preview-tab--active {
+  border-color: #83b6c8;
+  color: #f4fbff;
+  box-shadow: inset 0 0 0 1px rgba(131, 182, 200, 0.18);
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__preview-tab-panels {
+  display: block;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__preview-tab-panel {
+  display: none;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__preview-tab-panel--active {
+  display: block;
+}
+
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-preview-panel .widescreen-controls__preview-grid {
   display: flex;
   flex-direction: column;
@@ -1563,6 +1615,86 @@ html.js-widescreen-controls-active #content.page__main-content {
       updateCoverPreview(dimensions);
     });
 
+    const previewTabsPanel = document.createElement('div');
+    previewTabsPanel.className = 'panel widescreen-controls__preview-tabs-panel';
+
+    const previewTabsPanelBody = document.createElement('div');
+    previewTabsPanelBody.className = 'panel__body widescreen-controls__preview-tabs';
+
+    const previewContentPanel = document.createElement('div');
+    previewContentPanel.className = 'widescreen-controls__preview-content-panel';
+
+    const previewTabBar = document.createElement('div');
+    previewTabBar.className = 'widescreen-controls__preview-tab-bar';
+
+    const previewTabPanels = document.createElement('div');
+    previewTabPanels.className = 'widescreen-controls__preview-tab-panels';
+
+    coverPreviewPanel.preview.appendChild(previewGrid);
+
+    const previewTabDefinitions = [
+      {
+        key: 'layout',
+        label: 'Torrents Layout Preview',
+        panel: torrentsPreviewPanel.previewPanel,
+        onActivate: function () {
+          schedulePreviewRefresh();
+        }
+      },
+      {
+        key: 'posters',
+        label: 'View Mode Poster Preview',
+        panel: coverPreviewPanel.previewPanel,
+        onActivate: function () {
+          schedulePreviewRefresh();
+        }
+      }
+    ];
+
+    const previewTabsByKey = {};
+
+    function setActivePreviewTab(key) {
+      for (const definition of previewTabDefinitions) {
+        const isActive = definition.key === key;
+        const controls = previewTabsByKey[definition.key];
+        if (!controls) continue;
+        controls.button.classList.toggle('widescreen-controls__preview-tab--active', isActive);
+        controls.panel.classList.toggle('widescreen-controls__preview-tab-panel--active', isActive);
+      }
+
+      const activeDefinition = previewTabDefinitions.find(function (definition) {
+        return definition.key === key;
+      });
+      if (activeDefinition && typeof activeDefinition.onActivate === 'function') {
+        activeDefinition.onActivate();
+      }
+    }
+
+    previewTabDefinitions.forEach(function (definition) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'widescreen-controls__preview-tab';
+      button.textContent = definition.label;
+      button.addEventListener('mousedown', function (event) {
+        event.preventDefault();
+      });
+      button.addEventListener('click', function () {
+        setActivePreviewTab(definition.key);
+      });
+
+      const previewTabPanel = document.createElement('div');
+      previewTabPanel.className = 'widescreen-controls__preview-tab-panel';
+      previewTabPanel.appendChild(definition.panel);
+
+      previewTabBar.appendChild(button);
+      previewTabPanels.appendChild(previewTabPanel);
+      previewTabsByKey[definition.key] = { button, panel: previewTabPanel };
+    });
+
+    previewTabsPanelBody.appendChild(previewTabBar);
+    previewTabsPanel.appendChild(previewTabsPanelBody);
+    previewContentPanel.appendChild(previewTabPanels);
+
     body.appendChild(title);
     body.appendChild(description);
     body.appendChild(linkedRow);
@@ -1570,11 +1702,12 @@ html.js-widescreen-controls-active #content.page__main-content {
     body.appendChild(controlsList);
     body.appendChild(assetsList);
     body.appendChild(buttonRow);
-    coverPreviewPanel.preview.appendChild(previewGrid);
     wrapper.appendChild(body);
     panel.appendChild(wrapper);
-    panel.appendChild(torrentsPreviewPanel.previewPanel);
-    panel.appendChild(coverPreviewPanel.previewPanel);
+    panel.appendChild(previewTabsPanel);
+    panel.appendChild(previewContentPanel);
+
+    setActivePreviewTab('layout');
 
     refreshIndividualControls(controlsByName, state);
     schedulePreviewRefresh();
