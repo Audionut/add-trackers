@@ -43,6 +43,10 @@
     { name: 'torrents-huge-movie-width', label: 'Torrents Huge Movie Width', defaultValue: 256, min: 140, max: 480 }
   ];
 
+  const HEIGHT_VARS = [
+    { name: 'torrents-huge-movie-height', label: 'Torrents Huge Movie Height', defaultValue: 379, min: 220, max: 1000 }
+  ];
+
   const FONT_SIZE_VARS = [
     {
       name: 'user-info-bar-font-size',
@@ -108,7 +112,7 @@
     }
   ];
 
-  const SETTING_VARS = [...WIDTH_VARS, ...FONT_SIZE_VARS];
+  const SETTING_VARS = [...WIDTH_VARS, ...HEIGHT_VARS, ...FONT_SIZE_VARS];
 
   const HEIGHT_FROM_WIDTH = [
     {
@@ -198,6 +202,26 @@
     'linkbox-font-size'
   ]);
 
+  const TORRENTS_PHP_PREVIEW_VARIABLE_NAMES = new Set(['torrents-huge-movie-width', 'torrents-huge-movie-height']);
+
+  const HUGE_PREVIEW_COVER = {
+    url: 'https://ptpimg.me/bizsjq.jpg',
+    width: 608,
+    height: 900
+  };
+
+  const HUGE_COVER_CONTAIN_CLASS = 'huge-movie-list__movie__cover__link--fit-inside';
+  const hugeCoverFitCache = new Map();
+  let hugeCoverFitObserver = null;
+  let hugeCoverFitRefreshTimerId = 0;
+
+  function isPreviewOptionVariable(variableName) {
+    return (
+      TORRENTS_LAYOUT_PREVIEW_VARIABLE_NAMES.has(variableName) ||
+      TORRENTS_PHP_PREVIEW_VARIABLE_NAMES.has(variableName)
+    );
+  }
+
   const DIRECT_WIDTH_BINDINGS = [
     {
       variableName: 'main-menu-width',
@@ -272,6 +296,10 @@
   grid-template-columns: 24px minmax(220px, 1fr) minmax(220px, 2fr) 90px 32px;
   gap: 8px;
   align-items: center;
+}
+
+.js-widescreen-controls-panel .widescreen-controls__row[hidden] {
+  display: none !important;
 }
 
 .js-widescreen-controls-panel .widescreen-controls__row--text {
@@ -378,6 +406,24 @@
   border-color: #83b6c8;
   color: #f4fbff;
   box-shadow: inset 0 0 0 1px rgba(131, 182, 200, 0.18);
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__nested-layout {
+  margin-top: 10px;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__nested-layout-tabs {
+  border-bottom: 1px solid #383b3e;
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__nested-layout-panel {
+  width: 100%;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__nested-layout-panel[hidden] {
+  display: none !important;
 }
 
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__preview-grid {
@@ -635,8 +681,209 @@
   font-size: 11px;
 }
 
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__huge-preview {
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__huge-preview .huge-movie-list {
+  margin: 0;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__huge-preview .huge-movie-list__movie {
+  background-color: #222222;
+  border: var(--torrents-huge-movie-border-width, 8px) solid #222222;
+  box-sizing: border-box;
+  height: auto !important;
+  min-height: calc((var(--torrents-huge-movie-height-from-width, var(--torrents-huge-movie-height))) + (var(--torrents-huge-movie-border-width, 8px) * 2)) !important;
+  overflow: visible;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__huge-preview .huge-movie-list__movie::after {
+  content: '';
+  display: block;
+  clear: both;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__huge-preview .huge-movie-list__movie__cover {
+  float: left;
+  min-height: var(--torrents-huge-movie-height-from-width, var(--torrents-huge-movie-height));
+  position: relative;
+  width: var(--torrents-huge-movie-width);
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__huge-preview .huge-movie-list__movie__cover__link {
+  display: block;
+  height: var(--torrents-huge-movie-height-from-width, var(--torrents-huge-movie-height));
+  width: var(--torrents-huge-movie-width);
+  box-sizing: border-box;
+  outline: 2px solid #83b6c8;
+  outline-offset: 0;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__huge-preview--cropped
+  .huge-movie-list__movie__cover__link {
+  outline-color: #d8a85f;
+  box-shadow: inset 0 0 0 2px rgba(216, 168, 95, 0.5);
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__huge-preview .huge-movie-list__movie__details {
+  margin-left: var(--torrents-huge-movie-width);
+  padding: 0 0 0 10px;
+  position: relative;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__huge-preview .huge-movie-list__movie__title-row {
+  line-height: 1.15;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__huge-preview .huge-movie-list__movie__title {
+  color: #f2f2f2;
+  font-size: 2.5em;
+  font-weight: bold;
+  line-height: 1.05;
+  text-decoration: none;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__huge-preview .huge-movie-list__movie__year {
+  color: #cfcfcf;
+  font-size: 2em;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__huge-preview
+  .huge-movie-list__movie__director-list {
+  font-size: 1.5em;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__huge-preview .huge-movie-list__movie__new {
+  font-size: 10px;
+  font-weight: bold;
+  opacity: 0.4;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__huge-preview .huge-movie-list__movie__tag-list {
+  color: #cfcfcf;
+  font-size: 1.5em;
+  font-style: italic;
+  margin-top: 2px;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__huge-preview
+  .cover-movie-list__movie__tag {
+  color: inherit;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__huge-preview
+  .huge-movie-list__movie__ratings-and-synopsis {
+  border-collapse: collapse;
+  margin-top: 25px;
+  width: 100%;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__huge-preview
+  .huge-movie-list__movie__ratings-and-synopsis
+  > tbody
+  > tr
+  > td {
+  background-color: #333333;
+  border: solid thin #555555;
+  padding: 5px;
+  vertical-align: top;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__huge-preview
+  .huge-movie-list__movie__ratings-and-synopsis
+  > tbody
+  > tr
+  > td:first-child {
+  white-space: nowrap;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__huge-preview .huge-movie-list__movie__ratings {
+  margin: auto;
+  width: 130px;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__huge-preview
+  .huge-movie-list__movie__ratings__icon-column {
+  padding: 1px 6px 1px 5px;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__huge-preview
+  .huge-movie-list__movie__ratings__votes-column {
+  padding: 1px 2px;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__huge-preview .huge-movie-list__movie__synopsis {
+  font-size: 1.5em;
+  padding: 5px;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__huge-preview .huge-movie-list__movie__action-row {
+  font-size: 1.2em;
+  margin-top: 10px;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__huge-preview
+  .huge-movie-list__movie__torrent-summary {
+  margin-top: 25px;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__huge-preview
+  .huge-movie-list__movie__torrent-summary__row__title {
+  font-weight: bold;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__huge-preview-fit {
+  border: 1px solid #3a3c3f;
+  border-radius: 6px;
+  background: #1b1b1b;
+  color: #cfcfcf;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 10px;
+  padding: 8px 10px;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__huge-preview-fit-status {
+  color: #9dc284;
+  font-weight: 600;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__huge-preview--cropped
+  .widescreen-controls__huge-preview-fit-status {
+  color: #d8a85f;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__huge-preview-fit-label {
+  color: #d9d9d9;
+  font-size: 12px;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__huge-preview-fit-value {
+  color: #afafaf;
+  font-size: 11px;
+  margin-top: 4px;
+}
+
 @media (max-width: 760px) {
   .tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-legend {
+    grid-template-columns: 1fr;
+  }
+
+  .tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__huge-preview-fit {
     grid-template-columns: 1fr;
   }
 }
@@ -648,6 +895,7 @@
 
   .tabs__panel.js-widescreen-controls-tab-panel,
   .tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-page,
+  .tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__torrents-php-preview,
   .tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__preview-grid {
     width: var(--widescreen-preview-content-width, var(--layout-width));
     min-width: var(--widescreen-preview-content-width, var(--layout-width));
@@ -809,6 +1057,7 @@
     const settings = {};
     const widths = {};
     const heights = {};
+    const overrides = currentState && currentState.overrides ? currentState.overrides : {};
 
     for (const variable of SETTING_VARS) {
       const fallbackValue = clampSettingValue(variable.defaultValue, variable, variable.defaultValue);
@@ -819,6 +1068,8 @@
       settings[variable.name] = resolvedValue;
       if (WIDTH_VARS.includes(variable)) {
         widths[variable.name] = resolvedValue;
+      } else if (HEIGHT_VARS.includes(variable)) {
+        heights[variable.name] = resolvedValue;
       }
     }
 
@@ -827,7 +1078,16 @@
       if (!Number.isFinite(widthValue) || pair.widthDefault <= 0) continue;
 
       const ratio = pair.heightDefault / pair.widthDefault;
-      heights[pair.heightVar] = Math.max(1, Math.round(widthValue * ratio));
+      const derivedHeight = Math.max(1, Math.round(widthValue * ratio));
+
+      // Keep height and width in sync unless this specific height was intentionally customized.
+      const rawHeightOverride = Number(overrides[pair.heightVar]);
+      const heightCustomized = Number.isFinite(rawHeightOverride) && Math.abs(rawHeightOverride - pair.heightDefault) > 0.01;
+
+      if (!heightCustomized || !Number.isFinite(heights[pair.heightVar])) {
+        heights[pair.heightVar] = derivedHeight;
+        settings[pair.heightVar] = derivedHeight;
+      }
     }
 
     return { settings, widths, heights };
@@ -872,6 +1132,111 @@
     return Number.isFinite(numeric) ? numeric : 0;
   }
 
+  function extractFirstUrlFromCssValue(value) {
+    const match = /url\((['"]?)(.*?)\1\)/.exec(String(value || ''));
+    return match && match[2] ? match[2].trim() : '';
+  }
+
+  function getHugeCoverImageUrl(link) {
+    if (!link) return '';
+    const inlineBackgroundImage = link.style ? link.style.backgroundImage : '';
+    const inlineStyle = link.getAttribute('style') || '';
+    return extractFirstUrlFromCssValue(inlineBackgroundImage) || extractFirstUrlFromCssValue(inlineStyle);
+  }
+
+  function getHugeCoverSlotAspect(link) {
+    if (!link) return 0;
+
+    const styles = getComputedStyle(link);
+    const width = Math.max(0, parsePixelValue(styles.width) || link.clientWidth || link.offsetWidth);
+    const height = Math.max(0, parsePixelValue(styles.height) || link.clientHeight || link.offsetHeight);
+    if (width <= 0 || height <= 0) return 0;
+
+    return width / height;
+  }
+
+  function applyHugeCoverFitToLink(link) {
+    if (!link) return;
+
+    const url = getHugeCoverImageUrl(link);
+    if (!url) {
+      link.classList.remove(HUGE_COVER_CONTAIN_CLASS);
+      return;
+    }
+
+    const slotAspect = getHugeCoverSlotAspect(link);
+    if (slotAspect <= 0) return;
+
+    if (hugeCoverFitCache.has(url)) {
+      const fitInside = hugeCoverFitCache.get(url);
+      link.classList.toggle(HUGE_COVER_CONTAIN_CLASS, !!fitInside);
+      return;
+    }
+
+    const image = new Image();
+    image.onload = function () {
+      const imageAspect = image.naturalWidth > 0 && image.naturalHeight > 0 ? image.naturalWidth / image.naturalHeight : 0;
+      const fitInside = imageAspect > slotAspect + 0.02;
+      hugeCoverFitCache.set(url, fitInside);
+      if (link.isConnected) {
+        link.classList.toggle(HUGE_COVER_CONTAIN_CLASS, fitInside);
+      }
+    };
+    image.onerror = function () {
+      hugeCoverFitCache.set(url, false);
+      if (link.isConnected) {
+        link.classList.remove(HUGE_COVER_CONTAIN_CLASS);
+      }
+    };
+    image.src = url;
+  }
+
+  function refreshHugeCoverImageFit(root) {
+    const scope = root && root.querySelectorAll ? root : document;
+    const links = scope.querySelectorAll('#torrents-movie-view .huge-movie-list__movie__cover__link');
+    for (const link of links) {
+      applyHugeCoverFitToLink(link);
+    }
+  }
+
+  function scheduleHugeCoverImageFitRefresh() {
+    if (hugeCoverFitRefreshTimerId) {
+      globalThis.clearTimeout(hugeCoverFitRefreshTimerId);
+    }
+
+    hugeCoverFitRefreshTimerId = globalThis.setTimeout(function () {
+      hugeCoverFitRefreshTimerId = 0;
+      refreshHugeCoverImageFit(document);
+    }, 0);
+  }
+
+  function ensureHugeCoverImageFitObserver() {
+    const container = document.querySelector('#torrents-movie-view');
+    if (!container) return;
+
+    if (hugeCoverFitObserver) {
+      return;
+    }
+
+    hugeCoverFitObserver = new MutationObserver(function (mutations) {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (!(node instanceof Element)) continue;
+          if (node.matches && node.matches('.huge-movie-list__movie__cover__link')) {
+            applyHugeCoverFitToLink(node);
+          } else {
+            refreshHugeCoverImageFit(node);
+          }
+        }
+      }
+    });
+
+    hugeCoverFitObserver.observe(container, {
+      childList: true,
+      subtree: true
+    });
+  }
+
   function getLayoutPreviewMetrics(dimensions) {
     const contentElement = document.querySelector('#content.page__main-content');
     const contentStyles = contentElement ? getComputedStyle(contentElement) : null;
@@ -889,6 +1254,47 @@
     return {
       sidebarGap: Math.max(0, Math.round(sidebarGap)),
       contentHorizontalInset: Math.max(0, Math.round(contentHorizontalInset))
+    };
+  }
+
+  function computeCoverFitMetrics(slotWidth, slotHeight, imageWidth, imageHeight) {
+    if (
+      !Number.isFinite(slotWidth) ||
+      !Number.isFinite(slotHeight) ||
+      !Number.isFinite(imageWidth) ||
+      !Number.isFinite(imageHeight) ||
+      slotWidth <= 0 ||
+      slotHeight <= 0 ||
+      imageWidth <= 0 ||
+      imageHeight <= 0
+    ) {
+      return null;
+    }
+
+    const scale = Math.max(slotWidth / imageWidth, slotHeight / imageHeight);
+    const renderedWidth = imageWidth * scale;
+    const renderedHeight = imageHeight * scale;
+    const croppedWidth = Math.max(0, renderedWidth - slotWidth);
+    const croppedHeight = Math.max(0, renderedHeight - slotHeight);
+    const cropTolerance = 0.5;
+    const isHorizontallyCropped = croppedWidth > cropTolerance;
+    const isVerticallyCropped = croppedHeight > cropTolerance;
+
+    return {
+      slotAspect: slotWidth / slotHeight,
+      imageAspect: imageWidth / imageHeight,
+      renderedWidth,
+      renderedHeight,
+      croppedWidth,
+      croppedHeight,
+      fullImageHeightAtSlotWidth: (slotWidth * imageHeight) / imageWidth,
+      fullImageWidthAtSlotHeight: (slotHeight * imageWidth) / imageHeight,
+      isCropped: isHorizontallyCropped || isVerticallyCropped,
+      status: isVerticallyCropped
+        ? 'Crops vertically'
+        : isHorizontallyCropped
+          ? 'Crops horizontally'
+          : 'Fits without crop'
     };
   }
 
@@ -919,6 +1325,11 @@
     }
 
     for (const pair of HEIGHT_FROM_WIDTH) {
+      if (HEIGHT_VARS.some(function (variable) {
+        return variable.name === pair.heightVar;
+      })) {
+        continue;
+      }
       const heightValue = dimensions.heights[pair.heightVar];
       if (!Number.isFinite(heightValue)) continue;
       root.style.setProperty(`--${pair.heightVar}`, `${heightValue}px`);
@@ -975,6 +1386,9 @@
         document.body.style.removeProperty('background-color');
       }
     }
+
+    ensureHugeCoverImageFitObserver();
+    scheduleHugeCoverImageFitRefresh();
 
     emitPreviewUpdate(dimensions);
   }
@@ -1121,7 +1535,7 @@
     const controlsByName = {};
     for (const variable of SETTING_VARS) {
       const row = makeRangeRow(variable, controlsByName);
-      if (!TORRENTS_LAYOUT_PREVIEW_VARIABLE_NAMES.has(variable.name)) {
+      if (!isPreviewOptionVariable(variable.name)) {
         controlsList.appendChild(row);
       }
     }
@@ -1260,9 +1674,12 @@
     resetPreviewOptionsButton.type = 'button';
     resetPreviewOptionsButton.textContent = 'Reset Preview Options';
 
+    let activePreviewOptionVariableNames = null;
+
     resetPreviewOptionsButton.addEventListener('click', function () {
+      if (!activePreviewOptionVariableNames) return;
       for (const variable of SETTING_VARS) {
-        if (!TORRENTS_LAYOUT_PREVIEW_VARIABLE_NAMES.has(variable.name)) continue;
+        if (!activePreviewOptionVariableNames.has(variable.name)) continue;
         state.overrides[variable.name] = variable.defaultValue;
         if (!state.linkedVariables) {
           state.linkedVariables = {};
@@ -1280,7 +1697,7 @@
     });
 
     for (const variable of SETTING_VARS) {
-      if (!TORRENTS_LAYOUT_PREVIEW_VARIABLE_NAMES.has(variable.name)) continue;
+      if (!isPreviewOptionVariable(variable.name)) continue;
       const controls = controlsByName[variable.name];
       if (!controls) continue;
       previewOptionsList.appendChild(controls.row);
@@ -1573,6 +1990,298 @@
     layoutPage.appendChild(sidebar);
     layoutPage.appendChild(mainColumn);
 
+    const torrentsPhpPreview = document.createElement('div');
+    torrentsPhpPreview.className = 'widescreen-controls__nested-layout widescreen-controls__torrents-php-preview';
+
+    const torrentsPhpTabBar = document.createElement('div');
+    torrentsPhpTabBar.className =
+      'widescreen-controls__preview-tab-bar widescreen-controls__nested-layout-tabs';
+
+    const hugeCoverLayoutPanel = document.createElement('div');
+    hugeCoverLayoutPanel.className =
+      'widescreen-controls__nested-layout-panel widescreen-controls__huge-preview';
+
+    const hugeMovieList = document.createElement('div');
+    hugeMovieList.className = 'huge-movie-list';
+
+    const hugeMovie = document.createElement('div');
+    hugeMovie.className = 'huge-movie-list__movie';
+
+    const hugeCover = document.createElement('div');
+    hugeCover.className = 'huge-movie-list__movie__cover';
+
+    const hugeCoverLink = document.createElement('a');
+    hugeCoverLink.className = 'huge-movie-list__movie__cover__link';
+    hugeCoverLink.style.background = `url("${HUGE_PREVIEW_COVER.url}") center top / cover no-repeat`;
+
+    const hugeDetails = document.createElement('div');
+    hugeDetails.className = 'huge-movie-list__movie__details';
+
+    function appendTextLink(parent, className, text) {
+      const element = document.createElement('span');
+      element.className = className;
+      element.textContent = text;
+      parent.appendChild(element);
+      return element;
+    }
+
+    function appendRatingRow(parent, options) {
+      const row = document.createElement('tr');
+      const iconCell = document.createElement('td');
+      const votesCell = document.createElement('td');
+      const iconWrap = document.createElement(options.wrapIcon ? 'div' : 'span');
+      const icon = document.createElement('img');
+      const rating = document.createElement('span');
+
+      iconCell.className = options.iconNobr
+        ? 'nobr huge-movie-list__movie__ratings__icon-column'
+        : 'huge-movie-list__movie__ratings__icon-column';
+      iconCell.colSpan = 1;
+      iconCell.width = '1%';
+      votesCell.className = options.votesNobr
+        ? 'nobr huge-movie-list__movie__ratings__votes-column'
+        : 'huge-movie-list__movie__ratings__votes-column';
+      if (options.votesColSpan) {
+        votesCell.colSpan = options.votesColSpan;
+      }
+      votesCell.width = '99%';
+      iconWrap.className = 'rating';
+      icon.src = options.iconSrc;
+      icon.title = options.iconTitle;
+      icon.style.height = '32px';
+      icon.style.width = '32px';
+      rating.className = 'rating';
+      rating.textContent = options.ratingText;
+
+      iconWrap.appendChild(icon);
+      iconCell.appendChild(iconWrap);
+      votesCell.appendChild(rating);
+      if (options.outOfText) {
+        const mid = document.createElement('span');
+        const outOf = document.createElement('span');
+        mid.className = 'mid';
+        mid.textContent = ' / ';
+        outOf.className = 'outof';
+        outOf.textContent = options.outOfText;
+        votesCell.appendChild(document.createTextNode(' '));
+        votesCell.appendChild(mid);
+        votesCell.appendChild(outOf);
+      }
+      if (options.votesText) {
+        votesCell.appendChild(document.createElement('br'));
+        if (options.votesAsRating) {
+          const votesRating = document.createElement('span');
+          votesRating.className = 'rating';
+          votesRating.textContent = options.votesText;
+          votesCell.appendChild(votesRating);
+        } else {
+          votesCell.appendChild(document.createTextNode(options.votesText));
+        }
+      }
+      row.appendChild(iconCell);
+      row.appendChild(votesCell);
+      parent.appendChild(row);
+    }
+
+    const hugeTitleRow = document.createElement('div');
+    hugeTitleRow.className = 'huge-movie-list__movie__title-row';
+
+    const hugeTitle = document.createElement('span');
+    hugeTitle.className = 'huge-movie-list__movie__title';
+    hugeTitle.title = 'View Torrent';
+    hugeTitle.textContent = 'Ebony & Ivory AKA Ebony and Ivory';
+
+    const hugeYear = document.createElement('span');
+    hugeYear.className = 'huge-movie-list__movie__year';
+    hugeYear.textContent = ' (2024)';
+
+    const hugeDirectorList = document.createElement('span');
+    hugeDirectorList.className = 'huge-movie-list__movie__director-list';
+    hugeDirectorList.appendChild(document.createTextNode(' by '));
+    appendTextLink(hugeDirectorList, 'huge-movie-list__movie__director', 'Jim Hosking');
+
+    const hugeNew = document.createElement('span');
+    hugeNew.className = 'huge-movie-list__movie__new';
+    hugeNew.dataset.new = '1776234587';
+    hugeNew.title = 'Remove the new mark from this and all older torrents.';
+    hugeNew.textContent = ' (New)';
+
+    hugeTitleRow.appendChild(hugeTitle);
+    hugeTitleRow.appendChild(document.createTextNode(' '));
+    hugeTitleRow.appendChild(hugeYear);
+    hugeTitleRow.appendChild(hugeDirectorList);
+    hugeTitleRow.appendChild(hugeNew);
+
+    const hugeTagList = document.createElement('div');
+    hugeTagList.className = 'huge-movie-list__movie__tag-list';
+    appendTextLink(hugeTagList, 'cover-movie-list__movie__tag', 'comedy');
+    hugeTagList.appendChild(document.createTextNode(', '));
+    appendTextLink(hugeTagList, 'cover-movie-list__movie__tag', 'musical');
+
+    const hugeRatingsAndSynopsis = document.createElement('table');
+    hugeRatingsAndSynopsis.className = 'huge-movie-list__movie__ratings-and-synopsis';
+
+    const hugeRatingsBody = document.createElement('tbody');
+    const hugeRatingsRow = document.createElement('tr');
+
+    const hugeRatingsCell = document.createElement('td');
+    hugeRatingsCell.width = '1%';
+
+    const hugeRatings = document.createElement('table');
+    hugeRatings.className = 'huge-movie-list__movie__ratings';
+    const hugeRatingsInnerBody = document.createElement('tbody');
+    appendRatingRow(hugeRatingsInnerBody, {
+      iconSrc: 'static/common/ratings/x1_imdb.png',
+      iconTitle: 'IMDb',
+      iconNobr: true,
+      votesNobr: true,
+      ratingText: '5.0',
+      outOfText: ' 10',
+      votesText: '(299 votes)'
+    });
+    appendRatingRow(hugeRatingsInnerBody, {
+      iconSrc: 'static/common/ratings/x2_metacritic.png',
+      iconTitle: 'Metacritic',
+      iconNobr: true,
+      votesNobr: false,
+      ratingText: '49',
+      outOfText: ' 100',
+      votesText: ''
+    });
+    appendRatingRow(hugeRatingsInnerBody, {
+      iconSrc: 'static/common/ratings/x4_ptp.png',
+      iconTitle: 'User Ratings',
+      iconNobr: false,
+      votesNobr: true,
+      votesColSpan: 1,
+      wrapIcon: true,
+      ratingText: '71%',
+      outOfText: '',
+      votesText: ' (10 votes)',
+      votesAsRating: true
+    });
+    hugeRatings.appendChild(hugeRatingsInnerBody);
+
+    const hugeSynopsisCell = document.createElement('td');
+    hugeSynopsisCell.width = '99%';
+
+    const hugeSynopsis = document.createElement('div');
+    hugeSynopsis.className = 'huge-movie-list__movie__synopsis';
+    hugeSynopsis.textContent =
+      'Two musical legends gather at a Scottish Cottage on The Mull Of Kintyre for a tense summit to discuss a potential collaboration that will ultimately result in a Global Number One smash hit single.';
+
+    const hugeActionRow = document.createElement('div');
+    hugeActionRow.className = 'huge-movie-list__movie__action-row';
+    appendTextLink(hugeActionRow, 'huge-movie-list__movie__trailer', 'Trailer');
+    hugeActionRow.appendChild(document.createTextNode('  |  '));
+    appendTextLink(hugeActionRow, 'huge-movie-list__movie__bookmark', 'Bookmark');
+    hugeActionRow.appendChild(document.createTextNode('  |  '));
+    appendTextLink(hugeActionRow, 'huge-movie-list__movie__rate', 'Rate');
+
+    const hugeTorrentSummary = document.createElement('div');
+    hugeTorrentSummary.className = 'huge-movie-list__movie__torrent-summary';
+
+    [
+      ['SD:', 'x264, DVD image'],
+      ['HD:', '720p, 1080p, Remux, Blu-ray image'],
+      ['UHD:', '2160p'],
+      ['Latest:', '☑ DVD5 / VOB IFO / DVD / NTSC']
+    ].forEach(function ([titleText, valueText], index) {
+      const row = document.createElement('div');
+      const title = document.createElement('span');
+      const value = document.createElement('span');
+
+      row.className = 'huge-movie-list__movie__torrent-summary__row';
+      if (index === 3) {
+        row.className += ' huge-movie-list__movie__torrent-summary__latest-row';
+      }
+      title.className = 'huge-movie-list__movie__torrent-summary__row__title';
+      title.textContent = titleText;
+      value.textContent = ` ${valueText}`;
+      row.appendChild(title);
+      row.appendChild(value);
+      hugeTorrentSummary.appendChild(row);
+    });
+
+    const hugeFitReadout = document.createElement('div');
+    hugeFitReadout.className = 'widescreen-controls__huge-preview-fit';
+
+    function buildHugeFitMetric(labelText) {
+      const metric = document.createElement('div');
+      const label = document.createElement('div');
+      const value = document.createElement('div');
+
+      label.className = 'widescreen-controls__huge-preview-fit-label';
+      label.textContent = labelText;
+      value.className = 'widescreen-controls__huge-preview-fit-value';
+
+      metric.appendChild(label);
+      metric.appendChild(value);
+      hugeFitReadout.appendChild(metric);
+
+      return value;
+    }
+
+    const hugeFitStatus = buildHugeFitMetric('Fit status');
+    hugeFitStatus.classList.add('widescreen-controls__huge-preview-fit-status');
+    const hugeSlotSize = buildHugeFitMetric('Slot');
+    const hugeAspect = buildHugeFitMetric('Aspect');
+    const hugeCropAmount = buildHugeFitMetric('Crop');
+
+    hugeCover.appendChild(hugeCoverLink);
+    hugeRatingsCell.appendChild(hugeRatings);
+    hugeRatingsRow.appendChild(hugeRatingsCell);
+    hugeSynopsisCell.appendChild(hugeSynopsis);
+    hugeRatingsRow.appendChild(hugeSynopsisCell);
+    hugeRatingsBody.appendChild(hugeRatingsRow);
+    hugeRatingsAndSynopsis.appendChild(hugeRatingsBody);
+    hugeDetails.appendChild(hugeTitleRow);
+    hugeDetails.appendChild(hugeTagList);
+    hugeDetails.appendChild(hugeRatingsAndSynopsis);
+    hugeDetails.appendChild(hugeActionRow);
+    hugeDetails.appendChild(hugeTorrentSummary);
+    hugeMovie.appendChild(hugeCover);
+    hugeMovie.appendChild(hugeDetails);
+    hugeMovieList.appendChild(hugeMovie);
+    hugeCoverLayoutPanel.appendChild(hugeMovieList);
+    hugeCoverLayoutPanel.appendChild(hugeFitReadout);
+
+    const torrentsPhpDefinitions = [
+      { key: 'huge', label: 'Huge View', panel: hugeCoverLayoutPanel }
+    ];
+    const torrentsPhpTabsByKey = {};
+
+    function setActiveTorrentsPhpTab(key) {
+      for (const definition of torrentsPhpDefinitions) {
+        const isActive = definition.key === key;
+        const controls = torrentsPhpTabsByKey[definition.key];
+        if (controls) {
+          controls.button.classList.toggle('widescreen-controls__preview-tab--active', isActive);
+        }
+        definition.panel.hidden = !isActive;
+      }
+      schedulePreviewRefresh();
+    }
+
+    torrentsPhpDefinitions.forEach(function (definition) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'widescreen-controls__preview-tab';
+      button.textContent = definition.label;
+      button.addEventListener('mousedown', function (event) {
+        event.preventDefault();
+      });
+      button.addEventListener('click', function () {
+        setActiveTorrentsPhpTab(definition.key);
+      });
+
+      torrentsPhpTabBar.appendChild(button);
+      torrentsPhpTabsByKey[definition.key] = { button };
+    });
+
+    torrentsPhpPreview.appendChild(torrentsPhpTabBar);
+    torrentsPhpPreview.appendChild(hugeCoverLayoutPanel);
+
     function updateLayoutPreview(dimensions) {
       const wrapperWidth = dimensions.widths['layout-width'];
       const sidebarWidth = dimensions.widths['sidebar-width'];
@@ -1592,6 +2301,7 @@
         Math.round(previewMetrics.sidebarGap * fitScale)
       );
       document.documentElement.style.setProperty('--widescreen-preview-content-width', `${contentInnerWidth}px`);
+      torrentsPhpPreview.style.width = `${contentInnerWidth}px`;
       layoutPage.style.width = `${contentInnerWidth}px`;
       if (previewTabsPanel) {
         previewTabsPanel.style.width = `${contentInnerWidth}px`;
@@ -1602,6 +2312,32 @@
       mainSize.textContent = `Main column: ${mainColumnWidth}px`;
       bbcodeSize.textContent = `BBCode: ${clampedBbcodeWidth}px`;
       sidebarSize.textContent = `Sidebar: ${sidebarWidth}px`;
+    }
+
+    function updateHugeCoverPreview(dimensions) {
+      const coverWidth = dimensions.widths['torrents-huge-movie-width'];
+      const coverHeight = dimensions.heights['torrents-huge-movie-height'];
+      if (!Number.isFinite(coverWidth) || !Number.isFinite(coverHeight)) return;
+
+      const fitMetrics = computeCoverFitMetrics(
+        coverWidth,
+        coverHeight,
+        HUGE_PREVIEW_COVER.width,
+        HUGE_PREVIEW_COVER.height
+      );
+      if (!fitMetrics) return;
+
+      hugeCoverLayoutPanel.classList.toggle('widescreen-controls__huge-preview--cropped', fitMetrics.isCropped);
+      hugeSlotSize.textContent = `${coverWidth}px x ${coverHeight}px; image ${HUGE_PREVIEW_COVER.width}px x ${HUGE_PREVIEW_COVER.height}px`;
+      hugeAspect.textContent = `slot ${fitMetrics.slotAspect.toFixed(3)}; image ${fitMetrics.imageAspect.toFixed(3)}`;
+      hugeCropAmount.textContent = fitMetrics.isCropped
+        ? `${Math.round(fitMetrics.croppedWidth)}px wide, ${Math.round(fitMetrics.croppedHeight)}px tall (${Math.round(
+            (Math.max(fitMetrics.croppedWidth, fitMetrics.croppedHeight) /
+              Math.max(fitMetrics.renderedWidth, fitMetrics.renderedHeight)) *
+              100
+          )}%); full image needs ${Math.ceil(fitMetrics.fullImageHeightAtSlotWidth)}px height at this width`
+        : '0px';
+      hugeFitStatus.textContent = fitMetrics.status;
     }
 
     const previewGrid = document.createElement('div');
@@ -1668,10 +2404,12 @@
     }
 
     registerPreviewListener(updateLayoutPreview);
+    registerPreviewListener(updateHugeCoverPreview);
     registerPreviewListener(updateCoverPreview);
     globalThis.addEventListener('resize', function () {
       const dimensions = computeFinalDimensions(state);
       updateLayoutPreview(dimensions);
+      updateHugeCoverPreview(dimensions);
       updateCoverPreview(dimensions);
     });
 
@@ -1689,6 +2427,14 @@
         key: 'layout',
         label: 'Torrents Layout Preview',
         panel: layoutPage,
+        onActivate: function () {
+          schedulePreviewRefresh();
+        }
+      },
+      {
+        key: 'torrentsPhp',
+        label: 'Torrents.php Preview',
+        panel: torrentsPhpPreview,
         onActivate: function () {
           schedulePreviewRefresh();
         }
@@ -1716,14 +2462,34 @@
       const activeDefinition = previewTabDefinitions.find(function (definition) {
         return definition.key === key;
       });
-      const currentPreview = panel.querySelector('.thin.widescreen-controls__layout-page, .widescreen-controls__preview-grid');
+      const currentPreview = panel.querySelector(
+        '.thin.widescreen-controls__layout-page, .widescreen-controls__torrents-php-preview, .widescreen-controls__preview-grid'
+      );
       if (activeDefinition && currentPreview !== activeDefinition.panel) {
         if (currentPreview) {
           currentPreview.remove();
         }
         panel.appendChild(activeDefinition.panel);
       }
-      previewOptionsPanel.hidden = key !== 'layout';
+      activePreviewOptionVariableNames =
+        key === 'layout'
+          ? TORRENTS_LAYOUT_PREVIEW_VARIABLE_NAMES
+          : key === 'torrentsPhp'
+            ? TORRENTS_PHP_PREVIEW_VARIABLE_NAMES
+            : null;
+      previewOptionsPanel.hidden = !activePreviewOptionVariableNames;
+      previewOptionsTitle.textContent =
+        key === 'torrentsPhp' ? 'Huge View Preview Options' : 'Torrents Layout Preview Options';
+      previewOptionsDescription.textContent =
+        key === 'torrentsPhp'
+          ? 'Options specific to the active torrents.php Huge View preview.'
+          : 'Options specific to the torrents layout preview.';
+      for (const variable of SETTING_VARS) {
+        if (!isPreviewOptionVariable(variable.name)) continue;
+        const controls = controlsByName[variable.name];
+        if (!controls) continue;
+        controls.row.hidden = !activePreviewOptionVariableNames || !activePreviewOptionVariableNames.has(variable.name);
+      }
       if (activeDefinition && typeof activeDefinition.onActivate === 'function') {
         activeDefinition.onActivate();
       }
@@ -1760,6 +2526,7 @@
     panel.appendChild(previewTabsPanel);
     panel.appendChild(previewOptionsPanel);
 
+    setActiveTorrentsPhpTab('huge');
     setActivePreviewTab('layout');
 
     refreshIndividualControls(controlsByName, state);

@@ -47,7 +47,9 @@ html {
   --bookmarks-huge-movie-width: 280px;
   --bookmarks-huge-movie-height: 440px;
   --torrents-huge-movie-width: 256px;
-  --torrents-huge-movie-height: 400px;
+  --torrents-huge-movie-height: 379px;
+  --torrents-huge-movie-height-from-width: calc(var(--torrents-huge-movie-width) * 1.4804);
+  --torrents-huge-movie-border-width: 8px;
   --basic-movie-cover-width: 250px;
   --small-cover-movie-width: 140px;
   --small-cover-movie-height: 196px;
@@ -1576,25 +1578,53 @@ tr[id^='torrent_'] img.bbcode__image[style] {
   margin-bottom: 0.25em;
 }
 
+#torrents-movie-view > div > div > .huge-movie-list__movie,
+#torrents-movie-view > div > div > div > .huge-movie-list__movie,
 .huge-movie-list__movie {
   background-color: #222222;
-  border: 8px solid #222222;
+  border: var(--torrents-huge-movie-border-width) solid #222222;
+  box-sizing: border-box;
+  clear: both;
+  contain: none !important;
+  display: flow-root !important;
+  height: auto !important;
+  block-size: auto !important;
+  max-height: none !important;
+  min-height: calc(var(--torrents-huge-movie-height-from-width) + (var(--torrents-huge-movie-border-width) * 2)) !important;
+  min-block-size: calc(var(--torrents-huge-movie-height-from-width) + (var(--torrents-huge-movie-border-width) * 2)) !important;
+  overflow: visible !important;
 }
 
 .huge-movie-list__movie:not(:first-child) {
   margin-top: 15px;
 }
 
+#torrents-movie-view .huge-movie-list__movie__cover,
 .huge-movie-list__movie__cover {
   position: relative;
   float: left;
-  width: var(--torrents-huge-movie-width);
+  height: var(--torrents-huge-movie-height-from-width) !important;
+  max-height: none !important;
+  min-height: var(--torrents-huge-movie-height-from-width) !important;
+  overflow: visible !important;
+  width: var(--torrents-huge-movie-width) !important;
 }
 
+#torrents-movie-view .huge-movie-list__movie__cover__link,
 .huge-movie-list__movie__cover__link {
   display: block;
-  height: var(--torrents-huge-movie-height);
-  width: var(--torrents-huge-movie-width);
+  height: var(--torrents-huge-movie-height-from-width) !important;
+  max-height: none !important;
+  min-height: var(--torrents-huge-movie-height-from-width) !important;
+  width: var(--torrents-huge-movie-width) !important;
+}
+
+#torrents-movie-view .huge-movie-list__movie__cover__link.huge-movie-list__movie__cover__link--fit-inside,
+.huge-movie-list__movie__cover__link.huge-movie-list__movie__cover__link--fit-inside {
+  background-size: contain !important;
+  background-position: center center !important;
+  background-repeat: no-repeat !important;
+  background-color: #111111;
 }
 
 .huge-movie-list__movie__cover__link--seen::after {
