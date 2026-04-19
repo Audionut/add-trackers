@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP Scale Comparison Images
-// @version      1.9.6
+// @version      1.9.7
 // @description  Scales screenshot comparison images to fit within the browser window
 // @author       Audionut
 // @match        https://passthepopcorn.me/*
@@ -241,6 +241,17 @@
                 padding: 2px 6px !important;
                 cursor: pointer !important;
             }
+            .ptp-scale-control.ptp-scale-control--collapsed {
+                padding: 4px !important;
+            }
+            .ptp-scale-control.ptp-scale-control--collapsed > *:not(.ptp-scale-control__toggle) {
+                display: none !important;
+            }
+            .ptp-scale-control__toggle {
+                font-size: 14px !important;
+                padding: 0 4px !important;
+                line-height: 1.4 !important;
+            }
         `;
         document.head.appendChild(style);
     }
@@ -324,6 +335,18 @@
         refreshButton.dataset.control = 'refresh';
         refreshButton.disabled = !lastComparisonArgs;
 
+        const toggleButton = document.createElement('button');
+        toggleButton.type = 'button';
+        toggleButton.textContent = '×';
+        toggleButton.className = 'ptp-scale-control__toggle';
+        toggleButton.title = 'Hide controls';
+        toggleButton.addEventListener('click', () => {
+            const collapsed = box.classList.toggle('ptp-scale-control--collapsed');
+            toggleButton.textContent = collapsed ? '⚙' : '×';
+            toggleButton.title = collapsed ? 'Show controls' : 'Hide controls';
+        });
+
+        box.appendChild(toggleButton);
         box.appendChild(label);
         box.appendChild(lazyLabel);
         box.appendChild(oldSchoolLabel);
@@ -452,20 +475,20 @@
             debugLog('Container already lazy loaded, skipping');
             return;
         }
-        
+
         // Check if already lazy loading this container
         if (container.dataset.lazyLoadingInProgress === 'true') {
             debugLog('Lazy loading already in progress for this container, skipping');
             return;
         }
-        
+
         const rows = container.querySelectorAll('.screenshot-comparison__row');
         debugLog('loadImagesLazy called, found', rows.length, 'rows');
         if (rows.length === 0) {
             debugLog('No rows found, exiting');
             return;
         }
-        
+
         // Mark container as being lazy loaded
         container.dataset.lazyLoadingInProgress = 'true';
         debugLog('Marked container as lazy loading in progress');
@@ -501,11 +524,11 @@
         // In match-largest (original) mode, avoid applying explicit width/height.
         // Firefox can do subtle resampling/rounding when both dimensions are forced.
         const isOriginalMode = presetDims.mode === 'match-largest';
-        
+
         let maxWidth, maxHeight;
         if (presetDims.mode === 'auto') {
             // Auto mode: fit to browser window with margins
-            const availableWidth = viewportWidth * 0.90;
+            const availableWidth = viewportWidth * 0.9;
             const availableHeight = viewportHeight - 250;
             maxWidth = availableWidth;
             maxHeight = availableHeight;
@@ -539,16 +562,16 @@
                 debugLog('Cleared lazy loading flag and marked as complete');
                 return;
             }
-            
+
             debugLog(`Loading row ${rowIndex} of ${rows.length}`);
             const row = rows[rowIndex];
             const images = row.querySelectorAll('img[data-lazy-src]');
             debugLog(`Row ${rowIndex}: Found`, images.length, 'images');
-            
+
             // Show the row
             row.style.removeProperty('display');
             debugLog(`Row ${rowIndex}: Displayed`);
-            
+
             // Wait for all images in this row to load
             const imageLoadPromises = Array.from(images).map((img, imgIndex) => {
                 return new Promise(resolve => {
@@ -558,14 +581,14 @@
                         img.addEventListener('load', resolve, { once: true });
                         img.addEventListener('error', resolve, { once: true });
                         setTimeout(resolve, 5000); // Timeout fallback
-                        
+
                         // Set src AFTER attaching listeners to avoid race condition
                         debugLog(`Row ${rowIndex}, Image ${imgIndex}: Loading`, img.dataset.lazySrc);
                         img.src = img.dataset.lazySrc;
                     }
                 });
             });
-            
+
             Promise.all(imageLoadPromises).then(() => {
                 debugLog(`Row ${rowIndex}: All images loaded`);
 
@@ -636,13 +659,13 @@
                     img.style.setProperty('visibility', 'visible', 'important');
                     debugLog(`Row ${rowIndex}, Image ${imgIndex}: Scaled and made visible`);
                 });
-                
+
                 // Load next row after delay
                 debugLog(`Scheduling row ${rowIndex + 1} load in 200ms`);
                 setTimeout(() => loadRow(rowIndex + 1), 200);
             });
         }
-        
+
         // Start loading from first row
         debugLog('Starting lazy load sequence');
         loadRow(0);
@@ -742,7 +765,7 @@
             let maxWidth, maxHeight;
             if (presetDims.mode === 'auto') {
                 // Auto mode: fit to browser window with margins
-                const availableWidth = viewportWidth * 0.90;
+                const availableWidth = viewportWidth * 0.9;
                 const availableHeight = viewportHeight - 250;
                 maxWidth = availableWidth;
                 maxHeight = availableHeight;
