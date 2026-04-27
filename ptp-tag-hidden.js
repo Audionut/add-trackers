@@ -10,8 +10,8 @@
 // @match        https://passthepopcorn.me/requests.php*
 // @match        https://passthepopcorn.me/collages.php*
 // @match        https://passthepopcorn.me/artist.php*
-// @downloadURL  https://github.com/Audionut/add-trackers/raw/main/ptp-tag-hidden.js
-// @updateURL    https://github.com/Audionut/add-trackers/raw/main/ptp-tag-hidden.js
+// @downloadURL  https://github.com/Audionut/add-trackers/raw/main/ptp-tag-hidden.user.js
+// @updateURL    https://github.com/Audionut/add-trackers/raw/main/ptp-tag-hidden.user.js
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_registerMenuCommand
