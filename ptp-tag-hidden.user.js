@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP content hider
-// @version      1.9.7
+// @version      1.9.8
 // @description  Hide html elements with specified tags
 // @match        https://passthepopcorn.me/index.php*
 // @match        https://passthepopcorn.me/top10.php*
@@ -60,6 +60,9 @@
     }
 
     let console = getScopedConsole();
+    const TAG_HIDDEN_DATA_READY_EVENT = 'imdbTagHiddenDataReady';
+    const TAG_HIDDEN_DATA_REQUEST_EVENT = 'requestIMDbTagHiddenData';
+    const TAG_HIDDEN_DATA_RESPONSE_EVENT = 'imdbTagHiddenDataResponse';
 
     // Convert to array and clean up
     let tagsArray = TAGS_TO_HIDE.split(',').map(tag => tag.trim().toLowerCase()).filter(tag => tag.length > 0);
@@ -1411,6 +1414,7 @@
 
 
     let pageProcessed = false;
+    let renderDelayHoldCount = 0;
     let originalDisplay = null;
 
     // Hide the page immediately if delay render is enabled
@@ -1514,7 +1518,12 @@
         document.documentElement.appendChild(loadingOverlay);
     }
 
-    function showPage() {
+    function showPage(forceRender = false) {
+        if (DELAY_RENDER && renderDelayHoldCount > 0 && !forceRender) {
+            console.log('Page rendering is still waiting for IMDb matching to complete');
+            return;
+        }
+
         if (DELAY_RENDER && !pageProcessed) {
             // Remove loading overlay with fade effect
             const loadingOverlay = document.getElementById('ptp-loading-overlay');
@@ -1775,7 +1784,7 @@
     }
 
     // Function to extract data from torrent detail pages
-    function extractTorrentPageData() {
+    async function extractTorrentPageData() {
         // Look for GroupID in script tags first
         let groupId = null;
 
@@ -1974,29 +1983,27 @@
         // Check if any PTP tags match our filter
         const ptpMatchedTags = tags.filter(tag => tagsArray.includes(tag.toLowerCase()));
 
-        // Check IMDb data (keywords and parental guide) if enabled (regardless of PTP tag matches)
-        let imdbMatchedKeywords = [];
-        let imdbMatchedParentalGuide = false;
-        let shouldHideByImdb = false;
+        const handleIMDbTorrentPageData = async () => {
+            if (!isIMDbCombinedFilteringActive() || !imdbId) {
+                return {
+                    matched: false,
+                    hidden: false
+                };
+            }
 
-        if ((ENABLE_IMDB_KEYWORD_CHECK || ENABLE_IMDB_PARENTAL_GUIDE_CHECK) && imdbId) {
-            // For torrent pages, we need to handle this asynchronously
-            checkIMDbData(imdbId, title, year).then(imdbData => {
-                let hideTags = [];
+            try {
+                const imdbData = await checkIMDbData(imdbId, title, year);
+                const hideTags = [];
 
                 // Handle keyword matches
                 if (imdbData.keywords && imdbData.keywords.matched) {
-                    imdbMatchedKeywords = imdbData.keywords.matched.map(k => `imdb:${k}`);
-                    hideTags = hideTags.concat(imdbMatchedKeywords);
-                    shouldHideByImdb = true;
+                    const imdbMatchedKeywords = imdbData.keywords.matched.map(k => `imdb:${k}`);
+                    hideTags.push(...imdbMatchedKeywords);
                     console.log(`Found torrent page with IMDb keyword matches: ${title} (${year}) - GroupId: ${groupId} - IMDB: ${imdbId} - Matched keywords: ${imdbData.keywords.matched.join(', ')}`);
                 }
 
                 // Handle parental guide matches
                 if (imdbData.parentalGuide && imdbData.parentalGuide.matched) {
-                    imdbMatchedParentalGuide = true;
-
-                    // Create detailed tags for each parental guide match
                     imdbData.parentalGuide.matched.forEach(match => {
                         // Create tags in format: imdb:parental-guide:Category:Severity
                         const categoryTag = match.category.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
@@ -2006,33 +2013,55 @@
 
                     // Also add the general parental guide tag for backward compatibility
                     hideTags.push('imdb:parental-guide');
-                    shouldHideByImdb = true;
 
                     const matchSummary = imdbData.parentalGuide.matched.map(m => `${m.category}:${m.severity}`).join(', ');
                     console.log(`Found torrent page with IMDb parental guide matches: ${title} (${year}) - GroupId: ${groupId} - IMDB: ${imdbId} - Matches: ${matchSummary}`);
                 }
 
-                if (shouldHideByImdb) {
-                    // If we should hide by IMDb and the page isn't already hidden by PTP tags
-                    if (ptpMatchedTags.length === 0) {
-                        // Add to cache with IMDb tags
-                        addToHiddenCache(groupId, title, year, hideTags, imdbId);
-
-                        // Hide the torrent page if the option is enabled
-                        if (HIDE_TORRENT_PAGES) {
-                            hideTorrentPageContent(title, year, hideTags);
-                            console.log('Torrent page content replaced by IMDb keywords, showing page');
-                            showPage();
-                        }
-                    } else {
-                        // Both PTP and IMDb matched, update cache with combined tags
-                        const combinedTags = [...ptpMatchedTags, ...hideTags];
-                        addToHiddenCache(groupId, title, year, combinedTags, imdbId);
-                    }
+                if (hideTags.length === 0) {
+                    return {
+                        matched: false,
+                        hidden: false
+                    };
                 }
-            }).catch(error => {
+
+                // If we should hide by IMDb and the page isn't already hidden by PTP tags
+                if (ptpMatchedTags.length === 0) {
+                    // Add to cache with IMDb tags
+                    addToHiddenCache(groupId, title, year, hideTags, imdbId);
+
+                    // Hide the torrent page if the option is enabled
+                    if (HIDE_TORRENT_PAGES) {
+                        hideTorrentPageContent(title, year, hideTags);
+                        console.log('Torrent page content replaced by IMDb match, showing page');
+                        showPage();
+                        return {
+                            matched: true,
+                            hidden: true
+                        };
+                    }
+                } else {
+                    // Both PTP and IMDb matched, update cache with combined tags
+                    const combinedTags = [...ptpMatchedTags, ...hideTags];
+                    addToHiddenCache(groupId, title, year, combinedTags, imdbId);
+                }
+
+                return {
+                    matched: true,
+                    hidden: false
+                };
+            } catch (error) {
                 console.log(`Error checking IMDb data for ${title} (${year}): ${error.message}`);
-            });
+                return {
+                    matched: false,
+                    hidden: false
+                };
+            }
+        };
+
+        let imdbCheckPromise = null;
+        if (isIMDbCombinedFilteringActive() && imdbId) {
+            imdbCheckPromise = handleIMDbTorrentPageData();
         }
 
         // Handle PTP tag matches immediately
@@ -2057,10 +2086,33 @@
         } else if (tags.length > 0) {
             console.log(`Found torrent page without matching PTP tags: ${title} (${year}) - GroupId: ${groupId} - IMDB: ${imdbId || 'N/A'} - Available tags: ${tags.join(', ')}`);
 
-            // Don't return true here - let IMDb checking happen asynchronously
-            // The page will be shown by the normal flow or by the IMDb check above
+            // If delayed rendering is enabled, wait for IMDb matching before the page is restored.
         } else {
             console.log(`Found torrent page with no tags: ${title} (${year}) - GroupId: ${groupId} - IMDB: ${imdbId || 'N/A'}`);
+        }
+
+        if (imdbCheckPromise) {
+            if (DELAY_RENDER) {
+                renderDelayHoldCount++;
+                let imdbResult = null;
+
+                try {
+                    imdbResult = await imdbCheckPromise;
+                } finally {
+                    renderDelayHoldCount = Math.max(0, renderDelayHoldCount - 1);
+                }
+
+                if (imdbResult?.hidden) {
+                    return {
+                        isTorrentPage: true,
+                        hiddenImmediately: true
+                    };
+                }
+            } else {
+                imdbCheckPromise.catch(error => {
+                    console.log(`Error checking IMDb data for ${title} (${year}): ${error.message}`);
+                });
+            }
         }
 
         return {
@@ -2072,9 +2124,23 @@
     // Global flag to track IMDb script availability
     let imdbScriptAvailable = null; // null = unknown, true = available, false = unavailable
     const imdbProcessingResults = new Map();
+    const imdbTagHiddenResults = new Map();
+
+    function isIMDbKeywordFilteringActive() {
+        return ENABLE_IMDB_KEYWORD_CHECK && imdbKeywordsArray.length > 0;
+    }
+
+    function isIMDbParentalGuideFilteringActive() {
+        return ENABLE_IMDB_PARENTAL_GUIDE_CHECK &&
+            (imdbParentalGuideCategoriesArray.length > 0 || imdbParentalGuideSeveritiesArray.length > 0);
+    }
+
+    function isIMDbCombinedFilteringActive() {
+        return isIMDbKeywordFilteringActive() || isIMDbParentalGuideFilteringActive();
+    }
 
     function storeIMDbProcessingResult(detail) {
-        if (!detail || !detail.imdbId) {
+        if (!isIMDbCombinedFilteringActive() || !detail || !detail.imdbId) {
             return null;
         }
 
@@ -2090,7 +2156,75 @@
         return normalizedResult;
     }
 
+    function storeIMDbTagHiddenResult(detail) {
+        if (!isIMDbCombinedFilteringActive() || !detail || !detail.imdbId) {
+            return null;
+        }
+
+        const normalizedResult = {
+            imdbId: detail.imdbId,
+            success: detail.success === true || detail.found === true,
+            titleData: detail.titleData || null,
+            error: detail.error || null,
+            timestamp: detail.timestamp || Date.now()
+        };
+
+        imdbTagHiddenResults.set(detail.imdbId, normalizedResult);
+        return normalizedResult;
+    }
+
+    function waitForIMDbTagHiddenResult(imdbId, maxWaitTime = 12000) {
+        if (!isIMDbCombinedFilteringActive()) {
+            return Promise.resolve(null);
+        }
+
+        const existingResult = imdbTagHiddenResults.get(imdbId);
+        if (existingResult) {
+            return Promise.resolve(existingResult);
+        }
+
+        return new Promise(resolve => {
+            let resolved = false;
+            let timeoutId = null;
+
+            const cleanup = () => {
+                document.removeEventListener(TAG_HIDDEN_DATA_READY_EVENT, readyHandler);
+                if (timeoutId) {
+                    clearTimeout(timeoutId);
+                }
+            };
+
+            const finish = (result) => {
+                if (resolved) {
+                    return;
+                }
+
+                resolved = true;
+                cleanup();
+                resolve(result);
+            };
+
+            const readyHandler = (event) => {
+                if (event.detail?.imdbId !== imdbId) {
+                    return;
+                }
+
+                finish(storeIMDbTagHiddenResult(event.detail));
+            };
+
+            document.addEventListener(TAG_HIDDEN_DATA_READY_EVENT, readyHandler);
+
+            timeoutId = setTimeout(() => {
+                finish(imdbTagHiddenResults.get(imdbId) || null);
+            }, maxWaitTime);
+        });
+    }
+
     function waitForIMDbProcessingResult(imdbId, maxWaitTime = 12000) {
+        if (!isIMDbCombinedFilteringActive()) {
+            return Promise.resolve(null);
+        }
+
         const existingResult = imdbProcessingResults.get(imdbId);
         if (existingResult) {
             return Promise.resolve(existingResult);
@@ -2134,6 +2268,10 @@
     }
 
     function requestIMDbDataFromCombinedScript(imdbId, timeoutMs = 10000) {
+        if (!isIMDbCombinedFilteringActive()) {
+            return Promise.resolve({ found: false, ignored: true, imdbId });
+        }
+
         return new Promise((resolve, reject) => {
             const requestId = Date.now() + '_' + Math.random();
             console.log(`checkIMDbData: Sending IMDb data request for ${imdbId} with requestId: ${requestId}`);
@@ -2167,6 +2305,51 @@
                 console.warn(`checkIMDbData: IMDb data request timeout for ${imdbId} (requestId: ${requestId})`);
                 reject(new Error('IMDb data request timeout'));
             }, timeoutMs);
+        });
+    }
+
+    function requestIMDbTagHiddenDataFromCombinedScript(imdbId, timeoutMs = 2000) {
+        if (!isIMDbCombinedFilteringActive()) {
+            return Promise.resolve({ found: false, ignored: true, imdbId });
+        }
+
+        return new Promise((resolve, reject) => {
+            const requestId = Date.now() + '_' + Math.random();
+            let timeoutId = null;
+            console.log(`checkIMDbData: Sending slim IMDb tag-hidden data request for ${imdbId} with requestId: ${requestId}`);
+
+            const responseHandler = (event) => {
+                console.log(`checkIMDbData received ${TAG_HIDDEN_DATA_RESPONSE_EVENT} event:`, event.detail);
+
+                if (event.detail.requestId === requestId) {
+                    console.log(`checkIMDbData: Slim response matches requestId: ${requestId}`);
+                    document.removeEventListener(TAG_HIDDEN_DATA_RESPONSE_EVENT, responseHandler);
+                    if (timeoutId) {
+                        clearTimeout(timeoutId);
+                    }
+                    if (event.detail.found && event.detail.titleData) {
+                        storeIMDbTagHiddenResult(event.detail);
+                    }
+                    resolve(event.detail);
+                } else {
+                    console.log(`checkIMDbData: Slim response requestId ${event.detail.requestId} doesn't match our requestId ${requestId}`);
+                }
+            };
+
+            document.addEventListener(TAG_HIDDEN_DATA_RESPONSE_EVENT, responseHandler);
+
+            timeoutId = setTimeout(() => {
+                document.removeEventListener(TAG_HIDDEN_DATA_RESPONSE_EVENT, responseHandler);
+                console.warn(`checkIMDbData: Slim IMDb tag-hidden data request timeout for ${imdbId} (requestId: ${requestId})`);
+                reject(new Error('Slim IMDb tag-hidden data request timeout'));
+            }, timeoutMs);
+
+            document.dispatchEvent(new CustomEvent(TAG_HIDDEN_DATA_REQUEST_EVENT, {
+                detail: {
+                    imdbId: imdbId,
+                    requestId: requestId
+                }
+            }));
         });
     }
 
@@ -2300,9 +2483,8 @@
         if (!imdbId) return results;
 
         // Check if either feature is enabled
-        const keywordsEnabled = ENABLE_IMDB_KEYWORD_CHECK && imdbKeywordsArray.length > 0;
-        const parentalGuideEnabled = ENABLE_IMDB_PARENTAL_GUIDE_CHECK &&
-            (imdbParentalGuideCategoriesArray.length > 0 || imdbParentalGuideSeveritiesArray.length > 0);
+        const keywordsEnabled = isIMDbKeywordFilteringActive();
+        const parentalGuideEnabled = isIMDbParentalGuideFilteringActive();
 
         if (!keywordsEnabled && !parentalGuideEnabled) {
             return results;
@@ -2354,6 +2536,10 @@
     async function fetchIMDbData(imdbId, title, year, checkKeywords, checkParentalGuide) {
         const results = { keywords: null, parentalGuide: null };
 
+        if (!checkKeywords && !checkParentalGuide) {
+            return results;
+        }
+
         try {
             // Wait for IMDb script availability
             if (imdbScriptAvailable === null) {
@@ -2364,6 +2550,31 @@
             if (imdbScriptAvailable === false) {
                 console.log(`checkIMDbData: IMDb Combined script not available for ${imdbId}, skipping`);
                 return results;
+            }
+
+            let slimResponse = null;
+            try {
+                slimResponse = await requestIMDbTagHiddenDataFromCombinedScript(imdbId);
+            } catch (slimError) {
+                console.warn(`checkIMDbData: Slim IMDb tag-hidden request failed for ${imdbId}, falling back to full cache request:`, slimError);
+            }
+
+            if (slimResponse?.found && slimResponse.titleData) {
+                populateIMDbResultsFromTitleData(slimResponse.titleData, title, imdbId, checkKeywords, checkParentalGuide, results);
+                return results;
+            }
+
+            if (slimResponse && slimResponse.found === false) {
+                console.log(`checkIMDbData: No slim IMDb tag-hidden data ready for ${imdbId}, waiting for ${TAG_HIDDEN_DATA_READY_EVENT}`);
+                const tagHiddenResult = await waitForIMDbTagHiddenResult(imdbId, 12000);
+
+                if (tagHiddenResult?.success && tagHiddenResult.titleData) {
+                    console.log(`checkIMDbData: Using ${TAG_HIDDEN_DATA_READY_EVENT} title data for ${imdbId}`);
+                    populateIMDbResultsFromTitleData(tagHiddenResult.titleData, title, imdbId, checkKeywords, checkParentalGuide, results);
+                    return results;
+                }
+
+                console.log(`checkIMDbData: Timed out waiting for slim IMDb tag-hidden data for ${imdbId}, falling back to full cache request`);
             }
 
             let response = await requestIMDbDataFromCombinedScript(imdbId);
@@ -4098,7 +4309,7 @@
         }
 
         // Check for torrent detail pages (even if no script data found)
-        const torrentPageResult = extractTorrentPageData();
+        const torrentPageResult = await extractTorrentPageData();
 
         // If torrent page was hidden and shown, don't continue with other processing
         if (torrentPageResult.hiddenImmediately) {
@@ -4108,7 +4319,9 @@
         }
 
         if (torrentPageResult.isTorrentPage) {
-            console.log('Torrent page passed synchronous checks, restoring page while background IMDb checks continue');
+            console.log(DELAY_RENDER && isIMDbCombinedFilteringActive()
+                ? 'Torrent page IMDb checks completed without a page-hiding match, restoring page'
+                : 'Torrent page passed synchronous checks, restoring page');
             setTimeout(showPage, 50);
             return;
         }
@@ -4284,6 +4497,10 @@
     });
 
     document.addEventListener('imdbProcessingComplete', (event) => {
+        if (!isIMDbCombinedFilteringActive()) {
+            return;
+        }
+
         const { imdbId, success, titleData, error } = event.detail;
 
         storeIMDbProcessingResult(event.detail);
@@ -4297,11 +4514,22 @@
         }
     });
 
+    document.addEventListener(TAG_HIDDEN_DATA_READY_EVENT, (event) => {
+        if (!isIMDbCombinedFilteringActive()) {
+            return;
+        }
+
+        const result = storeIMDbTagHiddenResult(event.detail);
+        if (result?.success) {
+            console.log(`PTP Content Hider: Slim IMDb tag-hidden data ready for ${result.imdbId}`);
+        }
+    });
+
     // Final fallback: ensure page is shown
     setTimeout(() => {
         if (DELAY_RENDER && !pageProcessed) {
             console.log(`Maximum timeout reached (${FINAL_FALLBACK_TIMEOUT}ms), showing page anyway`);
-            showPage();
+            showPage(true);
         }
     }, FINAL_FALLBACK_TIMEOUT);
 

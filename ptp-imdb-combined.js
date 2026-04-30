@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.3.7
+// @version      1.3.8
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -131,7 +131,11 @@ const RATINGS_EXPORT_UPDATE_EVENT = 'imdbRatingsDataUpdate';
 const RATINGS_EXPORT_REQUEST_EVENT = 'requestIMDbRatingsData';
 const RATINGS_EXPORT_RESPONSE_EVENT = 'imdbRatingsDataResponse';
 const RATINGS_PROVIDER_KEYS = ['ptp', 'imdb', 'metacritic', 'rottenTomatoes', 'tmdb', 'letterboxd'];
+const TAG_HIDDEN_DATA_READY_EVENT = 'imdbTagHiddenDataReady';
+const TAG_HIDDEN_DATA_REQUEST_EVENT = 'requestIMDbTagHiddenData';
+const TAG_HIDDEN_DATA_RESPONSE_EVENT = 'imdbTagHiddenDataResponse';
 let latestRatingsExportSnapshot = null;
+const latestTagHiddenDataByImdbId = new Map();
 let CURRENT_IMDB_ID = null;
 
 const DEFAULT_IMDB_DEMOGRAPHIC_ROW_TYPES_ENABLED = {
@@ -1864,6 +1868,73 @@ function extractImdbRatingsPayload(titleData) {
             }
             : titleData.metacritic ?? null
     };
+}
+
+function extractTagHiddenTitlePayload(titleData) {
+    if (!titleData) {
+        return null;
+    }
+
+    const keywordEdges = Array.isArray(titleData.keywords?.edges)
+        ? titleData.keywords.edges
+            .map((edge) => {
+                const legacyId = edge?.node?.legacyId || null;
+                return legacyId
+                    ? { node: { legacyId } }
+                    : null;
+            })
+            .filter(Boolean)
+        : [];
+
+    const parentalGuideCategories = Array.isArray(titleData.parentsGuide?.categories)
+        ? titleData.parentsGuide.categories.map((category) => ({
+            category: {
+                text: category?.category?.text || null
+            },
+            severity: {
+                text: category?.severity?.text || null
+            }
+        }))
+        : [];
+
+    return {
+        id: titleData.id || null,
+        titleText: titleData.titleText || null,
+        releaseYear: titleData.releaseYear || null,
+        keywords: {
+            edges: keywordEdges
+        },
+        parentsGuide: {
+            categories: parentalGuideCategories
+        }
+    };
+}
+
+function publishTagHiddenTitleData(imdbId, titleData, sourceDetail = 'unknown') {
+    const tagHiddenTitleData = extractTagHiddenTitlePayload(titleData);
+    if (!imdbId || !tagHiddenTitleData) {
+        return null;
+    }
+
+    const detail = {
+        found: true,
+        success: true,
+        imdbId,
+        timestamp: Date.now(),
+        source: RATINGS_EXPORT_SOURCE,
+        sourceDetail,
+        titleData: tagHiddenTitleData
+    };
+
+    latestTagHiddenDataByImdbId.set(imdbId, detail);
+    document.dispatchEvent(new CustomEvent(TAG_HIDDEN_DATA_READY_EVENT, { detail }));
+    console.log(`PTP IMDb Combined: Dispatched ${TAG_HIDDEN_DATA_READY_EVENT} for ${imdbId}`, {
+        keywords: tagHiddenTitleData.keywords.edges.length,
+        parentalGuideCategories: tagHiddenTitleData.parentsGuide.categories.length,
+        sourceDetail
+    });
+
+    return detail;
 }
 
 function hasRatingsSnapshotData(snapshot) {
@@ -5949,6 +6020,7 @@ function hasRequiredRatingsData(titleData) {
             console.log("Using cached compressed IMDb data");
             if (cachedData.data && cachedData.data.title && hasRequiredRatingsData(cachedData.data.title)) {
                 const titleData = cachedData.data.title;
+                publishTagHiddenTitleData(imdbId, titleData, 'cache-hit');
                 if (ratingsRuntime && !ratingsRuntime.initialRatingsPublished) {
                     ratingsRuntime.initialRatingsPublished = true;
                     ratingsRuntime.onInitialRatingsData?.(extractImdbRatingsPayload(titleData));
@@ -6493,6 +6565,7 @@ function hasRequiredRatingsData(titleData) {
                         if (data && data.data && data.data.title) {
                             const pageTitleData = data.data.title;
                             const titleData = baseTitleData || pageTitleData;
+                            publishTagHiddenTitleData(imdbId, titleData, baseTitleData ? 'api-pagination' : 'api-fetch');
 
                             if (ratingsRuntime && !ratingsRuntime.initialRatingsPublished) {
                                 ratingsRuntime.initialRatingsPublished = true;
@@ -8591,6 +8664,74 @@ function hasRequiredRatingsData(titleData) {
                 }
             }));
             console.error(`PTP IMDb Combined: Failed ${RATINGS_EXPORT_RESPONSE_EVENT} for ${requestedImdbId} (requestId: ${requestId})`, error);
+        }
+    });
+
+    document.addEventListener(TAG_HIDDEN_DATA_REQUEST_EVENT, async (event) => {
+        const { imdbId, requestId } = event.detail || {};
+
+        try {
+            console.log(`PTP IMDb Combined: Received tag-hidden data request for ${imdbId} (requestId: ${requestId})`);
+
+            const liveData = latestTagHiddenDataByImdbId.get(imdbId);
+            if (liveData) {
+                document.dispatchEvent(new CustomEvent(TAG_HIDDEN_DATA_RESPONSE_EVENT, {
+                    detail: {
+                        requestId,
+                        ...liveData
+                    }
+                }));
+                return;
+            }
+
+            const cachedData = await getCache(`iMDB_data_${imdbId}`);
+            const tagHiddenTitleData = extractTagHiddenTitlePayload(cachedData?.data?.title);
+            const responseData = tagHiddenTitleData
+                ? {
+                    found: true,
+                    success: true,
+                    imdbId,
+                    timestamp: Date.now(),
+                    source: RATINGS_EXPORT_SOURCE,
+                    sourceDetail: 'cache-request',
+                    titleData: tagHiddenTitleData
+                }
+                : {
+                    found: false,
+                    success: false,
+                    imdbId,
+                    source: RATINGS_EXPORT_SOURCE,
+                    sourceDetail: 'cache-miss',
+                    titleData: null
+                };
+
+            if (responseData.found) {
+                latestTagHiddenDataByImdbId.set(imdbId, responseData);
+            }
+
+            document.dispatchEvent(new CustomEvent(TAG_HIDDEN_DATA_RESPONSE_EVENT, {
+                detail: {
+                    requestId,
+                    ...responseData
+                }
+            }));
+            console.log(`PTP IMDb Combined: Sent ${TAG_HIDDEN_DATA_RESPONSE_EVENT} for ${imdbId} (requestId: ${requestId})`, {
+                found: responseData.found,
+                sourceDetail: responseData.sourceDetail
+            });
+        } catch (error) {
+            console.error('PTP IMDb Combined: Error processing tag-hidden data request:', error);
+            document.dispatchEvent(new CustomEvent(TAG_HIDDEN_DATA_RESPONSE_EVENT, {
+                detail: {
+                    requestId,
+                    found: false,
+                    success: false,
+                    error: error.message,
+                    imdbId,
+                    source: RATINGS_EXPORT_SOURCE,
+                    titleData: null
+                }
+            }));
         }
     });
 
