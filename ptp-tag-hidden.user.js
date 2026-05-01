@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP content hider
-// @version      1.9.8
+// @version      1.9.9
 // @description  Hide html elements with specified tags
 // @match        https://passthepopcorn.me/index.php*
 // @match        https://passthepopcorn.me/top10.php*
@@ -14,8 +14,10 @@
 // @updateURL    https://github.com/Audionut/add-trackers/raw/main/ptp-tag-hidden.user.js
 // @grant        GM_setValue
 // @grant        GM_getValue
+// @grant        GM_xmlhttpRequest
 // @grant        GM_registerMenuCommand
 // @run-at       document-start
+// @connect      api.graphql.imdb.com
 // ==/UserScript==
 
 (function() {
@@ -63,6 +65,9 @@
     const TAG_HIDDEN_DATA_READY_EVENT = 'imdbTagHiddenDataReady';
     const TAG_HIDDEN_DATA_REQUEST_EVENT = 'requestIMDbTagHiddenData';
     const TAG_HIDDEN_DATA_RESPONSE_EVENT = 'imdbTagHiddenDataResponse';
+    const IMDB_GRAPHQL_URL = 'https://api.graphql.imdb.com/';
+    const IMDB_PREFETCH_BATCH_SIZE = 30;
+    const IMDB_PREFETCH_DELAY_MS = 100;
 
     // Convert to array and clean up
     let tagsArray = TAGS_TO_HIDE.split(',').map(tag => tag.trim().toLowerCase()).filter(tag => tag.length > 0);
@@ -77,6 +82,12 @@
     let imdbParentalGuideCache = {};
     let collageProcessingTimeout = null;
     let isProcessingCollages = false;
+    let imdbPrefetchRunning = false;
+    let lastIMDbPrefetchRequestAt = 0;
+    const imdbPrefetchQueue = [];
+    const imdbPrefetchQueuedIds = new Set();
+    const imdbPrefetchInFlightIds = new Set();
+    const imdbPrefetchMovieEntriesById = new Map();
 
     try {
         hiddenCache = JSON.parse(HIDDEN_CACHE);
@@ -1411,6 +1422,332 @@
         return matches.length > 0 ? matches : null;
     }
 
+    function sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function normalizeIMDbId(value) {
+        if (value === undefined || value === null) {
+            return null;
+        }
+
+        const normalized = String(value).trim();
+        if (!normalized) {
+            return null;
+        }
+
+        const titleMatch = normalized.match(/tt\d+/i);
+        if (titleMatch) {
+            return titleMatch[0].toLowerCase();
+        }
+
+        if (/^\d+$/.test(normalized)) {
+            return `tt${normalized}`;
+        }
+
+        return null;
+    }
+
+    function shouldSkipIMDbPrefetchForId(imdbId) {
+        if (!isIMDbCombinedFilteringActive()) {
+            return true;
+        }
+
+        const keywordsReady = !isIMDbKeywordFilteringActive() || isIMDbKeywordsCacheValid(imdbId);
+        const parentalGuideReady = !isIMDbParentalGuideFilteringActive() || isIMDbParentalGuideCacheValid(imdbId);
+
+        return keywordsReady && parentalGuideReady;
+    }
+
+    function createIMDbPrefetchEntry(movie, sourceName, arrayIndex, movieIndex) {
+        const imdbId = normalizeIMDbId(movie?.ImdbId || movie?.IMDbId || movie?.imdbId);
+        if (!imdbId) {
+            return null;
+        }
+
+        const groupId = movie?.GroupId || movie?.groupId || movie?.GroupID || null;
+
+        return {
+            imdbId,
+            groupId: groupId === null || groupId === undefined ? null : String(groupId),
+            title: typeof movie?.Title === 'string' && movie.Title.trim().length > 0 ? movie.Title.trim() : 'Unknown Title',
+            year: movie?.Year ? String(movie.Year) : '',
+            sourceName,
+            arrayIndex,
+            movieIndex
+        };
+    }
+
+    function scheduleIMDbPrefetchForMovies(movies, sourceName, arrayIndex = -1) {
+        if (!isIMDbCombinedFilteringActive() || !Array.isArray(movies) || movies.length === 0) {
+            return;
+        }
+
+        const isTorrentDetailPage = window.location.pathname.includes('/torrents.php') && window.location.search.includes('id=');
+        if (isTorrentDetailPage) {
+            return;
+        }
+
+        console.log(`IMDb prefetch scan: ${sourceName} has ${movies.length} movie(s)`);
+        let queuedCount = 0;
+
+        movies.forEach((movie, movieIndex) => {
+            const entry = createIMDbPrefetchEntry(movie, sourceName, arrayIndex, movieIndex);
+            if (!entry) {
+                return;
+            }
+
+            if (!imdbPrefetchMovieEntriesById.has(entry.imdbId)) {
+                imdbPrefetchMovieEntriesById.set(entry.imdbId, []);
+            }
+            imdbPrefetchMovieEntriesById.get(entry.imdbId).push(entry);
+
+            if (
+                shouldSkipIMDbPrefetchForId(entry.imdbId) ||
+                imdbPrefetchQueuedIds.has(entry.imdbId) ||
+                imdbPrefetchInFlightIds.has(entry.imdbId)
+            ) {
+                return;
+            }
+
+            imdbPrefetchQueue.push(entry.imdbId);
+            imdbPrefetchQueuedIds.add(entry.imdbId);
+            queuedCount++;
+        });
+
+        if (queuedCount > 0) {
+            console.log(`IMDb prefetch queued ${queuedCount} title ID(s) from ${sourceName}; first queued ID: ${imdbPrefetchQueue[0] || 'none'}`);
+            runIMDbPrefetchQueue().catch(error => {
+                console.warn('IMDb background prefetch failed:', error);
+            });
+        } else {
+            console.log(`IMDb prefetch scan complete for ${sourceName}; no uncached title IDs queued`);
+        }
+    }
+
+    function requestIMDbGraphQL(query, variables = {}) {
+        return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: 'POST',
+                url: IMDB_GRAPHQL_URL,
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                data: JSON.stringify({
+                    query,
+                    variables
+                }),
+                onload: response => {
+                    if (response.status < 200 || response.status >= 300) {
+                        reject(new Error(`IMDb GraphQL request failed with status ${response.status}: ${(response.responseText || '').slice(0, 300)}`));
+                        return;
+                    }
+
+                    try {
+                        const parsed = JSON.parse(response.responseText || '{}');
+                        if (parsed.errors && !parsed.data) {
+                            reject(new Error(`IMDb GraphQL returned errors: ${JSON.stringify(parsed.errors).slice(0, 300)}`));
+                            return;
+                        }
+
+                        resolve(parsed);
+                    } catch (error) {
+                        reject(error);
+                    }
+                },
+                onerror: () => {
+                    reject(new Error('IMDb GraphQL request error'));
+                }
+            });
+        });
+    }
+
+    async function fetchIMDbTagHiddenTitleBatch(imdbIds) {
+        if (!Array.isArray(imdbIds) || imdbIds.length === 0) {
+            return [];
+        }
+
+        const query = `
+            query getTagHiddenTitles($ids: [ID!]!) {
+                titles(ids: $ids) {
+                    id
+                    keywords(first: 150) {
+                        edges {
+                            node {
+                                legacyId
+                            }
+                        }
+                    }
+                    parentsGuide {
+                        categories {
+                            category {
+                                text
+                            }
+                            severity {
+                                text
+                            }
+                        }
+                    }
+                }
+            }
+        `;
+
+        console.log(`IMDb prefetch GraphQL request: ${imdbIds.length} title ID(s), first ID: ${imdbIds[0]}`);
+        const response = await requestIMDbGraphQL(query, { ids: imdbIds });
+        const titles = Array.isArray(response?.data?.titles) ? response.data.titles.filter(Boolean) : [];
+        console.log(`IMDb prefetch GraphQL response: ${titles.length}/${imdbIds.length} title(s) returned`);
+        return titles;
+    }
+
+    function buildIMDbHideTagsFromResults(imdbData) {
+        const hideTags = [];
+
+        if (imdbData?.keywords?.matched) {
+            hideTags.push(...imdbData.keywords.matched.map(keyword => `imdb:${keyword}`));
+        }
+
+        if (imdbData?.parentalGuide?.matched) {
+            imdbData.parentalGuide.matched.forEach(match => {
+                const categoryTag = match.category.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+                hideTags.push(`imdb:parental-guide:${categoryTag}:${match.severity.toLowerCase()}`);
+            });
+            hideTags.push('imdb:parental-guide');
+        }
+
+        return normalizeHiddenReasonList(hideTags);
+    }
+
+    function cacheInactiveIMDbPrefetchFields(titleData, imdbId) {
+        if (!isIMDbKeywordFilteringActive() && titleData?.keywords?.edges) {
+            const keywords = titleData.keywords.edges
+                .map(edge => edge.node ? edge.node.legacyId : null)
+                .filter(Boolean);
+            console.log(`IMDb prefetch caching inactive keyword data for ${imdbId}: ${keywords.length} keyword(s)`);
+            addToIMDbKeywordsCache(imdbId, keywords);
+        }
+
+        if (!isIMDbParentalGuideFilteringActive() && titleData?.parentsGuide?.categories) {
+            console.log(`IMDb prefetch caching inactive parental guide data for ${imdbId}: ${titleData.parentsGuide.categories.length} categor(y/ies)`);
+            addToIMDbParentalGuideCache(imdbId, titleData.parentsGuide.categories);
+        }
+    }
+
+    function applyIMDbPrefetchMatches(imdbId, imdbData) {
+        const hideTags = buildIMDbHideTagsFromResults(imdbData);
+        if (hideTags.length === 0) {
+            console.log(`IMDb prefetch found no active filter matches for ${imdbId}`);
+            return false;
+        }
+
+        const entries = imdbPrefetchMovieEntriesById.get(imdbId) || [];
+        let hiddenAny = false;
+
+        entries.forEach(entry => {
+            if (!entry.groupId) {
+                return;
+            }
+
+            const cachedMovie = hiddenCache[entry.groupId];
+            const combinedTags = normalizeHiddenReasonList([
+                ...(cachedMovie?.tags || []),
+                ...hideTags
+            ]);
+            const combinedReasons = normalizeHiddenReasonList([
+                ...(cachedMovie ? getCachedMovieReasons(cachedMovie) : []),
+                ...hideTags
+            ]);
+            const title = entry.title || cachedMovie?.title || 'Unknown Title';
+            const year = entry.year || cachedMovie?.year || '';
+
+            addToHiddenCache(entry.groupId, title, year, combinedTags, imdbId, combinedReasons);
+            hideSpecificMovieElement(entry.arrayIndex, entry.movieIndex, entry.groupId, title, combinedReasons);
+            hiddenAny = true;
+            console.log(`Background IMDb prefetch matched ${title} (${year}) from ${entry.sourceName}: ${combinedReasons.join(', ')}`);
+        });
+
+        if (hiddenAny) {
+            hideCachedTorrentLinks();
+            hideCachedCollageLinks();
+        }
+
+        return hiddenAny;
+    }
+
+    async function processIMDbPrefetchBatch(imdbIds) {
+        const titles = await fetchIMDbTagHiddenTitleBatch(imdbIds);
+        const titlesById = new Map();
+
+        titles.forEach(titleData => {
+            const imdbId = normalizeIMDbId(titleData?.id);
+            if (imdbId) {
+                titlesById.set(imdbId, titleData);
+            }
+        });
+
+        imdbIds.forEach(imdbId => {
+            const titleData = titlesById.get(imdbId);
+            if (!titleData) {
+                console.log(`IMDb background prefetch returned no title data for ${imdbId}`);
+                return;
+            }
+
+            const firstEntry = (imdbPrefetchMovieEntriesById.get(imdbId) || [])[0] || {};
+            const imdbData = { keywords: null, parentalGuide: null };
+            cacheInactiveIMDbPrefetchFields(titleData, imdbId);
+            populateIMDbResultsFromTitleData(
+                titleData,
+                firstEntry.title || imdbId,
+                imdbId,
+                isIMDbKeywordFilteringActive(),
+                isIMDbParentalGuideFilteringActive(),
+                imdbData
+            );
+            applyIMDbPrefetchMatches(imdbId, imdbData);
+        });
+    }
+
+    async function runIMDbPrefetchQueue() {
+        if (imdbPrefetchRunning) {
+            return;
+        }
+
+        imdbPrefetchRunning = true;
+
+        try {
+            while (imdbPrefetchQueue.length > 0) {
+                const batch = imdbPrefetchQueue.splice(0, IMDB_PREFETCH_BATCH_SIZE);
+                batch.forEach(imdbId => {
+                    imdbPrefetchQueuedIds.delete(imdbId);
+                    imdbPrefetchInFlightIds.add(imdbId);
+                });
+
+                const waitMs = Math.max(0, IMDB_PREFETCH_DELAY_MS - (Date.now() - lastIMDbPrefetchRequestAt));
+                if (lastIMDbPrefetchRequestAt > 0 && waitMs > 0) {
+                    await sleep(waitMs);
+                }
+
+                try {
+                    console.log(`IMDb background prefetch requesting ${batch.length} title ID(s), starting with ${batch[0]}`);
+                    await processIMDbPrefetchBatch(batch);
+                } catch (error) {
+                    console.warn(`IMDb background prefetch batch failed for ${batch.join(', ')}:`, error);
+                } finally {
+                    lastIMDbPrefetchRequestAt = Date.now();
+                    batch.forEach(imdbId => {
+                        imdbPrefetchInFlightIds.delete(imdbId);
+                    });
+                }
+            }
+        } finally {
+            imdbPrefetchRunning = false;
+            if (imdbPrefetchQueue.length > 0) {
+                runIMDbPrefetchQueue().catch(error => {
+                    console.warn('IMDb background prefetch restart failed:', error);
+                });
+            }
+        }
+    }
+
 
 
     let pageProcessed = false;
@@ -2491,10 +2828,14 @@
         }
 
         try {
+            let keywordsCacheAvailable = false;
+            let parentalGuideCacheAvailable = false;
+
             // Check caches first
             if (keywordsEnabled) {
                 const cachedKeywords = getCachedIMDbKeywords(imdbId);
                 if (cachedKeywords) {
+                    keywordsCacheAvailable = true;
                     console.log(`Using cached IMDb keywords for ${title} (${imdbId}):`, cachedKeywords);
                     const matchedKeywords = cachedKeywords.filter(keyword =>
                         imdbKeywordsArray.includes(keyword.toLowerCase())
@@ -2509,6 +2850,7 @@
             if (parentalGuideEnabled) {
                 const cachedParentalGuide = getCachedIMDbParentalGuide(imdbId);
                 if (cachedParentalGuide) {
+                    parentalGuideCacheAvailable = true;
                     console.log(`Using cached IMDb parental guide for ${title} (${imdbId}):`, cachedParentalGuide);
                     const parentalGuideMatches = checkParentalGuideMatch(cachedParentalGuide);
                     if (parentalGuideMatches) {
@@ -2519,7 +2861,7 @@
             }
 
             // If we have cache hits for all enabled features, return early
-            if ((!keywordsEnabled || results.keywords) && (!parentalGuideEnabled || results.parentalGuide)) {
+            if ((!keywordsEnabled || keywordsCacheAvailable) && (!parentalGuideEnabled || parentalGuideCacheAvailable)) {
                 return results;
             }
 
@@ -3364,6 +3706,7 @@
         }
 
         console.log(`Found ${coverViewData.Movies.length} movies in coverViewJsonData`);
+        scheduleIMDbPrefetchForMovies(coverViewData.Movies, 'collage coverViewJsonData');
 
         // Debug: Log some DOM structure info
         const allMovieLinks = document.querySelectorAll('a[href*="torrents.php?id="]');
@@ -4104,6 +4447,8 @@
         // Helper function to process movie arrays with optional IMDb keyword checking
         const processMovieArrayAsync = async (movies, arrayName, arrayIndex = -1) => {
             if (!movies || !Array.isArray(movies)) return false;
+
+            scheduleIMDbPrefetchForMovies(movies, arrayName, arrayIndex);
 
             let elementsHidden = false;
 
