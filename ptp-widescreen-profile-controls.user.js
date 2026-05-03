@@ -22,7 +22,8 @@
     linkedVariables: {},
     logoImageUrl: '',
     backdropImageUrl: '',
-    tileBackdropImage: false
+    tileBackdropImage: false,
+    useOriginalSidebarCoverPath: false
   };
 
   const WIDTH_VARS = [
@@ -210,10 +211,13 @@
     height: 900
   };
 
+  const LAYOUT_PREVIEW_COVER_URL = 'https://passthepopcorn.me/i/fqrm5ZKADdX.jpg';
+
   const HUGE_COVER_CONTAIN_CLASS = 'huge-movie-list__movie__cover__link--fit-inside';
   const hugeCoverFitCache = new Map();
   let hugeCoverFitObserver = null;
   let hugeCoverFitRefreshTimerId = 0;
+  let sidebarCoverPathObserver = null;
 
   function isPreviewOptionVariable(variableName) {
     return (
@@ -966,6 +970,71 @@
     return typeof value === 'string' ? value.trim() : '';
   }
 
+  function getPreferredSidebarCoverImageUrl(url, currentState) {
+    const cleanUrl = normalizeUrlValue(url);
+    if (!cleanUrl) return '';
+
+    if (currentState && currentState.useOriginalSidebarCoverPath) {
+      return cleanUrl.replace('/p/', '/i/');
+    }
+
+    return cleanUrl.replace('/i/', '/p/');
+  }
+
+  function applySidebarCoverPathToImage(image, currentState) {
+    if (!(image instanceof HTMLImageElement) || !image.matches('.sidebar-cover-image')) {
+      return;
+    }
+
+    const currentUrl = image.getAttribute('src') || image.currentSrc || '';
+    const nextUrl = getPreferredSidebarCoverImageUrl(currentUrl, currentState);
+    if (!nextUrl || nextUrl === currentUrl) {
+      return;
+    }
+
+    image.src = nextUrl;
+  }
+
+  function refreshSidebarCoverImagePaths(root, currentState) {
+    const scope = root && root.querySelectorAll ? root : document;
+
+    if (scope instanceof Element && scope.matches('.sidebar-cover-image')) {
+      applySidebarCoverPathToImage(scope, currentState);
+    }
+
+    const images = scope.querySelectorAll('.sidebar-cover-image');
+    for (const image of images) {
+      applySidebarCoverPathToImage(image, currentState);
+    }
+  }
+
+  function ensureSidebarCoverPathObserver() {
+    if (sidebarCoverPathObserver) {
+      return;
+    }
+
+    sidebarCoverPathObserver = new MutationObserver(function (mutations) {
+      for (const mutation of mutations) {
+        if (mutation.type === 'attributes' && mutation.target instanceof HTMLImageElement) {
+          applySidebarCoverPathToImage(mutation.target, state);
+          continue;
+        }
+
+        for (const node of mutation.addedNodes) {
+          if (!(node instanceof Element)) continue;
+          refreshSidebarCoverImagePaths(node, state);
+        }
+      }
+    });
+
+    sidebarCoverPathObserver.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['src']
+    });
+  }
+
   function setBackgroundImage(element, imageUrl) {
     if (!element) return;
 
@@ -1020,8 +1089,18 @@
     const logoImageUrl = normalizeUrlValue(parsed && parsed.logoImageUrl);
     const backdropImageUrl = normalizeUrlValue(parsed && parsed.backdropImageUrl);
     const tileBackdropImage = !!(parsed && parsed.tileBackdropImage);
+    const useOriginalSidebarCoverPath = !!(parsed && parsed.useOriginalSidebarCoverPath);
 
-    return { linked, scale, overrides, linkedVariables, logoImageUrl, backdropImageUrl, tileBackdropImage };
+    return {
+      linked,
+      scale,
+      overrides,
+      linkedVariables,
+      logoImageUrl,
+      backdropImageUrl,
+      tileBackdropImage,
+      useOriginalSidebarCoverPath
+    };
   }
 
   function loadState() {
@@ -1389,6 +1468,8 @@
 
     ensureHugeCoverImageFitObserver();
     scheduleHugeCoverImageFitRefresh();
+    ensureSidebarCoverPathObserver();
+    refreshSidebarCoverImagePaths(document, currentState);
 
     emitPreviewUpdate(dimensions);
   }
@@ -1575,6 +1656,17 @@
       }
     });
 
+    const originalSidebarCoverPathRow = makeCheckboxSettingRow({
+      label: 'Use /i/ Sidebar Cover Images',
+      checked: state.useOriginalSidebarCoverPath,
+      onChange: function (checked) {
+        state.useOriginalSidebarCoverPath = checked;
+        coverImage.src = getPreferredSidebarCoverImageUrl(LAYOUT_PREVIEW_COVER_URL, state);
+        applySettings(state);
+        saveState(state);
+      }
+    });
+
     assetsList.appendChild(logoImageRow.row);
     assetsList.appendChild(backdropImageRow.row);
     assetsList.appendChild(tileBackdropRow.row);
@@ -1639,6 +1731,7 @@
       logoImageRow.input.value = state.logoImageUrl;
       backdropImageRow.input.value = state.backdropImageUrl;
       tileBackdropRow.input.checked = state.tileBackdropImage;
+      originalSidebarCoverPathRow.input.checked = state.useOriginalSidebarCoverPath;
       applySettings(state);
       refreshIndividualControls(controlsByName, state);
       saveState(state);
@@ -1677,7 +1770,7 @@
     let activePreviewOptionVariableNames = null;
 
     resetPreviewOptionsButton.addEventListener('click', function () {
-      if (!activePreviewOptionVariableNames) return;
+      if (!activePreviewOptionVariableNames && !originalSidebarCoverPathRow.row.hidden) return;
       for (const variable of SETTING_VARS) {
         if (!activePreviewOptionVariableNames.has(variable.name)) continue;
         state.overrides[variable.name] = variable.defaultValue;
@@ -1689,6 +1782,10 @@
         } else {
           delete state.linkedVariables[variable.name];
         }
+      }
+      if (!originalSidebarCoverPathRow.row.hidden) {
+        state.useOriginalSidebarCoverPath = DEFAULT_STATE.useOriginalSidebarCoverPath;
+        originalSidebarCoverPathRow.input.checked = state.useOriginalSidebarCoverPath;
       }
       applySettings(state);
       refreshIndividualControls(controlsByName, state);
@@ -1702,6 +1799,8 @@
       if (!controls) continue;
       previewOptionsList.appendChild(controls.row);
     }
+
+    previewOptionsList.appendChild(originalSidebarCoverPathRow.row);
 
     previewOptionsActions.appendChild(resetPreviewOptionsButton);
     previewOptionsBody.appendChild(previewOptionsTitle);
@@ -1938,7 +2037,7 @@
     const coverImage = document.createElement('img');
     coverImage.className = 'sidebar-cover-image';
     coverImage.alt = 'Cover preview';
-    coverImage.src = 'https://ptpimg.me/67h402.jpg';
+    coverImage.src = getPreferredSidebarCoverImageUrl(LAYOUT_PREVIEW_COVER_URL, state);
 
     coverBody.appendChild(coverImage);
     coverPanel.appendChild(coverHeading);
@@ -2387,6 +2486,8 @@
     function updateCoverPreview(dimensions) {
       if (previewItems.length === 0) return;
 
+      coverImage.src = getPreferredSidebarCoverImageUrl(LAYOUT_PREVIEW_COVER_URL, state);
+
       for (const previewItem of previewItems) {
         const widthValue = dimensions.widths[previewItem.pair.widthVar];
         const heightValue = dimensions.heights[previewItem.pair.heightVar];
@@ -2477,7 +2578,8 @@
           : key === 'torrentsPhp'
             ? TORRENTS_PHP_PREVIEW_VARIABLE_NAMES
             : null;
-      previewOptionsPanel.hidden = !activePreviewOptionVariableNames;
+      const hasPreviewOptions = !!activePreviewOptionVariableNames || key === 'layout';
+      previewOptionsPanel.hidden = !hasPreviewOptions;
       previewOptionsTitle.textContent =
         key === 'torrentsPhp' ? 'Huge View Preview Options' : 'Torrents Layout Preview Options';
       previewOptionsDescription.textContent =
@@ -2490,6 +2592,7 @@
         if (!controls) continue;
         controls.row.hidden = !activePreviewOptionVariableNames || !activePreviewOptionVariableNames.has(variable.name);
       }
+      originalSidebarCoverPathRow.row.hidden = key !== 'layout';
       if (activeDefinition && typeof activeDefinition.onActivate === 'function') {
         activeDefinition.onActivate();
       }

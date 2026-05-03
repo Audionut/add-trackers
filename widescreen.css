@@ -2667,9 +2667,14 @@ html.busy-cursor * {
   width: var(--sidebar-width);
 }
 
+.box_albumart .sidebar-cover-image {
+  width: 100%;
+}
+
 .sidebar-cover-image {
   display: block;
   max-width: 100%;
+  height: auto;
   margin-left: auto;
   margin-right: auto;
 }
