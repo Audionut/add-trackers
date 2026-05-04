@@ -203,10 +203,21 @@
     'linkbox-font-size'
   ]);
 
-  const TORRENTS_PHP_PREVIEW_VARIABLE_NAMES = new Set(['torrents-huge-movie-width', 'torrents-huge-movie-height']);
+  const TORRENTS_PHP_HUGE_PREVIEW_VARIABLE_NAMES = new Set([
+    'torrents-huge-movie-width',
+    'torrents-huge-movie-height'
+  ]);
+  const TORRENTS_PHP_LIST_PREVIEW_VARIABLE_NAMES = new Set([
+    'basic-movie-cover-width',
+    'torrent-row-font-size'
+  ]);
+  const TORRENTS_PHP_PREVIEW_VARIABLE_NAMES = new Set([
+    ...TORRENTS_PHP_HUGE_PREVIEW_VARIABLE_NAMES,
+    ...TORRENTS_PHP_LIST_PREVIEW_VARIABLE_NAMES
+  ]);
 
   const HUGE_PREVIEW_COVER = {
-    url: 'https://ptpimg.me/bizsjq.jpg',
+    url: 'https://passthepopcorn.me/i/dcZDaynM5Hy.jpg',
     width: 608,
     height: 900
   };
@@ -615,6 +626,217 @@
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-torrent-table
   .tag-separator {
   opacity: 0.65;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__list-preview {
+  overflow-x: auto;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__list-preview-table {
+  width: 100%;
+  margin-bottom: 0;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__list-preview-table.table--bordered {
+  border: solid thin #555555;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__list-preview-table
+  > thead
+  > tr,
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__list-preview-table
+  > tbody
+  > tr {
+  background-color: #333333;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__list-preview-table
+  > thead
+  > tr
+  > th,
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__list-preview-table
+  > tbody
+  > tr
+  > th,
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__list-preview-table
+  > tfoot
+  > tr
+  > th,
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__list-preview-table
+  > thead
+  > tr
+  > td,
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__list-preview-table
+  > tbody
+  > tr
+  > td,
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__list-preview-table
+  > tfoot
+  > tr
+  > td {
+  border-top: solid thin #555555;
+  line-height: 1.42857;
+  padding: 5px;
+  vertical-align: top;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__list-preview-table.table--bordered
+  > thead
+  > tr
+  > th,
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__list-preview-table.table--bordered
+  > tbody
+  > tr
+  > th,
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__list-preview-table.table--bordered
+  > tfoot
+  > tr
+  > th,
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__list-preview-table.table--bordered
+  > thead
+  > tr
+  > td,
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__list-preview-table.table--bordered
+  > tbody
+  > tr
+  > td,
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__list-preview-table.table--bordered
+  > tfoot
+  > tr
+  > td {
+  border: solid thin #555555;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__list-preview-table.table--panel-like
+  > thead
+  > tr {
+  background:
+    url('https://passthepopcorn.me/static/styles/dark/images/blackgrad.png') repeat-x scroll 0 0%,
+    none repeat scroll 0 0 #080909;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__list-preview-table.table--panel-like
+  > thead
+  > tr
+  > th {
+  padding: 4px;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__list-preview-table
+  > tbody
+  > tr.basic-movie-list__details-row {
+  background-color: #222222;
+  vertical-align: top;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__list-preview-table
+  .basic-movie-list__movie__title-row {
+  font-weight: bold;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__list-preview-table
+  .basic-movie-list__movie__new {
+  font-size: 10px;
+  font-weight: bold;
+  opacity: 0.4;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__list-preview-table
+  .basic-movie-list__movie__bookmark {
+  float: right;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__list-preview-table
+  .basic-movie-list__movie__ratings-and-tags {
+  padding-top: 2px;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__list-preview-table
+  .basic-movie-list__movie__rating-container {
+  display: inline;
+  padding: 1px 4px;
+  margin-right: 4px;
+  background-color: #4d4d4d;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__list-preview-table
+  .basic-movie-list__movie__rating__title {
+  font-weight: bold;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__list-preview-table
+  .basic-movie-list__movie__tags {
+  padding: 2px;
+  font-style: italic;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__list-preview-table
+  .basic-movie-list__torrent-row {
+  font-size: var(--torrent-row-font-size);
+  height: 1em;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__list-preview-table
+  .basic-movie-list__movie__cover {
+  width: var(--basic-movie-cover-width);
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__list-preview-table
+  .basic-movie-list__movie__cover-link {
+  display: block;
+  position: relative;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__list-preview-table
+  .basic-movie-list__torrent-edition__main {
+  font-weight: bold;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__list-preview-table
+  .basic-movie-list__torrent__action {
+  float: right;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__list-preview-table .nobr {
+  white-space: nowrap;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__list-preview-table .no-seeders {
+  color: red;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__list-preview-table .torrent-info__trumpable {
+  color: orange;
+  font-weight: bold;
 }
 
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-sidebar {
@@ -2124,6 +2346,17 @@
       return element;
     }
 
+    function appendAnchor(parent, className, text, href) {
+      const element = document.createElement('a');
+      element.href = href || '#';
+      if (className) {
+        element.className = className;
+      }
+      element.textContent = text;
+      parent.appendChild(element);
+      return element;
+    }
+
     function appendRatingRow(parent, options) {
       const row = document.createElement('tr');
       const iconCell = document.createElement('td');
@@ -2181,6 +2414,375 @@
       row.appendChild(votesCell);
       parent.appendChild(row);
     }
+
+    const listViewPanel = document.createElement('div');
+    listViewPanel.className =
+      'widescreen-controls__nested-layout-panel widescreen-controls__list-preview';
+
+    const listViewTable = document.createElement('table');
+    listViewTable.className =
+      'torrent_table grouping table table--panel-like table--bordered basic-movie-list widescreen-controls__list-preview-table';
+
+    const listViewHead = document.createElement('thead');
+    const listViewHeaderRow = document.createElement('tr');
+
+    const listViewEmptyHeader = document.createElement('th');
+    listViewEmptyHeader.className = 'small';
+    listViewHeaderRow.appendChild(listViewEmptyHeader);
+
+    const listViewNameHeader = document.createElement('th');
+    listViewNameHeader.width = '100%';
+    appendAnchor(
+      listViewNameHeader,
+      '',
+      'Name',
+      'https://passthepopcorn.me/torrents.php?order_by=title&order_way=desc'
+    );
+    listViewNameHeader.appendChild(document.createTextNode(' / '));
+    appendAnchor(
+      listViewNameHeader,
+      '',
+      'Year',
+      'https://passthepopcorn.me/torrents.php?order_by=year&order_way=desc'
+    );
+    listViewNameHeader.appendChild(document.createTextNode(' / '));
+    appendAnchor(
+      listViewNameHeader,
+      '',
+      'IMDb Rating',
+      'https://passthepopcorn.me/torrents.php?order_by=imdb&order_way=desc'
+    );
+    listViewHeaderRow.appendChild(listViewNameHeader);
+
+    function appendImageHeader(options) {
+      const header = document.createElement('th');
+      if (options.className) {
+        header.className = options.className;
+      }
+      const link = appendAnchor(header, '', '', options.href);
+      const image = document.createElement('img');
+      image.src = options.src;
+      image.alt = options.alt;
+      image.title = options.title;
+      if (options.height) {
+        image.height = options.height;
+      }
+      if (options.width) {
+        image.width = options.width;
+      }
+      link.appendChild(image);
+      listViewHeaderRow.appendChild(header);
+    }
+
+    appendImageHeader({
+      href: 'https://passthepopcorn.me/torrents.php?order_by=time&order_way=desc',
+      src: 'static/common/time.png',
+      alt: 'Time',
+      title: 'Time',
+      height: 12,
+      width: 12
+    });
+
+    const listViewSizeHeader = document.createElement('th');
+    appendAnchor(
+      listViewSizeHeader,
+      '',
+      'Size',
+      'https://passthepopcorn.me/torrents.php?order_by=size&order_way=desc'
+    );
+    listViewHeaderRow.appendChild(listViewSizeHeader);
+
+    appendImageHeader({
+      className: 'sign',
+      href: 'https://passthepopcorn.me/torrents.php?order_by=snatched&order_way=desc',
+      src: 'static/styles/dark/images/snatched.png',
+      alt: 'Snatches',
+      title: 'Snatches'
+    });
+    appendImageHeader({
+      className: 'sign',
+      href: 'https://passthepopcorn.me/torrents.php?order_by=seeders&order_way=desc',
+      src: 'static/styles/dark/images/seeders.png',
+      alt: 'Seeders',
+      title: 'Seeders'
+    });
+    appendImageHeader({
+      className: 'sign',
+      href: 'https://passthepopcorn.me/torrents.php?order_by=leechers&order_way=desc',
+      src: 'static/styles/dark/images/leechers.png',
+      alt: 'Leechers',
+      title: 'Leechers'
+    });
+
+    listViewHead.appendChild(listViewHeaderRow);
+    listViewTable.appendChild(listViewHead);
+
+    const listViewBody = document.createElement('tbody');
+
+    const listDetailsRow = document.createElement('tr');
+    listDetailsRow.className = 'basic-movie-list__details-row';
+
+    const listCoverCell = document.createElement('td');
+    listCoverCell.rowSpan = 5;
+
+    const listCoverLink = document.createElement('a');
+    listCoverLink.href = 'torrents.php?id=278335';
+    listCoverLink.className = 'basic-movie-list__movie__cover-link';
+
+    const listCoverImage = document.createElement('img');
+    listCoverImage.src = 'https://passthepopcorn.me/p/RF1Jm8oizsz.jpg';
+    listCoverImage.className = 'basic-movie-list__movie__cover';
+    listCoverImage.alt = 'El Rey de la Fiesta cover preview';
+
+    listCoverLink.appendChild(listCoverImage);
+    listCoverCell.appendChild(listCoverLink);
+
+    const listMovieDetailsCell = document.createElement('td');
+    listMovieDetailsCell.colSpan = 1;
+
+    const listTitleRow = document.createElement('span');
+    listTitleRow.className = 'basic-movie-list__movie__title-row';
+
+    appendAnchor(
+      listTitleRow,
+      'basic-movie-list__movie__title',
+      'El Rey de la Fiesta',
+      'torrents.php?id=278335'
+    );
+    listTitleRow.appendChild(document.createTextNode(' '));
+
+    const listYear = document.createElement('span');
+    listYear.className = 'basic-movie-list__movie__year';
+    listYear.textContent = '[2021]';
+    listTitleRow.appendChild(listYear);
+
+    const listDirectorList = document.createElement('span');
+    listDirectorList.className = 'basic-movie-list__movie__director-list';
+    listDirectorList.appendChild(document.createTextNode(' by '));
+    appendAnchor(
+      listDirectorList,
+      'artist-info-link',
+      'Salomón Askenazi',
+      'artist.php?id=1251612'
+    );
+    listTitleRow.appendChild(listDirectorList);
+    listTitleRow.appendChild(document.createTextNode(' '));
+
+    const listNewLink = appendAnchor(listTitleRow, 'basic-movie-list__movie__new', '(New)', '#');
+    listNewLink.dataset.new = '1777853947';
+    listNewLink.title = 'Remove the new mark from this and all older torrents.';
+
+    const listBookmark = document.createElement('span');
+    listBookmark.className = 'basic-movie-list__movie__bookmark';
+    appendAnchor(listBookmark, '', 'Bookmark', '#');
+
+    const listRatingsAndTags = document.createElement('div');
+    listRatingsAndTags.className = 'basic-movie-list__movie__ratings-and-tags';
+
+    const listRatingContainer = document.createElement('div');
+    listRatingContainer.className = 'basic-movie-list__movie__rating-container';
+
+    const listRatingTitle = document.createElement('span');
+    listRatingTitle.className = 'basic-movie-list__movie__rating__title';
+    const listImdbLink = appendAnchor(listRatingTitle, '', 'IMDb', 'https://www.imdb.com/title/tt11062632/');
+    listImdbLink.target = '_blank';
+    listImdbLink.rel = 'noreferrer';
+    listRatingTitle.appendChild(document.createTextNode(': '));
+
+    const listRatingValue = document.createElement('span');
+    listRatingValue.className = 'basic-movie-list__movie__rating__rating';
+    listRatingValue.textContent = '5.9';
+
+    listRatingContainer.appendChild(listRatingTitle);
+    listRatingContainer.appendChild(listRatingValue);
+
+    const listTags = document.createElement('span');
+    listTags.className = 'basic-movie-list__movie__tags';
+    appendAnchor(
+      listTags,
+      'basic-movie-list__movie__tag',
+      'drama',
+      'torrents.php?taglist=drama&cover=1'
+    );
+    listTags.appendChild(document.createTextNode(', '));
+    appendAnchor(
+      listTags,
+      'basic-movie-list__movie__tag',
+      'thriller',
+      'torrents.php?taglist=thriller&cover=1'
+    );
+
+    listRatingsAndTags.appendChild(listRatingContainer);
+    listRatingsAndTags.appendChild(document.createTextNode(' '));
+    listRatingsAndTags.appendChild(listTags);
+    listMovieDetailsCell.appendChild(listTitleRow);
+    listMovieDetailsCell.appendChild(listBookmark);
+    listMovieDetailsCell.appendChild(listRatingsAndTags);
+
+    const listAggregateTimeCell = document.createElement('td');
+    listAggregateTimeCell.className = 'nobr';
+    const listAggregateTime = document.createElement('span');
+    listAggregateTime.className = 'time';
+    listAggregateTime.title = 'May 04 2026, 00:19';
+    listAggregateTime.textContent = '4 mins ago';
+    listAggregateTimeCell.appendChild(listAggregateTime);
+
+    const listAggregateSizeCell = document.createElement('td');
+    listAggregateSizeCell.className = 'nobr';
+    listAggregateSizeCell.textContent = '4.96 GiB (Max)';
+
+    const listAggregateSnatchesCell = document.createElement('td');
+    listAggregateSnatchesCell.textContent = '15';
+
+    const listAggregateSeedersCell = document.createElement('td');
+    listAggregateSeedersCell.className = 'no-seeders';
+    listAggregateSeedersCell.textContent = '0';
+
+    const listAggregateLeechersCell = document.createElement('td');
+    listAggregateLeechersCell.textContent = '0';
+
+    listDetailsRow.appendChild(listCoverCell);
+    listDetailsRow.appendChild(listMovieDetailsCell);
+    listDetailsRow.appendChild(listAggregateTimeCell);
+    listDetailsRow.appendChild(listAggregateSizeCell);
+    listDetailsRow.appendChild(listAggregateSnatchesCell);
+    listDetailsRow.appendChild(listAggregateSeedersCell);
+    listDetailsRow.appendChild(listAggregateLeechersCell);
+
+    const listEditionRow = document.createElement('tr');
+    listEditionRow.className = 'basic-movie-list__torrent-row';
+
+    const listEditionCell = document.createElement('td');
+    listEditionCell.colSpan = 7;
+    listEditionCell.className = 'basic-movie-list__torrent-edition';
+
+    const listEditionMain = document.createElement('span');
+    listEditionMain.className = 'basic-movie-list__torrent-edition__main';
+    listEditionMain.textContent = 'Feature Film';
+
+    const listEditionSub = document.createElement('span');
+    listEditionSub.className = 'basic-movie-list__torrent-edition__sub';
+    listEditionSub.textContent = 'High Definition';
+
+    listEditionCell.appendChild(listEditionMain);
+    listEditionCell.appendChild(document.createTextNode(' - '));
+    listEditionCell.appendChild(listEditionSub);
+    listEditionRow.appendChild(listEditionCell);
+
+    function appendListTorrentRow(options) {
+      const row = document.createElement('tr');
+      row.className = 'basic-movie-list__torrent-row';
+
+      const mainCell = document.createElement('td');
+
+      const action = document.createElement('span');
+      action.className = 'basic-movie-list__torrent__action';
+      action.appendChild(document.createTextNode('['));
+      const downloadLink = appendAnchor(
+        action,
+        'basic-movie-list__torrent__action__link',
+        'DL',
+        options.downloadHref
+      );
+      downloadLink.title = 'Download';
+      action.appendChild(document.createTextNode(']'));
+
+      const infoWrap = document.createElement('span');
+      infoWrap.appendChild(document.createTextNode(`${options.marker} `));
+
+      const infoLink = appendAnchor(infoWrap, 'torrent-info-link', options.infoText, options.infoHref);
+      infoLink.title = options.title;
+      if (options.trumpable) {
+        infoLink.appendChild(document.createTextNode(' / '));
+        const trumpable = document.createElement('span');
+        trumpable.className = 'torrent-info__trumpable';
+        trumpable.textContent = 'Trumpable';
+        infoLink.appendChild(trumpable);
+      }
+
+      mainCell.appendChild(action);
+      mainCell.appendChild(infoWrap);
+
+      const timeCell = document.createElement('td');
+      timeCell.className = 'nobr';
+      const time = document.createElement('span');
+      time.className = 'time';
+      time.title = options.timeTitle;
+      time.textContent = options.time;
+      timeCell.appendChild(time);
+
+      const sizeCell = document.createElement('td');
+      sizeCell.className = 'nobr';
+      sizeCell.textContent = options.size;
+
+      const snatchesCell = document.createElement('td');
+      snatchesCell.textContent = options.snatches;
+
+      const seedersCell = document.createElement('td');
+      seedersCell.className = options.seeders === '0' ? 'no-seeders' : '';
+      seedersCell.textContent = options.seeders;
+
+      const leechersCell = document.createElement('td');
+      leechersCell.textContent = options.leechers;
+
+      row.appendChild(mainCell);
+      row.appendChild(timeCell);
+      row.appendChild(sizeCell);
+      row.appendChild(snatchesCell);
+      row.appendChild(seedersCell);
+      row.appendChild(leechersCell);
+      listViewBody.appendChild(row);
+    }
+
+    listViewBody.appendChild(listDetailsRow);
+    listViewBody.appendChild(listEditionRow);
+    [
+      {
+        marker: '☑',
+        infoText: 'x264 / MKV / WEB / 720p',
+        infoHref: 'torrents.php?id=278335&torrentid=1029526',
+        title: 'El Rey de la Fiesta (2021)',
+        downloadHref: 'torrents.php?action=download&id=1029526',
+        time: '4 years ago',
+        timeTitle: 'Apr 11 2022, 20:20',
+        size: '2.59 GiB',
+        snatches: '8',
+        seeders: '0',
+        leechers: '0',
+        trumpable: true
+      },
+      {
+        marker: '☐',
+        infoText: 'H.264 / MKV / WEB / 1080p',
+        infoHref: 'torrents.php?id=278335&torrentid=1514657',
+        title: 'El.Rey.de.la.fiesta.2022.1080p.AMZN.WEB-DL DDP5.1.H.264-Tequila',
+        downloadHref: 'torrents.php?action=download&id=1514657',
+        time: '4 mins ago',
+        timeTitle: 'May 04 2026, 00:19',
+        size: '4.95 GiB',
+        snatches: '0',
+        seeders: '0',
+        leechers: '0',
+        trumpable: false
+      },
+      {
+        marker: '☑',
+        infoText: 'H.264 / MKV / WEB / 1080p',
+        infoHref: 'torrents.php?id=278335&torrentid=1044358',
+        title: 'El.Rey.de.la.Fiesta.2021.SPANISH.1080p.AMZN.WEB-DL.DDP5.1.H.264-THR',
+        downloadHref: 'torrents.php?action=download&id=1044358',
+        time: '3 years ago',
+        timeTitle: 'Jun 02 2022, 12:23',
+        size: '4.96 GiB',
+        snatches: '7',
+        seeders: '0',
+        leechers: '0',
+        trumpable: true
+      }
+    ].forEach(appendListTorrentRow);
+
+    listViewTable.appendChild(listViewBody);
+    listViewPanel.appendChild(listViewTable);
 
     const hugeTitleRow = document.createElement('div');
     hugeTitleRow.className = 'huge-movie-list__movie__title-row';
@@ -2346,11 +2948,36 @@
     hugeCoverLayoutPanel.appendChild(hugeFitReadout);
 
     const torrentsPhpDefinitions = [
-      { key: 'huge', label: 'Huge View', panel: hugeCoverLayoutPanel }
+      {
+        key: 'huge',
+        label: 'Huge View',
+        panel: hugeCoverLayoutPanel,
+        optionVariableNames: TORRENTS_PHP_HUGE_PREVIEW_VARIABLE_NAMES,
+        optionTitle: 'Huge View Preview Options',
+        optionDescription: 'Options specific to the active torrents.php Huge View preview.'
+      },
+      {
+        key: 'list',
+        label: 'List View',
+        panel: listViewPanel,
+        optionVariableNames: TORRENTS_PHP_LIST_PREVIEW_VARIABLE_NAMES,
+        optionTitle: 'List View Preview Options',
+        optionDescription: 'Options specific to the active torrents.php List View preview.'
+      }
     ];
     const torrentsPhpTabsByKey = {};
+    let activeTorrentsPhpTabKey = 'huge';
+
+    function getActiveTorrentsPhpDefinition() {
+      return (
+        torrentsPhpDefinitions.find(function (definition) {
+          return definition.key === activeTorrentsPhpTabKey;
+        }) || torrentsPhpDefinitions[0]
+      );
+    }
 
     function setActiveTorrentsPhpTab(key) {
+      activeTorrentsPhpTabKey = key;
       for (const definition of torrentsPhpDefinitions) {
         const isActive = definition.key === key;
         const controls = torrentsPhpTabsByKey[definition.key];
@@ -2358,6 +2985,18 @@
           controls.button.classList.toggle('widescreen-controls__preview-tab--active', isActive);
         }
         definition.panel.hidden = !isActive;
+      }
+      if (activePreviewOptionVariableNames) {
+        const activeDefinition = getActiveTorrentsPhpDefinition();
+        activePreviewOptionVariableNames = activeDefinition.optionVariableNames;
+        previewOptionsTitle.textContent = activeDefinition.optionTitle;
+        previewOptionsDescription.textContent = activeDefinition.optionDescription;
+        for (const variable of SETTING_VARS) {
+          if (!isPreviewOptionVariable(variable.name)) continue;
+          const controls = controlsByName[variable.name];
+          if (!controls) continue;
+          controls.row.hidden = !activePreviewOptionVariableNames.has(variable.name);
+        }
       }
       schedulePreviewRefresh();
     }
@@ -2380,6 +3019,7 @@
 
     torrentsPhpPreview.appendChild(torrentsPhpTabBar);
     torrentsPhpPreview.appendChild(hugeCoverLayoutPanel);
+    torrentsPhpPreview.appendChild(listViewPanel);
 
     function updateLayoutPreview(dimensions) {
       const wrapperWidth = dimensions.widths['layout-width'];
@@ -2572,20 +3212,22 @@
         }
         panel.appendChild(activeDefinition.panel);
       }
-      activePreviewOptionVariableNames =
-        key === 'layout'
-          ? TORRENTS_LAYOUT_PREVIEW_VARIABLE_NAMES
-          : key === 'torrentsPhp'
-            ? TORRENTS_PHP_PREVIEW_VARIABLE_NAMES
-            : null;
-      const hasPreviewOptions = !!activePreviewOptionVariableNames || key === 'layout';
+      if (key === 'layout') {
+        activePreviewOptionVariableNames = TORRENTS_LAYOUT_PREVIEW_VARIABLE_NAMES;
+        previewOptionsTitle.textContent = 'Torrents Layout Preview Options';
+        previewOptionsDescription.textContent = 'Options specific to the torrents layout preview.';
+      } else if (key === 'torrentsPhp') {
+        const activeTorrentsPhpDefinition = getActiveTorrentsPhpDefinition();
+        activePreviewOptionVariableNames = activeTorrentsPhpDefinition.optionVariableNames;
+        previewOptionsTitle.textContent = activeTorrentsPhpDefinition.optionTitle;
+        previewOptionsDescription.textContent = activeTorrentsPhpDefinition.optionDescription;
+      } else {
+        activePreviewOptionVariableNames = null;
+        previewOptionsTitle.textContent = 'Preview Options';
+        previewOptionsDescription.textContent = 'Options specific to the active preview.';
+      }
+      const hasPreviewOptions = !!activePreviewOptionVariableNames;
       previewOptionsPanel.hidden = !hasPreviewOptions;
-      previewOptionsTitle.textContent =
-        key === 'torrentsPhp' ? 'Huge View Preview Options' : 'Torrents Layout Preview Options';
-      previewOptionsDescription.textContent =
-        key === 'torrentsPhp'
-          ? 'Options specific to the active torrents.php Huge View preview.'
-          : 'Options specific to the torrents layout preview.';
       for (const variable of SETTING_VARS) {
         if (!isPreviewOptionVariable(variable.name)) continue;
         const controls = controlsByName[variable.name];
