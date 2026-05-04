@@ -54,8 +54,12 @@ html {
   --basic-movie-cover-height: 386px;
   --small-cover-movie-width: 140px;
   --small-cover-movie-height: 196px;
-  --torrents-small-cover-movie-width: 186px;
-  --torrents-small-cover-movie-height: 282px;
+  --torrents-small-cover-movie-width: 184px;
+  --torrents-small-cover-movie-height: 279px;
+  --top10-small-cover-movie-width: 184px;
+  --top10-small-cover-movie-height: 279px;
+  --top10-huge-movie-width: 256px;
+  --top10-huge-movie-height: 379px;
   --small-cover-movie-smaller-width: var(--bookmarks-huge-movie-width);
   --small-cover-movie-smaller-height: var(--bookmarks-huge-movie-height);
 }
@@ -1097,40 +1101,42 @@ tr[id^='torrent_'] img.bbcode__image[style] {
   margin: 0 0 -10px -20px;
 }
 
-.js-cover-view-index-store {
+.widescreen-top10-cover-view-active .js-cover-view-index-store {
   width: 100%;
 }
 
-.js-cover-view-index-store > .cover-movie-list__container {
+.widescreen-top10-cover-view-active .js-cover-view-index-store > .cover-movie-list__container {
   width: 100%;
 }
 
-.js-cover-view-index-store > .cover-movie-list__container > .cover-movie-list {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 12px 16px;
-  margin: 0;
+.widescreen-top10-cover-view-active
+  .js-cover-view-index-store
+  > .cover-movie-list__container
+  > .cover-movie-list {
+  margin: 0 0 -10px -20px;
 }
 
-.js-cover-view-index-store .cover-movie-list__movie {
-  float: none;
+.widescreen-top10-cover-view-active .js-cover-view-index-store .cover-movie-list__movie {
   width: var(--cover-movie-index-width);
-  margin: 0;
 }
 
-.js-cover-view-index-store .cover-movie-list__movie > .cover-movie-list__movie__cover-link {
+.widescreen-top10-cover-view-active
+  .js-cover-view-index-store
+  .cover-movie-list__movie
+  > .cover-movie-list__movie__cover-link {
   width: var(--cover-movie-index-width);
   height: var(--cover-movie-index-height);
 }
 
-.js-cover-view-index-store .cover-movie-list--narrow > .cover-movie-list__movie {
-  float: none;
+.widescreen-top10-cover-view-active
+  .js-cover-view-index-store
+  .cover-movie-list--narrow
+  > .cover-movie-list__movie {
   width: var(--cover-movie-index-narrow-width);
-  margin: 0;
 }
 
-.js-cover-view-index-store
+.widescreen-top10-cover-view-active
+  .js-cover-view-index-store
   .cover-movie-list--narrow
   > .cover-movie-list__movie
   > .cover-movie-list__movie__cover-link {
@@ -2732,7 +2738,7 @@ html.busy-cursor * {
   height: var(--bookmarks-huge-movie-height);
 }
 
-.js-small-cover-movie-list__container {
+html:not(.widescreen-top10-page) .js-small-cover-movie-list__container {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
@@ -2760,12 +2766,51 @@ html.busy-cursor * {
   height: var(--torrents-small-cover-movie-height);
 }
 
-.js-small-cover-movie-list__container .small-cover-movie-list__movie {
+html:not(.widescreen-top10-page) .js-small-cover-movie-list__container .small-cover-movie-list__movie,
+#torrents-movie-view .widescreen-torrents-small-cover-view .small-cover-movie-list__movie,
+.js-cover-view-index-store > .widescreen-top10-small-cover-view .small-cover-movie-list__movie {
   float: none;
 }
 
-.js-small-cover-movie-list__container > div[style*='clear'] {
+html:not(.widescreen-top10-page) .js-small-cover-movie-list__container > div[style*='clear'],
+#torrents-movie-view .widescreen-torrents-small-cover-view > div[style*='clear'],
+.js-cover-view-index-store > .widescreen-top10-small-cover-view > div[style*='clear'] {
   display: none;
+}
+
+.widescreen-top10-page
+  .js-cover-view-index-store
+  > .js-small-cover-movie-list__container:not(.widescreen-top10-small-cover-view) {
+  display: none !important;
+}
+
+.js-cover-view-index-store > .widescreen-top10-small-cover-view {
+  display: grid;
+  grid-template-columns: repeat(10, var(--top10-small-cover-movie-width));
+  justify-content: center;
+  gap: 12px;
+  margin-left: auto;
+  margin-right: auto;
+  max-width: 100%;
+}
+
+.js-cover-view-index-store > .widescreen-top10-small-cover-view.hidden,
+.js-cover-view-index-store > .widescreen-top10-small-cover-view[hidden] {
+  display: none;
+}
+
+.js-cover-view-index-store
+  > .widescreen-top10-small-cover-view
+  .small-cover-movie-list__movie__link,
+.js-cover-view-index-store
+  > .widescreen-top10-small-cover-view
+  .small-cover-movie-list__movie__link--smaller {
+  background-color: #111111;
+  background-position: center center !important;
+  background-repeat: no-repeat !important;
+  background-size: contain !important;
+  width: var(--top10-small-cover-movie-width);
+  height: var(--top10-small-cover-movie-height);
 }
 
 .js-small-cover-movie-list__container .small-cover-movie-list__movie__link,

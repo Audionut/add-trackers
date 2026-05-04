@@ -5,6 +5,8 @@
 // @description  Add a Widescreen tab to profile edit pages and control widescreen.css width variables.
 // @author       Audionut
 // @match        https://passthepopcorn.me/*
+// @updateURL    https://github.com/Audionut/add-trackers/raw/refs/heads/main/ptp-widescreen-profile-controls.user.js
+// @downloadURL  https://github.com/Audionut/add-trackers/raw/refs/heads/main/ptp-widescreen-profile-controls.user.js
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @run-at       document-start
@@ -15,7 +17,9 @@
 
   const SETTINGS_KEY = 'ptp_widescreen_profile_controls_v1';
   const TORRENTS_VIEW_MODE_KEY = 'ptp_widescreen_torrents_view_mode_v1';
+  const TOP10_VIEW_MODE_KEY = 'ptp_widescreen_top10_view_mode_v1';
   const TORRENTS_SMALL_COVER_VIEW_MODE = 'SmallCover';
+  const TOP10_SMALL_COVER_VIEW_INPUT_CLASS = 'widescreen-top10-view-settings-input';
   const CONTROLS_STYLE_ID = 'ptp-widescreen-profile-controls-style-v1';
   const DEFAULT_STATE = {
     linked: true,
@@ -42,16 +46,21 @@
     { name: 'cover-movie-centered-width', label: 'Cover View Centered Poster Width', defaultValue: 330, min: 180, max: 560 },
     { name: 'basic-movie-cover-width', label: 'List/Compact View Poster Width', defaultValue: 250, min: 140, max: 480 },
     { name: 'small-cover-movie-width', label: 'Bookmarks Small Cover Poster Width', defaultValue: 140, min: 80, max: 260 },
-    { name: 'torrents-small-cover-movie-width', label: 'Torrents Small Cover Poster Width', defaultValue: 186, min: 80, max: 320 },
+    { name: 'torrents-small-cover-movie-width', label: 'Torrents Small Cover Poster Width', defaultValue: 184, min: 80, max: 320 },
+    { name: 'top10-small-cover-movie-width', label: 'Top10 Small Cover Poster Width', defaultValue: 184, min: 80, max: 320 },
     { name: 'bookmarks-huge-movie-width', label: 'Bookmarks Huge Movie Width', defaultValue: 280, min: 160, max: 520 },
+    { name: 'top10-huge-movie-width', label: 'Top10 Huge Movie Width', defaultValue: 256, min: 140, max: 480 },
     { name: 'torrents-huge-movie-width', label: 'Torrents Huge Movie Width', defaultValue: 256, min: 140, max: 480 }
   ];
 
   const HEIGHT_VARS = [
     { name: 'cover-movie-height', label: 'Cover View Poster Height', defaultValue: 575, min: 140, max: 1000 },
+    { name: 'cover-movie-index-height', label: 'Cover View Index Poster Height', defaultValue: 580, min: 240, max: 1000 },
     { name: 'basic-movie-cover-height', label: 'List/Compact View Poster Height', defaultValue: 386, min: 160, max: 900 },
     { name: 'small-cover-movie-height', label: 'Bookmarks Small Cover Poster Height', defaultValue: 196, min: 112, max: 420 },
-    { name: 'torrents-small-cover-movie-height', label: 'Torrents Small Cover Poster Height', defaultValue: 282, min: 112, max: 520 },
+    { name: 'torrents-small-cover-movie-height', label: 'Torrents Small Cover Poster Height', defaultValue: 279, min: 112, max: 520 },
+    { name: 'top10-small-cover-movie-height', label: 'Top10 Small Cover Poster Height', defaultValue: 279, min: 112, max: 520 },
+    { name: 'top10-huge-movie-height', label: 'Top10 Huge Movie Height', defaultValue: 379, min: 220, max: 1000 },
     { name: 'torrents-huge-movie-height', label: 'Torrents Huge Movie Height', defaultValue: 379, min: 220, max: 1000 }
   ];
 
@@ -167,15 +176,27 @@
     },
     {
       widthVar: 'torrents-small-cover-movie-width',
-      widthDefault: 186,
+      widthDefault: 184,
       heightVar: 'torrents-small-cover-movie-height',
-      heightDefault: 282
+      heightDefault: 279
+    },
+    {
+      widthVar: 'top10-small-cover-movie-width',
+      widthDefault: 184,
+      heightVar: 'top10-small-cover-movie-height',
+      heightDefault: 279
     },
     {
       widthVar: 'bookmarks-huge-movie-width',
       widthDefault: 280,
       heightVar: 'bookmarks-huge-movie-height',
       heightDefault: 440
+    },
+    {
+      widthVar: 'top10-huge-movie-width',
+      widthDefault: 256,
+      heightVar: 'top10-huge-movie-height',
+      heightDefault: 379
     },
     {
       widthVar: 'torrents-huge-movie-width',
@@ -199,7 +220,11 @@
     [
       'small-cover-movie-width',
       'torrents-small-cover-movie-width',
+      'top10-small-cover-movie-width',
       'bookmarks-huge-movie-width'
+    ],
+    [
+      'top10-huge-movie-width'
     ]
   ];
 
@@ -211,7 +236,9 @@
     'cover-movie-centered-width': 'Cover view centered poster',
     'small-cover-movie-width': 'Bookmarks small cover poster',
     'torrents-small-cover-movie-width': 'Torrents small cover poster',
+    'top10-small-cover-movie-width': 'Top10 small cover poster',
     'bookmarks-huge-movie-width': 'Bookmarks huge movie poster',
+    'top10-huge-movie-width': 'Top10 huge view poster',
     'torrents-huge-movie-width': 'Torrents huge view poster'
   };
 
@@ -246,6 +273,29 @@
     'cover-movie-width',
     'cover-movie-height'
   ]);
+  const TOP10_COVER_PREVIEW_VARIABLE_NAMES = new Set([
+    'cover-movie-index-width',
+    'cover-movie-index-height'
+  ]);
+  const TOP10_SMALL_COVER_PREVIEW_VARIABLE_NAMES = new Set([
+    'top10-small-cover-movie-width',
+    'top10-small-cover-movie-height'
+  ]);
+  const TOP10_LIST_PREVIEW_VARIABLE_NAMES = new Set([
+    'basic-movie-cover-width',
+    'basic-movie-cover-height',
+    'torrent-row-font-size'
+  ]);
+  const TOP10_HUGE_PREVIEW_VARIABLE_NAMES = new Set([
+    'top10-huge-movie-width',
+    'top10-huge-movie-height'
+  ]);
+  const TOP10_PREVIEW_VARIABLE_NAMES = new Set([
+    ...TOP10_COVER_PREVIEW_VARIABLE_NAMES,
+    ...TOP10_SMALL_COVER_PREVIEW_VARIABLE_NAMES,
+    ...TOP10_LIST_PREVIEW_VARIABLE_NAMES,
+    ...TOP10_HUGE_PREVIEW_VARIABLE_NAMES
+  ]);
 
   const HUGE_PREVIEW_COVER = {
     url: 'https://passthepopcorn.me/i/dcZDaynM5Hy.jpg',
@@ -264,12 +314,22 @@
   let torrentsSmallCoverViewInitialized = false;
   let torrentsSmallCoverViewRenderTimerId = 0;
   let torrentsSmallCoverViewRendering = false;
+  let top10SmallCoverViewInitialized = false;
+  let top10SmallCoverViewRendering = false;
+  let top10SmallCoverViewSyncTimerId = 0;
+  let top10CoverImagePlaceholderObserver = null;
+
+  if (new URL(location.href).pathname === '/top10.php') {
+    document.documentElement.classList.add('widescreen-top10-page');
+    setupTop10CoverImagePlaceholderBypass();
+  }
 
   function isPreviewOptionVariable(variableName) {
     return (
       TORRENTS_LAYOUT_PREVIEW_VARIABLE_NAMES.has(variableName) ||
       TORRENTS_PHP_PREVIEW_VARIABLE_NAMES.has(variableName) ||
-      COVER_VIEW_PREVIEW_VARIABLE_NAMES.has(variableName)
+      COVER_VIEW_PREVIEW_VARIABLE_NAMES.has(variableName) ||
+      TOP10_PREVIEW_VARIABLE_NAMES.has(variableName)
     );
   }
 
@@ -685,6 +745,185 @@
   background-size: cover;
   width: 32px;
   height: 32px;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__top10-preview {
+  margin-top: 10px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__top10-preview h2 {
+  color: #f0f0f0;
+  font-size: 18px;
+  margin: 0 0 10px;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__top10-preview h2 small {
+  color: #afafaf;
+  font-size: 12px;
+  font-weight: normal;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__top10-preview
+  .js-cover-view-index-store {
+  width: 100%;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__top10-preview
+  .cover-movie-list__container,
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__top10-preview
+  .js-small-cover-movie-list__container,
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__top10-preview
+  .js-huge_view_container {
+  margin-top: 10px;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__top10-preview
+  .cover-movie-list {
+  display: grid;
+  grid-template-columns: repeat(5, var(--cover-movie-index-width));
+  justify-content: center;
+  gap: 12px 16px;
+  margin: 0;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__top10-preview
+  .cover-movie-list__movie {
+  float: none;
+  margin: 0;
+  width: var(--cover-movie-index-width);
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__top10-preview
+  .cover-movie-list__movie__cover-link {
+  background-color: #111111;
+  background-position: center center !important;
+  background-repeat: no-repeat !important;
+  background-size: contain !important;
+  display: block;
+  height: var(--cover-movie-index-height);
+  width: var(--cover-movie-index-width);
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__top10-preview
+  .js-small-cover-movie-list__container {
+  display: grid;
+  grid-template-columns: repeat(10, var(--top10-small-cover-movie-width));
+  justify-content: center;
+  gap: 12px;
+  max-width: 100%;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__top10-preview
+  .js-small-cover-movie-list__container[hidden],
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__top10-preview
+  .js-small-cover-movie-list__container.hidden,
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__top10-preview
+  .js-huge_view_container[hidden],
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__top10-preview
+  .js-huge_view_container.hidden,
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__top10-preview
+  .js-basic-movie-list[hidden],
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__top10-preview
+  .js-basic-movie-list.hidden,
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__top10-preview
+  .widescreen-controls__cover-view-fit[hidden],
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__top10-preview
+  .widescreen-controls__cover-view-fit.hidden {
+  display: none;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__top10-preview
+  .small-cover-movie-list__movie {
+  float: none;
+  position: relative;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__top10-preview
+  .small-cover-movie-list__movie__link {
+  background-color: #111111;
+  background-position: center center !important;
+  background-repeat: no-repeat !important;
+  background-size: contain !important;
+  display: block;
+  height: var(--top10-small-cover-movie-height);
+  width: var(--top10-small-cover-movie-width);
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__top10-preview
+  .basic-movie-list__movie__cover {
+  background-color: #111111;
+  display: block;
+  height: var(--basic-movie-cover-height);
+  object-fit: contain;
+  object-position: center center;
+  width: var(--basic-movie-cover-width);
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__top10-preview
+  .basic-movie-list__torrent-row {
+  font-size: var(--torrent-row-font-size);
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__top10-preview
+  .huge-movie-list__movie {
+  background-color: #222222;
+  border: var(--torrents-huge-movie-border-width, 8px) solid #222222;
+  box-sizing: border-box;
+  height: auto !important;
+  min-height: calc(var(--top10-huge-movie-height) + (var(--torrents-huge-movie-border-width, 8px) * 2)) !important;
+  overflow: visible;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__top10-preview
+  .huge-movie-list__movie::after {
+  content: '';
+  clear: both;
+  display: block;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__top10-preview
+  .huge-movie-list__movie__cover {
+  float: left;
+  min-height: var(--top10-huge-movie-height);
+  width: var(--top10-huge-movie-width);
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__top10-preview
+  .huge-movie-list__movie__cover__link {
+  background-color: #111111;
+  background-position: center center !important;
+  background-repeat: no-repeat !important;
+  background-size: contain !important;
+  display: block;
+  height: var(--top10-huge-movie-height);
+  width: var(--top10-huge-movie-width);
 }
 
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__cover-view-fit {
@@ -1367,6 +1606,7 @@
   .tabs__panel.js-widescreen-controls-tab-panel,
   .tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-page,
   .tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__torrents-php-preview,
+  .tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__top10-preview,
   .tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__preview-grid {
     width: var(--widescreen-preview-content-width, var(--layout-width));
     min-width: var(--widescreen-preview-content-width, var(--layout-width));
@@ -1798,6 +2038,139 @@
     );
   }
 
+  function isTop10Page() {
+    return new URL(location.href).pathname === '/top10.php';
+  }
+
+  function applyTop10CoverImagePlaceholder(image) {
+    if (!(image instanceof HTMLImageElement)) return;
+    const coverLink = image.parentElement;
+    if (
+      !coverLink ||
+      !coverLink.classList.contains('cover-movie-list__movie__cover-link') ||
+      !coverLink.closest('.js-cover-view-index-store')
+    ) {
+      return;
+    }
+
+    const style = image.dataset.style || image.getAttribute('data-style') || '';
+    if (!style) return;
+
+    coverLink.setAttribute('style', style);
+    image.remove();
+  }
+
+  function applyTop10CoverImagePlaceholders(root) {
+    const scope = root && root.querySelectorAll ? root : document;
+    if (scope instanceof HTMLImageElement) {
+      applyTop10CoverImagePlaceholder(scope);
+    }
+
+    scope.querySelectorAll(
+      '.js-cover-view-index-store .cover-movie-list__movie__cover-link > img[data-style]'
+    ).forEach(applyTop10CoverImagePlaceholder);
+  }
+
+  function setupTop10CoverImagePlaceholderBypass() {
+    if (top10CoverImagePlaceholderObserver) return;
+
+    applyTop10CoverImagePlaceholders(document);
+    top10CoverImagePlaceholderObserver = new MutationObserver(function (mutations) {
+      mutations.forEach(function (mutation) {
+        mutation.addedNodes.forEach(function (node) {
+          if (!(node instanceof Element)) return;
+          applyTop10CoverImagePlaceholders(node);
+        });
+      });
+    });
+
+    top10CoverImagePlaceholderObserver.observe(document.documentElement, {
+      childList: true,
+      subtree: true
+    });
+
+    document.addEventListener('DOMContentLoaded', function () {
+      applyTop10CoverImagePlaceholders(document);
+    }, { once: true });
+  }
+
+  function injectTop10BaseNavigationLink(root) {
+    const scope = root && root.querySelectorAll ? root : document;
+    const headers = [];
+    if (
+      scope instanceof Element &&
+      scope.matches('h2[id^="top-header-"]')
+    ) {
+      headers.push(scope);
+    }
+    headers.push(...scope.querySelectorAll('h2[id^="top-header-"]'));
+
+    headers.forEach(function (header) {
+      const small = header.querySelector(':scope > small');
+      if (!small || small.dataset.widescreenTop10BaseLinkAdded === 'true') return;
+
+      const links = Array.from(small.querySelectorAll('a'));
+      const hasTop100Link = links.some(function (link) {
+        const href = link.getAttribute('href') || '';
+        return href.indexOf('top10.php') !== -1 && href.indexOf('limit=100') !== -1;
+      });
+      const hasTop250Link = links.some(function (link) {
+        const href = link.getAttribute('href') || '';
+        return href.indexOf('top10.php') !== -1 && href.indexOf('limit=250') !== -1;
+      });
+      const hasTop10Link = links.some(function (link) {
+        const href = link.getAttribute('href') || '';
+        try {
+          const url = new URL(href, location.href);
+          return (
+            url.pathname === '/top10.php' &&
+            !url.searchParams.has('limit') &&
+            !url.searchParams.has('details') &&
+            !url.searchParams.has('type')
+          );
+        } catch (error) {
+          return href === 'top10.php';
+        }
+      });
+
+      if (!hasTop100Link || !hasTop250Link || hasTop10Link) return;
+
+      const top10Link = document.createElement('a');
+      top10Link.href = 'top10.php';
+      top10Link.textContent = 'Top 10';
+      small.insertBefore(document.createTextNode('- ['), small.firstChild);
+      small.insertBefore(top10Link, small.childNodes[1] || null);
+      small.insertBefore(document.createTextNode('] '), small.childNodes[2] || null);
+      small.dataset.widescreenTop10BaseLinkAdded = 'true';
+    });
+  }
+
+  function getStoredTop10ViewMode() {
+    try {
+      if (typeof GM_getValue === 'function') {
+        return String(GM_getValue(TOP10_VIEW_MODE_KEY, '') || '');
+      }
+      return localStorage.getItem(TOP10_VIEW_MODE_KEY) || '';
+    } catch (error) {
+      console.debug('PTP Widescreen Controls: read top10 view mode failed', error);
+      return '';
+    }
+  }
+
+  function setStoredTop10ViewMode(viewMode) {
+    try {
+      if (typeof GM_setValue === 'function') {
+        GM_setValue(TOP10_VIEW_MODE_KEY, viewMode || '');
+      } else if (viewMode) {
+        localStorage.setItem(TOP10_VIEW_MODE_KEY, viewMode);
+      } else {
+        localStorage.removeItem(TOP10_VIEW_MODE_KEY);
+      }
+    } catch (error) {
+      console.debug('PTP Widescreen Controls: write top10 view mode failed', error);
+    }
+  }
+
   function getStoredTorrentsViewMode() {
     try {
       if (typeof GM_getValue === 'function') {
@@ -1824,9 +2197,27 @@
     }
   }
 
+  function normalizeCssUrl(url) {
+    let normalized = String(url || '')
+      .replace(/&quot;|&#34;/g, '"')
+      .replace(/&apos;|&#39;|&#x27;/g, "'")
+      .trim()
+      .replace(/^\\+|\\+$/g, '');
+    let previousValue = '';
+    while (normalized && normalized !== previousValue) {
+      previousValue = normalized;
+      normalized = normalized
+        .trim()
+        .replace(/^\\?['"]/, '')
+        .replace(/\\?['"]$/, '')
+        .trim();
+    }
+    return normalized;
+  }
+
   function getCssUrl(value) {
-    const match = String(value || '').match(/url\((['"]?)(.*?)\1\)/);
-    return match ? match[2].trim() : '';
+    const match = String(value || '').match(/url\((.*?)\)/);
+    return match ? normalizeCssUrl(match[1]) : '';
   }
 
   function getElementBackgroundUrl(element) {
@@ -2104,6 +2495,317 @@
 
     if (getStoredTorrentsViewMode() === TORRENTS_SMALL_COVER_VIEW_MODE) {
       scheduleTorrentsSmallCoverViewRender();
+    }
+  }
+
+  function getTop10CoverUrlFromCoverLink(link) {
+    if (!link) return '';
+    const image = link.querySelector('img');
+    return normalizeCssUrl(
+      getElementBackgroundUrl(link) ||
+        (image ? getCssUrl(image.dataset.style) || image.currentSrc || image.src || '' : '')
+    );
+  }
+
+  function addTop10SmallCoverMovie(movies, seenKeys, movie) {
+    if (!movie || !movie.href || !movie.coverUrl) return;
+    const key = movie.href || movie.coverUrl;
+    if (seenKeys.has(key)) return;
+    seenKeys.add(key);
+    movies.push({
+      href: movie.href,
+      coverUrl: movie.coverUrl,
+      title: movie.title || '',
+      seen: !!movie.seen,
+      index: movies.length
+    });
+  }
+
+  function collectTop10SmallCoverMovies(store) {
+    const movies = [];
+    const seenKeys = new Set();
+
+    store.querySelectorAll(':scope > .cover-movie-list__container .cover-movie-list__movie').forEach(function (
+      coverItem
+    ) {
+      const coverLink = coverItem.querySelector('.cover-movie-list__movie__cover-link');
+      const coverUrl = getTop10CoverUrlFromCoverLink(coverLink);
+      addTop10SmallCoverMovie(movies, seenKeys, {
+        href: coverLink ? coverLink.getAttribute('href') || '' : '',
+        coverUrl,
+        title: (coverItem.querySelector('.cover-movie-list__movie__title') || coverLink || coverItem).textContent.trim(),
+        seen: !!(coverLink && coverLink.className.indexOf('--seen') !== -1)
+      });
+    });
+
+    store.querySelectorAll(':scope > .js-huge_view_container .huge-movie-list__movie').forEach(function (hugeItem) {
+      const coverLink = hugeItem.querySelector('.huge-movie-list__movie__cover__link');
+      addTop10SmallCoverMovie(movies, seenKeys, {
+        href: coverLink ? coverLink.getAttribute('href') || '' : '',
+        coverUrl: getElementBackgroundUrl(coverLink),
+        title: (hugeItem.querySelector('.huge-movie-list__movie__title') || coverLink || hugeItem).textContent.trim(),
+        seen: !!(coverLink && coverLink.className.indexOf('--seen') !== -1)
+      });
+    });
+
+    store.querySelectorAll(':scope > .js-basic-movie-list .basic-movie-list__details-row').forEach(function (row) {
+      const coverLink = row.querySelector('.basic-movie-list__movie__cover-link');
+      const image = row.querySelector('.basic-movie-list__movie__cover');
+      addTop10SmallCoverMovie(movies, seenKeys, {
+        href: coverLink ? coverLink.getAttribute('href') || '' : '',
+        coverUrl: image ? image.currentSrc || image.src || '' : getElementBackgroundUrl(coverLink),
+        title: (row.querySelector('.basic-movie-list__movie__title') || image || coverLink || row).textContent.trim(),
+        seen: !!(coverLink && coverLink.className.indexOf('--seen') !== -1)
+      });
+    });
+
+    return movies;
+  }
+
+  function removeTop10SmallCoverView(container) {
+    const scope = container || document;
+    const stores = [];
+    if (scope instanceof Element && scope.matches('.js-cover-view-index-store')) {
+      stores.push(scope);
+    }
+    stores.push(...scope.querySelectorAll('.js-cover-view-index-store'));
+
+    stores.forEach(function (store) {
+      store.querySelectorAll(':scope > .widescreen-top10-small-cover-view').forEach(function (view) {
+        view.remove();
+      });
+
+      Array.from(store.children).forEach(function (child) {
+        if (!child.dataset || child.dataset.widescreenTop10SmallCoverHidden !== 'true') return;
+        child.style.display = child.dataset.widescreenTop10SmallCoverPreviousDisplay || '';
+        delete child.dataset.widescreenTop10SmallCoverHidden;
+        delete child.dataset.widescreenTop10SmallCoverPreviousDisplay;
+      });
+
+      store.classList.remove('widescreen-top10-small-cover-view-active');
+    });
+  }
+
+  function renderTop10SmallCoverView() {
+    if (top10SmallCoverViewRendering) return;
+
+    top10SmallCoverViewRendering = true;
+    try {
+      document.querySelectorAll('.js-cover-view-index-store').forEach(function (store) {
+        removeTop10SmallCoverView(store);
+
+        const movies = collectTop10SmallCoverMovies(store);
+        if (!movies.length) return;
+
+        const smallCoverView = document.createElement('div');
+        smallCoverView.className =
+          'small-cover-movie-list__container js-small-cover-movie-list__container clearfix widescreen-top10-small-cover-view';
+
+        movies.forEach(function (movie) {
+          const item = document.createElement('div');
+          item.className = 'small-cover-movie-list__movie js-movie-tooltip-triggerer';
+          item.dataset.coverviewjsonindex = String(movie.index);
+
+          const link = document.createElement('a');
+          link.className = movie.seen
+            ? 'small-cover-movie-list__movie__link small-cover-movie-list__movie__link--seen'
+            : 'small-cover-movie-list__movie__link';
+          link.href = movie.href;
+          link.title = movie.title;
+          link.style.background = `url("${movie.coverUrl}") no-repeat top center scroll`;
+          link.style.backgroundSize = 'cover';
+
+          item.appendChild(link);
+          smallCoverView.appendChild(item);
+        });
+
+        Array.from(store.children).forEach(function (child) {
+          child.dataset.widescreenTop10SmallCoverPreviousDisplay = child.style.display || '';
+          child.dataset.widescreenTop10SmallCoverHidden = 'true';
+          child.style.display = 'none';
+        });
+
+        store.classList.add('widescreen-top10-small-cover-view-active');
+        store.insertBefore(smallCoverView, store.firstChild);
+      });
+    } finally {
+      top10SmallCoverViewRendering = false;
+    }
+  }
+
+  function setTop10SmallCoverActive(active) {
+    if (active) {
+      renderTop10SmallCoverView();
+    } else {
+      removeTop10SmallCoverView();
+    }
+  }
+
+  function hideTop10SmallCoverView() {
+    removeTop10SmallCoverView();
+  }
+
+  function scheduleTop10SmallCoverViewSync(delay) {
+    if (getStoredTop10ViewMode() !== TORRENTS_SMALL_COVER_VIEW_MODE) return;
+    if (top10SmallCoverViewSyncTimerId) {
+      globalThis.clearTimeout(top10SmallCoverViewSyncTimerId);
+    }
+    top10SmallCoverViewSyncTimerId = globalThis.setTimeout(function () {
+      top10SmallCoverViewSyncTimerId = 0;
+      if (getStoredTop10ViewMode() !== TORRENTS_SMALL_COVER_VIEW_MODE) return;
+      setTop10SmallCoverActive(true);
+      syncTop10SmallCoverViewInputs(document);
+    }, typeof delay === 'number' ? delay : 0);
+  }
+
+  function cancelTop10SmallCoverViewSync() {
+    if (!top10SmallCoverViewSyncTimerId) return;
+    globalThis.clearTimeout(top10SmallCoverViewSyncTimerId);
+    top10SmallCoverViewSyncTimerId = 0;
+  }
+
+  function syncTop10SmallCoverViewInputs(root) {
+    const scope = root && root.querySelectorAll ? root : document;
+    const smallCoverActive = getStoredTop10ViewMode() === TORRENTS_SMALL_COVER_VIEW_MODE;
+    const inputs = scope.querySelectorAll('input[name="view_mode"]');
+    inputs.forEach(function (input) {
+      if (input.dataset.viewmode === TORRENTS_SMALL_COVER_VIEW_MODE) {
+        input.checked = smallCoverActive;
+      } else if (smallCoverActive) {
+        input.checked = false;
+      }
+    });
+  }
+
+  function injectTop10SmallCoverViewSelector(root) {
+    const scope = root && root.querySelectorAll ? root : document;
+    const inputs = Array.from(scope.querySelectorAll('input[name="view_mode"].js-movie-view-settings-input'));
+    if (!inputs.length) return;
+    if (scope.querySelector('input[name="view_mode"][data-viewmode="' + TORRENTS_SMALL_COVER_VIEW_MODE + '"]')) {
+      syncTop10SmallCoverViewInputs(scope);
+      return;
+    }
+    if (inputs.some(function (input) {
+      return input.dataset.viewmode === TORRENTS_SMALL_COVER_VIEW_MODE;
+    })) {
+      syncTop10SmallCoverViewInputs(scope);
+      return;
+    }
+
+    const coverInput = inputs.find(function (input) {
+      return input.dataset.viewmode === 'Cover';
+    }) || inputs[0];
+    const coverLabel = coverInput.closest('label');
+    if (!coverLabel) return;
+
+    const smallCoverLabel = document.createElement('label');
+    const smallCoverInput = document.createElement('input');
+    smallCoverInput.type = 'radio';
+    smallCoverInput.name = coverInput.name;
+    smallCoverInput.dataset.viewmode = TORRENTS_SMALL_COVER_VIEW_MODE;
+    smallCoverInput.className = TOP10_SMALL_COVER_VIEW_INPUT_CLASS;
+    smallCoverLabel.appendChild(smallCoverInput);
+    smallCoverLabel.appendChild(document.createTextNode(' Small cover view'));
+
+    const smallCoverBreak = document.createElement('br');
+    const coverBreak = coverLabel.nextSibling && coverLabel.nextSibling.nodeName === 'BR'
+      ? coverLabel.nextSibling
+      : null;
+    if (coverBreak) {
+      coverBreak.after(smallCoverLabel, smallCoverBreak);
+    } else {
+      coverLabel.after(document.createElement('br'), smallCoverLabel, smallCoverBreak);
+    }
+
+    syncTop10SmallCoverViewInputs(scope);
+  }
+
+  function isTop10ViewModeInput(target) {
+    return (
+      target instanceof HTMLInputElement &&
+      target.name === 'view_mode' &&
+      (
+        target.classList.contains('js-movie-view-settings-input') ||
+        target.classList.contains(TOP10_SMALL_COVER_VIEW_INPUT_CLASS)
+      )
+    );
+  }
+
+  function scheduleTop10SelectorInjection() {
+    [0, 100, 300].forEach(function (delay) {
+      globalThis.setTimeout(function () {
+        injectTop10SmallCoverViewSelector(document);
+        injectTop10BaseNavigationLink(document);
+      }, delay);
+    });
+  }
+
+  function setupTop10SmallCoverViewMode() {
+    if (!isTop10Page() || top10SmallCoverViewInitialized) return;
+    top10SmallCoverViewInitialized = true;
+
+    injectTop10BaseNavigationLink(document);
+
+    ['click', 'mouseover', 'focusin'].forEach(function (eventName) {
+      document.addEventListener(
+        eventName,
+        function (event) {
+          const target = event.target;
+          if (!(target instanceof Element) || !target.closest('#browse_settings')) return;
+          scheduleTop10SelectorInjection();
+        },
+        true
+      );
+    });
+
+    document.addEventListener(
+      'click',
+      function (event) {
+        const target = event.target;
+        if (isTop10ViewModeInput(target)) {
+          if (target.dataset.viewmode === TORRENTS_SMALL_COVER_VIEW_MODE) {
+            event.stopImmediatePropagation();
+          } else if (getStoredTop10ViewMode() === TORRENTS_SMALL_COVER_VIEW_MODE) {
+            setStoredTop10ViewMode('');
+            cancelTop10SmallCoverViewSync();
+            hideTop10SmallCoverView();
+          }
+        }
+      },
+      true
+    );
+
+    document.addEventListener(
+      'change',
+      function (event) {
+        const target = event.target;
+        if (!isTop10ViewModeInput(target)) return;
+
+        if (target.dataset.viewmode === TORRENTS_SMALL_COVER_VIEW_MODE) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          setStoredTop10ViewMode(TORRENTS_SMALL_COVER_VIEW_MODE);
+          syncTop10SmallCoverViewInputs(document);
+          setTop10SmallCoverActive(true);
+          scheduleTop10SmallCoverViewSync(50);
+          return;
+        }
+
+        if (getStoredTop10ViewMode() === TORRENTS_SMALL_COVER_VIEW_MODE) {
+          setStoredTop10ViewMode('');
+          cancelTop10SmallCoverViewSync();
+          hideTop10SmallCoverView();
+        }
+      },
+      true
+    );
+
+    if (getStoredTop10ViewMode() === TORRENTS_SMALL_COVER_VIEW_MODE) {
+      setTop10SmallCoverActive(true);
+      scheduleTop10SmallCoverViewSync(50);
+      globalThis.addEventListener('load', function () {
+        scheduleTop10SmallCoverViewSync();
+      }, { once: true });
     }
   }
 
@@ -3741,6 +4443,8 @@
     torrentsPhpPreview.appendChild(hugeCoverLayoutPanel);
     torrentsPhpPreview.appendChild(listViewPanel);
 
+    let top10Preview = null;
+
     function updateLayoutPreview(dimensions) {
       const wrapperWidth = dimensions.widths['layout-width'];
       const sidebarWidth = dimensions.widths['sidebar-width'];
@@ -3761,6 +4465,9 @@
       );
       document.documentElement.style.setProperty('--widescreen-preview-content-width', `${contentInnerWidth}px`);
       torrentsPhpPreview.style.width = `${contentInnerWidth}px`;
+      if (top10Preview) {
+        top10Preview.style.width = `${contentInnerWidth}px`;
+      }
       layoutPage.style.width = `${contentInnerWidth}px`;
       if (previewTabsPanel) {
         previewTabsPanel.style.width = `${contentInnerWidth}px`;
@@ -4382,6 +5089,530 @@
     torrentsPhpTabsByKey[smallCoverTorrentsPhpDefinition.key] = { button: smallCoverTorrentsPhpButton };
     torrentsPhpPreview.appendChild(smallCoverPreview);
 
+    top10Preview = document.createElement('div');
+    top10Preview.className = 'thin widescreen-controls__top10-preview';
+
+    const top10TabBar = document.createElement('div');
+    top10TabBar.className = 'widescreen-controls__preview-tab-bar widescreen-controls__nested-layout-tabs';
+
+    const top10Header = document.createElement('h2');
+    top10Header.id = 'top-header-0';
+    top10Header.textContent = 'Top 10 Most Active Movies Uploaded in the Past Day ';
+    const top10HeaderSmall = document.createElement('small');
+    top10HeaderSmall.appendChild(document.createTextNode('- ['));
+    appendAnchor(top10HeaderSmall, '', 'Top 10', 'top10.php');
+    top10HeaderSmall.appendChild(document.createTextNode('] - ['));
+    appendAnchor(top10HeaderSmall, '', 'Top 100', 'top10.php?type=movies&limit=100&details=day');
+    top10HeaderSmall.appendChild(document.createTextNode('] - ['));
+    appendAnchor(top10HeaderSmall, '', 'Top 250', 'top10.php?type=movies&limit=250&details=day');
+    top10HeaderSmall.appendChild(document.createTextNode(']'));
+    top10Header.appendChild(top10HeaderSmall);
+
+    const top10Store = document.createElement('div');
+    top10Store.className = 'js-cover-view-index-store';
+    top10Store.dataset.coverviewindex = '0';
+
+    const top10Movies = [
+      {
+        id: '411487',
+        title: 'Finding Satoshi',
+        year: '2026',
+        rating: '8.8',
+        imdb: 'tt40548010',
+        cover: 'https://m.media-amazon.com/images/M/MV5BYTczOTg5MDEtNmE2Mi00NDYyLTkwODUtYWQwN2M1ZGMxNmMzXkEyXkFqcGc@._V1_.jpg',
+        tags: ['documentary']
+      },
+      {
+        id: '411455',
+        title: 'Jimmy O. Yang: Finally Home',
+        year: '2026',
+        rating: '8.4',
+        imdb: 'tt40642070',
+        cover: 'https://m.media-amazon.com/images/M/MV5BODgxYzRjNDItMTQ0YS00OTY0LTkyMzMtOWQ0YzQ0OGUwMTlkXkEyXkFqcGc@._V1_.jpg',
+        tags: ['comedy']
+      },
+      {
+        id: '411468',
+        title: 'Othello',
+        year: '2026',
+        rating: '7.2',
+        imdb: 'tt39092602',
+        cover: 'https://image.tmdb.org/t/p/original/yd6lMPgh9qthx9up7sZkpZGkq5m.jpg',
+        tags: ['performance']
+      },
+      {
+        id: '75889',
+        title: "Il mondo dell'orrore di Dario Argento",
+        year: '1985',
+        rating: '6.5',
+        imdb: 'tt0088989',
+        cover: 'https://passthepopcorn.me/p/dTV8JPs2oH1.jpg',
+        tags: ['horror', 'biography', 'documentary']
+      },
+      {
+        id: '405942',
+        title: 'Arco',
+        year: '2025',
+        rating: '7.3',
+        imdb: 'tt14883538',
+        cover: 'https://passthepopcorn.me/p/YrEBpP7fxKD.jpg',
+        tags: ['animation', 'adventure', 'fantasy', 'sci.fi']
+      },
+      {
+        id: '411498',
+        title: 'Caravaggio',
+        year: '2025',
+        rating: '7.7',
+        imdb: 'tt38351366',
+        cover: 'https://image.tmdb.org/t/p/original/dRfDBbdVFsiRAKC5dhKcsIlPJI5.jpg',
+        tags: ['documentary']
+      },
+      {
+        id: '112481',
+        title: 'Koibumi AKA Love Letter',
+        year: '1953',
+        rating: '7.1',
+        imdb: 'tt0407929',
+        cover: 'https://img2.pixhost.to/images/7633/721983539_mv5bode3nmm4ndgtngu3oc00mjc5lwjjmjetmgm3oti5nmvkymjixkeyxkfqcgc-_v1_.jpg',
+        tags: ['drama', 'romance']
+      },
+      {
+        id: '406048',
+        title: 'Clika',
+        year: '2026',
+        rating: '4.2',
+        imdb: 'tt28334938',
+        cover: 'https://passthepopcorn.me/p/AbRmFd9VEma.jpg',
+        tags: ['drama', 'musical', 'music']
+      },
+      {
+        id: '389436',
+        title: 'What We Hide AKA Spider & Jessie',
+        year: '2025',
+        rating: '6.1',
+        imdb: 'tt22475426',
+        cover: 'https://passthepopcorn.me/p/QfxWNWYXP2j.jpg',
+        tags: ['drama', 'thriller', 'mystery']
+      },
+      {
+        id: '29007',
+        title: 'Alice in Wonderland',
+        year: '1951',
+        rating: '7.3',
+        imdb: 'tt0043274',
+        cover: 'https://passthepopcorn.me/p/7YQknQdkCFn.jpg',
+        tags: ['comedy', 'animation', 'adventure', 'fantasy', 'musical', 'family', 'disney']
+      }
+    ];
+
+    function createTop10FitPanel(items, getDimensions, summaryLabel) {
+      const fitPanel = document.createElement('div');
+      fitPanel.className = 'widescreen-controls__cover-view-fit';
+
+      const fitSummary = document.createElement('div');
+      fitSummary.className = 'widescreen-controls__cover-view-fit-summary';
+
+      const fitGrid = document.createElement('div');
+      fitGrid.className = 'widescreen-controls__cover-view-fit-grid';
+
+      ['Cover', 'Status', 'Aspect', 'Fit'].forEach(function (headingText) {
+        const heading = document.createElement('div');
+        heading.className = 'widescreen-controls__cover-view-fit-heading';
+        heading.textContent = headingText;
+        fitGrid.appendChild(heading);
+      });
+
+      items.forEach(function (item) {
+        const title = document.createElement('div');
+        title.className = 'widescreen-controls__cover-view-fit-cell';
+        title.textContent = item.movie.title;
+        title.title = item.movie.title;
+
+        item.statusCell = document.createElement('div');
+        item.statusCell.className = 'widescreen-controls__cover-view-fit-cell';
+
+        item.aspectCell = document.createElement('div');
+        item.aspectCell.className = 'widescreen-controls__cover-view-fit-cell';
+
+        item.fitCell = document.createElement('div');
+        item.fitCell.className = 'widescreen-controls__cover-view-fit-cell';
+
+        fitGrid.appendChild(title);
+        fitGrid.appendChild(item.statusCell);
+        fitGrid.appendChild(item.aspectCell);
+        fitGrid.appendChild(item.fitCell);
+      });
+
+      fitPanel.appendChild(fitSummary);
+      fitPanel.appendChild(fitGrid);
+
+      function updateFit(dimensions) {
+        const slot = getDimensions(dimensions);
+        if (!slot) return;
+
+        let letterboxedCount = 0;
+        let loadedCount = 0;
+
+        items.forEach(function (item) {
+          item.statusCell.className = 'widescreen-controls__cover-view-fit-cell';
+          item.aspectCell.textContent = '';
+          item.fitCell.textContent = '';
+
+          if (item.loadState === 'loading') {
+            item.statusCell.textContent = 'Loading image';
+            return;
+          }
+          if (item.loadState !== 'loaded') {
+            item.statusCell.textContent = 'Image unavailable';
+            return;
+          }
+
+          loadedCount += 1;
+          const fitMetrics = computeContainFitMetrics(slot.width, slot.height, item.naturalWidth, item.naturalHeight);
+          if (!fitMetrics) return;
+
+          item.statusCell.textContent = fitMetrics.status;
+          item.statusCell.classList.add(
+            fitMetrics.isLetterboxed
+              ? 'widescreen-controls__cover-view-fit-cell--letterboxed'
+              : 'widescreen-controls__cover-view-fit-cell--fits'
+          );
+          item.aspectCell.textContent = `slot ${fitMetrics.slotAspect.toFixed(3)}; image ${fitMetrics.imageAspect.toFixed(3)}`;
+          item.fitCell.textContent = fitMetrics.isLetterboxed
+            ? `image ${Math.round(fitMetrics.renderedWidth)}px x ${Math.round(
+                fitMetrics.renderedHeight
+              )}px; empty ${Math.round(fitMetrics.emptyWidth)}px wide, ${Math.round(fitMetrics.emptyHeight)}px tall`
+            : `image ${Math.round(fitMetrics.renderedWidth)}px x ${Math.round(fitMetrics.renderedHeight)}px`;
+
+          if (fitMetrics.isLetterboxed) {
+            letterboxedCount += 1;
+          }
+        });
+
+        fitSummary.textContent = `${slot.width}px x ${slot.height}px ${summaryLabel}; ${letterboxedCount} of ${loadedCount} loaded covers letterboxed; 0 cropped`;
+      }
+
+      items.forEach(function (item) {
+        const image = new Image();
+        image.onload = function () {
+          item.naturalWidth = image.naturalWidth;
+          item.naturalHeight = image.naturalHeight;
+          item.loadState = item.naturalWidth > 0 && item.naturalHeight > 0 ? 'loaded' : 'error';
+          updateFit(computeFinalDimensions(state));
+        };
+        image.onerror = function () {
+          item.loadState = 'error';
+          updateFit(computeFinalDimensions(state));
+        };
+        image.src = item.movie.cover;
+      });
+
+      registerPreviewListener(updateFit);
+      return { panel: fitPanel, update: updateFit };
+    }
+
+    function createTop10CoverMovie(movie, index, fitItems) {
+      const item = document.createElement('div');
+      item.className = 'cover-movie-list__movie js-movie-tooltip-triggerer';
+      item.dataset.coverviewjsonindex = String(index);
+
+      const coverLink = document.createElement('a');
+      coverLink.className = 'cover-movie-list__movie__cover-link';
+      coverLink.href = `torrents.php?id=${movie.id}`;
+      coverLink.style.background = `url("${movie.cover}") no-repeat top center scroll`;
+      coverLink.style.backgroundSize = 'cover';
+
+      const undercover = document.createElement('div');
+      undercover.className = 'cover-movie-list__movie__undercover';
+
+      const titleRow = document.createElement('div');
+      titleRow.className = 'cover-movie-list__movie__title-row';
+      appendAnchor(titleRow, 'cover-movie-list__movie__title', movie.title, `torrents.php?id=${movie.id}`);
+      titleRow.appendChild(document.createTextNode(' '));
+      const year = document.createElement('span');
+      year.className = 'cover-movie-list__movie__year';
+      year.textContent = `[${movie.year}]`;
+      titleRow.appendChild(year);
+
+      const ratingAndTags = document.createElement('div');
+      ratingAndTags.className = 'cover-movie-list__movie__rating-and-tags';
+      const rating = appendAnchor(ratingAndTags, 'cover-movie-list__movie__rating', movie.rating, `https://www.imdb.com/title/${movie.imdb}/`);
+      rating.target = '_blank';
+      rating.rel = 'noreferrer';
+      const tags = document.createElement('span');
+      tags.className = 'cover-movie-list__movie__tags';
+      movie.tags.forEach(function (tag, tagIndex) {
+        if (tagIndex > 0) tags.appendChild(document.createTextNode(', '));
+        appendAnchor(tags, 'cover-movie-list__movie__tag', tag, `torrents.php?taglist=${tag}&cover=1`);
+      });
+      ratingAndTags.appendChild(tags);
+
+      undercover.appendChild(titleRow);
+      undercover.appendChild(ratingAndTags);
+      item.appendChild(coverLink);
+      item.appendChild(undercover);
+
+      fitItems.push({
+        movie,
+        naturalWidth: 0,
+        naturalHeight: 0,
+        loadState: 'loading',
+        statusCell: null,
+        aspectCell: null,
+        fitCell: null
+      });
+
+      return item;
+    }
+
+    function createTop10SmallCoverMovie(movie, index, fitItems) {
+      const item = document.createElement('div');
+      item.className = 'small-cover-movie-list__movie js-movie-tooltip-triggerer';
+      item.dataset.coverviewjsonindex = String(index);
+
+      const link = document.createElement('a');
+      link.className = 'small-cover-movie-list__movie__link';
+      link.href = `torrents.php?id=${movie.id}`;
+      link.style.background = `url("${movie.cover}") no-repeat top center scroll`;
+      link.style.backgroundSize = 'cover';
+      item.appendChild(link);
+
+      fitItems.push({
+        movie,
+        naturalWidth: 0,
+        naturalHeight: 0,
+        loadState: 'loading',
+        statusCell: null,
+        aspectCell: null,
+        fitCell: null
+      });
+
+      return item;
+    }
+
+    function setTop10ActivePanel(activePanel) {
+      top10Store.querySelectorAll(
+        ':scope > .js-basic-movie-list, :scope > .cover-movie-list__container, :scope > .js-small-cover-movie-list__container, :scope > .js-huge_view_container'
+      ).forEach(function (view) {
+        view.hidden = view !== activePanel;
+        view.classList.toggle('hidden', view !== activePanel);
+      });
+    }
+
+    const top10ListTable = listViewTable.cloneNode(true);
+    top10ListTable.classList.add('js-basic-movie-list');
+    top10ListTable.hidden = true;
+    top10ListTable.classList.add('hidden');
+    const top10ListCoverImage = top10ListTable.querySelector('.basic-movie-list__movie__cover');
+    if (top10ListCoverImage) {
+      top10ListCoverImage.src = top10Movies[0].cover;
+      top10ListCoverImage.alt = `${top10Movies[0].title} cover preview`;
+    }
+    const top10ListMovieTitle = top10ListTable.querySelector('.basic-movie-list__movie__title');
+    if (top10ListMovieTitle) {
+      top10ListMovieTitle.textContent = top10Movies[0].title;
+    }
+    const top10ListMovieYear = top10ListTable.querySelector('.basic-movie-list__movie__year');
+    if (top10ListMovieYear) {
+      top10ListMovieYear.textContent = `[${top10Movies[0].year}]`;
+    }
+    const top10ListFitItems = [{
+      movie: top10Movies[0],
+      naturalWidth: 0,
+      naturalHeight: 0,
+      loadState: 'loading',
+      statusCell: null,
+      aspectCell: null,
+      fitCell: null
+    }];
+
+    const top10CoverFitItems = [];
+    const top10CoverContainer = document.createElement('div');
+    top10CoverContainer.className = 'cover-movie-list__container clearfix';
+    const top10CoverList = document.createElement('div');
+    top10CoverList.className = 'cover-movie-list js-cover-movie-list';
+    top10Movies.forEach(function (movie, index) {
+      top10CoverList.appendChild(createTop10CoverMovie(movie, index, top10CoverFitItems));
+    });
+    top10CoverContainer.appendChild(top10CoverList);
+
+    const top10SmallFitItems = [];
+    const top10SmallContainer = document.createElement('div');
+    top10SmallContainer.className = 'small-cover-movie-list__container js-small-cover-movie-list__container clearfix hidden';
+    top10SmallContainer.hidden = true;
+    top10Movies.forEach(function (movie, index) {
+      top10SmallContainer.appendChild(createTop10SmallCoverMovie(movie, index, top10SmallFitItems));
+    });
+
+    const top10HugeContainer = document.createElement('div');
+    top10HugeContainer.className = 'js-huge_view_container hidden';
+    top10HugeContainer.hidden = true;
+    const top10HugeMovie = hugeMovie.cloneNode(true);
+    const top10HugeCoverLink = top10HugeMovie.querySelector('.huge-movie-list__movie__cover__link');
+    if (top10HugeCoverLink) {
+      top10HugeCoverLink.style.background = `url("${top10Movies[0].cover}") center center / contain no-repeat`;
+    }
+    const top10HugeTitle = top10HugeMovie.querySelector('.huge-movie-list__movie__title');
+    if (top10HugeTitle) {
+      top10HugeTitle.textContent = top10Movies[0].title;
+    }
+    top10HugeContainer.appendChild(top10HugeMovie);
+    const top10HugeFitItems = [{
+      movie: top10Movies[0],
+      naturalWidth: 0,
+      naturalHeight: 0,
+      loadState: 'loading',
+      statusCell: null,
+      aspectCell: null,
+      fitCell: null
+    }];
+
+    const top10Break = document.createElement('br');
+    top10Store.appendChild(top10ListTable);
+    top10Store.appendChild(top10CoverContainer);
+    top10Store.appendChild(top10SmallContainer);
+    top10Store.appendChild(top10HugeContainer);
+    top10Store.appendChild(top10Break);
+    top10Preview.appendChild(top10TabBar);
+    top10Preview.appendChild(top10Header);
+    top10Preview.appendChild(top10Store);
+
+    const top10CoverFit = createTop10FitPanel(
+      top10CoverFitItems,
+      function (dimensions) {
+        const width = dimensions.widths['cover-movie-index-width'];
+        const height = dimensions.heights['cover-movie-index-height'];
+        return Number.isFinite(width) && Number.isFinite(height) ? { width, height } : null;
+      },
+      'slot'
+    );
+    const top10SmallFit = createTop10FitPanel(
+      top10SmallFitItems,
+      function (dimensions) {
+        const width = dimensions.widths['top10-small-cover-movie-width'];
+        const height = dimensions.heights['top10-small-cover-movie-height'];
+        return Number.isFinite(width) && Number.isFinite(height) ? { width, height } : null;
+      },
+      'slot'
+    );
+    const top10ListFit = createTop10FitPanel(
+      top10ListFitItems,
+      function (dimensions) {
+        const width = dimensions.widths['basic-movie-cover-width'];
+        const height = dimensions.heights['basic-movie-cover-height'];
+        return Number.isFinite(width) && Number.isFinite(height) ? { width, height } : null;
+      },
+      'slot'
+    );
+    const top10HugeFit = createTop10FitPanel(
+      top10HugeFitItems,
+      function (dimensions) {
+        const width = dimensions.widths['top10-huge-movie-width'];
+        const height = dimensions.heights['top10-huge-movie-height'];
+        return Number.isFinite(width) && Number.isFinite(height) ? { width, height } : null;
+      },
+      'slot'
+    );
+
+    top10CoverContainer.appendChild(top10CoverFit.panel);
+    top10SmallContainer.after(top10SmallFit.panel);
+    top10ListTable.after(top10ListFit.panel);
+    top10ListFit.panel.hidden = true;
+    top10ListFit.panel.classList.add('hidden');
+    top10HugeContainer.appendChild(top10HugeFit.panel);
+
+    const top10Definitions = [
+      {
+        key: 'cover',
+        label: 'Cover View',
+        panel: top10CoverContainer,
+        fitPanel: top10CoverFit.panel,
+        optionVariableNames: TOP10_COVER_PREVIEW_VARIABLE_NAMES,
+        optionTitle: 'Top10 Cover View Preview Options',
+        optionDescription: 'Options specific to the active top10.php Cover View preview.'
+      },
+      {
+        key: 'smallCover',
+        label: 'Small Cover View',
+        panel: top10SmallContainer,
+        fitPanel: top10SmallFit.panel,
+        optionVariableNames: TOP10_SMALL_COVER_PREVIEW_VARIABLE_NAMES,
+        optionTitle: 'Top10 Small Cover View Preview Options',
+        optionDescription: 'Options specific to the active top10.php Small Cover View preview.'
+      },
+      {
+        key: 'list',
+        label: 'List View',
+        panel: top10ListTable,
+        fitPanel: top10ListFit.panel,
+        optionVariableNames: TOP10_LIST_PREVIEW_VARIABLE_NAMES,
+        optionTitle: 'Top10 List View Preview Options',
+        optionDescription: 'Options specific to the active top10.php List View preview.'
+      },
+      {
+        key: 'huge',
+        label: 'Huge View',
+        panel: top10HugeContainer,
+        fitPanel: top10HugeFit.panel,
+        optionVariableNames: TOP10_HUGE_PREVIEW_VARIABLE_NAMES,
+        optionTitle: 'Top10 Huge View Preview Options',
+        optionDescription: 'Options specific to the active top10.php Huge View preview.'
+      }
+    ];
+    const top10TabsByKey = {};
+    let activeTop10TabKey = 'cover';
+
+    function getActiveTop10Definition() {
+      return (
+        top10Definitions.find(function (definition) {
+          return definition.key === activeTop10TabKey;
+        }) || top10Definitions[0]
+      );
+    }
+
+    function setActiveTop10Tab(key) {
+      activeTop10TabKey = key;
+      const activeDefinition = getActiveTop10Definition();
+      for (const definition of top10Definitions) {
+        const isActive = definition.key === activeDefinition.key;
+        const controls = top10TabsByKey[definition.key];
+        if (controls) {
+          controls.button.classList.toggle('widescreen-controls__preview-tab--active', isActive);
+        }
+        definition.fitPanel.hidden = !isActive;
+        definition.fitPanel.classList.toggle('hidden', !isActive);
+      }
+      setTop10ActivePanel(activeDefinition.panel);
+      if (activePreviewOptionVariableNames) {
+        activePreviewOptionVariableNames = activeDefinition.optionVariableNames;
+        previewOptionsTitle.textContent = activeDefinition.optionTitle;
+        previewOptionsDescription.textContent = activeDefinition.optionDescription;
+        for (const variable of SETTING_VARS) {
+          if (!isPreviewOptionVariable(variable.name)) continue;
+          const controls = controlsByName[variable.name];
+          if (!controls) continue;
+          controls.row.hidden = !activePreviewOptionVariableNames.has(variable.name);
+        }
+      }
+      schedulePreviewRefresh();
+    }
+
+    top10Definitions.forEach(function (definition) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'widescreen-controls__preview-tab';
+      button.textContent = definition.label;
+      button.addEventListener('mousedown', function (event) {
+        event.preventDefault();
+      });
+      button.addEventListener('click', function () {
+        setActiveTop10Tab(definition.key);
+      });
+      top10TabBar.appendChild(button);
+      top10TabsByKey[definition.key] = { button };
+    });
+    setActiveTop10Tab(activeTop10TabKey);
+
     previewTabsPanel = document.createElement('div');
     previewTabsPanel.className = 'panel widescreen-controls__preview-tabs-panel';
 
@@ -4404,6 +5635,14 @@
         key: 'torrentsPhp',
         label: 'Torrents.php Preview',
         panel: torrentsPhpPreview,
+        onActivate: function () {
+          schedulePreviewRefresh();
+        }
+      },
+      {
+        key: 'top10',
+        label: 'Top10 Page Preview',
+        panel: top10Preview,
         onActivate: function () {
           schedulePreviewRefresh();
         }
@@ -4432,7 +5671,7 @@
         return definition.key === key;
       });
       const currentPreview = panel.querySelector(
-        '.thin.widescreen-controls__layout-page, .widescreen-controls__torrents-php-preview, .widescreen-controls__preview-grid'
+        '.thin.widescreen-controls__layout-page, .widescreen-controls__torrents-php-preview, .widescreen-controls__top10-preview, .widescreen-controls__preview-grid'
       );
       if (activeDefinition && currentPreview !== activeDefinition.panel) {
         if (currentPreview) {
@@ -4449,6 +5688,11 @@
         activePreviewOptionVariableNames = activeTorrentsPhpDefinition.optionVariableNames;
         previewOptionsTitle.textContent = activeTorrentsPhpDefinition.optionTitle;
         previewOptionsDescription.textContent = activeTorrentsPhpDefinition.optionDescription;
+      } else if (key === 'top10') {
+        const activeTop10Definition = getActiveTop10Definition();
+        activePreviewOptionVariableNames = activeTop10Definition.optionVariableNames;
+        previewOptionsTitle.textContent = activeTop10Definition.optionTitle;
+        previewOptionsDescription.textContent = activeTop10Definition.optionDescription;
       } else {
         activePreviewOptionVariableNames = null;
         previewOptionsTitle.textContent = 'Preview Options';
@@ -4766,6 +6010,7 @@
     applySettings(state);
 
     setupTorrentsSmallCoverViewMode();
+    setupTop10SmallCoverViewMode();
 
     if (!isUserEditPage()) return;
 
