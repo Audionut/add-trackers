@@ -33,7 +33,7 @@
     { name: 'sidebar-gap', label: 'Sidebar Gap', defaultValue: 5, min: 0, max: 40 },
     { name: 'bbcode-image-default-width', label: 'BBCode Image Width', defaultValue: 1450, min: 800, max: 2800 },
     { name: 'search-bar-field-width', label: 'Search Field Width', defaultValue: 180, min: 120, max: 420 },
-    { name: 'cover-movie-width', label: 'Cover View Poster Width', defaultValue: 176, min: 100, max: 360 },
+    { name: 'cover-movie-width', label: 'Cover View Poster Width', defaultValue: 372, min: 100, max: 720 },
     { name: 'cover-movie-narrow-width', label: 'Cover View Narrow Poster Width', defaultValue: 168, min: 96, max: 340 },
     { name: 'cover-movie-index-width', label: 'Cover View Index Poster Width', defaultValue: 370, min: 200, max: 620 },
     { name: 'cover-movie-index-narrow-width', label: 'Cover View Index Narrow Poster Width', defaultValue: 350, min: 190, max: 600 },
@@ -45,6 +45,8 @@
   ];
 
   const HEIGHT_VARS = [
+    { name: 'cover-movie-height', label: 'Cover View Poster Height', defaultValue: 575, min: 140, max: 1000 },
+    { name: 'basic-movie-cover-height', label: 'List/Compact View Poster Height', defaultValue: 386, min: 160, max: 900 },
     { name: 'torrents-huge-movie-height', label: 'Torrents Huge Movie Height', defaultValue: 379, min: 220, max: 1000 }
   ];
 
@@ -118,9 +120,9 @@
   const HEIGHT_FROM_WIDTH = [
     {
       widthVar: 'cover-movie-width',
-      widthDefault: 176,
+      widthDefault: 372,
       heightVar: 'cover-movie-height',
-      heightDefault: 246
+      heightDefault: 575
     },
     {
       widthVar: 'cover-movie-narrow-width',
@@ -147,6 +149,12 @@
       heightDefault: 490
     },
     {
+      widthVar: 'basic-movie-cover-width',
+      widthDefault: 250,
+      heightVar: 'basic-movie-cover-height',
+      heightDefault: 386
+    },
+    {
       widthVar: 'small-cover-movie-width',
       widthDefault: 140,
       heightVar: 'small-cover-movie-height',
@@ -162,7 +170,7 @@
       widthVar: 'torrents-huge-movie-width',
       widthDefault: 256,
       heightVar: 'torrents-huge-movie-height',
-      heightDefault: 400
+      heightDefault: 379
     }
   ];
 
@@ -209,11 +217,16 @@
   ]);
   const TORRENTS_PHP_LIST_PREVIEW_VARIABLE_NAMES = new Set([
     'basic-movie-cover-width',
+    'basic-movie-cover-height',
     'torrent-row-font-size'
   ]);
   const TORRENTS_PHP_PREVIEW_VARIABLE_NAMES = new Set([
     ...TORRENTS_PHP_HUGE_PREVIEW_VARIABLE_NAMES,
     ...TORRENTS_PHP_LIST_PREVIEW_VARIABLE_NAMES
+  ]);
+  const COVER_VIEW_PREVIEW_VARIABLE_NAMES = new Set([
+    'cover-movie-width',
+    'cover-movie-height'
   ]);
 
   const HUGE_PREVIEW_COVER = {
@@ -233,7 +246,8 @@
   function isPreviewOptionVariable(variableName) {
     return (
       TORRENTS_LAYOUT_PREVIEW_VARIABLE_NAMES.has(variableName) ||
-      TORRENTS_PHP_PREVIEW_VARIABLE_NAMES.has(variableName)
+      TORRENTS_PHP_PREVIEW_VARIABLE_NAMES.has(variableName) ||
+      COVER_VIEW_PREVIEW_VARIABLE_NAMES.has(variableName)
     );
   }
 
@@ -505,6 +519,156 @@
   color: #afafaf;
   font-size: 11px;
   text-align: center;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__cover-view-preview {
+  margin-top: 10px;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__cover-view-preview
+  .cover-movie-list__container--centered {
+  margin-left: 8px;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__cover-view-preview .cover-movie-list {
+  display: inline-block;
+  width: calc(5 * (var(--cover-movie-width) + 20px));
+  margin: 0 0 -10px -20px;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__cover-view-preview .cover-movie-list__movie {
+  position: relative;
+  float: left;
+  width: var(--cover-movie-width);
+  margin: 0 0 10px 20px;
+  text-align: left;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__cover-view-preview
+  .cover-movie-list__movie__cover-link {
+  display: block;
+  height: var(--cover-movie-height);
+  width: var(--cover-movie-width);
+  background-color: #111111;
+  background-position: center center !important;
+  background-size: contain !important;
+  background-repeat: no-repeat !important;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__cover-view-preview
+  .cover-movie-list__movie__cover-link.widescreen-controls__cover-view-cover--cropped {
+  outline: 2px solid #d8a85f;
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 2px rgba(216, 168, 95, 0.5);
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__cover-view-preview
+  .cover-movie-list__movie__undercover {
+  padding: 3px;
+  background-image: linear-gradient(to bottom, #222222 0%, #050505 100%);
+  border-radius: 0px 0px 6px 6px;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__cover-view-preview
+  .cover-movie-list__movie__title {
+  font-weight: bold;
+  color: white;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__cover-view-preview
+  .cover-movie-list__movie__new {
+  font-size: 10px;
+  font-weight: bold;
+  opacity: 0.4;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__cover-view-preview
+  .cover-movie-list__movie__rating-and-tags {
+  margin-top: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__cover-view-preview
+  .cover-movie-list__movie__rating {
+  background-color: #4d4d4d;
+  padding: 1px 4px;
+  margin-right: 4px;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__cover-view-preview
+  .cover-movie-list::after {
+  content: '';
+  display: block;
+  clear: both;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__cover-view-fit {
+  border: 1px solid #3a3c3f;
+  border-radius: 6px;
+  background: #1b1b1b;
+  color: #cfcfcf;
+  margin-top: 10px;
+  padding: 8px 10px;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__cover-view-fit-summary {
+  color: #d9d9d9;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__cover-view-fit-grid {
+  display: grid;
+  grid-template-columns: minmax(160px, 1.4fr) minmax(96px, 0.8fr) minmax(120px, 1fr) minmax(160px, 1.2fr);
+  gap: 6px 10px;
+  align-items: baseline;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__cover-view-fit-heading {
+  color: #d9d9d9;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__cover-view-fit-cell {
+  color: #afafaf;
+  font-size: 11px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__cover-view-fit-cell--cropped {
+  color: #d8a85f;
+  font-weight: 600;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__cover-view-fit-cell--letterboxed {
+  color: #d8a85f;
+  font-weight: 600;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__cover-view-fit-cell--fits {
+  color: #9dc284;
+  font-weight: 600;
 }
 
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__layout-page {
@@ -804,6 +968,11 @@
 .tabs__panel.js-widescreen-controls-tab-panel
   .widescreen-controls__list-preview-table
   .basic-movie-list__movie__cover {
+  background-color: #111111;
+  display: block;
+  height: var(--basic-movie-cover-height);
+  object-fit: contain;
+  object-position: center center;
   width: var(--basic-movie-cover-width);
 }
 
@@ -921,7 +1090,7 @@
   border: var(--torrents-huge-movie-border-width, 8px) solid #222222;
   box-sizing: border-box;
   height: auto !important;
-  min-height: calc((var(--torrents-huge-movie-height-from-width, var(--torrents-huge-movie-height))) + (var(--torrents-huge-movie-border-width, 8px) * 2)) !important;
+  min-height: calc(var(--torrents-huge-movie-height) + (var(--torrents-huge-movie-border-width, 8px) * 2)) !important;
   overflow: visible;
 }
 
@@ -933,14 +1102,18 @@
 
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__huge-preview .huge-movie-list__movie__cover {
   float: left;
-  min-height: var(--torrents-huge-movie-height-from-width, var(--torrents-huge-movie-height));
+  min-height: var(--torrents-huge-movie-height);
   position: relative;
   width: var(--torrents-huge-movie-width);
 }
 
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__huge-preview .huge-movie-list__movie__cover__link {
+  background-color: #111111;
+  background-position: center center !important;
+  background-repeat: no-repeat !important;
+  background-size: contain !important;
   display: block;
-  height: var(--torrents-huge-movie-height-from-width, var(--torrents-huge-movie-height));
+  height: var(--torrents-huge-movie-height);
   width: var(--torrents-huge-movie-width);
   box-sizing: border-box;
   outline: 2px solid #83b6c8;
@@ -1380,6 +1553,11 @@
 
       const ratio = pair.heightDefault / pair.widthDefault;
       const derivedHeight = Math.max(1, Math.round(widthValue * ratio));
+      const hasHeightControl = HEIGHT_VARS.some(function (variable) {
+        return variable.name === pair.heightVar;
+      });
+      const heightDetached = hasHeightControl && !isVariableLinked(currentState, pair.heightVar);
+      if (heightDetached) continue;
 
       // Keep height and width in sync unless this specific height was intentionally customized.
       const rawHeightOverride = Number(overrides[pair.heightVar]);
@@ -1599,6 +1777,45 @@
     };
   }
 
+  function computeContainFitMetrics(slotWidth, slotHeight, imageWidth, imageHeight) {
+    if (
+      !Number.isFinite(slotWidth) ||
+      !Number.isFinite(slotHeight) ||
+      !Number.isFinite(imageWidth) ||
+      !Number.isFinite(imageHeight) ||
+      slotWidth <= 0 ||
+      slotHeight <= 0 ||
+      imageWidth <= 0 ||
+      imageHeight <= 0
+    ) {
+      return null;
+    }
+
+    const scale = Math.min(slotWidth / imageWidth, slotHeight / imageHeight);
+    const renderedWidth = imageWidth * scale;
+    const renderedHeight = imageHeight * scale;
+    const emptyWidth = Math.max(0, slotWidth - renderedWidth);
+    const emptyHeight = Math.max(0, slotHeight - renderedHeight);
+    const fitTolerance = 0.5;
+    const hasSideBars = emptyWidth > fitTolerance;
+    const hasTopBottomBars = emptyHeight > fitTolerance;
+
+    return {
+      slotAspect: slotWidth / slotHeight,
+      imageAspect: imageWidth / imageHeight,
+      renderedWidth,
+      renderedHeight,
+      emptyWidth,
+      emptyHeight,
+      isLetterboxed: hasSideBars || hasTopBottomBars,
+      status: hasSideBars
+        ? 'Fits with side bars'
+        : hasTopBottomBars
+          ? 'Fits with top/bottom bars'
+          : 'Fits exactly'
+    };
+  }
+
   function initDefaultsFromCss() {
     const overrides = { ...state.overrides };
     let changed = false;
@@ -1622,7 +1839,8 @@
     const dimensions = computeFinalDimensions(currentState);
 
     for (const variable of SETTING_VARS) {
-      root.style.setProperty(`--${variable.name}`, `${dimensions.settings[variable.name]}${variable.unit || 'px'}`);
+      const cssUnit = typeof variable.unit === 'string' ? variable.unit : 'px';
+      root.style.setProperty(`--${variable.name}`, `${dimensions.settings[variable.name]}${cssUnit}`);
     }
 
     for (const pair of HEIGHT_FROM_WIDTH) {
@@ -2784,6 +3002,117 @@
     listViewTable.appendChild(listViewBody);
     listViewPanel.appendChild(listViewTable);
 
+    const listViewFitItem = {
+      title: 'El Rey de la Fiesta',
+      naturalWidth: 0,
+      naturalHeight: 0,
+      loadState: 'loading',
+      statusCell: null,
+      aspectCell: null,
+      fitCell: null
+    };
+
+    const listViewFitPanel = document.createElement('div');
+    listViewFitPanel.className = 'widescreen-controls__cover-view-fit widescreen-controls__list-view-fit';
+
+    const listViewFitSummary = document.createElement('div');
+    listViewFitSummary.className = 'widescreen-controls__cover-view-fit-summary';
+
+    const listViewFitGrid = document.createElement('div');
+    listViewFitGrid.className = 'widescreen-controls__cover-view-fit-grid';
+
+    ['Cover', 'Status', 'Aspect', 'Fit'].forEach(function (headingText) {
+      const heading = document.createElement('div');
+      heading.className = 'widescreen-controls__cover-view-fit-heading';
+      heading.textContent = headingText;
+      listViewFitGrid.appendChild(heading);
+    });
+
+    const listViewFitTitle = document.createElement('div');
+    listViewFitTitle.className = 'widescreen-controls__cover-view-fit-cell';
+    listViewFitTitle.textContent = listViewFitItem.title;
+    listViewFitTitle.title = listViewFitItem.title;
+
+    listViewFitItem.statusCell = document.createElement('div');
+    listViewFitItem.statusCell.className = 'widescreen-controls__cover-view-fit-cell';
+
+    listViewFitItem.aspectCell = document.createElement('div');
+    listViewFitItem.aspectCell.className = 'widescreen-controls__cover-view-fit-cell';
+
+    listViewFitItem.fitCell = document.createElement('div');
+    listViewFitItem.fitCell.className = 'widescreen-controls__cover-view-fit-cell';
+
+    listViewFitGrid.appendChild(listViewFitTitle);
+    listViewFitGrid.appendChild(listViewFitItem.statusCell);
+    listViewFitGrid.appendChild(listViewFitItem.aspectCell);
+    listViewFitGrid.appendChild(listViewFitItem.fitCell);
+
+    listViewFitPanel.appendChild(listViewFitSummary);
+    listViewFitPanel.appendChild(listViewFitGrid);
+    listViewPanel.appendChild(listViewFitPanel);
+
+    function updateListViewFitPreview(dimensions) {
+      const coverWidth = dimensions.widths['basic-movie-cover-width'];
+      const coverHeight = dimensions.heights['basic-movie-cover-height'];
+      if (!Number.isFinite(coverWidth) || !Number.isFinite(coverHeight)) return;
+
+      listViewFitItem.statusCell.className = 'widescreen-controls__cover-view-fit-cell';
+      listViewFitItem.aspectCell.textContent = '';
+      listViewFitItem.fitCell.textContent = '';
+
+      if (listViewFitItem.loadState === 'loading') {
+        listViewFitSummary.textContent = `${coverWidth}px x ${coverHeight}px slot; loading cover; 0 cropped`;
+        listViewFitItem.statusCell.textContent = 'Loading image';
+        return;
+      }
+
+      if (listViewFitItem.loadState !== 'loaded') {
+        listViewFitSummary.textContent = `${coverWidth}px x ${coverHeight}px slot; cover unavailable; 0 cropped`;
+        listViewFitItem.statusCell.textContent = 'Image unavailable';
+        return;
+      }
+
+      const fitMetrics = computeContainFitMetrics(
+        coverWidth,
+        coverHeight,
+        listViewFitItem.naturalWidth,
+        listViewFitItem.naturalHeight
+      );
+      if (!fitMetrics) return;
+
+      listViewFitSummary.textContent = `${coverWidth}px x ${coverHeight}px slot; ${
+        fitMetrics.isLetterboxed ? '1 cover letterboxed' : 'cover fits exactly'
+      }; 0 cropped`;
+      listViewFitItem.statusCell.textContent = fitMetrics.status;
+      listViewFitItem.statusCell.classList.add(
+        fitMetrics.isLetterboxed
+          ? 'widescreen-controls__cover-view-fit-cell--letterboxed'
+          : 'widescreen-controls__cover-view-fit-cell--fits'
+      );
+      listViewFitItem.aspectCell.textContent = `slot ${fitMetrics.slotAspect.toFixed(3)}; image ${fitMetrics.imageAspect.toFixed(3)}`;
+      listViewFitItem.fitCell.textContent = fitMetrics.isLetterboxed
+        ? `image ${Math.round(fitMetrics.renderedWidth)}px x ${Math.round(fitMetrics.renderedHeight)}px; empty ${Math.round(
+            fitMetrics.emptyWidth
+          )}px wide, ${Math.round(fitMetrics.emptyHeight)}px tall`
+        : `image ${Math.round(fitMetrics.renderedWidth)}px x ${Math.round(fitMetrics.renderedHeight)}px`;
+    }
+
+    const listViewFitImage = new Image();
+    listViewFitImage.onload = function () {
+      listViewFitItem.naturalWidth = listViewFitImage.naturalWidth;
+      listViewFitItem.naturalHeight = listViewFitImage.naturalHeight;
+      listViewFitItem.loadState =
+        listViewFitItem.naturalWidth > 0 && listViewFitItem.naturalHeight > 0 ? 'loaded' : 'error';
+      updateListViewFitPreview(computeFinalDimensions(state));
+    };
+    listViewFitImage.onerror = function () {
+      listViewFitItem.loadState = 'error';
+      updateListViewFitPreview(computeFinalDimensions(state));
+    };
+    listViewFitImage.src = listCoverImage.src;
+
+    registerPreviewListener(updateListViewFitPreview);
+
     const hugeTitleRow = document.createElement('div');
     hugeTitleRow.className = 'huge-movie-list__movie__title-row';
 
@@ -3058,7 +3387,7 @@
       const coverHeight = dimensions.heights['torrents-huge-movie-height'];
       if (!Number.isFinite(coverWidth) || !Number.isFinite(coverHeight)) return;
 
-      const fitMetrics = computeCoverFitMetrics(
+      const fitMetrics = computeContainFitMetrics(
         coverWidth,
         coverHeight,
         HUGE_PREVIEW_COVER.width,
@@ -3066,16 +3395,14 @@
       );
       if (!fitMetrics) return;
 
-      hugeCoverLayoutPanel.classList.toggle('widescreen-controls__huge-preview--cropped', fitMetrics.isCropped);
+      hugeCoverLayoutPanel.classList.remove('widescreen-controls__huge-preview--cropped');
       hugeSlotSize.textContent = `${coverWidth}px x ${coverHeight}px; image ${HUGE_PREVIEW_COVER.width}px x ${HUGE_PREVIEW_COVER.height}px`;
       hugeAspect.textContent = `slot ${fitMetrics.slotAspect.toFixed(3)}; image ${fitMetrics.imageAspect.toFixed(3)}`;
-      hugeCropAmount.textContent = fitMetrics.isCropped
-        ? `${Math.round(fitMetrics.croppedWidth)}px wide, ${Math.round(fitMetrics.croppedHeight)}px tall (${Math.round(
-            (Math.max(fitMetrics.croppedWidth, fitMetrics.croppedHeight) /
-              Math.max(fitMetrics.renderedWidth, fitMetrics.renderedHeight)) *
-              100
-          )}%); full image needs ${Math.ceil(fitMetrics.fullImageHeightAtSlotWidth)}px height at this width`
-        : '0px';
+      hugeCropAmount.textContent = fitMetrics.isLetterboxed
+        ? `image ${Math.round(fitMetrics.renderedWidth)}px x ${Math.round(fitMetrics.renderedHeight)}px; empty ${Math.round(
+            fitMetrics.emptyWidth
+          )}px wide, ${Math.round(fitMetrics.emptyHeight)}px tall`
+        : `image ${Math.round(fitMetrics.renderedWidth)}px x ${Math.round(fitMetrics.renderedHeight)}px`;
       hugeFitStatus.textContent = fitMetrics.status;
     }
 
@@ -3153,6 +3480,280 @@
       updateHugeCoverPreview(dimensions);
       updateCoverPreview(dimensions);
     });
+
+    const coverViewPreview = document.createElement('div');
+    coverViewPreview.className = 'widescreen-controls__cover-view-preview';
+
+    const coverViewContainer = document.createElement('div');
+    coverViewContainer.className = 'cover-movie-list__container cover-movie-list__container--centered';
+
+    const coverMovieList = document.createElement('div');
+    coverMovieList.className = 'cover-movie-list';
+    const coverViewFitItems = [];
+
+    function appendCoverTag(parent, tag) {
+      appendAnchor(parent, 'cover-movie-list__movie__tag', tag, `torrents.php?taglist=${tag}&cover=1`);
+    }
+
+    function appendCoverMovie(movie) {
+      const item = document.createElement('div');
+      item.className = 'cover-movie-list__movie';
+
+      const coverLink = document.createElement('a');
+      coverLink.className = 'cover-movie-list__movie__cover-link';
+      coverLink.href = `torrents.php?id=${movie.id}`;
+      coverLink.style.background = `url("${movie.cover}") center top / cover no-repeat`;
+      coverLink.title = movie.title;
+
+      const undercover = document.createElement('div');
+      undercover.className = 'cover-movie-list__movie__undercover';
+
+      const titleRow = document.createElement('div');
+      titleRow.className = 'cover-movie-list__movie__title-row';
+      appendAnchor(titleRow, 'cover-movie-list__movie__title', movie.title, `torrents.php?id=${movie.id}`);
+      titleRow.appendChild(document.createTextNode(' '));
+
+      const year = document.createElement('span');
+      year.className = 'cover-movie-list__movie__year';
+      year.textContent = `[${movie.year}]`;
+      titleRow.appendChild(year);
+      titleRow.appendChild(document.createTextNode(' '));
+
+      const newLink = appendAnchor(titleRow, 'cover-movie-list__movie__new', '(New)', '#');
+      newLink.dataset.new = movie.newId;
+      newLink.title = 'Remove the new mark from this and all older torrents.';
+
+      const ratingAndTags = document.createElement('div');
+      ratingAndTags.className = 'cover-movie-list__movie__rating-and-tags';
+
+      const rating = appendAnchor(
+        ratingAndTags,
+        'cover-movie-list__movie__rating',
+        movie.rating,
+        `https://www.imdb.com/title/${movie.imdb}/`
+      );
+      rating.target = '_blank';
+      rating.rel = 'noreferrer';
+
+      const tags = document.createElement('span');
+      tags.className = 'cover-movie-list__movie__tags';
+      movie.tags.forEach(function (tag, index) {
+        if (index > 0) {
+          tags.appendChild(document.createTextNode(', '));
+        }
+        appendCoverTag(tags, tag);
+      });
+
+      ratingAndTags.appendChild(tags);
+      undercover.appendChild(titleRow);
+      undercover.appendChild(ratingAndTags);
+      item.appendChild(coverLink);
+      item.appendChild(undercover);
+      coverMovieList.appendChild(item);
+
+      coverViewFitItems.push({
+        movie,
+        coverLink,
+        naturalWidth: 0,
+        naturalHeight: 0,
+        loadState: 'loading',
+        statusCell: null,
+        slotCell: null,
+        aspectCell: null,
+        cropCell: null
+      });
+    }
+
+    [
+      {
+        id: '123969',
+        title: 'Angels Fall',
+        year: '2007',
+        rating: '5.7',
+        imdb: 'tt0869921',
+        cover: 'https://passthepopcorn.me/p/UjsaDxssQ2M.jpg',
+        newId: '1777857506',
+        tags: ['drama', 'romance', 'thriller']
+      },
+      {
+        id: '130995',
+        title: 'Blue Smoke',
+        year: '2007',
+        rating: '5.5',
+        imdb: 'tt0893397',
+        cover: 'https://passthepopcorn.me/p/MMUeBE4KA7q.jpg',
+        newId: '1777857466',
+        tags: ['drama', 'romance', 'thriller']
+      },
+      {
+        id: '411527',
+        title: 'A Big Gay Hairy Hit! Where the Bears Are: The Documentary',
+        year: '2023',
+        rating: '7.0',
+        imdb: 'tt28889813',
+        cover: 'https://m.media-amazon.com/images/M/MV5BY2ZlYTdlYjctMmMyNy00MTU0LWFhYWMtYTc5NzZiNTU1Mzg5XkEyXkFqcGc@._V1_.jpg',
+        newId: '1777857413',
+        tags: ['documentary']
+      },
+      {
+        id: '405942',
+        title: 'Arco',
+        year: '2025',
+        rating: '7.3',
+        imdb: 'tt14883538',
+        cover: 'https://passthepopcorn.me/p/YrEBpP7fxKD.jpg',
+        newId: '1777857390',
+        tags: ['animation', 'adventure', 'fantasy', 'sci.fi']
+      },
+      {
+        id: '33336',
+        title: 'The Sixth Man AKA The 6th Man',
+        year: '1997',
+        rating: '5.6',
+        imdb: 'tt0120142',
+        cover: 'https://passthepopcorn.me/p/FFUXpn77NF5.jpg',
+        newId: '1777857389',
+        tags: ['comedy', 'drama', 'romance', 'fantasy', 'sport', 'basketball']
+      }
+    ].forEach(appendCoverMovie);
+
+    coverViewContainer.appendChild(coverMovieList);
+    coverViewPreview.appendChild(coverViewContainer);
+
+    const coverViewFitPanel = document.createElement('div');
+    coverViewFitPanel.className = 'widescreen-controls__cover-view-fit';
+
+    const coverViewFitSummary = document.createElement('div');
+    coverViewFitSummary.className = 'widescreen-controls__cover-view-fit-summary';
+
+    const coverViewFitGrid = document.createElement('div');
+    coverViewFitGrid.className = 'widescreen-controls__cover-view-fit-grid';
+
+    ['Cover', 'Status', 'Aspect', 'Fit'].forEach(function (headingText) {
+      const heading = document.createElement('div');
+      heading.className = 'widescreen-controls__cover-view-fit-heading';
+      heading.textContent = headingText;
+      coverViewFitGrid.appendChild(heading);
+    });
+
+    coverViewFitItems.forEach(function (item) {
+      const title = document.createElement('div');
+      title.className = 'widescreen-controls__cover-view-fit-cell';
+      title.textContent = item.movie.title;
+      title.title = item.movie.title;
+
+      item.statusCell = document.createElement('div');
+      item.statusCell.className = 'widescreen-controls__cover-view-fit-cell';
+
+      item.aspectCell = document.createElement('div');
+      item.aspectCell.className = 'widescreen-controls__cover-view-fit-cell';
+
+      item.cropCell = document.createElement('div');
+      item.cropCell.className = 'widescreen-controls__cover-view-fit-cell';
+
+      coverViewFitGrid.appendChild(title);
+      coverViewFitGrid.appendChild(item.statusCell);
+      coverViewFitGrid.appendChild(item.aspectCell);
+      coverViewFitGrid.appendChild(item.cropCell);
+    });
+
+    coverViewFitPanel.appendChild(coverViewFitSummary);
+    coverViewFitPanel.appendChild(coverViewFitGrid);
+    coverViewPreview.appendChild(coverViewFitPanel);
+
+    function updateCoverViewFitPreview(dimensions) {
+      const coverWidth = dimensions.widths['cover-movie-width'];
+      const coverHeight = dimensions.heights['cover-movie-height'];
+      if (!Number.isFinite(coverWidth) || !Number.isFinite(coverHeight)) return;
+
+      let letterboxedCount = 0;
+      let loadedCount = 0;
+
+      coverViewFitItems.forEach(function (item) {
+        item.statusCell.className = 'widescreen-controls__cover-view-fit-cell';
+        item.aspectCell.textContent = '';
+        item.cropCell.textContent = '';
+
+        if (item.loadState === 'loading') {
+          item.statusCell.textContent = 'Loading image';
+          return;
+        }
+
+        if (item.loadState !== 'loaded') {
+          item.statusCell.textContent = 'Image unavailable';
+          return;
+        }
+
+        loadedCount += 1;
+        const fitMetrics = computeContainFitMetrics(coverWidth, coverHeight, item.naturalWidth, item.naturalHeight);
+        if (!fitMetrics) return;
+
+        item.coverLink.classList.remove('widescreen-controls__cover-view-cover--cropped');
+        item.statusCell.textContent = fitMetrics.status;
+        item.statusCell.classList.add(
+          fitMetrics.isLetterboxed
+            ? 'widescreen-controls__cover-view-fit-cell--letterboxed'
+            : 'widescreen-controls__cover-view-fit-cell--fits'
+        );
+        item.aspectCell.textContent = `slot ${fitMetrics.slotAspect.toFixed(3)}; image ${fitMetrics.imageAspect.toFixed(3)}`;
+        item.cropCell.textContent = fitMetrics.isLetterboxed
+          ? `image ${Math.round(fitMetrics.renderedWidth)}px x ${Math.round(fitMetrics.renderedHeight)}px; empty ${Math.round(
+              fitMetrics.emptyWidth
+            )}px wide, ${Math.round(fitMetrics.emptyHeight)}px tall`
+          : `image ${Math.round(fitMetrics.renderedWidth)}px x ${Math.round(fitMetrics.renderedHeight)}px`;
+
+        if (fitMetrics.isLetterboxed) {
+          letterboxedCount += 1;
+        }
+      });
+
+      coverViewFitSummary.textContent = `${coverWidth}px x ${coverHeight}px slot; ${letterboxedCount} of ${loadedCount} loaded covers letterboxed; 0 cropped`;
+    }
+
+    coverViewFitItems.forEach(function (item) {
+      const image = new Image();
+      image.onload = function () {
+        item.naturalWidth = image.naturalWidth;
+        item.naturalHeight = image.naturalHeight;
+        item.loadState = item.naturalWidth > 0 && item.naturalHeight > 0 ? 'loaded' : 'error';
+        updateCoverViewFitPreview(computeFinalDimensions(state));
+      };
+      image.onerror = function () {
+        item.loadState = 'error';
+        updateCoverViewFitPreview(computeFinalDimensions(state));
+      };
+      image.src = item.movie.cover;
+    });
+
+    registerPreviewListener(updateCoverViewFitPreview);
+    globalThis.addEventListener('resize', function () {
+      updateCoverViewFitPreview(computeFinalDimensions(state));
+    });
+
+    const coverViewTorrentsPhpDefinition = {
+      key: 'coverView',
+      label: 'Cover View',
+      panel: coverViewPreview,
+      optionVariableNames: COVER_VIEW_PREVIEW_VARIABLE_NAMES,
+      optionTitle: 'Cover View Preview Options',
+      optionDescription: 'Options specific to the active torrents.php Cover View preview.'
+    };
+    torrentsPhpDefinitions.push(coverViewTorrentsPhpDefinition);
+
+    const coverViewTorrentsPhpButton = document.createElement('button');
+    coverViewTorrentsPhpButton.type = 'button';
+    coverViewTorrentsPhpButton.className = 'widescreen-controls__preview-tab';
+    coverViewTorrentsPhpButton.textContent = coverViewTorrentsPhpDefinition.label;
+    coverViewTorrentsPhpButton.addEventListener('mousedown', function (event) {
+      event.preventDefault();
+    });
+    coverViewTorrentsPhpButton.addEventListener('click', function () {
+      setActiveTorrentsPhpTab(coverViewTorrentsPhpDefinition.key);
+    });
+
+    torrentsPhpTabBar.appendChild(coverViewTorrentsPhpButton);
+    torrentsPhpTabsByKey[coverViewTorrentsPhpDefinition.key] = { button: coverViewTorrentsPhpButton };
+    torrentsPhpPreview.appendChild(coverViewPreview);
 
     previewTabsPanel = document.createElement('div');
     previewTabsPanel.className = 'panel widescreen-controls__preview-tabs-panel';
@@ -3377,7 +3978,8 @@
 
     const unit = document.createElement('span');
     unit.className = 'widescreen-controls__unit';
-    unit.textContent = variable.unit || 'px';
+    unit.textContent =
+      typeof variable.displayUnit === 'string' ? variable.displayUnit : variable.unit || 'px';
 
     function updateValue(rawValue) {
       const clean = clampSettingValue(rawValue, variable, variable.defaultValue);

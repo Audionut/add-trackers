@@ -34,8 +34,8 @@ html {
   --page-title-font-size: 2em;
   --linkbox-font-size: 1em;
   --bbcode-image-default-width: 1450px;
-  --cover-movie-width: 176px;
-  --cover-movie-height: 246px;
+  --cover-movie-width: 372px;
+  --cover-movie-height: 575px;
   --cover-movie-narrow-width: 168px;
   --cover-movie-narrow-height: 234px;
   --cover-movie-index-width: 370px;
@@ -51,6 +51,7 @@ html {
   --torrents-huge-movie-height-from-width: calc(var(--torrents-huge-movie-width) * 1.4804);
   --torrents-huge-movie-border-width: 8px;
   --basic-movie-cover-width: 250px;
+  --basic-movie-cover-height: 386px;
   --small-cover-movie-width: 140px;
   --small-cover-movie-height: 196px;
   --small-cover-movie-smaller-width: var(--bookmarks-huge-movie-width);
@@ -828,6 +829,11 @@ th {
 }
 
 .basic-movie-list__movie__cover {
+  background-color: #111111;
+  display: block;
+  height: var(--basic-movie-cover-height);
+  object-fit: contain;
+  object-position: center center;
   width: var(--basic-movie-cover-width);
 }
 
@@ -1151,6 +1157,10 @@ tr[id^='torrent_'] img.bbcode__image[style] {
   display: block;
   height: var(--cover-movie-height);
   width: var(--cover-movie-width);
+  background-color: #111111;
+  background-position: center center !important;
+  background-repeat: no-repeat !important;
+  background-size: contain !important;
 }
 
 .cover-movie-list--narrow > .cover-movie-list__movie > .cover-movie-list__movie__cover-link {
@@ -1590,8 +1600,8 @@ tr[id^='torrent_'] img.bbcode__image[style] {
   height: auto !important;
   block-size: auto !important;
   max-height: none !important;
-  min-height: calc(var(--torrents-huge-movie-height-from-width) + (var(--torrents-huge-movie-border-width) * 2)) !important;
-  min-block-size: calc(var(--torrents-huge-movie-height-from-width) + (var(--torrents-huge-movie-border-width) * 2)) !important;
+  min-height: calc(var(--torrents-huge-movie-height) + (var(--torrents-huge-movie-border-width) * 2)) !important;
+  min-block-size: calc(var(--torrents-huge-movie-height) + (var(--torrents-huge-movie-border-width) * 2)) !important;
   overflow: visible !important;
 }
 
@@ -1603,19 +1613,23 @@ tr[id^='torrent_'] img.bbcode__image[style] {
 .huge-movie-list__movie__cover {
   position: relative;
   float: left;
-  height: var(--torrents-huge-movie-height-from-width) !important;
+  height: var(--torrents-huge-movie-height) !important;
   max-height: none !important;
-  min-height: var(--torrents-huge-movie-height-from-width) !important;
+  min-height: var(--torrents-huge-movie-height) !important;
   overflow: visible !important;
   width: var(--torrents-huge-movie-width) !important;
 }
 
 #torrents-movie-view .huge-movie-list__movie__cover__link,
 .huge-movie-list__movie__cover__link {
+  background-color: #111111;
+  background-position: center center !important;
+  background-repeat: no-repeat !important;
+  background-size: contain !important;
   display: block;
-  height: var(--torrents-huge-movie-height-from-width) !important;
+  height: var(--torrents-huge-movie-height) !important;
   max-height: none !important;
-  min-height: var(--torrents-huge-movie-height-from-width) !important;
+  min-height: var(--torrents-huge-movie-height) !important;
   width: var(--torrents-huge-movie-width) !important;
 }
 
