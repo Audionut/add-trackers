@@ -14,6 +14,8 @@
   'use strict';
 
   const SETTINGS_KEY = 'ptp_widescreen_profile_controls_v1';
+  const TORRENTS_VIEW_MODE_KEY = 'ptp_widescreen_torrents_view_mode_v1';
+  const TORRENTS_SMALL_COVER_VIEW_MODE = 'SmallCover';
   const CONTROLS_STYLE_ID = 'ptp-widescreen-profile-controls-style-v1';
   const DEFAULT_STATE = {
     linked: true,
@@ -39,7 +41,8 @@
     { name: 'cover-movie-index-narrow-width', label: 'Cover View Index Narrow Poster Width', defaultValue: 350, min: 190, max: 600 },
     { name: 'cover-movie-centered-width', label: 'Cover View Centered Poster Width', defaultValue: 330, min: 180, max: 560 },
     { name: 'basic-movie-cover-width', label: 'List/Compact View Poster Width', defaultValue: 250, min: 140, max: 480 },
-    { name: 'small-cover-movie-width', label: 'Small Cover View Poster Width', defaultValue: 140, min: 80, max: 260 },
+    { name: 'small-cover-movie-width', label: 'Bookmarks Small Cover Poster Width', defaultValue: 140, min: 80, max: 260 },
+    { name: 'torrents-small-cover-movie-width', label: 'Torrents Small Cover Poster Width', defaultValue: 186, min: 80, max: 320 },
     { name: 'bookmarks-huge-movie-width', label: 'Bookmarks Huge Movie Width', defaultValue: 280, min: 160, max: 520 },
     { name: 'torrents-huge-movie-width', label: 'Torrents Huge Movie Width', defaultValue: 256, min: 140, max: 480 }
   ];
@@ -47,6 +50,8 @@
   const HEIGHT_VARS = [
     { name: 'cover-movie-height', label: 'Cover View Poster Height', defaultValue: 575, min: 140, max: 1000 },
     { name: 'basic-movie-cover-height', label: 'List/Compact View Poster Height', defaultValue: 386, min: 160, max: 900 },
+    { name: 'small-cover-movie-height', label: 'Bookmarks Small Cover Poster Height', defaultValue: 196, min: 112, max: 420 },
+    { name: 'torrents-small-cover-movie-height', label: 'Torrents Small Cover Poster Height', defaultValue: 282, min: 112, max: 520 },
     { name: 'torrents-huge-movie-height', label: 'Torrents Huge Movie Height', defaultValue: 379, min: 220, max: 1000 }
   ];
 
@@ -161,6 +166,12 @@
       heightDefault: 196
     },
     {
+      widthVar: 'torrents-small-cover-movie-width',
+      widthDefault: 186,
+      heightVar: 'torrents-small-cover-movie-height',
+      heightDefault: 282
+    },
+    {
       widthVar: 'bookmarks-huge-movie-width',
       widthDefault: 280,
       heightVar: 'bookmarks-huge-movie-height',
@@ -187,6 +198,7 @@
     ],
     [
       'small-cover-movie-width',
+      'torrents-small-cover-movie-width',
       'bookmarks-huge-movie-width'
     ]
   ];
@@ -197,7 +209,8 @@
     'cover-movie-index-width': 'Cover view index poster',
     'cover-movie-index-narrow-width': 'Cover view index narrow poster',
     'cover-movie-centered-width': 'Cover view centered poster',
-    'small-cover-movie-width': 'Small cover view poster',
+    'small-cover-movie-width': 'Bookmarks small cover poster',
+    'torrents-small-cover-movie-width': 'Torrents small cover poster',
     'bookmarks-huge-movie-width': 'Bookmarks huge movie poster',
     'torrents-huge-movie-width': 'Torrents huge view poster'
   };
@@ -220,9 +233,14 @@
     'basic-movie-cover-height',
     'torrent-row-font-size'
   ]);
+  const TORRENTS_PHP_SMALL_COVER_PREVIEW_VARIABLE_NAMES = new Set([
+    'torrents-small-cover-movie-width',
+    'torrents-small-cover-movie-height'
+  ]);
   const TORRENTS_PHP_PREVIEW_VARIABLE_NAMES = new Set([
     ...TORRENTS_PHP_HUGE_PREVIEW_VARIABLE_NAMES,
-    ...TORRENTS_PHP_LIST_PREVIEW_VARIABLE_NAMES
+    ...TORRENTS_PHP_LIST_PREVIEW_VARIABLE_NAMES,
+    ...TORRENTS_PHP_SMALL_COVER_PREVIEW_VARIABLE_NAMES
   ]);
   const COVER_VIEW_PREVIEW_VARIABLE_NAMES = new Set([
     'cover-movie-width',
@@ -242,6 +260,10 @@
   let hugeCoverFitObserver = null;
   let hugeCoverFitRefreshTimerId = 0;
   let sidebarCoverPathObserver = null;
+  let torrentsSmallCoverViewObserver = null;
+  let torrentsSmallCoverViewInitialized = false;
+  let torrentsSmallCoverViewRenderTimerId = 0;
+  let torrentsSmallCoverViewRendering = false;
 
   function isPreviewOptionVariable(variableName) {
     return (
@@ -613,6 +635,56 @@
   content: '';
   display: block;
   clear: both;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__small-cover-preview {
+  margin-top: 10px;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__small-cover-preview
+  .small-cover-movie-list__container {
+  display: grid;
+  grid-template-columns: repeat(10, var(--torrents-small-cover-movie-width));
+  justify-content: center;
+  gap: 12px;
+  margin-left: auto;
+  margin-right: auto;
+  max-width: 100%;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__small-cover-preview
+  .small-cover-movie-list__movie {
+  float: none;
+  position: relative;
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__small-cover-preview
+  .small-cover-movie-list__movie__link {
+  background-color: #111111;
+  background-position: center center !important;
+  background-repeat: no-repeat !important;
+  background-size: contain !important;
+  display: block;
+  height: var(--torrents-small-cover-movie-height);
+  width: var(--torrents-small-cover-movie-width);
+}
+
+.tabs__panel.js-widescreen-controls-tab-panel
+  .widescreen-controls__small-cover-preview
+  .small-cover-movie-list__movie__link--seen::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  background-image: url('https://passthepopcorn.me/static/common/symbols/seen-overlay.png');
+  background-size: cover;
+  width: 32px;
+  height: 32px;
 }
 
 .tabs__panel.js-widescreen-controls-tab-panel .widescreen-controls__cover-view-fit {
@@ -1714,6 +1786,311 @@
       childList: true,
       subtree: true
     });
+  }
+
+  function isTorrentsBrowsePage() {
+    const url = new URL(location.href);
+    return (
+      url.pathname === '/torrents.php' &&
+      !url.searchParams.has('id') &&
+      !url.searchParams.has('torrentid') &&
+      !url.searchParams.has('action')
+    );
+  }
+
+  function getStoredTorrentsViewMode() {
+    try {
+      if (typeof GM_getValue === 'function') {
+        return String(GM_getValue(TORRENTS_VIEW_MODE_KEY, '') || '');
+      }
+      return localStorage.getItem(TORRENTS_VIEW_MODE_KEY) || '';
+    } catch (error) {
+      console.debug('PTP Widescreen Controls: read torrents view mode failed', error);
+      return '';
+    }
+  }
+
+  function setStoredTorrentsViewMode(viewMode) {
+    try {
+      if (typeof GM_setValue === 'function') {
+        GM_setValue(TORRENTS_VIEW_MODE_KEY, viewMode || '');
+      } else if (viewMode) {
+        localStorage.setItem(TORRENTS_VIEW_MODE_KEY, viewMode);
+      } else {
+        localStorage.removeItem(TORRENTS_VIEW_MODE_KEY);
+      }
+    } catch (error) {
+      console.debug('PTP Widescreen Controls: write torrents view mode failed', error);
+    }
+  }
+
+  function getCssUrl(value) {
+    const match = String(value || '').match(/url\((['"]?)(.*?)\1\)/);
+    return match ? match[2].trim() : '';
+  }
+
+  function getElementBackgroundUrl(element) {
+    if (!element) return '';
+    return (
+      getCssUrl(element.style.backgroundImage) ||
+      getCssUrl(element.style.background) ||
+      getCssUrl(getComputedStyle(element).backgroundImage)
+    );
+  }
+
+  function addTorrentsSmallCoverMovie(movies, seenKeys, movie) {
+    if (!movie || !movie.href || !movie.coverUrl) return;
+    const key = movie.href || movie.coverUrl;
+    if (seenKeys.has(key)) return;
+    seenKeys.add(key);
+    movies.push(movie);
+  }
+
+  function collectTorrentsSmallCoverMovies(container) {
+    const movies = [];
+    const seenKeys = new Set();
+
+    container.querySelectorAll('.cover-movie-list__movie').forEach(function (item) {
+      if (item.closest('.widescreen-torrents-small-cover-view')) return;
+      const link = item.querySelector('.cover-movie-list__movie__cover-link');
+      addTorrentsSmallCoverMovie(movies, seenKeys, {
+        href: link ? link.getAttribute('href') || '' : '',
+        coverUrl: getElementBackgroundUrl(link),
+        title: (item.querySelector('.cover-movie-list__movie__title') || link || item).textContent.trim(),
+        seen: !!(link && link.className.indexOf('--seen') !== -1)
+      });
+    });
+
+    container.querySelectorAll('.huge-movie-list__movie').forEach(function (item) {
+      if (item.closest('.widescreen-torrents-small-cover-view')) return;
+      const link = item.querySelector('.huge-movie-list__movie__cover__link');
+      addTorrentsSmallCoverMovie(movies, seenKeys, {
+        href: link ? link.getAttribute('href') || '' : '',
+        coverUrl: getElementBackgroundUrl(link),
+        title: (item.querySelector('.huge-movie-list__movie__title') || link || item).textContent.trim(),
+        seen: !!(link && link.className.indexOf('--seen') !== -1)
+      });
+    });
+
+    container.querySelectorAll('.basic-movie-list__details-row').forEach(function (row) {
+      if (row.closest('.widescreen-torrents-small-cover-view')) return;
+      const link = row.querySelector('.basic-movie-list__movie__cover-link');
+      const image = row.querySelector('.basic-movie-list__movie__cover');
+      addTorrentsSmallCoverMovie(movies, seenKeys, {
+        href: link ? link.getAttribute('href') || '' : '',
+        coverUrl: image ? image.currentSrc || image.src || '' : getElementBackgroundUrl(link),
+        title: (row.querySelector('.basic-movie-list__movie__title') || image || link || row).textContent.trim(),
+        seen: !!(link && link.className.indexOf('--seen') !== -1)
+      });
+    });
+
+    return movies;
+  }
+
+  function removeTorrentsSmallCoverView(container) {
+    const movieView = container || document.querySelector('#torrents-movie-view');
+    if (!movieView) return;
+
+    movieView.querySelectorAll(':scope > .widescreen-torrents-small-cover-view').forEach(function (view) {
+      view.remove();
+    });
+
+    Array.from(movieView.children).forEach(function (child) {
+      if (!child.dataset || child.dataset.widescreenSmallCoverHidden !== 'true') return;
+      child.style.display = child.dataset.widescreenSmallCoverPreviousDisplay || '';
+      delete child.dataset.widescreenSmallCoverHidden;
+      delete child.dataset.widescreenSmallCoverPreviousDisplay;
+    });
+
+    movieView.classList.remove('widescreen-torrents-small-cover-view-active');
+  }
+
+  function renderTorrentsSmallCoverView() {
+    const movieView = document.querySelector('#torrents-movie-view');
+    if (!movieView || torrentsSmallCoverViewRendering) return;
+
+    torrentsSmallCoverViewRendering = true;
+    removeTorrentsSmallCoverView(movieView);
+
+    const movies = collectTorrentsSmallCoverMovies(movieView);
+    if (!movies.length) {
+      torrentsSmallCoverViewRendering = false;
+      return;
+    }
+
+    const smallCoverView = document.createElement('div');
+    smallCoverView.className =
+      'small-cover-movie-list__container js-small-cover-movie-list__container clearfix widescreen-torrents-small-cover-view';
+
+    movies.forEach(function (movie, index) {
+      const item = document.createElement('div');
+      item.className = 'small-cover-movie-list__movie js-movie-tooltip-triggerer';
+      item.dataset.coverviewjsonindex = String(index);
+
+      const link = document.createElement('a');
+      link.className = movie.seen
+        ? 'small-cover-movie-list__movie__link small-cover-movie-list__movie__link--seen'
+        : 'small-cover-movie-list__movie__link';
+      link.href = movie.href;
+      link.title = movie.title;
+      link.style.background = `url("${movie.coverUrl}") no-repeat top center scroll`;
+      link.style.backgroundSize = 'cover';
+
+      item.appendChild(link);
+      smallCoverView.appendChild(item);
+    });
+
+    Array.from(movieView.children).forEach(function (child) {
+      child.dataset.widescreenSmallCoverPreviousDisplay = child.style.display || '';
+      child.dataset.widescreenSmallCoverHidden = 'true';
+      child.style.display = 'none';
+    });
+
+    movieView.classList.add('widescreen-torrents-small-cover-view-active');
+    movieView.insertBefore(smallCoverView, movieView.firstChild);
+    torrentsSmallCoverViewRendering = false;
+  }
+
+  function scheduleTorrentsSmallCoverViewRender() {
+    if (getStoredTorrentsViewMode() !== TORRENTS_SMALL_COVER_VIEW_MODE) return;
+    if (torrentsSmallCoverViewRenderTimerId) {
+      globalThis.clearTimeout(torrentsSmallCoverViewRenderTimerId);
+    }
+    torrentsSmallCoverViewRenderTimerId = globalThis.setTimeout(function () {
+      torrentsSmallCoverViewRenderTimerId = 0;
+      renderTorrentsSmallCoverView();
+    }, 0);
+  }
+
+  function syncTorrentsSmallCoverViewInputs(root) {
+    const scope = root && root.querySelectorAll ? root : document;
+    const smallCoverActive = getStoredTorrentsViewMode() === TORRENTS_SMALL_COVER_VIEW_MODE;
+    const inputs = scope.querySelectorAll('input[name="view_mode"].js-movie-view-settings-input');
+    inputs.forEach(function (input) {
+      if (input.dataset.viewmode === TORRENTS_SMALL_COVER_VIEW_MODE) {
+        input.checked = smallCoverActive;
+      } else if (smallCoverActive) {
+        input.checked = false;
+      }
+    });
+  }
+
+  function injectTorrentsSmallCoverViewSelector(root) {
+    const scope = root && root.querySelectorAll ? root : document;
+    const inputs = Array.from(scope.querySelectorAll('input[name="view_mode"].js-movie-view-settings-input'));
+    if (!inputs.length) return;
+    if (inputs.some(function (input) {
+      return input.dataset.viewmode === TORRENTS_SMALL_COVER_VIEW_MODE;
+    })) {
+      syncTorrentsSmallCoverViewInputs(scope);
+      return;
+    }
+
+    const coverInput = inputs.find(function (input) {
+      return input.dataset.viewmode === 'Cover';
+    }) || inputs[0];
+    const coverLabel = coverInput.closest('label');
+    if (!coverLabel) return;
+
+    const smallCoverLabel = document.createElement('label');
+    const smallCoverInput = document.createElement('input');
+    smallCoverInput.type = 'radio';
+    smallCoverInput.name = coverInput.name;
+    smallCoverInput.dataset.viewmode = TORRENTS_SMALL_COVER_VIEW_MODE;
+    smallCoverInput.className = coverInput.className;
+    smallCoverLabel.appendChild(smallCoverInput);
+    smallCoverLabel.appendChild(document.createTextNode(' Small cover view'));
+
+    const smallCoverBreak = document.createElement('br');
+    const coverBreak = coverLabel.nextSibling && coverLabel.nextSibling.nodeName === 'BR'
+      ? coverLabel.nextSibling
+      : null;
+    if (coverBreak) {
+      coverBreak.after(smallCoverLabel, smallCoverBreak);
+    } else {
+      coverLabel.after(document.createElement('br'), smallCoverLabel, smallCoverBreak);
+    }
+
+    syncTorrentsSmallCoverViewInputs(scope);
+  }
+
+  function setupTorrentsSmallCoverViewMode() {
+    if (!isTorrentsBrowsePage() || torrentsSmallCoverViewInitialized) return;
+    torrentsSmallCoverViewInitialized = true;
+
+    injectTorrentsSmallCoverViewSelector(document);
+
+    document.addEventListener(
+      'click',
+      function (event) {
+        const target = event.target;
+        if (
+          target instanceof HTMLInputElement &&
+          target.name === 'view_mode' &&
+          target.dataset.viewmode === TORRENTS_SMALL_COVER_VIEW_MODE
+        ) {
+          event.stopImmediatePropagation();
+        }
+      },
+      true
+    );
+
+    document.addEventListener(
+      'change',
+      function (event) {
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement) || target.name !== 'view_mode') return;
+        if (!target.classList.contains('js-movie-view-settings-input')) return;
+
+        if (target.dataset.viewmode === TORRENTS_SMALL_COVER_VIEW_MODE) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          setStoredTorrentsViewMode(TORRENTS_SMALL_COVER_VIEW_MODE);
+          syncTorrentsSmallCoverViewInputs(document);
+          renderTorrentsSmallCoverView();
+          return;
+        }
+
+        setStoredTorrentsViewMode('');
+        removeTorrentsSmallCoverView();
+      },
+      true
+    );
+
+    torrentsSmallCoverViewObserver = new MutationObserver(function (mutations) {
+      let shouldRenderSmallCoverView = false;
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (!(node instanceof Element)) continue;
+          if (
+            node.matches('.widescreen-torrents-small-cover-view') ||
+            node.closest('.widescreen-torrents-small-cover-view')
+          ) {
+            continue;
+          }
+          injectTorrentsSmallCoverViewSelector(node);
+          if (
+            node.matches('#torrents-movie-view') ||
+            node.closest('#torrents-movie-view') ||
+            node.querySelector('#torrents-movie-view')
+          ) {
+            shouldRenderSmallCoverView = true;
+          }
+        }
+      }
+      if (shouldRenderSmallCoverView) {
+        scheduleTorrentsSmallCoverViewRender();
+      }
+    });
+
+    torrentsSmallCoverViewObserver.observe(document.documentElement, {
+      childList: true,
+      subtree: true
+    });
+
+    if (getStoredTorrentsViewMode() === TORRENTS_SMALL_COVER_VIEW_MODE) {
+      scheduleTorrentsSmallCoverViewRender();
+    }
   }
 
   function getLayoutPreviewMetrics(dimensions) {
@@ -3755,6 +4132,242 @@
     torrentsPhpTabsByKey[coverViewTorrentsPhpDefinition.key] = { button: coverViewTorrentsPhpButton };
     torrentsPhpPreview.appendChild(coverViewPreview);
 
+    const smallCoverPreview = document.createElement('div');
+    smallCoverPreview.className = 'widescreen-controls__small-cover-preview';
+
+    const smallCoverContainer = document.createElement('div');
+    smallCoverContainer.className = 'small-cover-movie-list__container js-small-cover-movie-list__container clearfix';
+
+    const smallCoverFitItems = [];
+
+    function appendSmallCoverMovie(movie, index) {
+      const item = document.createElement('div');
+      item.className = 'small-cover-movie-list__movie js-movie-tooltip-triggerer';
+      item.dataset.coverviewjsonindex = String(index);
+
+      const link = document.createElement('a');
+      link.className = movie.seen
+        ? 'small-cover-movie-list__movie__link small-cover-movie-list__movie__link--seen'
+        : 'small-cover-movie-list__movie__link';
+      link.href = `torrents.php?id=${movie.id}`;
+      link.title = movie.title;
+      link.style.background = `url("${movie.cover}") no-repeat top center scroll`;
+      link.style.backgroundSize = 'cover';
+
+      item.appendChild(link);
+      smallCoverContainer.appendChild(item);
+
+      smallCoverFitItems.push({
+        movie,
+        link,
+        naturalWidth: 0,
+        naturalHeight: 0,
+        loadState: 'loading',
+        statusCell: null,
+        aspectCell: null,
+        fitCell: null
+      });
+    }
+
+    [
+      {
+        id: '1621',
+        title: 'Small cover 1',
+        cover: 'https://passthepopcorn.me/p/JU5mM1JGYCV.jpg',
+        seen: false
+      },
+      {
+        id: '6549',
+        title: 'Small cover 2',
+        cover: 'https://passthepopcorn.me/p/GQNHn8dfjQV.jpg',
+        seen: false
+      },
+      {
+        id: '125',
+        title: 'Small cover 3',
+        cover: 'https://passthepopcorn.me/p/JXkVxuQQJqg.jpg',
+        seen: true
+      },
+      {
+        id: '21381',
+        title: 'Small cover 4',
+        cover: 'https://passthepopcorn.me/p/VLffZdDWoUj.jpg',
+        seen: false
+      },
+      {
+        id: '156238',
+        title: 'Small cover 5',
+        cover: 'https://passthepopcorn.me/p/j1Bsx7oK4Sm.jpg',
+        seen: false
+      },
+      {
+        id: '86564',
+        title: 'Small cover 6',
+        cover: 'https://passthepopcorn.me/p/XHrZWsqZ41t.jpg',
+        seen: false
+      },
+      {
+        id: '5486',
+        title: 'Small cover 7',
+        cover: 'https://passthepopcorn.me/p/N3SfEJYQWdW.jpg',
+        seen: false
+      },
+      {
+        id: '123969',
+        title: 'Small cover 8',
+        cover: 'https://passthepopcorn.me/p/UjsaDxssQ2M.jpg',
+        seen: false
+      },
+      {
+        id: '130995',
+        title: 'Small cover 9',
+        cover: 'https://passthepopcorn.me/p/MMUeBE4KA7q.jpg',
+        seen: false
+      },
+      {
+        id: '326510',
+        title: 'Small cover 10',
+        cover: 'https://passthepopcorn.me/p/7z9WpXDVguZ.jpg',
+        seen: false
+      }
+    ].forEach(appendSmallCoverMovie);
+
+    smallCoverPreview.appendChild(smallCoverContainer);
+
+    const smallCoverFitPanel = document.createElement('div');
+    smallCoverFitPanel.className = 'widescreen-controls__cover-view-fit widescreen-controls__small-cover-fit';
+
+    const smallCoverFitSummary = document.createElement('div');
+    smallCoverFitSummary.className = 'widescreen-controls__cover-view-fit-summary';
+
+    const smallCoverFitGrid = document.createElement('div');
+    smallCoverFitGrid.className = 'widescreen-controls__cover-view-fit-grid';
+
+    ['Cover', 'Status', 'Aspect', 'Fit'].forEach(function (headingText) {
+      const heading = document.createElement('div');
+      heading.className = 'widescreen-controls__cover-view-fit-heading';
+      heading.textContent = headingText;
+      smallCoverFitGrid.appendChild(heading);
+    });
+
+    smallCoverFitItems.forEach(function (item) {
+      const title = document.createElement('div');
+      title.className = 'widescreen-controls__cover-view-fit-cell';
+      title.textContent = item.movie.title;
+      title.title = item.movie.title;
+
+      item.statusCell = document.createElement('div');
+      item.statusCell.className = 'widescreen-controls__cover-view-fit-cell';
+
+      item.aspectCell = document.createElement('div');
+      item.aspectCell.className = 'widescreen-controls__cover-view-fit-cell';
+
+      item.fitCell = document.createElement('div');
+      item.fitCell.className = 'widescreen-controls__cover-view-fit-cell';
+
+      smallCoverFitGrid.appendChild(title);
+      smallCoverFitGrid.appendChild(item.statusCell);
+      smallCoverFitGrid.appendChild(item.aspectCell);
+      smallCoverFitGrid.appendChild(item.fitCell);
+    });
+
+    smallCoverFitPanel.appendChild(smallCoverFitSummary);
+    smallCoverFitPanel.appendChild(smallCoverFitGrid);
+    smallCoverPreview.appendChild(smallCoverFitPanel);
+
+    function updateSmallCoverFitPreview(dimensions) {
+      const coverWidth = dimensions.widths['torrents-small-cover-movie-width'];
+      const coverHeight = dimensions.heights['torrents-small-cover-movie-height'];
+      if (!Number.isFinite(coverWidth) || !Number.isFinite(coverHeight)) return;
+
+      let letterboxedCount = 0;
+      let loadedCount = 0;
+
+      smallCoverFitItems.forEach(function (item) {
+        item.statusCell.className = 'widescreen-controls__cover-view-fit-cell';
+        item.aspectCell.textContent = '';
+        item.fitCell.textContent = '';
+
+        if (item.loadState === 'loading') {
+          item.statusCell.textContent = 'Loading image';
+          return;
+        }
+
+        if (item.loadState !== 'loaded') {
+          item.statusCell.textContent = 'Image unavailable';
+          return;
+        }
+
+        loadedCount += 1;
+        const fitMetrics = computeContainFitMetrics(coverWidth, coverHeight, item.naturalWidth, item.naturalHeight);
+        if (!fitMetrics) return;
+
+        item.statusCell.textContent = fitMetrics.status;
+        item.statusCell.classList.add(
+          fitMetrics.isLetterboxed
+            ? 'widescreen-controls__cover-view-fit-cell--letterboxed'
+            : 'widescreen-controls__cover-view-fit-cell--fits'
+        );
+        item.aspectCell.textContent = `slot ${fitMetrics.slotAspect.toFixed(3)}; image ${fitMetrics.imageAspect.toFixed(3)}`;
+        item.fitCell.textContent = fitMetrics.isLetterboxed
+          ? `image ${Math.round(fitMetrics.renderedWidth)}px x ${Math.round(fitMetrics.renderedHeight)}px; empty ${Math.round(
+              fitMetrics.emptyWidth
+            )}px wide, ${Math.round(fitMetrics.emptyHeight)}px tall`
+          : `image ${Math.round(fitMetrics.renderedWidth)}px x ${Math.round(fitMetrics.renderedHeight)}px`;
+
+        if (fitMetrics.isLetterboxed) {
+          letterboxedCount += 1;
+        }
+      });
+
+      smallCoverFitSummary.textContent = `${coverWidth}px x ${coverHeight}px slot; ${letterboxedCount} of ${loadedCount} loaded covers letterboxed; 0 cropped`;
+    }
+
+    smallCoverFitItems.forEach(function (item) {
+      const image = new Image();
+      image.onload = function () {
+        item.naturalWidth = image.naturalWidth;
+        item.naturalHeight = image.naturalHeight;
+        item.loadState = item.naturalWidth > 0 && item.naturalHeight > 0 ? 'loaded' : 'error';
+        updateSmallCoverFitPreview(computeFinalDimensions(state));
+      };
+      image.onerror = function () {
+        item.loadState = 'error';
+        updateSmallCoverFitPreview(computeFinalDimensions(state));
+      };
+      image.src = item.movie.cover;
+    });
+
+    registerPreviewListener(updateSmallCoverFitPreview);
+    globalThis.addEventListener('resize', function () {
+      updateSmallCoverFitPreview(computeFinalDimensions(state));
+    });
+
+    const smallCoverTorrentsPhpDefinition = {
+      key: 'smallCover',
+      label: 'Small Cover View',
+      panel: smallCoverPreview,
+      optionVariableNames: TORRENTS_PHP_SMALL_COVER_PREVIEW_VARIABLE_NAMES,
+      optionTitle: 'Small Cover View Preview Options',
+      optionDescription: 'Options specific to the active torrents.php Small Cover View preview.'
+    };
+    torrentsPhpDefinitions.push(smallCoverTorrentsPhpDefinition);
+
+    const smallCoverTorrentsPhpButton = document.createElement('button');
+    smallCoverTorrentsPhpButton.type = 'button';
+    smallCoverTorrentsPhpButton.className = 'widescreen-controls__preview-tab';
+    smallCoverTorrentsPhpButton.textContent = smallCoverTorrentsPhpDefinition.label;
+    smallCoverTorrentsPhpButton.addEventListener('mousedown', function (event) {
+      event.preventDefault();
+    });
+    smallCoverTorrentsPhpButton.addEventListener('click', function () {
+      setActiveTorrentsPhpTab(smallCoverTorrentsPhpDefinition.key);
+    });
+
+    torrentsPhpTabBar.appendChild(smallCoverTorrentsPhpButton);
+    torrentsPhpTabsByKey[smallCoverTorrentsPhpDefinition.key] = { button: smallCoverTorrentsPhpButton };
+    torrentsPhpPreview.appendChild(smallCoverPreview);
+
     previewTabsPanel = document.createElement('div');
     previewTabsPanel.className = 'panel widescreen-controls__preview-tabs-panel';
 
@@ -4137,6 +4750,8 @@
   function onReady() {
     initDefaultsFromCss();
     applySettings(state);
+
+    setupTorrentsSmallCoverViewMode();
 
     if (!isUserEditPage()) return;
 
