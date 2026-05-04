@@ -1958,8 +1958,15 @@
     }
     torrentsSmallCoverViewRenderTimerId = globalThis.setTimeout(function () {
       torrentsSmallCoverViewRenderTimerId = 0;
+      if (getStoredTorrentsViewMode() !== TORRENTS_SMALL_COVER_VIEW_MODE) return;
       renderTorrentsSmallCoverView();
     }, 0);
+  }
+
+  function cancelTorrentsSmallCoverViewRender() {
+    if (!torrentsSmallCoverViewRenderTimerId) return;
+    globalThis.clearTimeout(torrentsSmallCoverViewRenderTimerId);
+    torrentsSmallCoverViewRenderTimerId = 0;
   }
 
   function syncTorrentsSmallCoverViewInputs(root) {
@@ -2027,9 +2034,15 @@
         if (
           target instanceof HTMLInputElement &&
           target.name === 'view_mode' &&
-          target.dataset.viewmode === TORRENTS_SMALL_COVER_VIEW_MODE
+          target.classList.contains('js-movie-view-settings-input')
         ) {
-          event.stopImmediatePropagation();
+          if (target.dataset.viewmode === TORRENTS_SMALL_COVER_VIEW_MODE) {
+            event.stopImmediatePropagation();
+          } else {
+            setStoredTorrentsViewMode('');
+            cancelTorrentsSmallCoverViewRender();
+            removeTorrentsSmallCoverView();
+          }
         }
       },
       true
@@ -2052,6 +2065,7 @@
         }
 
         setStoredTorrentsViewMode('');
+        cancelTorrentsSmallCoverViewRender();
         removeTorrentsSmallCoverView();
       },
       true
