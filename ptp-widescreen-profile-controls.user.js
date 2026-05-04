@@ -364,6 +364,17 @@
   margin-bottom: 14px;
 }
 
+.js-widescreen-controls-panel .widescreen-controls__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.js-widescreen-controls-panel .widescreen-controls__toggle {
+  flex: 0 0 auto;
+}
+
 .widescreen-controls__preview-options-panel {
   width: 1040px;
   min-width: 1040px;
@@ -372,6 +383,14 @@
 
 .widescreen-controls__preview-options-panel[hidden] {
   display: none !important;
+}
+
+.widescreen-controls__preview-options-tabs {
+  margin: 0 0 12px;
+}
+
+.widescreen-controls__preview-options-tabs:empty {
+  display: none;
 }
 
 .widescreen-controls__preview-options-title {
@@ -3164,11 +3183,22 @@
     wrapper.id = 'widescreen-controls';
     wrapper.dataset.widescreenScriptVersion = SCRIPT_VERSION;
 
-    const body = document.createElement('div');
-    body.className = 'panel__body';
+    const heading = document.createElement('div');
+    heading.className = 'panel__heading widescreen-controls__heading';
 
     const title = document.createElement('h2');
+    title.className = 'panel__heading__title';
     title.textContent = 'Widescreen Controls';
+
+    const toggleButton = document.createElement('button');
+    toggleButton.type = 'button';
+    toggleButton.className = 'widescreen-controls__toggle';
+    toggleButton.setAttribute('aria-controls', 'widescreen-controls-body');
+
+    const body = document.createElement('div');
+    body.className = 'panel__body';
+    body.id = 'widescreen-controls-body';
+    body.hidden = true;
 
     const description = document.createElement('p');
     description.className = 'widescreen-controls__description';
@@ -3358,6 +3388,16 @@
       flashStatus('Defaults restored');
     });
 
+    function setControlsExpanded(expanded) {
+      body.hidden = !expanded;
+      toggleButton.textContent = expanded ? 'Collapse' : 'Expand';
+      toggleButton.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    }
+
+    toggleButton.addEventListener('click', function () {
+      setControlsExpanded(body.hidden);
+    });
+
     buttonRow.appendChild(saveButton);
     buttonRow.appendChild(resetButton);
     buttonRow.appendChild(status);
@@ -3368,6 +3408,9 @@
 
     const previewOptionsBody = document.createElement('div');
     previewOptionsBody.className = 'panel__body';
+
+    const previewOptionsTabSlot = document.createElement('div');
+    previewOptionsTabSlot.className = 'widescreen-controls__preview-options-tabs';
 
     const previewOptionsTitle = document.createElement('h2');
     previewOptionsTitle.className = 'widescreen-controls__preview-options-title';
@@ -3423,6 +3466,7 @@
     previewOptionsList.appendChild(originalSidebarCoverPathRow.row);
 
     previewOptionsActions.appendChild(resetPreviewOptionsButton);
+    previewOptionsBody.appendChild(previewOptionsTabSlot);
     previewOptionsBody.appendChild(previewOptionsTitle);
     previewOptionsBody.appendChild(previewOptionsDescription);
     previewOptionsBody.appendChild(previewOptionsList);
@@ -4526,7 +4570,6 @@
       torrentsPhpTabsByKey[definition.key] = { button };
     });
 
-    torrentsPhpPreview.appendChild(torrentsPhpTabBar);
     torrentsPhpPreview.appendChild(hugeCoverLayoutPanel);
     torrentsPhpPreview.appendChild(listViewPanel);
 
@@ -5560,7 +5603,6 @@
     top10Store.appendChild(top10SmallContainer);
     top10Store.appendChild(top10HugeContainer);
     top10Store.appendChild(top10Break);
-    top10Preview.appendChild(top10TabBar);
     top10Preview.appendChild(top10Header);
     top10Preview.appendChild(top10Store);
 
@@ -5746,6 +5788,13 @@
 
     const previewTabsByKey = {};
 
+    function setPreviewOptionsTabBar(tabBar) {
+      previewOptionsTabSlot.replaceChildren();
+      if (tabBar) {
+        previewOptionsTabSlot.appendChild(tabBar);
+      }
+    }
+
     function setActivePreviewTab(key) {
       for (const definition of previewTabDefinitions) {
         const isActive = definition.key === key;
@@ -5767,20 +5816,24 @@
         panel.appendChild(activeDefinition.panel);
       }
       if (key === 'layout') {
+        setPreviewOptionsTabBar(null);
         activePreviewOptionVariableNames = TORRENTS_LAYOUT_PREVIEW_VARIABLE_NAMES;
         previewOptionsTitle.textContent = 'Torrents Layout Preview Options';
         previewOptionsDescription.textContent = 'Options specific to the torrents layout preview.';
       } else if (key === 'torrentsPhp') {
+        setPreviewOptionsTabBar(torrentsPhpTabBar);
         const activeTorrentsPhpDefinition = getActiveTorrentsPhpDefinition();
         activePreviewOptionVariableNames = activeTorrentsPhpDefinition.optionVariableNames;
         previewOptionsTitle.textContent = activeTorrentsPhpDefinition.optionTitle;
         previewOptionsDescription.textContent = activeTorrentsPhpDefinition.optionDescription;
       } else if (key === 'top10') {
+        setPreviewOptionsTabBar(top10TabBar);
         const activeTop10Definition = getActiveTop10Definition();
         activePreviewOptionVariableNames = activeTop10Definition.optionVariableNames;
         previewOptionsTitle.textContent = activeTop10Definition.optionTitle;
         previewOptionsDescription.textContent = activeTop10Definition.optionDescription;
       } else {
+        setPreviewOptionsTabBar(null);
         activePreviewOptionVariableNames = null;
         previewOptionsTitle.textContent = 'Preview Options';
         previewOptionsDescription.textContent = 'Options specific to the active preview.';
@@ -5818,7 +5871,10 @@
     previewTabsPanelBody.appendChild(previewTabBar);
     previewTabsPanel.appendChild(previewTabsPanelBody);
 
-    body.appendChild(title);
+    heading.appendChild(title);
+    heading.appendChild(toggleButton);
+    setControlsExpanded(false);
+
     body.appendChild(description);
     body.appendChild(versionStatus);
     body.appendChild(linkedRow);
@@ -5826,6 +5882,7 @@
     body.appendChild(controlsList);
     body.appendChild(assetsList);
     body.appendChild(buttonRow);
+    wrapper.appendChild(heading);
     wrapper.appendChild(body);
     panel.appendChild(wrapper);
     panel.appendChild(previewTabsPanel);
