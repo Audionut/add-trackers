@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP Widescreen Profile Controls
 // @namespace    https://passthepopcorn.me/
-// @version      1.0.0
+// @version      1.0.1
 // @description  Add a Widescreen tab to profile edit pages and control widescreen.css width variables.
 // @author       Audionut
 // @match        https://passthepopcorn.me/*
@@ -16,6 +16,7 @@
   'use strict';
 
   const SETTINGS_KEY = 'ptp_widescreen_profile_controls_v1';
+  const SCRIPT_VERSION = '1.0.1';
   const TORRENTS_VIEW_MODE_KEY = 'ptp_widescreen_torrents_view_mode_v1';
   const TOP10_VIEW_MODE_KEY = 'ptp_widescreen_top10_view_mode_v1';
   const TORRENTS_SMALL_COVER_VIEW_MODE = 'SmallCover';
@@ -389,6 +390,21 @@
 .js-widescreen-controls-panel .widescreen-controls__description {
   margin: 4px 0 12px;
   color: #b8b8b8;
+}
+
+.js-widescreen-controls-panel .widescreen-controls__version-status {
+  border: 1px solid #3a3c3f;
+  border-radius: 4px;
+  margin: 0 0 12px;
+  padding: 8px 10px;
+}
+
+.js-widescreen-controls-panel .widescreen-controls__version-status--ok {
+  color: #bde7bd;
+}
+
+.js-widescreen-controls-panel .widescreen-controls__version-status--warning {
+  color: #ffd27d;
 }
 
 .js-widescreen-controls-panel .widescreen-controls__list,
@@ -2909,6 +2925,71 @@
     };
   }
 
+  function normalizeVersionValue(value) {
+    return String(value || '').trim().replace(/^['"]+|['"]+$/g, '').trim();
+  }
+
+  function compareVersionValues(leftVersion, rightVersion) {
+    const leftParts = normalizeVersionValue(leftVersion).split('.').map(function (part) {
+      return clampInt(part, 0, 999999, 0);
+    });
+    const rightParts = normalizeVersionValue(rightVersion).split('.').map(function (part) {
+      return clampInt(part, 0, 999999, 0);
+    });
+    const length = Math.max(leftParts.length, rightParts.length);
+
+    for (let index = 0; index < length; index += 1) {
+      const left = leftParts[index] || 0;
+      const right = rightParts[index] || 0;
+      if (left > right) return 1;
+      if (left < right) return -1;
+    }
+
+    return 0;
+  }
+
+  function getLoadedCssVersion() {
+    return normalizeVersionValue(
+      getComputedStyle(document.documentElement).getPropertyValue('--ptp-widescreen-css-version')
+    );
+  }
+
+  function getVersionStatus() {
+    const cssVersion = getLoadedCssVersion();
+    if (!cssVersion) {
+      return {
+        ok: false,
+        cssVersion: '',
+        message: `Version check: userscript ${SCRIPT_VERSION}; widescreen.css version marker not found. Update widescreen.css.`
+      };
+    }
+
+    const comparison = compareVersionValues(SCRIPT_VERSION, cssVersion);
+    if (comparison < 0) {
+      return {
+        ok: false,
+        cssVersion,
+        message: `Version check: widescreen.css ${cssVersion} is newer than userscript ${SCRIPT_VERSION}. Update the userscript.`
+      };
+    }
+
+    return {
+      ok: true,
+      cssVersion,
+      message: `Version check: userscript ${SCRIPT_VERSION}; widescreen.css ${cssVersion}.`
+    };
+  }
+
+  function updateVersionStatusElement(element) {
+    if (!element) return;
+    const status = getVersionStatus();
+    element.textContent = status.message;
+    element.classList.toggle('widescreen-controls__version-status--ok', status.ok);
+    element.classList.toggle('widescreen-controls__version-status--warning', !status.ok);
+    element.dataset.widescreenScriptVersion = SCRIPT_VERSION;
+    element.dataset.widescreenCssVersion = status.cssVersion || '';
+  }
+
   function initDefaultsFromCss() {
     const overrides = { ...state.overrides };
     let changed = false;
@@ -3081,6 +3162,7 @@
     const wrapper = document.createElement('div');
     wrapper.className = 'panel form--horizontal js-widescreen-controls-panel widescreen-controls';
     wrapper.id = 'widescreen-controls';
+    wrapper.dataset.widescreenScriptVersion = SCRIPT_VERSION;
 
     const body = document.createElement('div');
     body.className = 'panel__body';
@@ -3091,6 +3173,11 @@
     const description = document.createElement('p');
     description.className = 'widescreen-controls__description';
     description.textContent = 'Adjust widescreen width and font-size variables. Keep linked scaling enabled to scale all linked settings together.';
+
+    const versionStatus = document.createElement('p');
+    versionStatus.className = 'widescreen-controls__version-status';
+    updateVersionStatusElement(versionStatus);
+    wrapper.dataset.widescreenCssVersion = versionStatus.dataset.widescreenCssVersion || '';
 
     const linkedRow = document.createElement('div');
     linkedRow.className = 'widescreen-controls__row widescreen-controls__row--linked';
@@ -5733,6 +5820,7 @@
 
     body.appendChild(title);
     body.appendChild(description);
+    body.appendChild(versionStatus);
     body.appendChild(linkedRow);
     body.appendChild(scaleRow);
     body.appendChild(controlsList);
@@ -5756,6 +5844,11 @@
     const tabsPanels = document.querySelector('.tabs__panels');
     if (!tabsPanels || !widescreenTab) return;
     const contentRoot = document.querySelector('#content.page__main-content');
+    const savedProfileAlert = contentRoot
+      ? Array.from(contentRoot.querySelectorAll(':scope > .alert.alert--warning')).find(function (alert) {
+        return alert.textContent.trim() === 'Your profile has been saved.';
+      })
+      : null;
 
     const stylesheetPanel = tabsPanels.querySelector('.tabs__panel.tabs__panel--active') || tabsPanels.querySelector('.tabs__panel');
     if (!stylesheetPanel) return;
@@ -5777,6 +5870,9 @@
 
       stylesheetPanel.classList.toggle('tabs__panel--active', !isWide);
       widescreenPanel.classList.toggle('tabs__panel--active', isWide);
+      if (savedProfileAlert) {
+        savedProfileAlert.hidden = isWide;
+      }
 
       if (isWide) {
         schedulePreviewRefresh();

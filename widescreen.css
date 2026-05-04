@@ -15,6 +15,7 @@ html {
 }
 
 :root {
+  --ptp-widescreen-css-version: "1.0.1";
   --layout-width: 2000px;
   --sidebar-width: 450px;
   --sidebar-gap: 5px;
