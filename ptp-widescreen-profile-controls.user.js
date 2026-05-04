@@ -29,6 +29,7 @@
     linkedVariables: {},
     logoImageUrl: '',
     backdropImageUrl: '',
+    pageBackgroundColor: '#000000',
     tileBackdropImage: false,
     useOriginalSidebarCoverPath: false
   };
@@ -455,6 +456,16 @@
 .js-widescreen-controls-panel .widescreen-controls__row--toggle {
   grid-template-columns: 24px minmax(220px, 1fr) auto;
   justify-content: start;
+}
+
+.js-widescreen-controls-panel .widescreen-controls__row--color {
+  grid-template-columns: 24px minmax(220px, 1fr) 48px 120px;
+}
+
+.js-widescreen-controls-panel .widescreen-controls__color {
+  width: 48px;
+  height: 28px;
+  padding: 0;
 }
 
 .js-widescreen-controls-panel .widescreen-controls__row-link-toggle {
@@ -1789,6 +1800,38 @@
     element.style.backgroundImage = `url(${JSON.stringify(cleanUrl)})`;
   }
 
+  function normalizeColorValue(value, fallback) {
+    const cleanFallback = typeof fallback === 'string' && /^#[0-9a-f]{6}$/i.test(fallback)
+      ? fallback.toLowerCase()
+      : '#000000';
+    if (typeof value !== 'string') return cleanFallback;
+
+    const cleanValue = value.trim();
+    if (/^#[0-9a-f]{6}$/i.test(cleanValue)) {
+      return cleanValue.toLowerCase();
+    }
+    if (/^#[0-9a-f]{3}$/i.test(cleanValue)) {
+      return `#${cleanValue
+        .slice(1)
+        .split('')
+        .map(function (character) {
+          return character + character;
+        })
+        .join('')}`.toLowerCase();
+    }
+    return cleanFallback;
+  }
+
+  function getColorRgbValue(colorValue) {
+    const cleanColor = normalizeColorValue(colorValue, DEFAULT_STATE.pageBackgroundColor);
+    const colorNumber = Number.parseInt(cleanColor.slice(1), 16);
+    return [
+      (colorNumber >> 16) & 255,
+      (colorNumber >> 8) & 255,
+      colorNumber & 255
+    ].join(', ');
+  }
+
   function readRawSettings() {
     try {
       if (typeof GM_getValue === 'function') {
@@ -1830,6 +1873,10 @@
 
     const logoImageUrl = normalizeUrlValue(parsed && parsed.logoImageUrl);
     const backdropImageUrl = normalizeUrlValue(parsed && parsed.backdropImageUrl);
+    const pageBackgroundColor = normalizeColorValue(
+      parsed && parsed.pageBackgroundColor,
+      DEFAULT_STATE.pageBackgroundColor
+    );
     const tileBackdropImage = !!(parsed && parsed.tileBackdropImage);
     const useOriginalSidebarCoverPath = !!(parsed && parsed.useOriginalSidebarCoverPath);
 
@@ -1840,6 +1887,7 @@
       linkedVariables,
       logoImageUrl,
       backdropImageUrl,
+      pageBackgroundColor,
       tileBackdropImage,
       useOriginalSidebarCoverPath
     };
@@ -3075,6 +3123,14 @@
     }
 
     const cleanBackdropUrl = normalizeUrlValue(currentState.backdropImageUrl);
+    const pageBackgroundColor = normalizeColorValue(
+      currentState.pageBackgroundColor,
+      DEFAULT_STATE.pageBackgroundColor
+    );
+    root.style.setProperty('--page-background-color', pageBackgroundColor);
+    root.style.setProperty('--page-background-color-rgb', getColorRgbValue(pageBackgroundColor));
+    root.style.setProperty('background-color', pageBackgroundColor);
+
     const backdropTargets = [document.documentElement, document.body];
     for (const backdropTarget of backdropTargets) {
       if (!backdropTarget) continue;
@@ -3095,7 +3151,7 @@
       if (cleanBackdropUrl) {
         document.body.style.setProperty('background-color', 'transparent');
       } else {
-        document.body.style.removeProperty('background-color');
+        document.body.style.setProperty('background-color', pageBackgroundColor);
       }
     }
 
@@ -3296,6 +3352,16 @@
       }
     });
 
+    const pageBackgroundColorRow = makeColorSettingRow({
+      label: 'Page Background Color',
+      value: state.pageBackgroundColor,
+      onChange: function (value) {
+        state.pageBackgroundColor = value;
+        applySettings(state);
+        saveState(state);
+      }
+    });
+
     const tileBackdropRow = makeCheckboxSettingRow({
       label: 'Tile Backdrop Image',
       checked: state.tileBackdropImage,
@@ -3319,6 +3385,7 @@
 
     assetsList.appendChild(logoImageRow.row);
     assetsList.appendChild(backdropImageRow.row);
+    assetsList.appendChild(pageBackgroundColorRow.row);
     assetsList.appendChild(tileBackdropRow.row);
 
     const buttonRow = document.createElement('div');
@@ -3380,6 +3447,8 @@
       scaleNumber.value = String(state.scale);
       logoImageRow.input.value = state.logoImageUrl;
       backdropImageRow.input.value = state.backdropImageUrl;
+      pageBackgroundColorRow.colorInput.value = state.pageBackgroundColor;
+      pageBackgroundColorRow.textInput.value = state.pageBackgroundColor;
       tileBackdropRow.input.checked = state.tileBackdropImage;
       originalSidebarCoverPathRow.input.checked = state.useOriginalSidebarCoverPath;
       applySettings(state);
@@ -6091,6 +6160,52 @@
     row.appendChild(input);
 
     return { row, input };
+  }
+
+  function makeColorSettingRow(options) {
+    const row = document.createElement('div');
+    row.className = 'widescreen-controls__row widescreen-controls__row--color';
+
+    const spacer = document.createElement('span');
+    spacer.className = 'widescreen-controls__row-spacer';
+    spacer.setAttribute('aria-hidden', 'true');
+
+    const label = document.createElement('label');
+    label.className = 'widescreen-controls__label';
+    label.textContent = options.label;
+
+    const colorInput = document.createElement('input');
+    colorInput.className = 'widescreen-controls__color';
+    colorInput.type = 'color';
+    colorInput.value = normalizeColorValue(options.value, DEFAULT_STATE.pageBackgroundColor);
+
+    const textInput = document.createElement('input');
+    textInput.className = 'widescreen-controls__text';
+    textInput.type = 'text';
+    textInput.pattern = '#[0-9a-fA-F]{6}';
+    textInput.value = colorInput.value;
+
+    function setColor(rawValue) {
+      const clean = normalizeColorValue(rawValue, colorInput.value);
+      colorInput.value = clean;
+      textInput.value = clean;
+      options.onChange(clean);
+    }
+
+    colorInput.addEventListener('input', function () {
+      setColor(colorInput.value);
+    });
+
+    textInput.addEventListener('change', function () {
+      setColor(textInput.value);
+    });
+
+    row.appendChild(spacer);
+    row.appendChild(label);
+    row.appendChild(colorInput);
+    row.appendChild(textInput);
+
+    return { row, colorInput, textInput };
   }
 
   function makeCheckboxSettingRow(options) {

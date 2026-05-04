@@ -6,7 +6,7 @@
  */
 html {
   font-family: sans-serif;
-  background-color: black;
+  background-color: var(--page-background-color, #000000);
   /* 1 */
   -ms-text-size-adjust: 100%;
   /* 2 */
@@ -16,6 +16,13 @@ html {
 
 :root {
   --ptp-widescreen-css-version: "1.0.1";
+  --page-background-color: #000000;
+  --page-background-color-rgb: 0, 0, 0;
+  --page-background-gradient: linear-gradient(
+    to bottom,
+    rgba(var(--page-background-color-rgb), 0.72),
+    var(--page-background-color)
+  );
   --layout-width: 2000px;
   --sidebar-width: 450px;
   --sidebar-gap: 5px;
@@ -26,8 +33,8 @@ html {
   --main-menu-item-padding-x: 20px;
   --main-menu-font-size: 20px;
   --main-menu-link-color: #f2f2f2;
-  --main-menu-link-bg: rgba(0, 0, 0, 0.4);
-  --main-menu-link-bg-hover: rgba(0, 0, 0, 0.6);
+  --main-menu-link-bg: rgba(var(--page-background-color-rgb), 0.4);
+  --main-menu-link-bg-hover: rgba(var(--page-background-color-rgb), 0.6);
   --search-bar-field-width: 180px;
   --search-bar-field-gap: 10px;
   --search-bar-font-size: 1.1em;
@@ -472,7 +479,7 @@ blockquote {
 
 body {
   color: white;
-  background-color: black;
+  background-color: var(--page-background-color, #000000);
   font-family: Tahoma, Helvetica, Geneva, sans-serif;
   font-size: 11pt;
   margin: 0 auto;
@@ -736,9 +743,7 @@ th {
 }
 
 .table--panel-like > thead > tr {
-  background:
-    url('https://passthepopcorn.me/static/styles/dark/images/blackgrad.png') repeat-x scroll 0 0%,
-    none repeat scroll 0 0 #080909;
+  background: var(--page-background-gradient);
 }
 
 .table--panel-like > thead > tr > th {
@@ -1386,9 +1391,7 @@ tr[id^='torrent_'] img.bbcode__image[style] {
 }
 
 .forum-post__heading {
-  background:
-    url('https://passthepopcorn.me/static/styles/dark/images/blackgrad.png') repeat-x scroll 0 0%,
-    none repeat scroll 0 0 #080909;
+  background: var(--page-background-gradient);
   padding: 4px;
 }
 
@@ -1801,12 +1804,12 @@ tr[id^='torrent_'] img.bbcode__image[style] {
 }
 
 #simplemodal-overlay {
-  background-color: black;
+  background-color: var(--page-background-color);
   cursor: wait;
 }
 
 #simplemodal-overlay-pointer {
-  background-color: black;
+  background-color: var(--page-background-color);
   cursor: pointer;
 }
 
@@ -1874,7 +1877,7 @@ tr[id^='torrent_'] img.bbcode__image[style] {
   left: 0%;
   width: 100%;
   height: 100%;
-  background-color: rgba(0, 0, 0, 0.8);
+  background-color: rgba(var(--page-background-color-rgb), 0.8);
   z-index: 1001;
 }
 
@@ -2232,7 +2235,7 @@ html.busy-cursor * {
 }
 
 .page__main-content {
-  background-color: black;
+  background-color: var(--page-background-color);
   border-bottom-left-radius: 10px;
   border-bottom-right-radius: 10px;
   margin: 0 auto;
@@ -2262,9 +2265,7 @@ html.busy-cursor * {
 }
 
 .panel__heading {
-  background:
-    url('https://passthepopcorn.me/static/styles/dark/images/blackgrad.png') repeat-x scroll 0 0%,
-    none repeat scroll 0 0 #080909;
+  background: var(--page-background-gradient);
   border-bottom: thin solid #555555;
   padding: 4px;
 }
@@ -2401,7 +2402,7 @@ html.busy-cursor * {
 /* --- */
 /* For qTip2. */
 .qtip-ptp {
-  background: rgba(0, 0, 0, 0.92);
+  background: rgba(var(--page-background-color-rgb), 0.92);
   line-height: normal !important;
   max-width: none !important;
   color: white;
@@ -2531,7 +2532,7 @@ html.busy-cursor * {
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: black;
+  background-color: var(--page-background-color);
   text-align: center;
 }
 
@@ -2585,7 +2586,7 @@ html.busy-cursor * {
 
 .search-bar {
   width: min(var(--layout-width), 100%);
-  background: url('https://passthepopcorn.me/static/styles/dark/images/blackgrad.png') repeat-x;
+  background: var(--page-background-gradient);
   padding: 0.6em;
   margin-left: auto;
   margin-right: auto;
@@ -2867,7 +2868,7 @@ span.spoiler-show a {
 }
 
 span.spoiler ul {
-  background-color: black;
+  background-color: var(--page-background-color);
 }
 
 span.spoiler-show a:hover {
@@ -3032,7 +3033,7 @@ span.spoiler-show img {
   border-right-color: #555555;
   padding-top: 14px;
   padding-bottom: 10px;
-  background-color: black;
+  background-color: var(--page-background-color);
   color: white;
   cursor: default;
 }
@@ -3093,7 +3094,7 @@ span.spoiler-show img {
   width: var(--user-info-bar-width);
   min-height: 28px;
   transform: translateX(-50%);
-  background: url('https://passthepopcorn.me/static/styles/dark/images/blackgrad.png') repeat-x;
+  background: var(--page-background-gradient);
   padding: 0 1px 1px 1px;
   margin: 0 auto;
   text-align: center;
