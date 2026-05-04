@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.3.8
+// @version      1.3.9
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -174,6 +174,7 @@ const METACRITIC_REVIEW_SUMMARY_SOURCE_LABELS = {
     both: 'Critics + users'
 };
 const LETTERBOXD_TRANSIENT_ERROR_RETRY_MS = 5 * 60 * 1000;
+const LETTERBOXD_CACHE_SCHEMA_VERSION = 4;
 const IMDB_SCORE_OVERRIDE_OPTIONS = [
     { value: 'gender:FEMALE', label: 'Female' },
     { value: 'gender:MALE', label: 'Male' },
@@ -1799,6 +1800,127 @@ async function jsonRequest(url) {
 
 function parseHtmlDocument(html) {
     return new DOMParser().parseFromString(html, 'text/html');
+}
+
+function parseLetterboxdCountText(text) {
+    if (typeof text !== 'string') {
+        return 0;
+    }
+
+    const normalized = text.replaceAll(',', '').trim();
+    const match = /(\d+(?:\.\d+)?)\s*([KMB])?/i.exec(normalized);
+    if (!match) {
+        return 0;
+    }
+
+    const value = Number.parseFloat(match[1]);
+    if (!Number.isFinite(value)) {
+        return 0;
+    }
+
+    const suffix = (match[2] || '').toUpperCase();
+    const multiplier = suffix === 'B'
+        ? 1000000000
+        : suffix === 'M'
+            ? 1000000
+            : suffix === 'K'
+                ? 1000
+                : 1;
+
+    return Math.round(value * multiplier);
+}
+
+function parseLetterboxdHistogramFromHtml(html) {
+    if (typeof html !== 'string' || !html.trim()) {
+        return [];
+    }
+
+    const doc = parseHtmlDocument(html);
+    const rows = Array.from(doc.querySelectorAll('.rating-histogram .plot tr.column, .rating-histogram .plot .column'));
+    if (rows.length) {
+        return rows.map((row, index) => {
+            const tooltipText = row.querySelector('[data-original-title]')?.dataset.originalTitle || '';
+            const srOnlyText = row.querySelector('.cell ._sr-only')?.textContent || '';
+            const count = parseLetterboxdCountText(tooltipText) || parseLetterboxdCountText(srOnlyText);
+            return {
+                rating: (index + 1) / 2,
+                voteCount: count
+            };
+        }).filter((entry) => entry.voteCount > 0);
+    }
+
+    const ratingCategories = html.split('rating-histogram-bar');
+    if (ratingCategories.length <= 1) {
+        return [];
+    }
+
+    const histogram = [];
+    for (let i = 1; i < ratingCategories.length; i++) {
+        const segment = ratingCategories[i];
+        const dataCountMatch = /data-count="(\d+)"/i.exec(segment);
+        const titleMatch = /title="([^"]+)"/i.exec(segment);
+        let count = dataCountMatch ? Number.parseInt(dataCountMatch[1], 10) : 0;
+
+        if (!Number.isFinite(count) || count <= 0) {
+            const titleText = titleMatch ? titleMatch[1] : '';
+            const titleCountMatch = /([\d,]+)\s+ratings?/i.exec(titleText);
+
+            if (titleCountMatch) {
+                count = Number.parseInt(titleCountMatch[1].replaceAll(',', ''), 10) || 0;
+            } else {
+                const numericTokens = titleText.match(/\d[\d,]*/g) || [];
+                count = numericTokens.reduce((max, token) => {
+                    const parsed = Number.parseInt(token.replaceAll(',', ''), 10) || 0;
+                    return Math.max(parsed, max);
+                }, 0);
+            }
+        }
+
+        histogram.push({
+            rating: i / 2,
+            voteCount: count
+        });
+    }
+
+    return histogram.filter((entry) => entry.voteCount > 0);
+}
+
+function parseLetterboxdAccessoryCount(page, pathFragment, labelPattern) {
+    if (!page) {
+        return 0;
+    }
+
+    const selector = `a.accessory[href*="${pathFragment}"], .js-route-${pathFragment.replaceAll('/', '')} a[href*="${pathFragment}"]`;
+    const text = page.querySelector(selector)?.getAttribute('title')
+        || page.querySelector(selector)?.textContent
+        || '';
+
+    const labelMatch = text.match(labelPattern);
+    if (labelMatch) {
+        return parseLetterboxdCountText(labelMatch[1]);
+    }
+
+    return parseLetterboxdCountText(text);
+}
+
+function getLetterboxdHistogramCsiUrl(page, baseUrl) {
+    if (!page) {
+        return null;
+    }
+
+    const relativeUrl = page.querySelector('.js-csi[data-on-load="rating-histogram"]')?.getAttribute('data-src')
+        || page.querySelector('.js-csi[data-src*="/rating-histogram/"]')?.getAttribute('data-src')
+        || null;
+
+    if (!relativeUrl) {
+        return null;
+    }
+
+    try {
+        return new URL(relativeUrl, baseUrl).toString();
+    } catch (_) {
+        return null;
+    }
 }
 
 function isPendingValue(value) {
@@ -4899,8 +5021,9 @@ async function fetchLetterboxdData(imdbId) {
     try {
         const baseUrl = `https://letterboxd.com/imdb/${imdbId}/`;
         const pageResponse = await textRequestDetailed(baseUrl);
-        const page = parseHtmlDocument(pageResponse.text);
         const finalUrl = pageResponse.finalUrl || baseUrl;
+        let pageHtml = pageResponse.text;
+        let page = parseHtmlDocument(pageHtml);
         const imdbLink = page.querySelector('[data-track-action="IMDb"]')?.href || '';
         if (!imdbLink.includes(imdbId)) {
             return {
@@ -4951,53 +5074,42 @@ async function fetchLetterboxdData(imdbId) {
             userCount = Number.parseInt(payload.aggregateRating.ratingCount, 10) || 0;
         }
 
-        const filmSlug = String(payload['@id'] || '').split('.com/')[1];
-        if (filmSlug) {
-            const histogramHtml = await textRequest(`https://letterboxd.com/csi/${filmSlug}ratings-summary/`);
-            const ratingCategories = histogramHtml.split('rating-histogram-bar');
-            let ratingTotal = 0;
-            let histogramVoteCount = 0;
-            const nextHistogram = [];
-
-            for (let i = 1; i < ratingCategories.length; i++) {
-                const segment = ratingCategories[i];
-                const dataCountMatch = segment.match(/data-count="(\d+)"/i);
-                const titleMatch = segment.match(/title="([^"]+)"/i);
-                let count = dataCountMatch ? Number.parseInt(dataCountMatch[1], 10) : 0;
-
-                if (!Number.isFinite(count) || count <= 0) {
-                    const titleText = titleMatch ? titleMatch[1] : '';
-                    const titleCountMatch = titleText.match(/([\d,]+)\s+ratings?/i);
-
-                    if (titleCountMatch) {
-                        count = Number.parseInt(titleCountMatch[1].replace(/,/g, ''), 10) || 0;
-                    } else {
-                        const numericTokens = titleText.match(/\d[\d,]*/g) || [];
-                        count = numericTokens.reduce((max, token) => {
-                            const parsed = Number.parseInt(token.replace(/,/g, ''), 10) || 0;
-                            return parsed > max ? parsed : max;
-                        }, 0);
-                    }
-                }
-
-                const rating = i / 2;
-                nextHistogram.push({
-                    rating,
-                    voteCount: count
-                });
-                histogramVoteCount += count;
-                ratingTotal += count * rating;
-            }
-
-            histogram = nextHistogram.filter((entry) => entry.voteCount > 0);
-
-            if (histogramVoteCount > 0 && userCount <= 0) {
-                userCount = histogramVoteCount;
+        let nextHistogram = parseLetterboxdHistogramFromHtml(pageHtml);
+        if (!nextHistogram.length && finalUrl && finalUrl !== baseUrl) {
+            try {
+                pageHtml = await textRequest(finalUrl);
+                page = parseHtmlDocument(pageHtml);
+                nextHistogram = parseLetterboxdHistogramFromHtml(pageHtml);
+            } catch (_) {
+                // Keep the original page response if the explicit film-page fetch fails.
             }
         }
 
-        const likes = Number.parseInt((membersPage.querySelector('.js-route-likes a')?.title || '').replace(/[^\d]/g, ''), 10) || 0;
-        const fans = Number.parseInt((membersPage.querySelector('.js-route-fans a')?.title || '').replace(/[^\d]/g, ''), 10) || 0;
+        const histogramCsiUrl = getLetterboxdHistogramCsiUrl(page, finalUrl);
+        if (!nextHistogram.length && histogramCsiUrl) {
+            try {
+                const histogramHtml = await textRequest(histogramCsiUrl);
+                nextHistogram = parseLetterboxdHistogramFromHtml(histogramHtml);
+            } catch (_) {
+                nextHistogram = [];
+            }
+        }
+
+        let histogramVoteCount = 0;
+        nextHistogram.forEach(({ voteCount: count }) => {
+            histogramVoteCount += count;
+        });
+
+        histogram = nextHistogram.filter((entry) => entry.voteCount > 0);
+
+        if (histogramVoteCount > 0 && userCount <= 0) {
+            userCount = histogramVoteCount;
+        }
+
+        const likes = parseLetterboxdAccessoryCount(page, '/likes/', /([\d.,]+\s*[KMB]?)\s+likes?/i)
+            || parseLetterboxdAccessoryCount(membersPage, '/likes/', /([\d.,]+\s*[KMB]?)\s+likes?/i);
+        const fans = parseLetterboxdAccessoryCount(page, '/fans/', /([\d.,]+\s*[KMB]?)\s+fans?/i)
+            || parseLetterboxdAccessoryCount(membersPage, '/fans/', /([\d.,]+\s*[KMB]?)\s+fans?/i);
 
         return {
             status: 'ok',
@@ -5107,6 +5219,33 @@ function hasValidLetterboxdHistogram(letterboxd) {
     return true;
 }
 
+function hasValidLetterboxdData(letterboxd, options = {}) {
+    if (!letterboxd || typeof letterboxd !== 'object') {
+        return false;
+    }
+
+    const user = letterboxd.user;
+    if (!user || typeof user !== 'object') {
+        return false;
+    }
+
+    const hasValidScore = user.score === null || Number.isFinite(user.score);
+    const hasValidCount = Number.isSafeInteger(user.count) && user.count >= 0;
+    const hasValidUserUrl = typeof user.url === 'string' && user.url.length > 0;
+    const hasValidLikes = Number.isSafeInteger(letterboxd.likes) && letterboxd.likes >= 0;
+    const hasValidFans = Number.isSafeInteger(letterboxd.fans) && letterboxd.fans >= 0;
+
+    if (!hasValidScore || !hasValidCount || !hasValidUserUrl || !hasValidLikes || !hasValidFans) {
+        return false;
+    }
+
+    if (!options.requireHistogram) {
+        return true;
+    }
+
+    return hasValidLetterboxdHistogram(letterboxd);
+}
+
 function hasValidMetacriticData(metacritic, options = {}) {
     if (!metacritic || typeof metacritic !== 'object') {
         return false;
@@ -5196,24 +5335,28 @@ async function fetchMetacriticWithCache(imdbId, url, options = {}) {
 
 async function fetchLetterboxdWithCache(imdbId) {
     const cached = await getSupplementalRatingsCache(imdbId);
+    const hasCurrentLetterboxdCacheSchema = cached?.letterboxdCacheVersion === LETTERBOXD_CACHE_SCHEMA_VERSION;
 
     // Keep transient network/parser failures on a short retry cooldown to avoid hammering.
     if (
         cached
+        && hasCurrentLetterboxdCacheSchema
         && Number.isFinite(cached.letterboxdTransientErrorAt)
         && Date.now() - cached.letterboxdTransientErrorAt < LETTERBOXD_TRANSIENT_ERROR_RETRY_MS
     ) {
         return null;
     }
 
-    if (cached && Object.prototype.hasOwnProperty.call(cached, 'letterboxd')) {
+    if (cached && hasCurrentLetterboxdCacheSchema && Object.prototype.hasOwnProperty.call(cached, 'letterboxd')) {
         const cachedLetterboxd = cached.letterboxd;
 
-        if (cachedLetterboxd !== null && !shouldIncludeLetterboxdHistogramData()) {
-            return cachedLetterboxd;
+        if (cachedLetterboxd !== null && hasValidLetterboxdData(cachedLetterboxd)) {
+            if (!shouldIncludeLetterboxdHistogramData()) {
+                return cachedLetterboxd;
+            }
         }
 
-        if (cachedLetterboxd !== null && hasValidLetterboxdHistogram(cachedLetterboxd)) {
+        if (cachedLetterboxd !== null && hasValidLetterboxdData(cachedLetterboxd, { requireHistogram: true })) {
             return cachedLetterboxd;
         }
     }
@@ -5223,6 +5366,7 @@ async function fetchLetterboxdWithCache(imdbId) {
     if (letterboxdResponse.status === 'ok') {
         await mergeSupplementalRatingsCache(imdbId, {
             letterboxd: letterboxdResponse.data,
+            letterboxdCacheVersion: LETTERBOXD_CACHE_SCHEMA_VERSION,
             letterboxdTransientErrorAt: null
         });
         return letterboxdResponse.data;
@@ -5231,6 +5375,7 @@ async function fetchLetterboxdWithCache(imdbId) {
     if (letterboxdResponse.status === 'error') {
         await mergeSupplementalRatingsCache(imdbId, {
             letterboxd: null,
+            letterboxdCacheVersion: LETTERBOXD_CACHE_SCHEMA_VERSION,
             letterboxdTransientErrorAt: Date.now()
         });
         return null;
@@ -5238,6 +5383,7 @@ async function fetchLetterboxdWithCache(imdbId) {
 
     await mergeSupplementalRatingsCache(imdbId, {
         letterboxd: null,
+        letterboxdCacheVersion: LETTERBOXD_CACHE_SCHEMA_VERSION,
         letterboxdTransientErrorAt: null
     });
     return null;
