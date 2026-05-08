@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Tonemap Toggle
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.4.1
+// @version      0.4.2
 // @description  Adds per-panel toggles for tonemapping and Firefox HDR-black recovery on BBCode images.
 // @author       Audionut
 // @match        https://passthepopcorn.me/*
@@ -14,7 +14,7 @@
 // @grant        GM_registerMenuCommand
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
-// @connect      ptpimg.me
+// @connect      *
 // @connect      audionut.github.io
 // @connect      cdn.jsdelivr.net
 // @run-at       document-end
@@ -43,7 +43,7 @@
     tonemapOnlyBrightness: 1,
     tonemapOnlySaturation: 2,
     tonemapOnlyGammaExponent: 1.2,
-    forceHdrFixForPtpimgPng: true,
+    forceHdrFixForAllImages: true,
     ffmpegWorkers: 2,
     tonemapMobiusParam: 0.3,
     tonemapDesat: 10,
@@ -132,7 +132,11 @@
         0.05,
         4
       ),
-      forceHdrFixForPtpimgPng: Boolean(input.forceHdrFixForPtpimgPng ?? DEFAULT_HDR_SETTINGS.forceHdrFixForPtpimgPng),
+      forceHdrFixForAllImages: Boolean(
+        input.forceHdrFixForAllImages ??
+          input.forceHdrFixForPtpimgPng ??
+          DEFAULT_HDR_SETTINGS.forceHdrFixForAllImages
+      ),
       ffmpegWorkers: Math.round(
         clampNumber(
           input.ffmpegWorkers ?? input.concurrentImageJobs,
@@ -343,7 +347,7 @@
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
           <label style="display:flex; align-items:center; gap:8px; grid-column:1 / -1;">
             <input id="ptp-hdr-force-fix" type="checkbox" />
-            Force tonemap conversion for ptpimg PNG sources
+            Force tonemap conversion for all image sources
           </label>
           <div>
             <label for="ptp-hdr-tonemap-mobius" style="display:block; margin-bottom:4px;">Mobius Param</label>
@@ -391,7 +395,7 @@
       tonemapOnlyBrightnessInput.value = String(value.tonemapOnlyBrightness);
       tonemapOnlySaturationInput.value = String(value.tonemapOnlySaturation);
       tonemapOnlyGammaInput.value = String(value.tonemapOnlyGammaExponent);
-      forceFixInput.checked = Boolean(value.forceHdrFixForPtpimgPng);
+      forceFixInput.checked = Boolean(value.forceHdrFixForAllImages);
       tonemapMobiusInput.value = String(value.tonemapMobiusParam);
       tonemapDesatInput.value = String(value.tonemapDesat);
       tonemapPeakInput.value = String(value.tonemapPeak);
@@ -421,7 +425,7 @@
         tonemapOnlyBrightness: Number.parseFloat(tonemapOnlyBrightnessInput.value),
         tonemapOnlySaturation: Number.parseFloat(tonemapOnlySaturationInput.value),
         tonemapOnlyGammaExponent: Number.parseFloat(tonemapOnlyGammaInput.value),
-        forceHdrFixForPtpimgPng: forceFixInput.checked,
+        forceHdrFixForAllImages: forceFixInput.checked,
         ffmpegWorkers: Number.parseInt(ffmpegWorkersInput.value, 10),
         tonemapMobiusParam: Number.parseFloat(tonemapMobiusInput.value),
         tonemapDesat: Number.parseFloat(tonemapDesatInput.value),
@@ -1153,7 +1157,7 @@
     images.forEach((img) => {
       const src = getEligibleHdrFixSource(img);
       const { torrentId, hdrFixEnabled } = getImageToggleState(img);
-      if (!isPtpImgPng(src)) {
+      if (!isHdrFixCandidateSource(src)) {
         return;
       }
 
@@ -1289,12 +1293,12 @@
     }
   }
 
-  function extractEmbeddedPtpimgUrl(value) {
+  function extractEmbeddedUrl(value) {
     if (!value) {
       return '';
     }
 
-    const match = /((?:https?:)?\/\/ptpimg\.me\/[^\s"'<>]+)/i.exec(String(value));
+    const match = /((?:https?:)?\/\/[^\s"'<>]+)/i.exec(String(value));
     return match ? normalizeUrlCandidate(match[1]) : '';
   }
 
@@ -1306,7 +1310,7 @@
         candidates.add(normalized);
       }
 
-      const embedded = extractEmbeddedPtpimgUrl(value);
+      const embedded = extractEmbeddedUrl(value);
       if (embedded) {
         candidates.add(embedded);
       }
@@ -1334,21 +1338,21 @@
     return Array.from(candidates);
   }
 
-  function isPtpImgPng(url) {
+  function isHdrFixCandidateSource(url) {
     if (!url) {
       return false;
     }
 
     try {
       const parsed = new URL(url, globalThis.location.href);
-      return /(?:^|\.)ptpimg\.me$/i.test(parsed.hostname) && /\.png$/i.test(parsed.pathname);
+      return /^https?:$/i.test(parsed.protocol);
     } catch {
-      return /(?:https?:)?\/\/ptpimg\.me\/[^\s"'<>]+\.png(?:$|[?#])/i.test(url);
+      return /^(?:https?:)?\/\//i.test(url);
     }
   }
 
   function getEligibleHdrFixSource(img) {
-    return getImageSourceCandidates(img).find((candidate) => isPtpImgPng(candidate)) || '';
+    return getImageSourceCandidates(img).find((candidate) => isHdrFixCandidateSource(candidate)) || '';
   }
 
   function fetchBlob(url) {
@@ -1519,9 +1523,9 @@
     const displaySrc = getImageSrc(img);
     const sourceCandidates = getImageSourceCandidates(img);
     log('analyzeImage start', { src, displaySrc, sourceCandidates, complete: img.complete });
-    if (!isPtpImgPng(src)) {
+    if (!isHdrFixCandidateSource(src)) {
       const { hdrFixEnabled } = getImageToggleState(img);
-      log('skipping non-ptpimg png image', { displaySrc, sourceCandidates });
+      log('skipping unsupported image source', { displaySrc, sourceCandidates });
       if (force && !hdrFixEnabled) {
         restoreOriginalImageSource(img);
       }
@@ -1547,7 +1551,7 @@
 
     pendingImages.add(img);
     try {
-      if (hdrSettings.forceHdrFixForPtpimgPng) {
+      if (hdrSettings.forceHdrFixForAllImages) {
         const converted = await applyTrueHdrFix(img, src, hdrFixEnabled);
         if (converted) {
           img.dataset.ptpHdrFixApplied = '1';
