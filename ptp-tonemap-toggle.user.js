@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Tonemap Toggle
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.4.2
+// @version      0.4.3
 // @description  Adds per-panel toggles for tonemapping and Firefox HDR-black recovery on BBCode images.
 // @author       Audionut
 // @match        https://passthepopcorn.me/*
@@ -29,6 +29,11 @@
   const HDR_FIX_ON_CLASS = 'ptp-hdr-blackfix-enabled';
   const HDR_SETTINGS_PREF_KEY = 'ptpHdrSettingsV1';
   const DEBUG_PREF_KEY = 'ptpHdrDebug';
+  const DEBUG_LEVELS = {
+    off: 0,
+    normal: 1,
+    verbose: 2
+  };
   const PANEL_SELECTOR = '.movie-page__torrent__panel, .movie-page__torrent_panel';
   const DETAIL_ROW_SELECTOR = 'tr[id^="torrent_"]';
   const ELIGIBLE_PANEL_ATTRIBUTE = 'data-ptp-hdr-eligible';
@@ -59,6 +64,9 @@
   const queuedImages = new WeakMap();
   const imageAnalysisQueue = [];
   const convertedSourceCache = new Map();
+  const hdrProcessingByTorrent = new Map();
+  const hdrProcessingClearTimers = new Map();
+  const imageProcessingTorrent = new WeakMap();
   const tonemapTrackedSourcesByTorrent = new Map();
   const tonemapSourceToTorrent = new Map();
   const ffmpegWasmState = {
@@ -79,7 +87,7 @@
   const tonemapEnabledByTorrent = normalizeTorrentStateMap(await GM.getValue(TONEMAP_PREF_KEY, {}));
   const hdrFixEnabledByTorrent = normalizeTorrentStateMap(await GM.getValue(HDR_FIX_PREF_KEY, {}));
   let hdrSettings = normalizeHdrSettings(await GM.getValue(HDR_SETTINGS_PREF_KEY, {}));
-  let debugEnabled = await GM.getValue(DEBUG_PREF_KEY, true);
+  let debugLevel = normalizeDebugLevel(await GM.getValue(DEBUG_PREF_KEY, 'off'));
 
   Object.keys(hdrFixEnabledByTorrent).forEach((torrentId) => {
     if (hdrFixEnabledByTorrent[torrentId]) {
@@ -95,6 +103,28 @@
     return Object.fromEntries(
       Object.entries(value).map(([torrentId, enabled]) => [String(torrentId), Boolean(enabled)])
     );
+  }
+
+  function normalizeDebugLevel(value) {
+    if (value === true) {
+      return 'verbose';
+    }
+
+    if (value === false || value == null) {
+      return 'off';
+    }
+
+    const normalized = String(value).toLowerCase();
+    return Object.hasOwn(DEBUG_LEVELS, normalized) ? normalized : 'off';
+  }
+
+  function isDebugLevelAtLeast(level) {
+    return DEBUG_LEVELS[debugLevel] >= DEBUG_LEVELS[level];
+  }
+
+  async function saveDebugLevel(nextLevel) {
+    debugLevel = normalizeDebugLevel(nextLevel);
+    await GM.setValue(DEBUG_PREF_KEY, debugLevel);
   }
 
   function clampNumber(value, fallback, min, max) {
@@ -245,6 +275,24 @@
       .ptp-hdr-blackfix-toggle:not(.is-enabled) .ptp-tonemap-toggle__dot {
         background: #666666;
       }
+
+      .ptp-hdr-processing-note {
+        display: none;
+        align-items: center;
+        min-height: 21px;
+        padding: 3px 0;
+        font-size: 11px;
+        line-height: 1.3;
+        color: #c7c7c7;
+      }
+
+      .ptp-hdr-processing-note.is-visible {
+        display: inline-flex;
+      }
+
+      .ptp-hdr-processing-note.is-error {
+        color: #ffbf7a;
+      }
     `;
   }
 
@@ -266,15 +314,35 @@
   }
 
   function refreshImages(images) {
+    const hdrImagesByTorrent = new Map();
+    images.forEach((img) => {
+      const { torrentId, hdrFixEnabled } = getImageToggleState(img);
+      if (!torrentId || !hdrFixEnabled) {
+        return;
+      }
+
+      hdrImagesByTorrent.set(torrentId, (hdrImagesByTorrent.get(torrentId) || 0) + 1);
+    });
+
+    hdrImagesByTorrent.forEach((count, torrentId) => {
+      startHdrProcessing(torrentId, count);
+    });
+
     images.forEach((img) => {
       const originalSrc = normalizeUrlCandidate(img.dataset.ptpHdrOriginalSrc || '');
       const fallbackSrc = normalizeUrlCandidate(getEligibleHdrFixSource(img) || getImageSrc(img));
       const sourceForRefresh = originalSrc || fallbackSrc;
+      const { torrentId, hdrFixEnabled } = getImageToggleState(img);
 
       clearHdrCachesForSource(sourceForRefresh);
       restoreOriginalImageSource(img);
       clearImageAnalysisState(img);
-      queueImageAnalysis(img, true);
+      if (torrentId && hdrFixEnabled) {
+        imageProcessingTorrent.set(img, torrentId);
+      }
+      if (!queueImageAnalysis(img, true) && torrentId && hdrFixEnabled) {
+        finishHdrProcessingForImage(img, false);
+      }
     });
   }
 
@@ -367,6 +435,15 @@
           </div>
         </div>
       </div>
+      <div style="margin-bottom: 12px; border:1px solid #3a3a3a; border-radius:6px; padding:10px;">
+        <div style="font-size: 14px; font-weight: 700; margin-bottom: 8px; color:#d8d8d8;">Diagnostics</div>
+        <label for="ptp-hdr-debug-level" style="display:block; margin-bottom:4px;">Debug logging</label>
+        <select id="ptp-hdr-debug-level" style="width:100%; box-sizing:border-box; padding:6px;">
+          <option value="off">Off</option>
+          <option value="normal">Normal</option>
+          <option value="verbose">Verbose</option>
+        </select>
+      </div>
       <div style="display:flex; justify-content:flex-end; gap:8px;">
         <button id="ptp-hdr-settings-cancel" type="button">Cancel</button>
         <button id="ptp-hdr-settings-defaults" type="button">Reset Defaults</button>
@@ -386,6 +463,7 @@
     const tonemapDesatInput = panel.querySelector('#ptp-hdr-tonemap-desat');
     const tonemapPeakInput = panel.querySelector('#ptp-hdr-tonemap-peak');
     const ffmpegWorkersInput = panel.querySelector('#ptp-hdr-ffmpeg-workers');
+    const debugLevelInput = panel.querySelector('#ptp-hdr-debug-level');
     const cancelButton = panel.querySelector('#ptp-hdr-settings-cancel');
     const defaultsButton = panel.querySelector('#ptp-hdr-settings-defaults');
     const saveButton = panel.querySelector('#ptp-hdr-settings-save');
@@ -400,6 +478,7 @@
       tonemapDesatInput.value = String(value.tonemapDesat);
       tonemapPeakInput.value = String(value.tonemapPeak);
       ffmpegWorkersInput.value = String(value.ffmpegWorkers);
+      debugLevelInput.value = debugLevel;
     };
 
     fillFromSettings(hdrSettings);
@@ -417,6 +496,7 @@
 
     defaultsButton.addEventListener('click', () => {
       fillFromSettings(DEFAULT_HDR_SETTINGS);
+      debugLevelInput.value = 'off';
     });
 
     saveButton.addEventListener('click', async () => {
@@ -433,6 +513,7 @@
       });
 
       await saveHdrSettings(nextSettings);
+      await saveDebugLevel(debugLevelInput.value);
       hasSavedHdrSettingsThisSession = true;
       removeTonemapSvgFilter();
       updateTonemapAdjustmentStyle();
@@ -451,13 +532,19 @@
   }
 
   function log(...args) {
-    if (debugEnabled) {
+    if (isDebugLevelAtLeast('verbose')) {
+      console.log('[PTP Tonemap]', ...args);
+    }
+  }
+
+  function logNormal(...args) {
+    if (isDebugLevelAtLeast('normal')) {
       console.log('[PTP Tonemap]', ...args);
     }
   }
 
   function logError(...args) {
-    if (debugEnabled) {
+    if (isDebugLevelAtLeast('normal')) {
       console.error('[PTP Tonemap]', ...args);
     }
   }
@@ -636,7 +723,7 @@
 
     entry.loadPromise = (async () => {
       const ffmpeg = new module.FFmpeg();
-      if (debugEnabled) {
+      if (isDebugLevelAtLeast('verbose')) {
         ffmpeg.on('log', (event) => {
           log('ffmpeg.wasm', event.message);
         });
@@ -951,6 +1038,14 @@
     return images;
   }
 
+  function getRelevantImagesForTorrent(torrentId) {
+    if (!torrentId) {
+      return [];
+    }
+
+    return getRelevantImages().filter((img) => getImageToggleState(img).torrentId === torrentId);
+  }
+
   function setPanelEligibility(panel, eligible) {
     if (!(panel instanceof Element)) {
       return;
@@ -1104,6 +1199,127 @@
         ? 'HDR Black Fix: ON'
         : 'HDR Black Fix: OFF';
     });
+
+    ensureHdrProcessingNote(panel, torrentId);
+  }
+
+  function getHdrProcessingNoteElements(torrentId) {
+    if (!torrentId) {
+      return [];
+    }
+
+    return [...document.querySelectorAll('.ptp-hdr-processing-note')].filter(
+      (note) => getTorrentId(note) === torrentId
+    );
+  }
+
+  function updateHdrProcessingNote(torrentId) {
+    const state = hdrProcessingByTorrent.get(torrentId);
+    getHdrProcessingNoteElements(torrentId).forEach((note) => {
+      note.classList.toggle('is-visible', Boolean(state));
+      note.classList.toggle('is-error', Boolean(state?.errors));
+
+      if (!state) {
+        note.textContent = '';
+        return;
+      }
+
+      if (state.completed >= state.total && state.errors > 0) {
+        note.textContent = 'Some images failed. Enable debug logging, retry, and check console.';
+        return;
+      }
+
+      note.textContent = `Processing images... ${state.completed}/${state.total}`;
+    });
+  }
+
+  function clearHdrProcessing(torrentId) {
+    const existingTimer = hdrProcessingClearTimers.get(torrentId);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+      hdrProcessingClearTimers.delete(torrentId);
+    }
+
+    hdrProcessingByTorrent.delete(torrentId);
+    updateHdrProcessingNote(torrentId);
+  }
+
+  function startHdrProcessing(torrentId, total) {
+    if (!torrentId || total <= 0) {
+      clearHdrProcessing(torrentId);
+      return;
+    }
+
+    const existingTimer = hdrProcessingClearTimers.get(torrentId);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+      hdrProcessingClearTimers.delete(torrentId);
+    }
+
+    hdrProcessingByTorrent.set(torrentId, {
+      total,
+      completed: 0,
+      errors: 0
+    });
+    updateHdrProcessingNote(torrentId);
+  }
+
+  function finishHdrProcessingForImage(img, hasError = false) {
+    const torrentId = imageProcessingTorrent.get(img);
+    if (!torrentId) {
+      return;
+    }
+
+    imageProcessingTorrent.delete(img);
+    const state = hdrProcessingByTorrent.get(torrentId);
+    if (!state) {
+      return;
+    }
+
+    state.completed = Math.min(state.total, state.completed + 1);
+    if (hasError) {
+      state.errors += 1;
+    }
+
+    if (state.completed >= state.total) {
+      if (state.errors > 0) {
+        updateHdrProcessingNote(torrentId);
+        const timer = setTimeout(() => {
+          clearHdrProcessing(torrentId);
+        }, 10000);
+        hdrProcessingClearTimers.set(torrentId, timer);
+        return;
+      }
+
+      clearHdrProcessing(torrentId);
+      return;
+    }
+
+    updateHdrProcessingNote(torrentId);
+  }
+
+  function ensureHdrProcessingNote(panel, torrentId = getTorrentId(panel)) {
+    if (!IS_FIREFOX || !(panel instanceof Element) || !torrentId) {
+      return null;
+    }
+
+    const controls = panel.querySelector(':scope > .ptp-tonemap-controls');
+    const hdrButton = controls?.querySelector('.ptp-hdr-blackfix-toggle');
+    if (!controls || !hdrButton) {
+      return null;
+    }
+
+    let note = controls.querySelector(':scope > .ptp-hdr-processing-note');
+    if (!(note instanceof HTMLElement)) {
+      note = document.createElement('span');
+      note.className = 'ptp-hdr-processing-note';
+      note.setAttribute('aria-live', 'polite');
+      note.dataset.torrentId = torrentId;
+      hdrButton.insertAdjacentElement('afterend', note);
+    }
+
+    updateHdrProcessingNote(torrentId);
+    return note;
   }
 
   async function toggleTonemapForPanel(panel) {
@@ -1141,12 +1357,46 @@
     await GM.setValue(HDR_FIX_PREF_KEY, hdrFixEnabledByTorrent);
     applyStateForTorrent(torrentId);
     updateButtons(panel, torrentId);
-    log('HDR Black Fix toggled', {
+    logNormal('HDR Black Fix toggled', {
       torrentId,
       hdrFixEnabled: isHdrFixEnabledForTorrent(torrentId)
     });
-    forceApplyHdrFixToCurrentImages();
-    scanImages(true);
+    queueHdrFixRefreshForTorrent(torrentId, nextEnabled);
+  }
+
+  function queueHdrFixRefreshForTorrent(torrentId, enabled) {
+    const images = getRelevantImagesForTorrent(torrentId);
+
+    if (enabled) {
+      startHdrProcessing(torrentId, images.length);
+    } else {
+      clearHdrProcessing(torrentId);
+    }
+
+    images.forEach((img) => {
+      if (enabled) {
+        clearImageAnalysisState(img);
+        imageProcessingTorrent.set(img, torrentId);
+        if (!queueImageAnalysis(img, true)) {
+          finishHdrProcessingForImage(img, false);
+        }
+        return;
+      }
+
+      restoreOriginalImageSource(img);
+      clearImageAnalysisState(img);
+      img.dataset.ptpHdrFixApplied = '0';
+      img.dataset.ptpHdrFixRendered = '0';
+      img.dataset.ptpHdrFixMode = 'disabled';
+      syncTonemapStateForImage(img);
+      analyzedImages.add(img);
+    });
+
+    logNormal('HDR Black Fix refresh queued', {
+      torrentId,
+      enabled,
+      images: images.length
+    });
   }
 
   function forceApplyHdrFixToCurrentImages() {
@@ -1484,7 +1734,8 @@
   async function applyTrueHdrFix(img, src, hdrFixEnabled) {
     rememberOriginalImageSource(img);
     const convertedUrl = await getToneMappedHdrUrl(src, img);
-    if (!convertedUrl || !hdrFixEnabled) {
+    const { hdrFixEnabled: stillHdrFixEnabled } = getImageToggleState(img);
+    if (!convertedUrl || !hdrFixEnabled || !stillHdrFixEnabled) {
       return false;
     }
 
@@ -1503,14 +1754,36 @@
     return img.currentSrc || img.src || '';
   }
 
+  function imageSourceMatches(img, src) {
+    const normalizedSrc = normalizeUrlCandidate(src);
+    if (!normalizedSrc) {
+      return false;
+    }
+
+    return [img.currentSrc, img.src, img.getAttribute('src')].some(
+      (candidate) => normalizeUrlCandidate(candidate) === normalizedSrc
+    );
+  }
+
+  function isConvertedLightboxImageCurrent(img, convertedSrc) {
+    return (
+      img.dataset.ptpHdrFixRendered === 'converted-lightbox' &&
+      img.dataset.ptpHdrFixApplied === '1' &&
+      imageSourceMatches(img, convertedSrc) &&
+      !img.getAttribute('srcset')
+    );
+  }
+
   async function analyzeImage(img, force = false) {
     if (!IS_FIREFOX) {
       log('analyzeImage skip: not Firefox');
+      finishHdrProcessingForImage(img, false);
       return;
     }
 
     if (!force && analyzedImages.has(img)) {
       log('analyzeImage skip: already analyzed', { src: getImageSrc(img) });
+      finishHdrProcessingForImage(img, false);
       return;
     }
 
@@ -1525,18 +1798,20 @@
     log('analyzeImage start', { src, displaySrc, sourceCandidates, complete: img.complete });
     if (!isHdrFixCandidateSource(src)) {
       const { hdrFixEnabled } = getImageToggleState(img);
-      log('skipping unsupported image source', { displaySrc, sourceCandidates });
+      logNormal('skipping unsupported image source', { displaySrc, sourceCandidates });
       if (force && !hdrFixEnabled) {
         restoreOriginalImageSource(img);
       }
       analyzedImages.add(img);
+      finishHdrProcessingForImage(img, true);
       return;
     }
 
     const { torrentId, hdrFixEnabled } = getImageToggleState(img);
 
     if (!torrentId) {
-      log('analyzeImage skip: torrent id not found', { src, displaySrc, sourceCandidates });
+      logNormal('analyzeImage skip: torrent id not found', { src, displaySrc, sourceCandidates });
+      finishHdrProcessingForImage(img, true);
       return;
     }
 
@@ -1546,9 +1821,11 @@
       img.dataset.ptpHdrFixMode = 'disabled';
       syncTonemapStateForImage(img);
       analyzedImages.add(img);
+      finishHdrProcessingForImage(img, false);
       return;
     }
 
+    let processingError = false;
     pendingImages.add(img);
     try {
       if (hdrSettings.forceHdrFixForAllImages) {
@@ -1556,7 +1833,7 @@
         if (converted) {
           img.dataset.ptpHdrFixApplied = '1';
           img.dataset.ptpTonemapActive = '0';
-          log('image converted hdr fix', {
+          logNormal('image converted hdr fix', {
             src,
             rendered: img.dataset.ptpHdrFixMode,
             currentSrc: img.currentSrc
@@ -1565,22 +1842,36 @@
         }
       }
 
+      processingError = true;
       restoreOriginalImageSource(img);
       img.dataset.ptpHdrFixApplied = '0';
       img.dataset.ptpHdrFixRendered = '0';
       img.dataset.ptpHdrFixMode = 'conversion-unavailable';
       syncTonemapStateForImage(img);
 
-      log('image analyzed', {
+      logNormal('image analyzed', {
         src,
         applied: false,
         torrentId,
         hdrFixEnabled,
         rendered: img.dataset.ptpHdrFixMode
       });
+    } catch (error) {
+      processingError = true;
+      restoreOriginalImageSource(img);
+      img.dataset.ptpHdrFixApplied = '0';
+      img.dataset.ptpHdrFixRendered = '0';
+      img.dataset.ptpHdrFixMode = 'conversion-error';
+      syncTonemapStateForImage(img);
+      logError('image processing failed', {
+        src,
+        torrentId,
+        error: String(error)
+      });
     } finally {
       pendingImages.delete(img);
       analyzedImages.add(img);
+      finishHdrProcessingForImage(img, processingError);
     }
   }
 
@@ -1642,17 +1933,17 @@
   function queueImageAnalysis(img, force = false) {
     if (!(img instanceof HTMLImageElement)) {
       log('queueImageAnalysis skip: non-image target', { nodeName: img?.nodeName || null });
-      return;
+      return false;
     }
 
     syncTonemapStateForImage(img);
 
     if (!IS_FIREFOX) {
-      return;
+      return false;
     }
 
     if (!shouldProcessImage(img)) {
-      return;
+      return false;
     }
 
     if (
@@ -1660,12 +1951,24 @@
       isHdrFixEnabledForTorrent(lastClickedTorrentId) &&
       lastClickedConvertedSrc
     ) {
-      img.dataset.ptpHdrOriginalSrc = img.getAttribute('src') || img.src || lastClickedHdrSource;
+      if (isConvertedLightboxImageCurrent(img, lastClickedConvertedSrc)) {
+        analyzedImages.add(img);
+        syncTonemapStateForImage(img);
+        return false;
+      }
+
+      img.dataset.ptpHdrOriginalSrc =
+        lastClickedHdrSource || img.dataset.ptpHdrOriginalSrc || img.getAttribute('src') || img.src || '';
       img.classList.add('ptp-hdr-converted');
       img.dataset.ptpTonemapActive = '0';
+      img.dataset.ptpHdrFixApplied = '1';
       img.style.setProperty('filter', 'none', 'important');
-      img.src = lastClickedConvertedSrc;
-      img.removeAttribute('srcset');
+      if (!imageSourceMatches(img, lastClickedConvertedSrc)) {
+        img.src = lastClickedConvertedSrc;
+      }
+      if (img.getAttribute('srcset')) {
+        img.removeAttribute('srcset');
+      }
       img.dataset.ptpHdrFixRendered = 'converted-lightbox';
       img.dataset.ptpHdrFixMode = 'pq-bt2020-to-sdr-lightbox';
       analyzedImages.add(img);
@@ -1673,21 +1976,27 @@
         originalSrc: img.dataset.ptpHdrOriginalSrc,
         convertedSrc: lastClickedConvertedSrc
       });
-      return;
+      return false;
     }
 
     if (img.complete) {
       enqueueImageAnalysis(img, force);
-      return;
+      return true;
     }
 
-    img.addEventListener(
-      'load',
-      () => {
-        enqueueImageAnalysis(img, force);
-      },
-      { once: true }
-    );
+    const onLoad = () => {
+      img.removeEventListener('error', onError);
+      enqueueImageAnalysis(img, force);
+    };
+    const onError = () => {
+      img.removeEventListener('load', onLoad);
+      logNormal('image load failed before HDR processing', { src: getImageSrc(img) });
+      finishHdrProcessingForImage(img, true);
+    };
+
+    img.addEventListener('load', onLoad, { once: true });
+    img.addEventListener('error', onError, { once: true });
+    return true;
   }
 
   function scanImages(force = false) {
@@ -1747,7 +2056,7 @@
   }
 
   // Initial state + inject for already-rendered panels
-  log('init', {
+  logNormal('init', {
     isFirefox: IS_FIREFOX,
     enabledTonemapTorrents: Object.keys(tonemapEnabledByTorrent).filter(
       (torrentId) => tonemapEnabledByTorrent[torrentId]
@@ -1755,7 +2064,7 @@
     enabledHdrFixTorrents: Object.keys(hdrFixEnabledByTorrent).filter(
       (torrentId) => hdrFixEnabledByTorrent[torrentId]
     ).length,
-    debugEnabled
+    debugLevel
   });
   ensureTonemapUiStyle();
   updateTonemapAdjustmentStyle();
