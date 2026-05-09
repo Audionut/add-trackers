@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Tonemap Toggle
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.4.3
+// @version      0.4.4
 // @description  Adds per-panel toggles for tonemapping and Firefox HDR-black recovery on BBCode images.
 // @author       Audionut
 // @match        https://passthepopcorn.me/*
@@ -66,7 +66,9 @@
   const convertedSourceCache = new Map();
   const hdrProcessingByTorrent = new Map();
   const hdrProcessingClearTimers = new Map();
+  const hdrProcessingGenerationByTorrent = new Map();
   const imageProcessingTorrent = new WeakMap();
+  const pendingImageProcessingContext = new WeakMap();
   const tonemapTrackedSourcesByTorrent = new Map();
   const tonemapSourceToTorrent = new Map();
   const ffmpegWasmState = {
@@ -324,8 +326,9 @@
       hdrImagesByTorrent.set(torrentId, (hdrImagesByTorrent.get(torrentId) || 0) + 1);
     });
 
+    const hdrProcessingGenerationByRefreshTorrent = new Map();
     hdrImagesByTorrent.forEach((count, torrentId) => {
-      startHdrProcessing(torrentId, count);
+      hdrProcessingGenerationByRefreshTorrent.set(torrentId, startHdrProcessing(torrentId, count));
     });
 
     images.forEach((img) => {
@@ -338,11 +341,18 @@
       restoreOriginalImageSource(img);
       clearImageAnalysisState(img);
       if (torrentId && hdrFixEnabled) {
-        imageProcessingTorrent.set(img, torrentId);
+        const context = {
+          torrentId,
+          generation: hdrProcessingGenerationByRefreshTorrent.get(torrentId)
+        };
+        imageProcessingTorrent.set(img, context);
+        if (!queueImageAnalysis(img, true)) {
+          finishHdrProcessingForImage(img, false, context);
+        }
+        return;
       }
-      if (!queueImageAnalysis(img, true) && torrentId && hdrFixEnabled) {
-        finishHdrProcessingForImage(img, false);
-      }
+
+      queueImageAnalysis(img, true);
     });
   }
 
@@ -1244,12 +1254,36 @@
     updateHdrProcessingNote(torrentId);
   }
 
-  function startHdrProcessing(torrentId, total) {
-    if (!torrentId || total <= 0) {
-      clearHdrProcessing(torrentId);
-      return;
+  function nextHdrProcessingGeneration(torrentId) {
+    const generation = (hdrProcessingGenerationByTorrent.get(torrentId) || 0) + 1;
+    hdrProcessingGenerationByTorrent.set(torrentId, generation);
+    return generation;
+  }
+
+  function getHdrProcessingGeneration(torrentId) {
+    return hdrProcessingGenerationByTorrent.get(torrentId) || 0;
+  }
+
+  function cancelHdrProcessing(torrentId) {
+    const generation = nextHdrProcessingGeneration(torrentId);
+    clearHdrProcessing(torrentId);
+    return generation;
+  }
+
+  function isProcessingContextCurrent(context) {
+    if (!context) {
+      return true;
     }
 
+    return getHdrProcessingGeneration(context.torrentId) === context.generation;
+  }
+
+  function startHdrProcessing(torrentId, total) {
+    if (!torrentId || total <= 0) {
+      return cancelHdrProcessing(torrentId);
+    }
+
+    const generation = nextHdrProcessingGeneration(torrentId);
     const existingTimer = hdrProcessingClearTimers.get(torrentId);
     if (existingTimer) {
       clearTimeout(existingTimer);
@@ -1257,22 +1291,30 @@
     }
 
     hdrProcessingByTorrent.set(torrentId, {
+      generation,
       total,
       completed: 0,
       errors: 0
     });
     updateHdrProcessingNote(torrentId);
+    return generation;
   }
 
-  function finishHdrProcessingForImage(img, hasError = false) {
-    const torrentId = imageProcessingTorrent.get(img);
-    if (!torrentId) {
+  function finishHdrProcessingForImage(img, hasError = false, context = imageProcessingTorrent.get(img)) {
+    if (!context) {
       return;
     }
 
-    imageProcessingTorrent.delete(img);
-    const state = hdrProcessingByTorrent.get(torrentId);
-    if (!state) {
+    if (imageProcessingTorrent.get(img) === context) {
+      imageProcessingTorrent.delete(img);
+    }
+
+    if (!isProcessingContextCurrent(context)) {
+      return;
+    }
+
+    const state = hdrProcessingByTorrent.get(context.torrentId);
+    if (!state || state.generation !== context.generation) {
       return;
     }
 
@@ -1283,19 +1325,23 @@
 
     if (state.completed >= state.total) {
       if (state.errors > 0) {
-        updateHdrProcessingNote(torrentId);
+        updateHdrProcessingNote(context.torrentId);
+        const generation = context.generation;
         const timer = setTimeout(() => {
-          clearHdrProcessing(torrentId);
+          const currentState = hdrProcessingByTorrent.get(context.torrentId);
+          if (currentState?.generation === generation) {
+            clearHdrProcessing(context.torrentId);
+          }
         }, 10000);
-        hdrProcessingClearTimers.set(torrentId, timer);
+        hdrProcessingClearTimers.set(context.torrentId, timer);
         return;
       }
 
-      clearHdrProcessing(torrentId);
+      clearHdrProcessing(context.torrentId);
       return;
     }
 
-    updateHdrProcessingNote(torrentId);
+    updateHdrProcessingNote(context.torrentId);
   }
 
   function ensureHdrProcessingNote(panel, torrentId = getTorrentId(panel)) {
@@ -1332,6 +1378,7 @@
     tonemapEnabledByTorrent[torrentId] = nextEnabled;
     if (nextEnabled) {
       hdrFixEnabledByTorrent[torrentId] = false;
+      cancelHdrProcessing(torrentId);
       await GM.setValue(HDR_FIX_PREF_KEY, hdrFixEnabledByTorrent);
     }
     await GM.setValue(TONEMAP_PREF_KEY, tonemapEnabledByTorrent);
@@ -1366,23 +1413,22 @@
 
   function queueHdrFixRefreshForTorrent(torrentId, enabled) {
     const images = getRelevantImagesForTorrent(torrentId);
-
-    if (enabled) {
-      startHdrProcessing(torrentId, images.length);
-    } else {
-      clearHdrProcessing(torrentId);
-    }
+    const generation = enabled
+      ? startHdrProcessing(torrentId, images.length)
+      : cancelHdrProcessing(torrentId);
 
     images.forEach((img) => {
       if (enabled) {
         clearImageAnalysisState(img);
-        imageProcessingTorrent.set(img, torrentId);
+        const context = { torrentId, generation };
+        imageProcessingTorrent.set(img, context);
         if (!queueImageAnalysis(img, true)) {
-          finishHdrProcessingForImage(img, false);
+          finishHdrProcessingForImage(img, false, context);
         }
         return;
       }
 
+      imageProcessingTorrent.delete(img);
       restoreOriginalImageSource(img);
       clearImageAnalysisState(img);
       img.dataset.ptpHdrFixApplied = '0';
@@ -1397,6 +1443,19 @@
       enabled,
       images: images.length
     });
+  }
+
+  function imageHasActiveHdrFixState(img) {
+    const rendered = String(img.dataset.ptpHdrFixRendered || '');
+    const originalSrc = img.dataset.ptpHdrOriginalSrc || '';
+
+    return (
+      img.classList.contains('ptp-hdr-converted') ||
+      img.classList.contains('ptp-hdr-blackfix') ||
+      img.dataset.ptpHdrFixApplied === '1' ||
+      rendered.startsWith('converted') ||
+      Boolean(originalSrc && !imageSourceMatches(img, originalSrc))
+    );
   }
 
   function forceApplyHdrFixToCurrentImages() {
@@ -1415,7 +1474,7 @@
       if (!torrentId) {
         return;
       }
-      if (!hdrFixEnabled) {
+      if (!hdrFixEnabled && imageHasActiveHdrFixState(img)) {
         restoreOriginalImageSource(img);
         img.dataset.ptpHdrFixApplied = '0';
         img.dataset.ptpHdrFixMode = 'disabled-toggle-pass';
@@ -1731,10 +1790,14 @@
     syncTonemapStateForImage(img);
   }
 
-  async function applyTrueHdrFix(img, src, hdrFixEnabled) {
+  async function applyTrueHdrFix(img, src, hdrFixEnabled, processingContext) {
     rememberOriginalImageSource(img);
     const convertedUrl = await getToneMappedHdrUrl(src, img);
     const { hdrFixEnabled: stillHdrFixEnabled } = getImageToggleState(img);
+    if (!isProcessingContextCurrent(processingContext)) {
+      return null;
+    }
+
     if (!convertedUrl || !hdrFixEnabled || !stillHdrFixEnabled) {
       return false;
     }
@@ -1775,20 +1838,31 @@
   }
 
   async function analyzeImage(img, force = false) {
+    const processingContext = imageProcessingTorrent.get(img);
+
     if (!IS_FIREFOX) {
       log('analyzeImage skip: not Firefox');
-      finishHdrProcessingForImage(img, false);
+      finishHdrProcessingForImage(img, false, processingContext);
       return;
     }
 
     if (!force && analyzedImages.has(img)) {
       log('analyzeImage skip: already analyzed', { src: getImageSrc(img) });
-      finishHdrProcessingForImage(img, false);
+      finishHdrProcessingForImage(img, false, processingContext);
       return;
     }
 
     if (pendingImages.has(img)) {
       log('analyzeImage skip: pending', { src: getImageSrc(img) });
+      const pendingContext = pendingImageProcessingContext.get(img);
+      if (
+        processingContext &&
+        (!pendingContext || pendingContext.generation !== processingContext.generation)
+      ) {
+        setTimeout(() => {
+          enqueueImageAnalysis(img, force);
+        }, 250);
+      }
       return;
     }
 
@@ -1803,7 +1877,7 @@
         restoreOriginalImageSource(img);
       }
       analyzedImages.add(img);
-      finishHdrProcessingForImage(img, true);
+      finishHdrProcessingForImage(img, true, processingContext);
       return;
     }
 
@@ -1811,7 +1885,7 @@
 
     if (!torrentId) {
       logNormal('analyzeImage skip: torrent id not found', { src, displaySrc, sourceCandidates });
-      finishHdrProcessingForImage(img, true);
+      finishHdrProcessingForImage(img, true, processingContext);
       return;
     }
 
@@ -1821,15 +1895,20 @@
       img.dataset.ptpHdrFixMode = 'disabled';
       syncTonemapStateForImage(img);
       analyzedImages.add(img);
-      finishHdrProcessingForImage(img, false);
+      finishHdrProcessingForImage(img, false, processingContext);
       return;
     }
 
     let processingError = false;
     pendingImages.add(img);
+    pendingImageProcessingContext.set(img, processingContext);
     try {
       if (hdrSettings.forceHdrFixForAllImages) {
-        const converted = await applyTrueHdrFix(img, src, hdrFixEnabled);
+        const converted = await applyTrueHdrFix(img, src, hdrFixEnabled, processingContext);
+        if (converted === null) {
+          return;
+        }
+
         if (converted) {
           img.dataset.ptpHdrFixApplied = '1';
           img.dataset.ptpTonemapActive = '0';
@@ -1870,8 +1949,11 @@
       });
     } finally {
       pendingImages.delete(img);
+      if (pendingImageProcessingContext.get(img) === processingContext) {
+        pendingImageProcessingContext.delete(img);
+      }
       analyzedImages.add(img);
-      finishHdrProcessingForImage(img, processingError);
+      finishHdrProcessingForImage(img, processingError, processingContext);
     }
   }
 
@@ -1999,6 +2081,19 @@
     return true;
   }
 
+  function shouldTrackHdrProcessingFromScan(img, force) {
+    if (!(img instanceof HTMLImageElement) || !shouldProcessImage(img)) {
+      return false;
+    }
+
+    const { torrentId, hdrFixEnabled } = getImageToggleState(img);
+    if (!torrentId || !hdrFixEnabled) {
+      return false;
+    }
+
+    return force || (!analyzedImages.has(img) && !pendingImages.has(img) && !queuedImages.has(img));
+  }
+
   function scanImages(force = false) {
     const images = getRelevantImages();
     log('scanImages', {
@@ -2012,7 +2107,37 @@
       ).length,
       force
     });
-    images.forEach((img) => queueImageAnalysis(img, force));
+
+    const trackedImagesByTorrent = new Map();
+    images.forEach((img) => {
+      if (!shouldTrackHdrProcessingFromScan(img, force)) {
+        return;
+      }
+
+      const { torrentId } = getImageToggleState(img);
+      if (!trackedImagesByTorrent.has(torrentId)) {
+        trackedImagesByTorrent.set(torrentId, []);
+      }
+      trackedImagesByTorrent.get(torrentId).push(img);
+    });
+
+    const trackedContexts = new WeakMap();
+    trackedImagesByTorrent.forEach((trackedImages, torrentId) => {
+      const generation = startHdrProcessing(torrentId, trackedImages.length);
+      trackedImages.forEach((img) => {
+        const context = { torrentId, generation };
+        trackedContexts.set(img, context);
+        imageProcessingTorrent.set(img, context);
+      });
+    });
+
+    images.forEach((img) => {
+      const context = trackedContexts.get(img);
+      const queued = queueImageAnalysis(img, force);
+      if (context && !queued) {
+        finishHdrProcessingForImage(img, false, context);
+      }
+    });
   }
 
   function injectButtons() {
