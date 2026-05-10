@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Tonemap Toggle
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.5.0
+// @version      0.5.1
 // @description  Adds per-panel toggles for tonemapping and Firefox HDR-black recovery on BBCode images.
 // @author       Audionut
 // @match        https://passthepopcorn.me/*
@@ -58,6 +58,7 @@
     forceHdrFixForAllImages: true,
     useIndexedDbCache: false,
     ffmpegWorkers: 2,
+    ffmpegIdleCleanupSeconds: 10,
     tonemapMobiusParam: 0.3,
     tonemapDesat: 10,
     tonemapPeak: 12
@@ -84,6 +85,7 @@
     modulePromise: null,
     pool: [],
     blobUrls: [],
+    idleCleanupTimer: null,
     assetBaseUrl: null,
     assetLabel: null,
     disabled: false
@@ -185,6 +187,14 @@
           DEFAULT_HDR_SETTINGS.ffmpegWorkers,
           1,
           20
+        )
+      ),
+      ffmpegIdleCleanupSeconds: Math.round(
+        clampNumber(
+          input.ffmpegIdleCleanupSeconds,
+          DEFAULT_HDR_SETTINGS.ffmpegIdleCleanupSeconds,
+          -1,
+          3600
         )
       ),
       tonemapMobiusParam: clampNumber(
@@ -478,6 +488,10 @@
             <label for="ptp-hdr-ffmpeg-workers" style="display:block; margin-bottom:4px;">FFmpeg Workers (1-20) - Larger = more cpu/memory</label>
             <input id="ptp-hdr-ffmpeg-workers" type="number" min="1" max="20" step="1" style="width:100%; box-sizing:border-box; padding:6px;" />
           </div>
+          <div>
+            <label for="ptp-hdr-ffmpeg-idle-cleanup" style="display:block; margin-bottom:4px;">FFmpeg Idle Cleanup seconds (-1 disables, 0 immediate)</label>
+            <input id="ptp-hdr-ffmpeg-idle-cleanup" type="number" min="-1" max="3600" step="1" style="width:100%; box-sizing:border-box; padding:6px;" />
+          </div>
         </div>
       </div>
       <div style="margin-bottom: 12px; border:1px solid #3a3a3a; border-radius:6px; padding:10px;">
@@ -509,6 +523,7 @@
     const tonemapDesatInput = panel.querySelector('#ptp-hdr-tonemap-desat');
     const tonemapPeakInput = panel.querySelector('#ptp-hdr-tonemap-peak');
     const ffmpegWorkersInput = panel.querySelector('#ptp-hdr-ffmpeg-workers');
+    const ffmpegIdleCleanupInput = panel.querySelector('#ptp-hdr-ffmpeg-idle-cleanup');
     const debugLevelInput = panel.querySelector('#ptp-hdr-debug-level');
     const clearCurrentPageCacheButton = panel.querySelector('#ptp-hdr-cache-clear-current-page');
     const clearAllPtpCacheButton = panel.querySelector('#ptp-hdr-cache-clear-all-ptp');
@@ -528,6 +543,7 @@
       tonemapDesatInput.value = String(value.tonemapDesat);
       tonemapPeakInput.value = String(value.tonemapPeak);
       ffmpegWorkersInput.value = String(value.ffmpegWorkers);
+      ffmpegIdleCleanupInput.value = String(value.ffmpegIdleCleanupSeconds);
       debugLevelInput.value = debugLevel;
     };
 
@@ -582,6 +598,7 @@
         forceHdrFixForAllImages: forceFixInput.checked,
         useIndexedDbCache: indexedDbCacheInput.checked,
         ffmpegWorkers: Number.parseInt(ffmpegWorkersInput.value, 10),
+        ffmpegIdleCleanupSeconds: Number.parseInt(ffmpegIdleCleanupInput.value, 10),
         tonemapMobiusParam: Number.parseFloat(tonemapMobiusInput.value),
         tonemapDesat: Number.parseFloat(tonemapDesatInput.value),
         tonemapPeak: Number.parseFloat(tonemapPeakInput.value)
@@ -592,6 +609,8 @@
       hasSavedHdrSettingsThisSession = true;
       removeTonemapSvgFilter();
       updateTonemapAdjustmentStyle();
+      cancelFfmpegIdleCleanup();
+      scheduleFfmpegIdleCleanup();
       refreshAllHdrImages({ automatic: true });
       kickImageQueueWorkers();
       closeModal();
@@ -834,11 +853,73 @@
     }
   }
 
+  function cancelFfmpegIdleCleanup() {
+    if (ffmpegWasmState.idleCleanupTimer) {
+      clearTimeout(ffmpegWasmState.idleCleanupTimer);
+      ffmpegWasmState.idleCleanupTimer = null;
+    }
+  }
+
+  function hasBusyFfmpegPoolEntries() {
+    return ffmpegWasmState.pool.some((entry) => entry.busy || entry.loadPromise);
+  }
+
+  function hasPendingImageWork() {
+    return (
+      imageAnalysisQueue.length > 0 ||
+      activeImageQueueWorkers > 0 ||
+      slowPicsState.queue.length > 0 ||
+      slowPicsState.activeWorkers > 0
+    );
+  }
+
+  function terminateIdleFfmpegWorkers() {
+    if (hasPendingImageWork() || hasBusyFfmpegPoolEntries()) {
+      scheduleFfmpegIdleCleanup();
+      return;
+    }
+
+    ffmpegWasmState.idleCleanupTimer = null;
+    const loadedEntries = ffmpegWasmState.pool.filter((entry) => entry.ffmpeg);
+    if (!loadedEntries.length) {
+      ffmpegWasmState.pool = [];
+      return;
+    }
+
+    loadedEntries.forEach((entry) => {
+      try {
+        entry.ffmpeg?.terminate?.();
+      } catch (error) {
+        log('ffmpeg.wasm idle terminate failed', { error: String(error) });
+      }
+    });
+    ffmpegWasmState.pool = [];
+    logNormal('ffmpeg.wasm idle workers terminated', {
+      idleSeconds: hdrSettings.ffmpegIdleCleanupSeconds
+    });
+  }
+
+  function scheduleFfmpegIdleCleanup() {
+    cancelFfmpegIdleCleanup();
+    const idleSeconds = Math.floor(hdrSettings.ffmpegIdleCleanupSeconds);
+    if (idleSeconds < 0 || hasPendingImageWork() || hasBusyFfmpegPoolEntries()) {
+      return;
+    }
+
+    if (idleSeconds === 0) {
+      terminateIdleFfmpegWorkers();
+      return;
+    }
+
+    ffmpegWasmState.idleCleanupTimer = setTimeout(terminateIdleFfmpegWorkers, idleSeconds * 1000);
+  }
+
   async function acquireFfmpegWasmInstance() {
     if (ffmpegWasmState.disabled) {
       return null;
     }
 
+    cancelFfmpegIdleCleanup();
     const module = await loadFfmpegWasmModule();
     if (!module?.FFmpeg) {
       ffmpegWasmState.disabled = true;
@@ -867,6 +948,7 @@
             ffmpeg,
             release: () => {
               entry.busy = false;
+              scheduleFfmpegIdleCleanup();
             }
           };
         } catch (error) {
@@ -2299,6 +2381,8 @@
       activeImageQueueWorkers -= 1;
       if (imageAnalysisQueue.length > 0) {
         kickImageQueueWorkers();
+      } else {
+        scheduleFfmpegIdleCleanup();
       }
     }
   }
@@ -2315,6 +2399,7 @@
       return;
     }
 
+    cancelFfmpegIdleCleanup();
     const existingForce = queuedImages.get(img);
     if (existingForce !== undefined) {
       queuedImages.set(img, Boolean(existingForce || force));
@@ -2840,6 +2925,7 @@
       return true;
     }
 
+    cancelFfmpegIdleCleanup();
     slowPicsState.queuedSources.add(src);
     slowPicsState.queue.push({
       src,
@@ -2907,6 +2993,8 @@
       slowPicsState.activeWorkers -= 1;
       if (slowPicsState.queue.length > 0) {
         kickSlowPicsWorkers();
+      } else {
+        scheduleFfmpegIdleCleanup();
       }
     }
   }
