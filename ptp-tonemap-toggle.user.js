@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name         PTP - Tonemap Toggle
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.4.4
+// @version      0.5.0
 // @description  Adds per-panel toggles for tonemapping and Firefox HDR-black recovery on BBCode images.
 // @author       Audionut
 // @match        https://passthepopcorn.me/*
+// @match        https://slow.pics/c/*
 // @icon         https://passthepopcorn.me/favicon.ico
 // @downloadURL  https://github.com/Audionut/add-trackers/raw/main/ptp-tonemap-toggle.user.js
 // @updateURL    https://github.com/Audionut/add-trackers/raw/main/ptp-tonemap-toggle.user.js
@@ -40,15 +41,22 @@
   const TORRENT_CONTAINER_SELECTOR = `${PANEL_SELECTOR}, ${DETAIL_ROW_SELECTOR}`;
   const IMAGE_SELECTOR = 'img.bbcode__image';
   const IS_FIREFOX = /firefox/i.test(navigator.userAgent);
+  const IS_SLOWPICS_COLLECTION =
+    globalThis.location.hostname === 'slow.pics' && /^\/c\//i.test(globalThis.location.pathname);
   const TONEMAP_SVG_ID = 'ptp-tonemap-gamma';
   const TONEMAP_STYLE_ID = 'ptp-tonemap-adjustments-style';
   const TONEMAP_UI_STYLE_ID = 'ptp-tonemap-ui-style';
+  const HDR_CACHE_DB_NAME = 'ptp-tonemap-hdr-cache';
+  const HDR_CACHE_DB_VERSION = 1;
+  const HDR_CACHE_STORE_NAME = 'convertedImages';
+  const HDR_CACHE_KEY_VERSION = 'hdr-v1';
   const DEFAULT_HDR_SETTINGS = {
     tonemapOnlyContrast: 1,
     tonemapOnlyBrightness: 1,
     tonemapOnlySaturation: 2,
     tonemapOnlyGammaExponent: 1.2,
     forceHdrFixForAllImages: true,
+    useIndexedDbCache: false,
     ffmpegWorkers: 2,
     tonemapMobiusParam: 0.3,
     tonemapDesat: 10,
@@ -80,6 +88,7 @@
     assetLabel: null,
     disabled: false
   };
+  let hdrCacheDbPromise = null;
   let lastClickedHdrSource = '';
   let lastClickedConvertedSrc = '';
   let lastClickedTorrentId = '';
@@ -169,12 +178,13 @@
           input.forceHdrFixForPtpimgPng ??
           DEFAULT_HDR_SETTINGS.forceHdrFixForAllImages
       ),
+      useIndexedDbCache: Boolean(input.useIndexedDbCache ?? DEFAULT_HDR_SETTINGS.useIndexedDbCache),
       ffmpegWorkers: Math.round(
         clampNumber(
           input.ffmpegWorkers ?? input.concurrentImageJobs,
           DEFAULT_HDR_SETTINGS.ffmpegWorkers,
           1,
-          6
+          20
         )
       ),
       tonemapMobiusParam: clampNumber(
@@ -234,6 +244,15 @@
         flex-wrap: wrap;
         gap: 6px;
         margin: 0 0 8px 0;
+      }
+
+      .ptp-slowpics-controls {
+        display: inline-flex;
+        align-items: center;
+        flex-wrap: nowrap;
+        gap: 6px;
+        margin-left: 10px;
+        white-space: nowrap;
       }
 
       .ptp-tonemap-toggle {
@@ -303,7 +322,12 @@
       return;
     }
 
-    convertedSourceCache.delete(`${src}|full-resolution`);
+    const normalizedSrc = normalizeUrlCandidate(src);
+    [...convertedSourceCache.keys()].forEach((key) => {
+      if (key.includes(`|${normalizedSrc}|full-resolution`)) {
+        convertedSourceCache.delete(key);
+      }
+    });
   }
 
   function clearImageAnalysisState(img) {
@@ -427,6 +451,17 @@
             <input id="ptp-hdr-force-fix" type="checkbox" />
             Force tonemap conversion for all image sources
           </label>
+          <label style="display:flex; align-items:center; gap:8px; grid-column:1 / -1;">
+            <input id="ptp-hdr-indexeddb-cache" type="checkbox" />
+            Store converted images in IndexedDB
+          </label>
+          <div style="display:flex; gap:8px; grid-column:1 / -1; flex-wrap:wrap;">
+            <button id="ptp-hdr-cache-clear-current-page" type="button">Clear current page cache</button>
+          </div>
+          <div style="display:flex; gap:8px; grid-column:1 / -1; flex-wrap:wrap;">
+            <button id="ptp-hdr-cache-clear-all-ptp" type="button">Clear all PTP cache</button>
+            <button id="ptp-hdr-cache-clear-all-slowpics" type="button">Clear all SlowPics cache</button>
+          </div>
           <div>
             <label for="ptp-hdr-tonemap-mobius" style="display:block; margin-bottom:4px;">Mobius Param</label>
             <input id="ptp-hdr-tonemap-mobius" type="number" min="0" max="4" step="0.01" style="width:100%; box-sizing:border-box; padding:6px;" />
@@ -440,8 +475,8 @@
             <input id="ptp-hdr-tonemap-peak" type="number" min="0.1" max="1000" step="0.1" style="width:100%; box-sizing:border-box; padding:6px;" />
           </div>
           <div>
-            <label for="ptp-hdr-ffmpeg-workers" style="display:block; margin-bottom:4px;">FFmpeg Workers (1-6)</label>
-            <input id="ptp-hdr-ffmpeg-workers" type="number" min="1" max="6" step="1" style="width:100%; box-sizing:border-box; padding:6px;" />
+            <label for="ptp-hdr-ffmpeg-workers" style="display:block; margin-bottom:4px;">FFmpeg Workers (1-20) - Larger = more cpu/memory</label>
+            <input id="ptp-hdr-ffmpeg-workers" type="number" min="1" max="20" step="1" style="width:100%; box-sizing:border-box; padding:6px;" />
           </div>
         </div>
       </div>
@@ -469,11 +504,15 @@
     const tonemapOnlySaturationInput = panel.querySelector('#ptp-tonemap-only-saturation');
     const tonemapOnlyGammaInput = panel.querySelector('#ptp-tonemap-only-gamma');
     const forceFixInput = panel.querySelector('#ptp-hdr-force-fix');
+    const indexedDbCacheInput = panel.querySelector('#ptp-hdr-indexeddb-cache');
     const tonemapMobiusInput = panel.querySelector('#ptp-hdr-tonemap-mobius');
     const tonemapDesatInput = panel.querySelector('#ptp-hdr-tonemap-desat');
     const tonemapPeakInput = panel.querySelector('#ptp-hdr-tonemap-peak');
     const ffmpegWorkersInput = panel.querySelector('#ptp-hdr-ffmpeg-workers');
     const debugLevelInput = panel.querySelector('#ptp-hdr-debug-level');
+    const clearCurrentPageCacheButton = panel.querySelector('#ptp-hdr-cache-clear-current-page');
+    const clearAllPtpCacheButton = panel.querySelector('#ptp-hdr-cache-clear-all-ptp');
+    const clearAllSlowPicsCacheButton = panel.querySelector('#ptp-hdr-cache-clear-all-slowpics');
     const cancelButton = panel.querySelector('#ptp-hdr-settings-cancel');
     const defaultsButton = panel.querySelector('#ptp-hdr-settings-defaults');
     const saveButton = panel.querySelector('#ptp-hdr-settings-save');
@@ -484,6 +523,7 @@
       tonemapOnlySaturationInput.value = String(value.tonemapOnlySaturation);
       tonemapOnlyGammaInput.value = String(value.tonemapOnlyGammaExponent);
       forceFixInput.checked = Boolean(value.forceHdrFixForAllImages);
+      indexedDbCacheInput.checked = Boolean(value.useIndexedDbCache);
       tonemapMobiusInput.value = String(value.tonemapMobiusParam);
       tonemapDesatInput.value = String(value.tonemapDesat);
       tonemapPeakInput.value = String(value.tonemapPeak);
@@ -509,6 +549,30 @@
       debugLevelInput.value = 'off';
     });
 
+    clearCurrentPageCacheButton.addEventListener('click', async () => {
+      const deleted = await clearCurrentPageHdrCache();
+      clearCurrentPageCacheButton.textContent = `Cleared ${deleted} current page entries`;
+      setTimeout(() => {
+        clearCurrentPageCacheButton.textContent = 'Clear current page cache';
+      }, 3000);
+    });
+
+    clearAllPtpCacheButton.addEventListener('click', async () => {
+      const deleted = await clearAllPtpHdrCache();
+      clearAllPtpCacheButton.textContent = `Cleared ${deleted} PTP entries`;
+      setTimeout(() => {
+        clearAllPtpCacheButton.textContent = 'Clear all PTP cache';
+      }, 3000);
+    });
+
+    clearAllSlowPicsCacheButton.addEventListener('click', async () => {
+      const deleted = await clearAllSlowPicsHdrCache();
+      clearAllSlowPicsCacheButton.textContent = `Cleared ${deleted} SlowPics entries`;
+      setTimeout(() => {
+        clearAllSlowPicsCacheButton.textContent = 'Clear all SlowPics cache';
+      }, 3000);
+    });
+
     saveButton.addEventListener('click', async () => {
       const nextSettings = normalizeHdrSettings({
         tonemapOnlyContrast: Number.parseFloat(tonemapOnlyContrastInput.value),
@@ -516,6 +580,7 @@
         tonemapOnlySaturation: Number.parseFloat(tonemapOnlySaturationInput.value),
         tonemapOnlyGammaExponent: Number.parseFloat(tonemapOnlyGammaInput.value),
         forceHdrFixForAllImages: forceFixInput.checked,
+        useIndexedDbCache: indexedDbCacheInput.checked,
         ffmpegWorkers: Number.parseInt(ffmpegWorkersInput.value, 10),
         tonemapMobiusParam: Number.parseFloat(tonemapMobiusInput.value),
         tonemapDesat: Number.parseFloat(tonemapDesatInput.value),
@@ -1219,7 +1284,7 @@
     }
 
     return [...document.querySelectorAll('.ptp-hdr-processing-note')].filter(
-      (note) => getTorrentId(note) === torrentId
+      (note) => note.dataset?.torrentId === torrentId || getTorrentId(note) === torrentId
     );
   }
 
@@ -1309,6 +1374,10 @@
       imageProcessingTorrent.delete(img);
     }
 
+    finishHdrProcessingContext(context, hasError);
+  }
+
+  function finishHdrProcessingContext(context, hasError = false) {
     if (!isProcessingContextCurrent(context)) {
       return;
     }
@@ -1664,6 +1733,155 @@
     return getImageSourceCandidates(img).find((candidate) => isHdrFixCandidateSource(candidate)) || '';
   }
 
+  function getHdrConversionSettingsKey() {
+    return [
+      HDR_CACHE_KEY_VERSION,
+      `mobius=${hdrSettings.tonemapMobiusParam}`,
+      `desat=${hdrSettings.tonemapDesat}`,
+      `peak=${hdrSettings.tonemapPeak}`
+    ].join('|');
+  }
+
+  function getHdrConversionCacheKey(src) {
+    return `${getHdrConversionSettingsKey()}|${normalizeUrlCandidate(src)}|full-resolution`;
+  }
+
+  function openHdrCacheDb() {
+    if (!hdrSettings.useIndexedDbCache || !globalThis.indexedDB) {
+      return Promise.resolve(null);
+    }
+
+    if (hdrCacheDbPromise) {
+      return hdrCacheDbPromise;
+    }
+
+    hdrCacheDbPromise = new Promise((resolve, reject) => {
+      const request = globalThis.indexedDB.open(HDR_CACHE_DB_NAME, HDR_CACHE_DB_VERSION);
+
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(HDR_CACHE_STORE_NAME)) {
+          db.createObjectStore(HDR_CACHE_STORE_NAME);
+        }
+      };
+
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error('IndexedDB open failed'));
+    }).catch((error) => {
+      hdrCacheDbPromise = null;
+      logError('IndexedDB HDR cache unavailable', { error: String(error) });
+      return null;
+    });
+
+    return hdrCacheDbPromise;
+  }
+
+  async function getHdrCachedBlob(src) {
+    const db = await openHdrCacheDb();
+    if (!db) {
+      return null;
+    }
+
+    const key = getHdrConversionCacheKey(src);
+    return new Promise((resolve) => {
+      const transaction = db.transaction(HDR_CACHE_STORE_NAME, 'readonly');
+      const store = transaction.objectStore(HDR_CACHE_STORE_NAME);
+      const request = store.get(key);
+
+      request.onsuccess = () => resolve(request.result?.blob || null);
+      request.onerror = () => {
+        logError('IndexedDB HDR cache read failed', { key, error: String(request.error) });
+        resolve(null);
+      };
+    });
+  }
+
+  async function hasHdrCachedBlob(src) {
+    const db = await openHdrCacheDb();
+    if (!db) {
+      return false;
+    }
+
+    const key = getHdrConversionCacheKey(src);
+    return new Promise((resolve) => {
+      const transaction = db.transaction(HDR_CACHE_STORE_NAME, 'readonly');
+      const store = transaction.objectStore(HDR_CACHE_STORE_NAME);
+      const request = store.getKey(key);
+
+      request.onsuccess = () => resolve(request.result === key);
+      request.onerror = () => {
+        logError('IndexedDB HDR cache key read failed', { key, error: String(request.error) });
+        resolve(false);
+      };
+    });
+  }
+
+  async function putHdrCachedBlob(src, blob) {
+    const db = await openHdrCacheDb();
+    if (!db || !(blob instanceof Blob)) {
+      return;
+    }
+
+    const key = getHdrConversionCacheKey(src);
+    await new Promise((resolve) => {
+      const transaction = db.transaction(HDR_CACHE_STORE_NAME, 'readwrite');
+      const store = transaction.objectStore(HDR_CACHE_STORE_NAME);
+      const request = store.put(
+        {
+          blob,
+          src: normalizeUrlCandidate(src),
+          settingsKey: getHdrConversionSettingsKey(),
+          createdAt: Date.now()
+        },
+        key
+      );
+
+      request.onsuccess = () => resolve();
+      request.onerror = () => {
+        logError('IndexedDB HDR cache write failed', { key, error: String(request.error) });
+        resolve();
+      };
+    });
+  }
+
+  async function deleteHdrCacheEntries(predicate) {
+    const db = await openHdrCacheDb();
+    if (!db) {
+      return 0;
+    }
+
+    return new Promise((resolve) => {
+      let deleted = 0;
+      const transaction = db.transaction(HDR_CACHE_STORE_NAME, 'readwrite');
+      const store = transaction.objectStore(HDR_CACHE_STORE_NAME);
+      const request = store.openCursor();
+
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) {
+          return;
+        }
+
+        const value = cursor.value;
+        if (predicate(value, cursor.key)) {
+          cursor.delete();
+          deleted += 1;
+        }
+        cursor.continue();
+      };
+
+      request.onerror = () => {
+        logError('IndexedDB HDR cache delete failed', { error: String(request.error) });
+        resolve(deleted);
+      };
+      transaction.oncomplete = () => resolve(deleted);
+      transaction.onerror = () => {
+        logError('IndexedDB HDR cache transaction failed', { error: String(transaction.error) });
+        resolve(deleted);
+      };
+    });
+  }
+
   function fetchBlob(url) {
     return new Promise((resolve, reject) => {
       GM_xmlhttpRequest({
@@ -1694,7 +1912,7 @@
     });
   }
 
-  async function getToneMappedHdrUrlFromFfmpegWasm(src, img) {
+  async function getToneMappedHdrBlobFromFfmpegWasm(src, img) {
     const lease = await acquireFfmpegWasmInstance();
     if (!lease?.ffmpeg) {
       return null;
@@ -1735,7 +1953,7 @@
         outputBytes: outputData.length,
         fullResolution: true
       });
-      return URL.createObjectURL(new Blob([outputData], { type: 'image/png' }));
+      return new Blob([outputData], { type: 'image/png' });
     } catch (error) {
       logError('ffmpeg.wasm tonemap failed', { src, error: String(error) });
       ffmpegWasmState.disabled = true;
@@ -1752,17 +1970,59 @@
   }
 
   async function getToneMappedHdrUrl(src, img) {
-    const cacheKey = `${src}|full-resolution`;
+    const cacheKey = getHdrConversionCacheKey(src);
     if (convertedSourceCache.has(cacheKey)) {
       return convertedSourceCache.get(cacheKey);
     }
 
     const promise = (async () => {
-      return getToneMappedHdrUrlFromFfmpegWasm(src, img);
+      if (hdrSettings.useIndexedDbCache) {
+        const cachedBlob = await getHdrCachedBlob(src);
+        if (cachedBlob) {
+          log('IndexedDB HDR cache hit', { src });
+          return URL.createObjectURL(cachedBlob);
+        }
+      }
+
+      const convertedBlob = await getToneMappedHdrBlobFromFfmpegWasm(src, img);
+      if (!convertedBlob) {
+        return null;
+      }
+
+      if (hdrSettings.useIndexedDbCache) {
+        await putHdrCachedBlob(src, convertedBlob);
+      }
+
+      return URL.createObjectURL(convertedBlob);
     })();
 
     convertedSourceCache.set(cacheKey, promise);
-    return promise;
+    try {
+      return await promise;
+    } finally {
+      if (hdrSettings.useIndexedDbCache) {
+        convertedSourceCache.delete(cacheKey);
+      }
+    }
+  }
+
+  async function storeToneMappedHdrBlob(src, img) {
+    if (!hdrSettings.useIndexedDbCache) {
+      return getToneMappedHdrUrl(src, img);
+    }
+
+    if (await hasHdrCachedBlob(src)) {
+      log('IndexedDB HDR cache hit', { src });
+      return 'cached';
+    }
+
+    const convertedBlob = await getToneMappedHdrBlobFromFfmpegWasm(src, img);
+    if (!convertedBlob) {
+      return null;
+    }
+
+    await putHdrCachedBlob(src, convertedBlob);
+    return 'stored';
   }
 
   function rememberOriginalImageSource(img) {
@@ -1772,9 +2032,60 @@
     }
   }
 
+  function isObjectUrl(src) {
+    return /^blob:/i.test(String(src || ''));
+  }
+
+  function releasePtpConvertedObjectUrl(img, nextUrl = '') {
+    if (!(img instanceof HTMLImageElement)) {
+      return;
+    }
+
+    const existingUrl = img.dataset.ptpHdrConvertedObjectUrl || '';
+    if (!existingUrl || existingUrl === nextUrl) {
+      return;
+    }
+
+    URL.revokeObjectURL(existingUrl);
+    delete img.dataset.ptpHdrConvertedObjectUrl;
+  }
+
+  function releaseTransientPtpObjectUrl(url) {
+    if (hdrSettings.useIndexedDbCache && isObjectUrl(url)) {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  function trackPtpConvertedObjectUrl(img, url) {
+    if (
+      !(img instanceof HTMLImageElement) ||
+      !hdrSettings.useIndexedDbCache ||
+      !isObjectUrl(url)
+    ) {
+      return;
+    }
+
+    releasePtpConvertedObjectUrl(img, url);
+    img.dataset.ptpHdrConvertedObjectUrl = url;
+
+    const releaseAfterImageSettles = () => {
+      if (
+        img.dataset.ptpHdrConvertedObjectUrl === url &&
+        imageSourceMatches(img, url)
+      ) {
+        URL.revokeObjectURL(url);
+        delete img.dataset.ptpHdrConvertedObjectUrl;
+      }
+    };
+
+    img.addEventListener('load', releaseAfterImageSettles, { once: true });
+    img.addEventListener('error', releaseAfterImageSettles, { once: true });
+  }
+
   function restoreOriginalImageSource(img) {
     const originalSrc = img.dataset.ptpHdrOriginalSrc || '';
     const originalSrcset = img.dataset.ptpHdrOriginalSrcset || '';
+    releasePtpConvertedObjectUrl(img);
     if (originalSrc) {
       img.src = originalSrc;
     }
@@ -1795,10 +2106,12 @@
     const convertedUrl = await getToneMappedHdrUrl(src, img);
     const { hdrFixEnabled: stillHdrFixEnabled } = getImageToggleState(img);
     if (!isProcessingContextCurrent(processingContext)) {
+      releaseTransientPtpObjectUrl(convertedUrl);
       return null;
     }
 
     if (!convertedUrl || !hdrFixEnabled || !stillHdrFixEnabled) {
+      releaseTransientPtpObjectUrl(convertedUrl);
       return false;
     }
 
@@ -1806,6 +2119,7 @@
     img.classList.remove('ptp-hdr-blackfix');
     img.dataset.ptpTonemapActive = '0';
     img.style.setProperty('filter', 'none', 'important');
+    trackPtpConvertedObjectUrl(img, convertedUrl);
     img.src = convertedUrl;
     img.removeAttribute('srcset');
     img.dataset.ptpHdrFixRendered = 'converted';
@@ -2031,7 +2345,8 @@
     if (
       isLightboxImageForLastClickedSource(img) &&
       isHdrFixEnabledForTorrent(lastClickedTorrentId) &&
-      lastClickedConvertedSrc
+      lastClickedConvertedSrc &&
+      !(hdrSettings.useIndexedDbCache && isObjectUrl(lastClickedConvertedSrc))
     ) {
       if (isConvertedLightboxImageCurrent(img, lastClickedConvertedSrc)) {
         analyzedImages.add(img);
@@ -2140,6 +2455,773 @@
     });
   }
 
+  const slowPicsState = {
+    allEnabled: false,
+    currentEnabledSources: new Set(),
+    convertedBySource: new Map(),
+    queue: [],
+    queuedSources: new Set(),
+    activeWorkers: 0,
+    applyingSource: false,
+    displayedObjectUrl: '',
+    displayRequestId: 0,
+    backgroundScanId: 0,
+    observedImage: null,
+    imageObserver: null,
+    containerObserver: null,
+    pageKey: ''
+  };
+
+  function getSlowPicsCollectionFromScripts() {
+    for (const script of document.scripts) {
+      const text = script.textContent || '';
+      const match = /var\s+collection\s*=\s*(\{[\s\S]*?\});\s*var\s+currentComparisonIndex\b/.exec(
+        text
+      );
+      if (!match) {
+        continue;
+      }
+
+      try {
+        return JSON.parse(match[1]);
+      } catch (error) {
+        logError('SlowPics collection parse failed', { error: String(error) });
+        return null;
+      }
+    }
+
+    return null;
+  }
+
+  function getSlowPicsCollection() {
+    return unsafeWindow?.collection || globalThis.collection || getSlowPicsCollectionFromScripts();
+  }
+
+  function getSlowPicsCdnUrl() {
+    const value = unsafeWindow?.cdnUrl || globalThis.cdnUrl || 'https://i.slow.pics/';
+    return String(value).endsWith('/') ? String(value) : `${String(value)}/`;
+  }
+
+  function getSlowPicsPageKey() {
+    const collection = getSlowPicsCollection();
+    return `slowpics:${collection?.key || globalThis.location.pathname}`;
+  }
+
+  function getSlowPicsImageUrl(publicFileName) {
+    if (!publicFileName) {
+      return '';
+    }
+
+    try {
+      return new URL(publicFileName, getSlowPicsCdnUrl()).href;
+    } catch {
+      return normalizeUrlCandidate(`${getSlowPicsCdnUrl()}${publicFileName}`);
+    }
+  }
+
+  function getSlowPicsCollectionImages() {
+    const collection = getSlowPicsCollection();
+    const seen = new Set();
+    const images = [];
+
+    (collection?.comparisons || []).forEach((comparison) => {
+      (comparison?.images || []).forEach((image) => {
+        const url = getSlowPicsImageUrl(image?.publicFileName);
+        if (!url || seen.has(url)) {
+          return;
+        }
+
+        seen.add(url);
+        images.push({
+          url,
+          name: image?.name || '',
+          width: image?.width || 3840,
+          height: image?.height || 2160,
+          comparisonKey: comparison?.key || ''
+        });
+      });
+    });
+
+    return images;
+  }
+
+  function getSlowPicsDisplayedImage() {
+    const img = document.getElementById('image');
+    return img instanceof HTMLImageElement ? img : null;
+  }
+
+  function isSlowPicsBlobSource(src) {
+    return /^blob:/i.test(String(src || ''));
+  }
+
+  function releaseSlowPicsDisplayedObjectUrl(nextUrl = '') {
+    if (
+      hdrSettings.useIndexedDbCache &&
+      slowPicsState.displayedObjectUrl &&
+      slowPicsState.displayedObjectUrl !== nextUrl
+    ) {
+      URL.revokeObjectURL(slowPicsState.displayedObjectUrl);
+      slowPicsState.displayedObjectUrl = '';
+    }
+  }
+
+  function trackSlowPicsDisplayedObjectUrl(img, url) {
+    if (
+      !(img instanceof HTMLImageElement) ||
+      !hdrSettings.useIndexedDbCache ||
+      !isSlowPicsBlobSource(url)
+    ) {
+      return;
+    }
+
+    releaseSlowPicsDisplayedObjectUrl(url);
+    slowPicsState.displayedObjectUrl = url;
+
+    const releaseAfterImageSettles = () => {
+      if (
+        slowPicsState.displayedObjectUrl === url &&
+        imageSourceMatches(img, url)
+      ) {
+        URL.revokeObjectURL(url);
+        slowPicsState.displayedObjectUrl = '';
+      }
+    };
+
+    img.addEventListener('load', releaseAfterImageSettles, { once: true });
+    img.addEventListener('error', releaseAfterImageSettles, { once: true });
+  }
+
+  function getSlowPicsDisplayedOriginalSrc(img = getSlowPicsDisplayedImage()) {
+    if (!(img instanceof HTMLImageElement)) {
+      return '';
+    }
+
+    const currentSrc = normalizeUrlCandidate(img.getAttribute('src') || img.src || img.currentSrc || '');
+    if (isSlowPicsBlobSource(currentSrc)) {
+      return normalizeUrlCandidate(img.dataset.ptpSlowPicsOriginalSrc || '');
+    }
+
+    return currentSrc;
+  }
+
+  function isSlowPicsSourceEnabled(src) {
+    const normalizedSrc = normalizeUrlCandidate(src);
+    return (
+      Boolean(normalizedSrc) &&
+      (slowPicsState.allEnabled || slowPicsState.currentEnabledSources.has(normalizedSrc))
+    );
+  }
+
+  function updateSlowPicsButtons() {
+    const currentButton = document.querySelector('.ptp-slowpics-current-toggle');
+    const allButton = document.querySelector('.ptp-slowpics-all-toggle');
+    const currentSrc = getSlowPicsDisplayedOriginalSrc();
+    const currentEnabled = isSlowPicsSourceEnabled(currentSrc);
+
+    if (currentButton) {
+      currentButton.classList.toggle('is-enabled', currentEnabled);
+      currentButton.querySelector('.ptp-tonemap-toggle__label').textContent = currentEnabled
+        ? 'HDR Black Fix: Current ON'
+        : 'HDR Black Fix: Current';
+    }
+
+    if (allButton) {
+      allButton.classList.toggle('is-enabled', slowPicsState.allEnabled);
+      allButton.querySelector('.ptp-tonemap-toggle__label').textContent = slowPicsState.allEnabled
+        ? 'HDR Black Fix: All ON'
+        : 'HDR Black Fix: All';
+    }
+  }
+
+  function restoreSlowPicsOriginalImage(img = getSlowPicsDisplayedImage()) {
+    if (!(img instanceof HTMLImageElement)) {
+      return;
+    }
+
+    const originalSrc = normalizeUrlCandidate(img.dataset.ptpSlowPicsOriginalSrc || '');
+    if (originalSrc && isSlowPicsBlobSource(img.src)) {
+      releaseSlowPicsDisplayedObjectUrl();
+      slowPicsState.applyingSource = true;
+      img.src = originalSrc;
+      slowPicsState.applyingSource = false;
+    }
+  }
+
+  function applySlowPicsConvertedImage(src, convertedUrl) {
+    const img = getSlowPicsDisplayedImage();
+    if (!(img instanceof HTMLImageElement) || !src || !convertedUrl) {
+      return false;
+    }
+
+    const currentOriginalSrc = getSlowPicsDisplayedOriginalSrc(img);
+    if (currentOriginalSrc !== normalizeUrlCandidate(src) || !isSlowPicsSourceEnabled(src)) {
+      return false;
+    }
+
+    img.dataset.ptpSlowPicsOriginalSrc = currentOriginalSrc;
+    if (imageSourceMatches(img, convertedUrl)) {
+      return true;
+    }
+
+    releaseSlowPicsDisplayedObjectUrl(convertedUrl);
+    slowPicsState.applyingSource = true;
+    trackSlowPicsDisplayedObjectUrl(img, convertedUrl);
+    img.src = convertedUrl;
+    slowPicsState.applyingSource = false;
+    return true;
+  }
+
+  function isSlowPicsDisplayedSource(src) {
+    return getSlowPicsDisplayedOriginalSrc() === normalizeUrlCandidate(src);
+  }
+
+  function syncSlowPicsDisplayedImage() {
+    const img = getSlowPicsDisplayedImage();
+    if (!(img instanceof HTMLImageElement)) {
+      return;
+    }
+
+    const displayedElementSrc = normalizeUrlCandidate(
+      img.getAttribute('src') || img.src || img.currentSrc || ''
+    );
+    const isDisplayedConvertedBlob = isSlowPicsBlobSource(displayedElementSrc);
+
+    if (!isDisplayedConvertedBlob) {
+      releaseSlowPicsDisplayedObjectUrl();
+      img.dataset.ptpSlowPicsOriginalSrc = getSlowPicsDisplayedOriginalSrc(img);
+    }
+
+    const src = getSlowPicsDisplayedOriginalSrc(img);
+    if (!isSlowPicsSourceEnabled(src)) {
+      restoreSlowPicsOriginalImage(img);
+      updateSlowPicsButtons();
+      return;
+    }
+
+    if (isDisplayedConvertedBlob) {
+      updateSlowPicsButtons();
+      return;
+    }
+
+    const convertedUrl = slowPicsState.convertedBySource.get(src);
+    if (convertedUrl) {
+      applySlowPicsConvertedImage(src, convertedUrl);
+    } else if (hdrSettings.useIndexedDbCache) {
+      void applySlowPicsIndexedDbCachedImage(src, { guardDisplayed: true, waitForPaint: true });
+    }
+
+    updateSlowPicsButtons();
+  }
+
+  async function applySlowPicsIndexedDbCachedImage(src, options = {}) {
+    const normalizedSrc = normalizeUrlCandidate(src);
+    const requestId = options.guardDisplayed
+      ? ++slowPicsState.displayRequestId
+      : slowPicsState.displayRequestId;
+    const blob = await getHdrCachedBlob(normalizedSrc);
+    if (
+      options.guardDisplayed &&
+      requestId !== slowPicsState.displayRequestId
+    ) {
+      return false;
+    }
+
+    if (
+      !blob ||
+      !isSlowPicsSourceEnabled(normalizedSrc) ||
+      getSlowPicsDisplayedOriginalSrc() !== normalizedSrc
+    ) {
+      return false;
+    }
+
+    const convertedUrl = URL.createObjectURL(blob);
+    if (
+      options.guardDisplayed &&
+      requestId !== slowPicsState.displayRequestId
+    ) {
+      URL.revokeObjectURL(convertedUrl);
+      return false;
+    }
+
+    const applied = applySlowPicsConvertedImage(normalizedSrc, convertedUrl);
+    if (!applied) {
+      URL.revokeObjectURL(convertedUrl);
+      return false;
+    }
+
+    if (options.waitForPaint) {
+      await waitForNextPaint();
+      await waitForNextPaint();
+    }
+    return true;
+  }
+
+  async function getSlowPicsImagesNeedingProcessing(images, options = {}) {
+    if (!hdrSettings.useIndexedDbCache) {
+      return images.filter((image) => !slowPicsState.convertedBySource.has(image.url));
+    }
+
+    const missing = [];
+    const scanId = options.scanId;
+    for (const [index, image] of images.entries()) {
+      if (
+        scanId &&
+        (!slowPicsState.allEnabled || scanId !== slowPicsState.backgroundScanId)
+      ) {
+        return [];
+      }
+
+      const src = normalizeUrlCandidate(image.url);
+      if (!src || (await hasHdrCachedBlob(src))) {
+        if (index % 4 === 3) {
+          await waitForNextPaint();
+        }
+        continue;
+      }
+
+      missing.push(image);
+      if (index % 4 === 3) {
+        await waitForNextPaint();
+      }
+    }
+
+    return missing;
+  }
+
+  function scheduleSlowPicsAllBackgroundProcessing(displayedSrc) {
+    const scanId = ++slowPicsState.backgroundScanId;
+    globalThis.setTimeout(() => {
+      void runSlowPicsAllBackgroundProcessing(scanId, displayedSrc);
+    }, 100);
+  }
+
+  async function runSlowPicsAllBackgroundProcessing(scanId, displayedSrc) {
+    await waitForNextPaint();
+    if (!slowPicsState.allEnabled || scanId !== slowPicsState.backgroundScanId) {
+      return;
+    }
+
+    const images = getSlowPicsCollectionImages();
+    const pendingImagesToProcess = await getSlowPicsImagesNeedingProcessing(images, { scanId });
+    if (!slowPicsState.allEnabled || scanId !== slowPicsState.backgroundScanId) {
+      return;
+    }
+
+    const generation = startHdrProcessing(slowPicsState.pageKey, pendingImagesToProcess.length);
+    const context = { torrentId: slowPicsState.pageKey, generation };
+    const normalizedDisplayedSrc = normalizeUrlCandidate(displayedSrc);
+    const sortedImages = [...pendingImagesToProcess].sort((a, b) => {
+      const aDisplayed = normalizeUrlCandidate(a.url) === normalizedDisplayedSrc;
+      const bDisplayed = normalizeUrlCandidate(b.url) === normalizedDisplayedSrc;
+      return Number(bDisplayed) - Number(aDisplayed);
+    });
+
+    sortedImages.forEach((image) => {
+      const isDisplayed = normalizeUrlCandidate(image.url) === getSlowPicsDisplayedOriginalSrc();
+      enqueueSlowPicsImage(image, context, { displayAfterProcessing: isDisplayed });
+    });
+
+    syncSlowPicsDisplayedImage();
+    updateSlowPicsButtons();
+  }
+
+  function enqueueSlowPicsImage(imageInfo, context, options = {}) {
+    const src = normalizeUrlCandidate(imageInfo?.url || imageInfo);
+    if (!src) {
+      return false;
+    }
+
+    if (!hdrSettings.useIndexedDbCache && slowPicsState.convertedBySource.has(src)) {
+      finishHdrProcessingContext(context, false);
+      return false;
+    }
+
+    if (slowPicsState.queuedSources.has(src)) {
+      return true;
+    }
+
+    slowPicsState.queuedSources.add(src);
+    slowPicsState.queue.push({
+      src,
+      width: imageInfo?.width || 3840,
+      context,
+      displayAfterProcessing: Boolean(options.displayAfterProcessing)
+    });
+    kickSlowPicsWorkers();
+    return true;
+  }
+
+  async function runSlowPicsWorker() {
+    slowPicsState.activeWorkers += 1;
+    try {
+      while (slowPicsState.queue.length > 0) {
+        const item = slowPicsState.queue.shift();
+        slowPicsState.queuedSources.delete(item.src);
+
+        if (!isProcessingContextCurrent(item.context)) {
+          continue;
+        }
+
+        let failed = false;
+        try {
+          if (hdrSettings.useIndexedDbCache) {
+            const stored = await storeToneMappedHdrBlob(item.src, {
+              naturalWidth: item.width || 3840
+            });
+            if (stored) {
+              logNormal('SlowPics image stored hdr fix', { src: item.src, stored });
+              if (item.displayAfterProcessing || isSlowPicsDisplayedSource(item.src)) {
+                await applySlowPicsIndexedDbCachedImage(item.src);
+                logNormal('SlowPics displayed IndexedDB hdr fix', { src: item.src });
+              }
+            } else {
+              failed = true;
+              logNormal('SlowPics image conversion unavailable', { src: item.src });
+            }
+          } else {
+            const convertedUrl = await getToneMappedHdrUrl(item.src, {
+              naturalWidth: item.width || 3840
+            });
+            if (convertedUrl) {
+              slowPicsState.convertedBySource.set(item.src, convertedUrl);
+              applySlowPicsConvertedImage(item.src, convertedUrl);
+              logNormal('SlowPics image converted hdr fix', { src: item.src });
+            } else {
+              failed = true;
+              logNormal('SlowPics image conversion unavailable', { src: item.src });
+            }
+          }
+        } catch (error) {
+          failed = true;
+          logError('SlowPics image processing failed', {
+            src: item.src,
+            error: String(error)
+          });
+        } finally {
+          finishHdrProcessingContext(item.context, failed);
+        }
+
+        await waitForNextPaint();
+      }
+    } finally {
+      slowPicsState.activeWorkers -= 1;
+      if (slowPicsState.queue.length > 0) {
+        kickSlowPicsWorkers();
+      }
+    }
+  }
+
+  function kickSlowPicsWorkers() {
+    const maxWorkers = getMaxConcurrentImageJobs();
+    while (slowPicsState.activeWorkers < maxWorkers && slowPicsState.queue.length > 0) {
+      void runSlowPicsWorker();
+    }
+  }
+
+  function makeSlowPicsButton(className, labelText, onClick) {
+    const button = document.createElement('button');
+    button.className = `ptp-tonemap-toggle ${className}`;
+    button.type = 'button';
+
+    const dot = document.createElement('span');
+    dot.className = 'ptp-tonemap-toggle__dot';
+
+    const label = document.createElement('span');
+    label.className = 'ptp-tonemap-toggle__label';
+    label.textContent = labelText;
+
+    button.appendChild(dot);
+    button.appendChild(label);
+    button.addEventListener('click', onClick);
+    return button;
+  }
+
+  function ensureSlowPicsControls() {
+    const breadcrumb = document.getElementById('breadcrumb');
+    if (!(breadcrumb instanceof HTMLElement) || breadcrumb.querySelector('.ptp-slowpics-controls')) {
+      return;
+    }
+
+    const controls = document.createElement('li');
+    controls.className = 'breadcrumb-item ptp-slowpics-controls';
+    controls.dataset.torrentId = slowPicsState.pageKey;
+
+    controls.appendChild(
+      makeSlowPicsButton('ptp-slowpics-current-toggle', 'HDR Black Fix: Current', () => {
+        void toggleSlowPicsCurrent();
+      })
+    );
+    controls.appendChild(
+      makeSlowPicsButton('ptp-slowpics-all-toggle', 'HDR Black Fix: All', () => {
+        void toggleSlowPicsAll();
+      })
+    );
+
+    const note = document.createElement('span');
+    note.className = 'ptp-hdr-processing-note';
+    note.setAttribute('aria-live', 'polite');
+    note.dataset.torrentId = slowPicsState.pageKey;
+    controls.appendChild(note);
+
+    breadcrumb.appendChild(controls);
+    updateSlowPicsButtons();
+  }
+
+  async function toggleSlowPicsCurrent() {
+    const src = getSlowPicsDisplayedOriginalSrc();
+    if (!src) {
+      return;
+    }
+
+    if (slowPicsState.currentEnabledSources.has(src) && !slowPicsState.allEnabled) {
+      slowPicsState.currentEnabledSources.delete(src);
+      cancelHdrProcessing(slowPicsState.pageKey);
+      restoreSlowPicsOriginalImage();
+      updateSlowPicsButtons();
+      return;
+    }
+
+    slowPicsState.currentEnabledSources.add(src);
+    if (
+      hdrSettings.useIndexedDbCache &&
+      (await applySlowPicsIndexedDbCachedImage(src, {
+        guardDisplayed: true,
+        waitForPaint: true
+      }))
+    ) {
+      cancelHdrProcessing(slowPicsState.pageKey);
+      updateSlowPicsButtons();
+      return;
+    }
+
+    const generation = startHdrProcessing(
+      slowPicsState.pageKey,
+      !hdrSettings.useIndexedDbCache && slowPicsState.convertedBySource.has(src) ? 0 : 1
+    );
+    const context = { torrentId: slowPicsState.pageKey, generation };
+    if (
+      !enqueueSlowPicsImage(
+        { url: src, width: getSlowPicsDisplayedImage()?.naturalWidth || 3840 },
+        context,
+        { displayAfterProcessing: true }
+      )
+    ) {
+      syncSlowPicsDisplayedImage();
+    }
+    updateSlowPicsButtons();
+  }
+
+  async function toggleSlowPicsAll() {
+    slowPicsState.allEnabled = !slowPicsState.allEnabled;
+
+    if (!slowPicsState.allEnabled) {
+      slowPicsState.backgroundScanId += 1;
+      cancelHdrProcessing(slowPicsState.pageKey);
+      restoreSlowPicsOriginalImage();
+      updateSlowPicsButtons();
+      return;
+    }
+
+    const displayedSrc = getSlowPicsDisplayedOriginalSrc();
+    if (hdrSettings.useIndexedDbCache && displayedSrc) {
+      await applySlowPicsIndexedDbCachedImage(displayedSrc, {
+        guardDisplayed: true,
+        waitForPaint: true
+      });
+    }
+
+    scheduleSlowPicsAllBackgroundProcessing(displayedSrc);
+    syncSlowPicsDisplayedImage();
+    updateSlowPicsButtons();
+  }
+
+  function handleSlowPicsDisplayedImageMutation() {
+    if (slowPicsState.applyingSource) {
+      return;
+    }
+
+    observeSlowPicsDisplayedImage();
+    syncSlowPicsDisplayedImage();
+  }
+
+  function observeSlowPicsDisplayedImage() {
+    const image = getSlowPicsDisplayedImage();
+    if (slowPicsState.observedImage === image) {
+      return;
+    }
+
+    slowPicsState.imageObserver?.disconnect();
+    slowPicsState.imageObserver = null;
+    slowPicsState.observedImage = image;
+
+    if (!(image instanceof HTMLImageElement)) {
+      return;
+    }
+
+    slowPicsState.imageObserver = new MutationObserver((mutations) => {
+      if (
+        mutations.some(
+          (mutation) => mutation.type === 'attributes' && mutation.attributeName === 'src'
+        )
+      ) {
+        handleSlowPicsDisplayedImageMutation();
+      }
+    });
+    slowPicsState.imageObserver.observe(image, {
+      attributes: true,
+      attributeFilter: ['src']
+    });
+  }
+
+  function observeSlowPicsImageContainer() {
+    if (slowPicsState.containerObserver) {
+      return;
+    }
+
+    const container = document.querySelector('.image-container') || document.body;
+    if (!(container instanceof Element)) {
+      return;
+    }
+
+    slowPicsState.containerObserver = new MutationObserver((mutations) => {
+      if (
+        mutations.some(
+          (mutation) =>
+            mutation.type === 'childList' ||
+            (mutation.type === 'attributes' &&
+              mutation.target instanceof HTMLImageElement &&
+              mutation.target.id === 'image')
+        )
+      ) {
+        handleSlowPicsDisplayedImageMutation();
+      }
+    });
+    slowPicsState.containerObserver.observe(container, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['src']
+    });
+  }
+
+  function initSlowPicsCollection() {
+    if (!IS_SLOWPICS_COLLECTION) {
+      return;
+    }
+
+    slowPicsState.pageKey = getSlowPicsPageKey();
+    ensureSlowPicsControls();
+    observeSlowPicsDisplayedImage();
+    observeSlowPicsImageContainer();
+    syncSlowPicsDisplayedImage();
+
+    logNormal('SlowPics init', {
+      pageKey: slowPicsState.pageKey,
+      images: getSlowPicsCollectionImages().length
+    });
+  }
+
+  function clearSlowPicsMemoryCacheForSources(sources) {
+    const sourceSet = new Set([...sources].map((src) => normalizeUrlCandidate(src)));
+    slowPicsState.convertedBySource.forEach((url, src) => {
+      if (!sourceSet.has(normalizeUrlCandidate(src))) {
+        return;
+      }
+
+      if (isSlowPicsBlobSource(url)) {
+        URL.revokeObjectURL(url);
+      }
+      slowPicsState.convertedBySource.delete(src);
+    });
+  }
+
+  function getHdrCacheKeySource(key) {
+    const parts = String(key || '').split('|');
+    if (parts.length < 6 || parts.at(-1) !== 'full-resolution') {
+      return '';
+    }
+
+    return normalizeUrlCandidate(parts.slice(4, -1).join('|'));
+  }
+
+  function clearConvertedSourceCacheWhere(predicate) {
+    [...convertedSourceCache.keys()].forEach((key) => {
+      if (predicate(getHdrCacheKeySource(key), key)) {
+        convertedSourceCache.delete(key);
+      }
+    });
+  }
+
+  function clearConvertedSourceCacheForSources(sources) {
+    const sourceSet = new Set([...sources].map((src) => normalizeUrlCandidate(src)));
+    clearConvertedSourceCacheWhere((src) => sourceSet.has(src));
+  }
+
+  function getCurrentPtpHdrCacheSources() {
+    return new Set(
+      [...document.querySelectorAll(IMAGE_SELECTOR)]
+        .map((img) => getEligibleHdrFixSource(img))
+        .map((src) => normalizeUrlCandidate(src))
+        .filter(Boolean)
+    );
+  }
+
+  function isSlowPicsHdrCacheSource(src) {
+    return normalizeUrlCandidate(src).startsWith('https://i.slow.pics/');
+  }
+
+  async function clearCurrentPtpHdrCache() {
+    const sources = getCurrentPtpHdrCacheSources();
+    if (!sources.size) {
+      return 0;
+    }
+
+    const deleted = await deleteHdrCacheEntries((value) =>
+      sources.has(normalizeUrlCandidate(value?.src || ''))
+    );
+    clearConvertedSourceCacheForSources(sources);
+    logNormal('PTP current page HDR cache cleared', { deleted });
+    return deleted;
+  }
+
+  async function clearAllPtpHdrCache() {
+    const deleted = await deleteHdrCacheEntries(
+      (value) => !isSlowPicsHdrCacheSource(value?.src || '')
+    );
+    clearConvertedSourceCacheWhere((src) => Boolean(src) && !isSlowPicsHdrCacheSource(src));
+    logNormal('PTP all HDR cache cleared', { deleted });
+    return deleted;
+  }
+
+  async function clearCurrentSlowPicsHdrCache() {
+    const sources = new Set(getSlowPicsCollectionImages().map((image) => normalizeUrlCandidate(image.url)));
+    if (!sources.size) {
+      return 0;
+    }
+
+    const deleted = await deleteHdrCacheEntries((value) =>
+      sources.has(normalizeUrlCandidate(value?.src || ''))
+    );
+    clearSlowPicsMemoryCacheForSources(sources);
+    syncSlowPicsDisplayedImage();
+    logNormal('SlowPics current page HDR cache cleared', { deleted });
+    return deleted;
+  }
+
+  async function clearCurrentPageHdrCache() {
+    return IS_SLOWPICS_COLLECTION ? clearCurrentSlowPicsHdrCache() : clearCurrentPtpHdrCache();
+  }
+
+  async function clearAllSlowPicsHdrCache() {
+    const deleted = await deleteHdrCacheEntries((value) =>
+      isSlowPicsHdrCacheSource(value?.src || '')
+    );
+    clearSlowPicsMemoryCacheForSources([...slowPicsState.convertedBySource.keys()]);
+    syncSlowPicsDisplayedImage();
+    logNormal('SlowPics all HDR cache cleared', { deleted });
+    return deleted;
+  }
+
   function injectButtons() {
     document.querySelectorAll(PANEL_SELECTOR).forEach((panel) => {
       const torrentId = getTorrentId(panel);
@@ -2197,6 +3279,7 @@
   injectButtons();
   forceApplyHdrFixToCurrentImages();
   scanImages();
+  initSlowPicsCollection();
 
   document.addEventListener(
     'click',
