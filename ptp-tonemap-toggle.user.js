@@ -1,9 +1,11 @@
 // ==UserScript==
 // @name         PTP - Tonemap Toggle
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.5.1
+// @version      0.6.0
 // @description  Adds per-panel toggles for tonemapping and Firefox HDR-black recovery on BBCode images.
 // @author       Audionut
+// @match        http://*/*
+// @match        https://*/*
 // @match        https://passthepopcorn.me/*
 // @match        https://slow.pics/c/*
 // @icon         https://passthepopcorn.me/favicon.ico
@@ -30,6 +32,7 @@
   const HDR_FIX_ON_CLASS = 'ptp-hdr-blackfix-enabled';
   const HDR_SETTINGS_PREF_KEY = 'ptpHdrSettingsV1';
   const DEBUG_PREF_KEY = 'ptpHdrDebug';
+  const CUSTOM_SITE_PROFILES_PREF_KEY = 'ptpHdrCustomSiteProfilesV1';
   const DEBUG_LEVELS = {
     off: 0,
     normal: 1,
@@ -41,6 +44,7 @@
   const TORRENT_CONTAINER_SELECTOR = `${PANEL_SELECTOR}, ${DETAIL_ROW_SELECTOR}`;
   const IMAGE_SELECTOR = 'img.bbcode__image';
   const IS_FIREFOX = /firefox/i.test(navigator.userAgent);
+  const IS_PTP = globalThis.location.hostname === 'passthepopcorn.me';
   const IS_SLOWPICS_COLLECTION =
     globalThis.location.hostname === 'slow.pics' && /^\/c\//i.test(globalThis.location.pathname);
   const TONEMAP_SVG_ID = 'ptp-tonemap-gamma';
@@ -96,6 +100,10 @@
   let lastClickedTorrentId = '';
   let hasSavedHdrSettingsThisSession = false;
   let activeImageQueueWorkers = 0;
+  let customSiteProfilesJson = await GM.getValue(CUSTOM_SITE_PROFILES_PREF_KEY, '[]');
+  let customSiteProfiles = normalizeCustomSiteProfiles(customSiteProfilesJson);
+  let activeCustomSiteProfile = getActiveCustomSiteProfile();
+  let customSiteProfileObserver = null;
 
   const tonemapEnabledByTorrent = normalizeTorrentStateMap(await GM.getValue(TONEMAP_PREF_KEY, {}));
   const hdrFixEnabledByTorrent = normalizeTorrentStateMap(await GM.getValue(HDR_FIX_PREF_KEY, {}));
@@ -129,6 +137,165 @@
 
     const normalized = String(value).toLowerCase();
     return Object.hasOwn(DEBUG_LEVELS, normalized) ? normalized : 'off';
+  }
+
+  function toStringArray(value, fallback = []) {
+    if (!Array.isArray(value)) {
+      return fallback;
+    }
+
+    return value.map((item) => String(item || '').trim()).filter(Boolean);
+  }
+
+  function escapeRegExp(value) {
+    return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function makeDraftCustomSiteProfile() {
+    const host = globalThis.location.hostname || 'example.com';
+    const path = globalThis.location.pathname || '/';
+    const hostSlug = host.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
+    const pathSlug = path.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
+
+    return {
+      id: [hostSlug, pathSlug || 'site'].filter(Boolean).join('-'),
+      label: host,
+      enabled: true,
+      type: 'visibleImages',
+      hostPattern: `^${escapeRegExp(host)}$`,
+      pathPattern: `^${escapeRegExp(path)}`,
+      controlsAnchor: 'body',
+      controlsPlacement: 'after',
+      containerSelector: 'body',
+      imageSelector: 'img',
+      sourceAttributes: ['currentSrc', 'src', 'data-src', 'data-original', 'data-full'],
+      visibleOnly: true
+    };
+  }
+
+  function stringifyProfileForEditor(profile) {
+    return JSON.stringify(profile || makeDraftCustomSiteProfile(), null, 2);
+  }
+
+  function normalizeCustomSiteControlsPlacement(value) {
+    const placement = String(value || 'prepend').trim();
+    return ['before', 'after', 'prepend', 'append'].includes(placement) ? placement : 'prepend';
+  }
+
+  function normalizeCustomSiteProfile(profile, index) {
+    if (!profile || typeof profile !== 'object') {
+      return null;
+    }
+
+    const id = String(profile.id || `profile-${index + 1}`).trim();
+    const imageSelector = String(profile.imageSelector || '').trim();
+    if (!id || profile.type !== 'visibleImages' || !imageSelector) {
+      return null;
+    }
+
+    return {
+      id,
+      label: String(profile.label || id).trim() || id,
+      enabled: profile.enabled !== false,
+      type: 'visibleImages',
+      hostPattern: String(profile.hostPattern || '').trim(),
+      pathPattern: String(profile.pathPattern || '').trim(),
+      controlsAnchor: String(profile.controlsAnchor || 'body').trim() || 'body',
+      controlsPlacement: normalizeCustomSiteControlsPlacement(profile.controlsPlacement),
+      imageSelector,
+      containerSelector: String(profile.containerSelector || 'body').trim() || 'body',
+      sourceAttributes: toStringArray(profile.sourceAttributes, [
+        'currentSrc',
+        'src',
+        'data-src',
+        'data-original',
+        'data-full'
+      ]),
+      visibleOnly: profile.visibleOnly !== false
+    };
+  }
+
+  function normalizeCustomSiteProfiles(value) {
+    let parsed = value;
+    if (typeof value === 'string') {
+      try {
+        parsed = JSON.parse(value || '[]');
+      } catch {
+        return [];
+      }
+    }
+
+    const profiles = Array.isArray(parsed) ? parsed : [parsed];
+    return profiles
+      .map((profile, index) => normalizeCustomSiteProfile(profile, index))
+      .filter(Boolean);
+  }
+
+  function regexMatches(pattern, value) {
+    if (!pattern) {
+      return true;
+    }
+
+    try {
+      return new RegExp(pattern).test(value);
+    } catch {
+      return false;
+    }
+  }
+
+  function getActiveCustomSiteProfile() {
+    return (
+      customSiteProfiles.find(
+        (profile) =>
+          profile.enabled &&
+          regexMatches(profile.hostPattern, globalThis.location.hostname) &&
+          regexMatches(profile.pathPattern, globalThis.location.pathname)
+      ) || null
+    );
+  }
+
+  function getSavedCustomSiteProfileForCurrentPage() {
+    return (
+      customSiteProfiles.find(
+        (profile) =>
+          regexMatches(profile.hostPattern, globalThis.location.hostname) &&
+          regexMatches(profile.pathPattern, globalThis.location.pathname)
+      ) || null
+    );
+  }
+
+  function getCurrentSiteProfileForEditor() {
+    return getSavedCustomSiteProfileForCurrentPage() || makeDraftCustomSiteProfile();
+  }
+
+  async function saveCustomSiteProfileForCurrentPage(nextJson, originalJson, originalProfileId = '') {
+    if ((nextJson || '').trim() === (originalJson || '').trim()) {
+      return { saved: false, profile: activeCustomSiteProfile };
+    }
+
+    const parsed = JSON.parse(nextJson || '{}');
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Custom site profile must be one JSON object, not an array.');
+    }
+
+    const normalized = normalizeCustomSiteProfile(parsed, 0);
+    if (!normalized) {
+      throw new Error('Custom site profile must include type "visibleImages", id, and imageSelector.');
+    }
+
+    const nextProfiles = [...customSiteProfiles];
+    const existingIndex = nextProfiles.findIndex((profile) => profile.id === (originalProfileId || normalized.id));
+    if (existingIndex >= 0) {
+      nextProfiles[existingIndex] = normalized;
+    } else {
+      nextProfiles.push(normalized);
+    }
+
+    customSiteProfiles = nextProfiles;
+    customSiteProfilesJson = JSON.stringify(customSiteProfiles, null, 2);
+    activeCustomSiteProfile = getActiveCustomSiteProfile();
+    await GM.setValue(CUSTOM_SITE_PROFILES_PREF_KEY, customSiteProfilesJson);
+    return { saved: true, profile: activeCustomSiteProfile };
   }
 
   function isDebugLevelAtLeast(level) {
@@ -503,6 +670,31 @@
           <option value="verbose">Verbose</option>
         </select>
       </div>
+      <div style="margin-bottom: 12px; border:1px solid #3a3a3a; border-radius:6px; padding:10px;">
+        <div style="font-size: 14px; font-weight: 700; margin-bottom: 8px; color:#c8e6a0;">Custom Site Profile</div>
+        <div style="font-size: 12px; color:#c7c7c7; margin-bottom: 8px; line-height:1.35;">
+          Edit one JSON object for this page. Saved profiles are kept separately, and the script uses the first enabled profile whose hostPattern and pathPattern match the current URL.
+        </div>
+        <div style="font-size: 12px; color:#b5b5b5; margin-bottom: 8px; line-height:1.35;">
+          <div><code>id</code>: unique key used when saving or replacing this profile.</div>
+          <div><code>label</code>: readable name shown in settings and logs.</div>
+          <div><code>enabled</code>: false keeps the profile saved but inactive.</div>
+          <div><code>type</code>: currently only "visibleImages".</div>
+          <div><code>hostPattern</code>: regular expression matched against the current hostname.</div>
+          <div><code>pathPattern</code>: regular expression matched against the current path.</div>
+          <div><code>controlsAnchor</code>: selector used as the HDR toggle placement target.</div>
+          <div><code>controlsPlacement</code>: "before", "after", "prepend", or "append" relative to controlsAnchor.</div>
+          <div><code>containerSelector</code>: selector watched for image changes.</div>
+          <div><code>imageSelector</code>: selector for images eligible for processing.</div>
+          <div><code>sourceAttributes</code>: image properties or attributes checked for the original image URL.</div>
+          <div><code>visibleOnly</code>: true processes only visible/rendered image matches.</div>
+        </div>
+        <textarea id="ptp-hdr-custom-site-profiles" spellcheck="false" style="width:100%; min-height:150px; box-sizing:border-box; padding:6px; font-family:monospace; font-size:12px;"></textarea>
+        <div style="font-size: 12px; color:#b5b5b5; margin-top: 6px;">
+          Generated draft profiles are not saved unless this JSON is changed.
+        </div>
+        <div id="ptp-hdr-custom-site-profiles-status" style="font-size: 12px; color:#ffb4b4; margin-top: 6px;"></div>
+      </div>
       <div style="display:flex; justify-content:flex-end; gap:8px;">
         <button id="ptp-hdr-settings-cancel" type="button">Cancel</button>
         <button id="ptp-hdr-settings-defaults" type="button">Reset Defaults</button>
@@ -525,6 +717,8 @@
     const ffmpegWorkersInput = panel.querySelector('#ptp-hdr-ffmpeg-workers');
     const ffmpegIdleCleanupInput = panel.querySelector('#ptp-hdr-ffmpeg-idle-cleanup');
     const debugLevelInput = panel.querySelector('#ptp-hdr-debug-level');
+    const customSiteProfilesInput = panel.querySelector('#ptp-hdr-custom-site-profiles');
+    const customSiteProfilesStatus = panel.querySelector('#ptp-hdr-custom-site-profiles-status');
     const clearCurrentPageCacheButton = panel.querySelector('#ptp-hdr-cache-clear-current-page');
     const clearAllPtpCacheButton = panel.querySelector('#ptp-hdr-cache-clear-all-ptp');
     const clearAllSlowPicsCacheButton = panel.querySelector('#ptp-hdr-cache-clear-all-slowpics');
@@ -547,7 +741,13 @@
       debugLevelInput.value = debugLevel;
     };
 
+    const savedCustomSiteProfileForEditor = getSavedCustomSiteProfileForCurrentPage();
+    const customSiteProfileForEditor = savedCustomSiteProfileForEditor || getCurrentSiteProfileForEditor();
+    const customSiteProfileOriginalId = savedCustomSiteProfileForEditor ? savedCustomSiteProfileForEditor.id : '';
+    const customSiteProfileEditorInitialValue = stringifyProfileForEditor(customSiteProfileForEditor);
+
     fillFromSettings(hdrSettings);
+    customSiteProfilesInput.value = customSiteProfileEditorInitialValue;
 
     const closeModal = () => {
       modal.style.display = 'none';
@@ -590,6 +790,18 @@
     });
 
     saveButton.addEventListener('click', async () => {
+      customSiteProfilesStatus.textContent = '';
+      try {
+        await saveCustomSiteProfileForCurrentPage(
+          customSiteProfilesInput.value,
+          customSiteProfileEditorInitialValue,
+          customSiteProfileOriginalId
+        );
+      } catch (error) {
+        customSiteProfilesStatus.textContent = `Custom profile JSON is invalid: ${String(error.message || error)}`;
+        return;
+      }
+
       const nextSettings = normalizeHdrSettings({
         tonemapOnlyContrast: Number.parseFloat(tonemapOnlyContrastInput.value),
         tonemapOnlyBrightness: Number.parseFloat(tonemapOnlyBrightnessInput.value),
@@ -606,6 +818,7 @@
 
       await saveHdrSettings(nextSettings);
       await saveDebugLevel(debugLevelInput.value);
+      initCustomSiteProfile();
       hasSavedHdrSettingsThisSession = true;
       removeTonemapSvgFilter();
       updateTonemapAdjustmentStyle();
@@ -1074,6 +1287,14 @@
       return false;
     }
 
+    if (
+      activeCustomSiteProfile &&
+      elementMatchesSelector(img, activeCustomSiteProfile.imageSelector) &&
+      isCustomProfileImageVisible(img)
+    ) {
+      return true;
+    }
+
     if (img.closest('#lightbox')) {
       return (
         isLightboxImageForLastClickedSource(img) ||
@@ -1192,6 +1413,15 @@
       }
     });
 
+    if (activeCustomSiteProfile && isHdrFixEnabledForTorrent(getCustomProfilePageKey())) {
+      getCustomProfileVisibleImages().forEach((img) => {
+        if (!seen.has(img)) {
+          seen.add(img);
+          images.push(img);
+        }
+      });
+    }
+
     return images;
   }
 
@@ -1224,6 +1454,19 @@
   }
 
   function getImageToggleState(img) {
+    if (
+      activeCustomSiteProfile &&
+      img instanceof HTMLImageElement &&
+      elementMatchesSelector(img, activeCustomSiteProfile.imageSelector)
+    ) {
+      const torrentId = getCustomProfilePageKey();
+      return {
+        torrentId,
+        tonemapEnabled: false,
+        hdrFixEnabled: isHdrFixEnabledForTorrent(torrentId)
+      };
+    }
+
     const torrentId = getTorrentId(img) || (img.closest('#lightbox') ? getLightboxContextTorrentId(img) : '');
     return {
       torrentId,
@@ -1512,7 +1755,7 @@
       note.className = 'ptp-hdr-processing-note';
       note.setAttribute('aria-live', 'polite');
       note.dataset.torrentId = torrentId;
-      hdrButton.insertAdjacentElement('afterend', note);
+      hdrButton.after(note);
     }
 
     updateHdrProcessingNote(torrentId);
@@ -1783,6 +2026,7 @@
     push(img.dataset.original);
     push(img.dataset.full);
     push(img.dataset.ptpHdrOriginalSrc);
+    getCustomProfileImageSourceCandidates(img).forEach(push);
 
     [img.srcset, img.getAttribute('srcset')].forEach((srcset) => {
       if (!srcset) {
@@ -1796,6 +2040,99 @@
     });
 
     return Array.from(candidates);
+  }
+
+  function elementMatchesSelector(element, selector) {
+    if (!(element instanceof Element) || !selector) {
+      return false;
+    }
+
+    try {
+      return element.matches(selector);
+    } catch {
+      return false;
+    }
+  }
+
+  function getCustomProfilePageKey(profile = activeCustomSiteProfile) {
+    if (!profile) {
+      return '';
+    }
+
+    return `custom:${profile.id}:${globalThis.location.hostname}${globalThis.location.pathname}`;
+  }
+
+  function getCustomProfileImageSourceCandidates(img, profile = activeCustomSiteProfile) {
+    if (
+      !profile ||
+      profile.type !== 'visibleImages' ||
+      !(img instanceof HTMLImageElement) ||
+      !elementMatchesSelector(img, profile.imageSelector)
+    ) {
+      return [];
+    }
+
+    const candidates = [];
+    profile.sourceAttributes.forEach((attribute) => {
+      if (attribute === 'currentSrc') {
+        candidates.push(img.currentSrc);
+        return;
+      }
+      if (attribute === 'src') {
+        candidates.push(img.src, img.getAttribute('src'));
+        return;
+      }
+
+      candidates.push(img.getAttribute(attribute));
+      if (attribute.startsWith('data-')) {
+        const datasetKey = attribute
+          .slice(5)
+          .replaceAll(/-([a-z])/g, (_match, letter) => letter.toUpperCase());
+        candidates.push(img.dataset?.[datasetKey]);
+      }
+    });
+
+    return candidates;
+  }
+
+  function isCustomProfileImageVisible(img, profile = activeCustomSiteProfile) {
+    if (!(img instanceof HTMLImageElement) || !profile) {
+      return false;
+    }
+
+    if (!profile.visibleOnly) {
+      return true;
+    }
+
+    const rect = img.getBoundingClientRect();
+    return (
+      rect.width > 0 &&
+      rect.height > 0 &&
+      rect.bottom >= 0 &&
+      rect.right >= 0 &&
+      rect.top <= (globalThis.innerHeight || document.documentElement.clientHeight) &&
+      rect.left <= (globalThis.innerWidth || document.documentElement.clientWidth)
+    );
+  }
+
+  function getCustomProfileVisibleImages(profile = activeCustomSiteProfile) {
+    if (!profile) {
+      return [];
+    }
+
+    let images = [];
+    try {
+      images = [...document.querySelectorAll(profile.imageSelector)];
+    } catch {
+      return [];
+    }
+
+    return images.filter(
+      (img) =>
+        img instanceof HTMLImageElement &&
+        isCustomProfileImageVisible(img, profile) &&
+        getImageSourceCandidates(img).some((candidate) => isHdrFixCandidateSource(candidate))
+    );
   }
 
   function isHdrFixCandidateSource(url) {
@@ -2188,6 +2525,13 @@
     const convertedUrl = await getToneMappedHdrUrl(src, img);
     const { hdrFixEnabled: stillHdrFixEnabled } = getImageToggleState(img);
     if (!isProcessingContextCurrent(processingContext)) {
+      log('discarding stale converted image', {
+        src,
+        currentGeneration: processingContext?.torrentId
+          ? getHdrProcessingGeneration(processingContext.torrentId)
+          : null,
+        resultGeneration: processingContext?.generation ?? null
+      });
       releaseTransientPtpObjectUrl(convertedUrl);
       return null;
     }
@@ -2537,6 +2881,218 @@
       if (context && !queued) {
         finishHdrProcessingForImage(img, false, context);
       }
+    });
+  }
+
+  function updateCustomSiteControls() {
+    const profile = activeCustomSiteProfile;
+    if (!profile) {
+      return;
+    }
+
+    const button = document.querySelector('.ptp-custom-profile-hdr-toggle');
+    const torrentId = getCustomProfilePageKey(profile);
+    if (button) {
+      const enabled = isHdrFixEnabledForTorrent(torrentId);
+      button.classList.toggle('is-enabled', enabled);
+      button.querySelector('.ptp-tonemap-toggle__label').textContent = enabled
+        ? 'HDR Black Fix: Visible ON'
+        : 'HDR Black Fix: Visible';
+    }
+    updateHdrProcessingNote(torrentId);
+  }
+
+  function getCustomSiteControlsAnchor(profile = activeCustomSiteProfile) {
+    if (!profile) {
+      return null;
+    }
+
+    try {
+      return document.querySelector(profile.controlsAnchor) || document.body;
+    } catch {
+      return document.body;
+    }
+  }
+
+  function insertCustomSiteControls(anchor, controls, profile = activeCustomSiteProfile) {
+    const placement = normalizeCustomSiteControlsPlacement(profile?.controlsPlacement);
+    if (placement === 'before') {
+      anchor.before(controls);
+      return;
+    }
+    if (placement === 'after') {
+      anchor.after(controls);
+      return;
+    }
+    if (placement === 'append') {
+      anchor.appendChild(controls);
+      return;
+    }
+
+    anchor.insertBefore(controls, anchor.firstChild);
+  }
+
+  function ensureCustomSiteControls() {
+    const profile = activeCustomSiteProfile;
+    if (!profile || document.querySelector('.ptp-custom-profile-controls')) {
+      return;
+    }
+
+    const anchor = getCustomSiteControlsAnchor(profile);
+    if (!(anchor instanceof Element)) {
+      return;
+    }
+
+    const controls = document.createElement('div');
+    controls.className = 'ptp-tonemap-controls ptp-custom-profile-controls';
+    controls.dataset.torrentId = getCustomProfilePageKey(profile);
+
+    const button = document.createElement('button');
+    button.className = 'ptp-tonemap-toggle ptp-hdr-blackfix-toggle ptp-custom-profile-hdr-toggle';
+    button.type = 'button';
+
+    const dot = document.createElement('span');
+    dot.className = 'ptp-tonemap-toggle__dot';
+
+    const label = document.createElement('span');
+    label.className = 'ptp-tonemap-toggle__label';
+    label.textContent = 'HDR Black Fix: Visible';
+
+    button.appendChild(dot);
+    button.appendChild(label);
+    button.addEventListener('click', () => {
+      void toggleCustomSiteHdrFix();
+    });
+    controls.appendChild(button);
+
+    const note = document.createElement('span');
+    note.className = 'ptp-hdr-processing-note';
+    note.setAttribute('aria-live', 'polite');
+    note.dataset.torrentId = getCustomProfilePageKey(profile);
+    controls.appendChild(note);
+
+    insertCustomSiteControls(anchor, controls, profile);
+    updateCustomSiteControls();
+  }
+
+  function refreshCustomSiteVisibleImages(
+    enabled = isHdrFixEnabledForTorrent(getCustomProfilePageKey()),
+    force = false
+  ) {
+    const torrentId = getCustomProfilePageKey();
+    if (!torrentId) {
+      return;
+    }
+
+    const images = getCustomProfileVisibleImages();
+    const trackedImages = enabled
+      ? images.filter((img) => force || (!analyzedImages.has(img) && !pendingImages.has(img) && !queuedImages.has(img)))
+      : images;
+    if (enabled && trackedImages.length === 0) {
+      return;
+    }
+
+    const generation = enabled ? startHdrProcessing(torrentId, trackedImages.length) : cancelHdrProcessing(torrentId);
+    const context = { torrentId, generation };
+
+    trackedImages.forEach((img) => {
+      if (!enabled) {
+        restoreOriginalImageSource(img);
+        clearImageAnalysisState(img);
+        finishHdrProcessingForImage(img, false, context);
+        return;
+      }
+
+      imageProcessingTorrent.set(img, context);
+      if (!queueImageAnalysis(img, force)) {
+        finishHdrProcessingForImage(img, false, context);
+      }
+    });
+  }
+
+  async function toggleCustomSiteHdrFix() {
+    const profile = activeCustomSiteProfile;
+    if (!profile) {
+      return;
+    }
+
+    const torrentId = getCustomProfilePageKey(profile);
+    const nextEnabled = !isHdrFixEnabledForTorrent(torrentId);
+    hdrFixEnabledByTorrent[torrentId] = nextEnabled;
+    await GM.setValue(HDR_FIX_PREF_KEY, hdrFixEnabledByTorrent);
+    updateCustomSiteControls();
+    refreshCustomSiteVisibleImages(nextEnabled, true);
+    logNormal('Custom profile HDR Black Fix toggled', {
+      profileId: profile.id,
+      pageKey: torrentId,
+      enabled: nextEnabled
+    });
+  }
+
+  function scheduleCustomSiteScan() {
+    const profile = activeCustomSiteProfile;
+    const torrentId = getCustomProfilePageKey(profile);
+    if (!profile || !isHdrFixEnabledForTorrent(torrentId)) {
+      return;
+    }
+
+    if (profile.scanTimer) {
+      clearTimeout(profile.scanTimer);
+    }
+    profile.scanTimer = setTimeout(() => {
+      profile.scanTimer = null;
+      refreshCustomSiteVisibleImages(true, false);
+    }, 150);
+  }
+
+  function observeCustomSiteProfile() {
+    const profile = activeCustomSiteProfile;
+    if (!profile || customSiteProfileObserver) {
+      return;
+    }
+
+    let container = document.body;
+    try {
+      container = document.querySelector(profile.containerSelector) || document.body;
+    } catch {}
+
+    customSiteProfileObserver = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (
+          mutation.type === 'attributes' &&
+          mutation.target instanceof HTMLImageElement &&
+          elementMatchesSelector(mutation.target, profile.imageSelector)
+        ) {
+          clearImageAnalysisState(mutation.target);
+        }
+      });
+      scheduleCustomSiteScan();
+    });
+    customSiteProfileObserver.observe(container, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['src', 'srcset', ...profile.sourceAttributes.filter((attr) => attr.startsWith('data-'))]
+    });
+
+    globalThis.addEventListener('scroll', scheduleCustomSiteScan, { passive: true });
+    globalThis.addEventListener('resize', scheduleCustomSiteScan);
+  }
+
+  function initCustomSiteProfile() {
+    if (!activeCustomSiteProfile) {
+      return;
+    }
+
+    ensureCustomSiteControls();
+    observeCustomSiteProfile();
+    if (isHdrFixEnabledForTorrent(getCustomProfilePageKey())) {
+      refreshCustomSiteVisibleImages(true, false);
+    }
+    logNormal('Custom site profile init', {
+      profileId: activeCustomSiteProfile.id,
+      label: activeCustomSiteProfile.label,
+      images: getCustomProfileVisibleImages().length
     });
   }
 
@@ -3272,6 +3828,29 @@
     return deleted;
   }
 
+  async function clearCurrentCustomSiteHdrCache() {
+    const sources = new Set(
+      getCustomProfileVisibleImages()
+        .map((img) => getEligibleHdrFixSource(img))
+        .map((src) => normalizeUrlCandidate(src))
+        .filter(Boolean)
+    );
+    if (!sources.size) {
+      return 0;
+    }
+
+    const deleted = await deleteHdrCacheEntries((value) =>
+      sources.has(normalizeUrlCandidate(value?.src || ''))
+    );
+    clearConvertedSourceCacheForSources(sources);
+    getCustomProfileVisibleImages().forEach((img) => releasePtpConvertedObjectUrl(img));
+    logNormal('Custom profile current page HDR cache cleared', {
+      profileId: activeCustomSiteProfile?.id || '',
+      deleted
+    });
+    return deleted;
+  }
+
   async function clearAllPtpHdrCache() {
     const deleted = await deleteHdrCacheEntries(
       (value) => !isSlowPicsHdrCacheSource(value?.src || '')
@@ -3297,7 +3876,13 @@
   }
 
   async function clearCurrentPageHdrCache() {
-    return IS_SLOWPICS_COLLECTION ? clearCurrentSlowPicsHdrCache() : clearCurrentPtpHdrCache();
+    if (IS_SLOWPICS_COLLECTION) {
+      return clearCurrentSlowPicsHdrCache();
+    }
+    if (activeCustomSiteProfile) {
+      return clearCurrentCustomSiteHdrCache();
+    }
+    return clearCurrentPtpHdrCache();
   }
 
   async function clearAllSlowPicsHdrCache() {
@@ -3350,6 +3935,19 @@
     });
   }
 
+  function shouldRunOnCurrentPage() {
+    return IS_PTP || IS_SLOWPICS_COLLECTION || Boolean(activeCustomSiteProfile);
+  }
+
+  if (!shouldRunOnCurrentPage()) {
+    log('init skip: unsupported page', {
+      host: globalThis.location.hostname,
+      path: globalThis.location.pathname,
+      customProfiles: customSiteProfiles.length
+    });
+    return;
+  }
+
   // Initial state + inject for already-rendered panels
   logNormal('init', {
     isFirefox: IS_FIREFOX,
@@ -3363,52 +3961,59 @@
   });
   ensureTonemapUiStyle();
   updateTonemapAdjustmentStyle();
-  applyState();
-  injectButtons();
-  forceApplyHdrFixToCurrentImages();
-  scanImages();
-  initSlowPicsCollection();
+  if (IS_PTP) {
+    applyState();
+    injectButtons();
+    forceApplyHdrFixToCurrentImages();
+    scanImages();
+  }
+  if (IS_SLOWPICS_COLLECTION) {
+    initSlowPicsCollection();
+  }
+  initCustomSiteProfile();
 
-  document.addEventListener(
-    'click',
-    (event) => {
-      const img =
-        event.target instanceof HTMLImageElement ? event.target : event.target?.closest?.('img');
-      if (!(img instanceof HTMLImageElement)) {
-        return;
-      }
-
-      const torrentId = getTorrentId(img);
-      if (torrentId) {
-        lastClickedTorrentId = torrentId;
-        if (isTonemapEnabledForTorrent(torrentId) && !isHdrFixEnabledForTorrent(torrentId)) {
-          rememberTonemapSourceCandidates(img, torrentId);
+  if (IS_PTP) {
+    document.addEventListener(
+      'click',
+      (event) => {
+        const img =
+          event.target instanceof HTMLImageElement ? event.target : event.target?.closest?.('img');
+        if (!(img instanceof HTMLImageElement)) {
+          return;
         }
-      }
 
-      const src = getEligibleHdrFixSource(img);
-      if (!src) {
-        lastClickedHdrSource = '';
+        const torrentId = getTorrentId(img);
+        if (torrentId) {
+          lastClickedTorrentId = torrentId;
+          if (isTonemapEnabledForTorrent(torrentId) && !isHdrFixEnabledForTorrent(torrentId)) {
+            rememberTonemapSourceCandidates(img, torrentId);
+          }
+        }
+
+        const src = getEligibleHdrFixSource(img);
+        if (!src) {
+          lastClickedHdrSource = '';
+          lastClickedConvertedSrc = img.currentSrc || img.src || '';
+          log('remembered tonemap click target', {
+            torrentId: lastClickedTorrentId,
+            currentSrc: lastClickedConvertedSrc
+          });
+          scheduleLightboxSync();
+          return;
+        }
+
+        lastClickedHdrSource = src;
         lastClickedConvertedSrc = img.currentSrc || img.src || '';
-        log('remembered tonemap click target', {
+        log('remembered hdr click target', {
           torrentId: lastClickedTorrentId,
+          src: lastClickedHdrSource,
           currentSrc: lastClickedConvertedSrc
         });
         scheduleLightboxSync();
-        return;
-      }
-
-      lastClickedHdrSource = src;
-      lastClickedConvertedSrc = img.currentSrc || img.src || '';
-      log('remembered hdr click target', {
-        torrentId: lastClickedTorrentId,
-        src: lastClickedHdrSource,
-        currentSrc: lastClickedConvertedSrc
-      });
-      scheduleLightboxSync();
-    },
-    true
-  );
+      },
+      true
+    );
+  }
 
   // Watch for dynamically opened torrent panels (expand/collapse)
   let refreshScheduled = false;
@@ -3514,27 +4119,29 @@
     return false;
   }
 
-  const observer = new MutationObserver((mutations) => {
-    const shouldRefresh = mutations.some((mutation) => {
-      if (mutation.type === 'attributes') {
-        const target = mutation.target;
-        return Boolean(
-          target instanceof Element && (target.matches('#lightbox') || target.matches('#lightbox img'))
-        );
+  if (IS_PTP) {
+    const observer = new MutationObserver((mutations) => {
+      const shouldRefresh = mutations.some((mutation) => {
+        if (mutation.type === 'attributes') {
+          const target = mutation.target;
+          return Boolean(
+            target instanceof Element && (target.matches('#lightbox') || target.matches('#lightbox img'))
+          );
+        }
+
+        return [...mutation.addedNodes].some((node) => shouldRefreshForAddedElement(node));
+      });
+
+      if (shouldRefresh) {
+        scheduleRefresh();
+        scheduleLightboxSync();
       }
-
-      return [...mutation.addedNodes].some((node) => shouldRefreshForAddedElement(node));
     });
-
-    if (shouldRefresh) {
-      scheduleRefresh();
-      scheduleLightboxSync();
-    }
-  });
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['src', 'srcset', 'class', 'style']
-  });
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['src', 'srcset', 'class', 'style']
+    });
+  }
 })();
