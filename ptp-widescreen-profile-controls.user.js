@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP Widescreen Profile Controls
 // @namespace    https://passthepopcorn.me/
-// @version      1.0.1
+// @version      1.0.2
 // @description  Add a Widescreen tab to profile edit pages and control widescreen.css width variables.
 // @author       Audionut
 // @match        https://passthepopcorn.me/*
@@ -16,7 +16,7 @@
   'use strict';
 
   const SETTINGS_KEY = 'ptp_widescreen_profile_controls_v1';
-  const SCRIPT_VERSION = '1.0.1';
+  const SCRIPT_VERSION = '1.0.2';
   const TORRENTS_VIEW_MODE_KEY = 'ptp_widescreen_torrents_view_mode_v1';
   const TOP10_VIEW_MODE_KEY = 'ptp_widescreen_top10_view_mode_v1';
   const TORRENTS_SMALL_COVER_VIEW_MODE = 'SmallCover';
