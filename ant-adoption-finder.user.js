@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ANT - Adoption cross-seed finder
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.1.0
+// @version      0.1.1
 // @description  Search other trackers for ANT adoption torrents by IMDb id and strict filelist match.
 // @author       Audionut
 // @match        https://anthelion.me/torrents.php?type=adoption*
@@ -98,6 +98,12 @@
       label: 'Cache all lookup results',
       type: 'checkbox',
       default: true
+    },
+    load_cache_status_on_page_load: {
+      label: 'Load cache status on page load',
+      type: 'checkbox',
+      default: false,
+      tooltip: 'Render cached row status and cached tracker links as soon as the page opens.'
     },
     clean_site_lookup_cache: {
       label: 'Clean site lookup cache',
@@ -412,6 +418,8 @@
     row_limit: 'Limit how many uncached eligible rows one button press processes.',
     use_cache:
       'Store ANT metadata, tracker results, qui results, and row completion state locally.',
+    load_cache_status_on_page_load:
+      'On page load, restore cached completed/cached row states without making new requests.',
     clean_site_lookup_cache: 'Clears tracker/qui lookup results and row-complete markers.',
     clean_ant_cache: 'Clears cached ANT detail-page metadata and legacy filename cache.',
     debug_logging: 'Prints request, cache, qui, and matching details to the browser console.',
@@ -930,6 +938,7 @@
   let quiAddPollTimer = null;
   let quiAddPollInFlight = false;
   const qui_ADD_POLL_INTERVAL_MS = 5000;
+  const qui_ANT_FOLLOW_UP_POLL_INTERVAL_MS = 10000;
   const qui_PENDING_STATES = new Set(['checkingresumedata', 'queuedup']);
   const refreshedRowKeys = new Set();
   const iconDataUrlPromises = new Map();
@@ -2335,18 +2344,22 @@
     return percent === null || percent < 100;
   }
 
-  function hasUnresolvedquiAddJobs() {
-    return Array.from(quiAddJobs.values()).some(
-      (job) =>
-        isquiAddJobPending(job) ||
-        job.followUpStatus === 'pending' ||
-        job.followUpStatus === 'checking' ||
-        job.followUpStatus === 'adding'
-    );
+  function shouldPollquiAddJob(job) {
+    return !!job && !job.error && isquiAddJobPending(job);
+  }
+
+  function hasPollablequiAddJobs() {
+    return Array.from(quiAddJobs.values()).some((job) => shouldPollquiAddJob(job));
   }
 
   function getMatchHost(match) {
     return safeHostFromUrl(match?.detailsUrl) || safeHostFromUrl(match?.downloadUrl) || '';
+  }
+
+  function isAntquiItem(item) {
+    return (Array.isArray(item?.hosts) ? item.hosts : []).some(
+      (host) => host === 'anthelion.me' || host.endsWith('.anthelion.me')
+    );
   }
 
   function namesLikelyMatch(left, right) {
@@ -2410,9 +2423,51 @@
     return viable[0]?.item || null;
   }
 
+  function schedulequiCrossSeedFollowupPoll(jobKey, delayMs = qui_ANT_FOLLOW_UP_POLL_INTERVAL_MS) {
+    setTimeout(
+      () => {
+        runquiCrossSeedFollowup(jobKey).catch((error) => {
+          debugLog('qui cross-seed follow-up poll failed', { jobKey, error });
+        });
+      },
+      Math.max(0, delayMs)
+    );
+  }
+
+  async function addAntTorrentForquiFollowup(jobKey, job, antMatch, reason) {
+    const antDownloadUrl = getRowDownloadUrl(job.row);
+    if (!antDownloadUrl) {
+      throw new Error('Missing ANT download URL for follow-up add.');
+    }
+
+    const config = getAntquiConfig(antMatch?.savePath || job.savePath);
+    job.followUpStatus = 'adding';
+    job.followUpSavePath = config.savePath;
+    job.updatedAt = Date.now();
+    quiAddJobs.set(jobKey, job);
+    renderquiAddMonitor(job.row);
+
+    await postToqui(config, [antDownloadUrl]);
+    cacheDelete(`qui-result:${job.filename}`);
+    job.followUpStatus = 'added';
+    job.followUpHash = antMatch?.hash || '';
+    job.updatedAt = Date.now();
+    quiAddJobs.set(jobKey, job);
+    markRowProcessingComplete(job.row, job.filename, reason);
+    renderquiAddMonitor(job.row);
+    debugLog('qui cross-seed follow-up added ANT torrent', {
+      filename: job.filename,
+      site: job.site,
+      savePath: config.savePath,
+      antDownloadUrl,
+      reason,
+      matchedInqui: Boolean(antMatch)
+    });
+  }
+
   async function runquiCrossSeedFollowup(jobKey) {
     const job = quiAddJobs.get(jobKey);
-    if (!job || job.error || job.followUpStatus !== 'pending') return;
+    if (!job || job.error || !['pending', 'checking'].includes(job.followUpStatus)) return;
     if (isquiAddJobPending(job)) {
       job.followUpScheduled = false;
       job.followUpStatus = '';
@@ -2430,6 +2485,7 @@
     }
 
     job.followUpStatus = 'checking';
+    job.followUpLastCheckedAt = Date.now();
     job.updatedAt = Date.now();
     quiAddJobs.set(jobKey, job);
     renderquiAddMonitor(job.row);
@@ -2438,62 +2494,39 @@
       debugLog('qui cross-seed follow-up search start', {
         filename: job.filename,
         site: job.site,
-        savePath: job.savePath
+        savePath: job.savePath,
+        fallbackRunAt: job.followUpRunAt
       });
       const quiMatches = await searchquiFresh(job.filename);
-      const antMatch = quiMatches.find((item) => String(item.savePath || '').trim());
-      const antDownloadUrl = getRowDownloadUrl(job.row);
-      if (!antDownloadUrl) {
-        throw new Error('Missing ANT download URL for follow-up add.');
-      }
+      const antMatch = quiMatches.find(
+        (item) => isAntquiItem(item) && String(item.savePath || '').trim()
+      );
 
-      if (!antMatch) {
-        const config = getAntquiConfig(job.savePath);
-        job.followUpStatus = 'adding';
-        job.followUpSavePath = config.savePath;
-        job.updatedAt = Date.now();
-        quiAddJobs.set(jobKey, job);
-        renderquiAddMonitor(job.row);
-
-        await postToqui(config, [antDownloadUrl]);
-        cacheDelete(`qui-result:${job.filename}`);
-        job.followUpStatus = 'added';
-        job.followUpHash = '';
-        job.updatedAt = Date.now();
-        quiAddJobs.set(jobKey, job);
-        markRowProcessingComplete(job.row, job.filename, 'qui-follow-up-ant-added-without-match');
-        renderquiAddMonitor(job.row);
-        debugLog('qui cross-seed follow-up added ANT torrent without prior qui match', {
-          filename: job.filename,
-          site: job.site,
-          matchCount: quiMatches.length,
-          savePath: config.savePath,
-          antDownloadUrl
-        });
+      if (antMatch) {
+        await addAntTorrentForquiFollowup(jobKey, job, antMatch, 'qui-follow-up-ant-added');
         return;
       }
 
-      const config = getAntquiConfig(antMatch.savePath || job.savePath);
-      job.followUpStatus = 'adding';
-      job.followUpSavePath = config.savePath;
-      job.updatedAt = Date.now();
-      quiAddJobs.set(jobKey, job);
-      renderquiAddMonitor(job.row);
+      if (Date.now() >= Number(job.followUpRunAt || 0)) {
+        await addAntTorrentForquiFollowup(jobKey, job, null, 'qui-follow-up-ant-added-fallback');
+        return;
+      }
 
-      await postToqui(config, [antDownloadUrl]);
-      cacheDelete(`qui-result:${job.filename}`);
-      job.followUpStatus = 'added';
-      job.followUpHash = antMatch.hash || '';
+      job.followUpStatus = 'pending';
       job.updatedAt = Date.now();
       quiAddJobs.set(jobKey, job);
-      markRowProcessingComplete(job.row, job.filename, 'qui-follow-up-ant-added');
       renderquiAddMonitor(job.row);
-      debugLog('qui cross-seed follow-up added ANT torrent', {
+      debugLog('qui cross-seed follow-up ANT not found yet; polling again', {
         filename: job.filename,
         site: job.site,
-        savePath: config.savePath,
-        antDownloadUrl
+        matchCount: quiMatches.length,
+        nextPollMs: qui_ANT_FOLLOW_UP_POLL_INTERVAL_MS,
+        fallbackRunAt: job.followUpRunAt
       });
+      schedulequiCrossSeedFollowupPoll(
+        jobKey,
+        Math.min(qui_ANT_FOLLOW_UP_POLL_INTERVAL_MS, Math.max(0, job.followUpRunAt - Date.now()))
+      );
     } catch (error) {
       job.followUpStatus = 'failed';
       job.followUpError = String(error.message || error);
@@ -2523,14 +2556,11 @@
       filename: job.filename,
       site: job.site,
       delayMs,
+      pollIntervalMs: qui_ANT_FOLLOW_UP_POLL_INTERVAL_MS,
       savePath: job.savePath
     });
 
-    setTimeout(() => {
-      runquiCrossSeedFollowup(jobKey).catch((error) => {
-        debugLog('qui cross-seed follow-up timer failed', { jobKey, error });
-      });
-    }, delayMs);
+    schedulequiCrossSeedFollowupPoll(jobKey, Math.min(qui_ANT_FOLLOW_UP_POLL_INTERVAL_MS, delayMs));
   }
 
   function getquiSavePathForRow(row) {
@@ -2551,9 +2581,9 @@
     }
 
     const statusLabels = {
-      pending: 'Waiting for ANT cross-seed...',
+      pending: 'Polling for ANT cross-seed...',
       checking: 'Checking for ANT cross-seed...',
-      adding: 'ANT found; adding ANT torrent...',
+      adding: 'Adding ANT torrent...',
       added: 'ANT submitted to qui',
       missing: 'ANT not found in qui',
       failed: `ANT follow-up failed: ${job.followUpError || 'unknown error'}`
@@ -2634,7 +2664,14 @@
 
     quiAddPollInFlight = true;
     try {
-      const activeJobs = Array.from(quiAddJobs.entries()).filter(([, job]) => !job.error);
+      const activeJobs = Array.from(quiAddJobs.entries()).filter(([, job]) =>
+        shouldPollquiAddJob(job)
+      );
+      if (activeJobs.length === 0) {
+        stopquiAddPolling('no pollable jobs');
+        return;
+      }
+
       for (const [key, job] of activeJobs) {
         const quiItems = await searchquiJobCandidates(job);
         debugLog('qui add monitor poll result', {
@@ -2679,7 +2716,7 @@
     } finally {
       quiAddPollInFlight = false;
       renderAllquiAddMonitors();
-      if (!hasUnresolvedquiAddJobs()) stopquiAddPolling('all jobs complete');
+      if (!hasPollablequiAddJobs()) stopquiAddPolling('all site torrents complete');
     }
   }
 
@@ -2849,8 +2886,28 @@
     return trackers.every((tracker) => getTrackerResultFromIndex(tracker.site, filename).cached);
   }
 
+  function getRowCompletion(torrentId, filename, trackers) {
+    return cacheGet(rowCompleteCacheKey(torrentId, filename, trackers), null);
+  }
+
+  function isFullyCompletedRowCompletion(completion) {
+    return completion?.status === 'fully-completed';
+  }
+
+  function getRowCompletionText(completion) {
+    const reasonLabels = {
+      'manual-ant-added': 'completed: ANT submitted to qui',
+      'qui-follow-up-ant-added': 'completed: ANT cross-seed found and submitted',
+      'qui-follow-up-ant-added-fallback': 'completed: ANT fallback submitted',
+      'qui-follow-up-ant-added-without-match': 'completed: ANT fallback submitted'
+    };
+    return reasonLabels[completion?.reason] || 'completed: ANT submitted to qui';
+  }
+
   function isRowTrackerComplete(torrentId, filename, trackers) {
     if (trackers.length === 0) return true;
+    const completion = getRowCompletion(torrentId, filename, trackers);
+    if (isFullyCompletedRowCompletion(completion)) return true;
     if (!areTrackerResultsCached(filename, trackers)) return false;
     const completeKey = rowCompleteCacheKey(torrentId, filename, trackers);
     if (!cacheHas(completeKey)) {
@@ -2866,10 +2923,13 @@
 
   function markRowTrackerComplete(torrentId, filename, trackers) {
     if (trackers.length === 0) return;
+    const existing = getRowCompletion(torrentId, filename, trackers);
+    if (isFullyCompletedRowCompletion(existing)) return;
     cacheSet(rowCompleteCacheKey(torrentId, filename, trackers), {
       torrentId,
       filename,
       trackers: trackers.map((tracker) => tracker.site),
+      status: 'tracker-complete',
       completedAt: Date.now()
     });
   }
@@ -2894,7 +2954,15 @@
       return;
     }
 
-    markRowTrackerComplete(context.torrentId, context.filename, context.trackers);
+    cacheSet(rowCompleteCacheKey(context.torrentId, context.filename, context.trackers), {
+      torrentId: context.torrentId,
+      filename: context.filename,
+      trackers: context.trackers.map((tracker) => tracker.site),
+      status: 'fully-completed',
+      reason,
+      completedAt: Date.now()
+    });
+    setRowState(row, getRowCompletionText({ reason }), 'done');
     debugLog('row complete cache marked', { reason, context });
   }
 
@@ -2958,7 +3026,7 @@
     if (existingJob && !existingJob.error) {
       renderquiAddMonitor(row);
       getquiMonitorContainer(row).scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      startquiAddPolling();
+      if (shouldPollquiAddJob(existingJob)) startquiAddPolling();
       return;
     }
 
@@ -3284,20 +3352,26 @@
 
   function renderCachedTrackerRow(row, torrentId, filename, trackers, titleSnapshot = null) {
     const matches = getCachedTrackerMatches(filename, trackers);
+    const completion = getRowCompletion(torrentId, filename, trackers);
     appendMatches(row, matches, filename);
     restoreRowTitleLink(row, titleSnapshot);
-    setRowState(
-      row,
-      matches.length
-        ? `cached ${matches.length} match${matches.length === 1 ? '' : 'es'}`
-        : 'cached no matches',
-      matches.length ? 'done' : 'none'
-    );
+    if (isFullyCompletedRowCompletion(completion)) {
+      setRowState(row, getRowCompletionText(completion), 'done');
+    } else {
+      setRowState(
+        row,
+        matches.length
+          ? `cached ${matches.length} match${matches.length === 1 ? '' : 'es'}`
+          : 'cached no matches',
+        matches.length ? 'done' : 'none'
+      );
+    }
     markRowTrackerComplete(torrentId, filename, trackers);
     debugLog('cached row skipped from batch', {
       torrentId,
       filename,
       trackers: trackers.map((tracker) => tracker.site),
+      completion,
       matches
     });
   }
@@ -3349,6 +3423,9 @@
 
       const cachedMetadata = cacheGet(antMetadataCacheKey(torrentId), null);
       const cachedFilename = cachedMetadata?.filename || cacheGet(`ant-filename:${torrentId}`);
+      const completion = cachedFilename
+        ? getRowCompletion(torrentId, cachedFilename, rowTrackers)
+        : null;
       if (refreshCache) {
         const key = refreshRowKey(torrentId, cachedFilename, rowTrackers);
         if (refreshedRowKeys.has(key)) {
@@ -3358,6 +3435,10 @@
           }
           continue;
         }
+      } else if (cachedFilename && isFullyCompletedRowCompletion(completion)) {
+        stats.skippedCached += 1;
+        renderCachedTrackerRow(row, torrentId, cachedFilename, rowTrackers, titleSnapshot);
+        continue;
       } else if (cachedFilename && isRowTrackerComplete(torrentId, cachedFilename, rowTrackers)) {
         stats.skippedCached += 1;
         renderCachedTrackerRow(row, torrentId, cachedFilename, rowTrackers, titleSnapshot);
@@ -3391,6 +3472,24 @@
     if (!hasRemaining) return 'No uncached rows remaining';
     if (limit > 0) return `Process next ${limit} rows by IMDb`;
     return 'Search adoption rows by IMDb';
+  }
+
+  function loadCachedRowStatusesOnPageLoad() {
+    if (!GM_config.get('load_cache_status_on_page_load') || !GM_config.get('use_cache')) return;
+
+    const rows = getRows();
+    const trackers = getScopedTrackers();
+    if (trackers.length === 0) {
+      debugLog('page-load cache status skipped: no scoped trackers');
+      return;
+    }
+
+    const { stats } = collectBatchRows(rows, trackers, 0, false);
+    debugLog('page-load cache status loaded', {
+      rowCount: rows.length,
+      trackers: trackers.map((tracker) => tracker.site),
+      stats
+    });
   }
 
   async function processRow(row, index, total, trackers, rowMeta = {}, refreshCache = false) {
@@ -3773,5 +3872,6 @@
 
   addStyles();
   addControls();
+  loadCachedRowStatusesOnPageLoad();
   preloadEnabledTrackerIcons();
 })();
