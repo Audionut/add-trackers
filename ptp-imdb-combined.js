@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.3.9
+// @version      1.4.0
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -38,6 +38,12 @@ let ALTERNATE_VERSIONS_PANEL_OPEN = false;
 let SHOW_KEYWORDS = true;
 let KEYWORDS_PANEL_OPEN = false;
 let SHOW_PARENTS_GUIDE = true;
+let SHOW_IMDB_REVIEWS = false;
+let IMDB_REVIEWS_DISPLAY_MODE = 'inline';
+let HIDE_IMDB_REVIEW_SPOILERS = true;
+let IMDB_REVIEWS_TAB_ACTIVE_BY_DEFAULT = false;
+let SHOW_IMDB_REVIEW_FILTER_CONTROLS = false;
+let DEFAULT_IMDB_REVIEW_FILTER = 'balanced';
 let ENABLE_IMDB_RATINGS_PANEL = false;
 let ENABLE_IMDB_RATINGS_EXPORT = false;
 let SHOW_RATINGS_METACRITIC = true;
@@ -161,6 +167,25 @@ const DEFAULT_IMDB_DEMOGRAPHIC_SORT_DIRECTION = 'asc';
 const IMDB_DEMOGRAPHIC_LABEL_FIELDS = ['userCategory', 'gender', 'age', 'country'];
 const DEFAULT_IMDB_WEIGHTED_SCORE_TYPE = 'trimmed5';
 const DEFAULT_IMDB_DEMOGRAPHIC_SCORE_OVERRIDE_KEY = 'gender:FEMALE';
+const IMDB_REVIEWS_DISPLAY_MODES = ['inline', 'tab'];
+const DEFAULT_IMDB_REVIEWS_DISPLAY_MODE = 'inline';
+const IMDB_REVIEWS_TARGETS = [
+    { key: 'highest', label: 'Highest rated', ratings: [10, 9, 8, 7] },
+    { key: 'middle', label: 'Middle rated', ratings: [5, 6, 4, 7] },
+    { key: 'lowest', label: 'Lowest rated', ratings: [1, 2, 3, 4] }
+];
+const IMDB_REVIEW_FILTER_OPTIONS = {
+    balanced: { label: 'Balanced' },
+    topRated: { label: 'Top rated', ratings: [10, 9, 8, 7, 6] },
+    lowestRated: { label: 'Lowest rated', ratings: [1, 2, 3, 4, 5] },
+    newest: { label: 'Newest', sortBy: 'SUBMISSION_DATE', sortOrder: 'DESC' },
+    oldest: { label: 'Oldest', sortBy: 'SUBMISSION_DATE', sortOrder: 'ASC' },
+    mostHelpful: { label: 'Most helpful', sortBy: 'HELPFULNESS_SCORE', sortOrder: 'DESC' },
+    mostUpvotes: { label: 'Most upvotes', sortBy: 'TOTAL_VOTES', sortOrder: 'DESC', clientSort: 'upVotes' },
+    mostDownvotes: { label: 'Most downvotes', sortBy: 'TOTAL_VOTES', sortOrder: 'DESC', clientSort: 'downVotes' },
+    mostVoted: { label: 'Most voted', sortBy: 'TOTAL_VOTES', sortOrder: 'DESC', clientSort: 'totalVotes' }
+};
+const DEFAULT_IMDB_REVIEW_FILTER_KEY = 'balanced';
 const IMDB_WEIGHTED_SCORE_TYPE_LABELS = {
     trimmed5: 'Trimmed mean 5%',
     trimmed10: 'Trimmed mean 10%',
@@ -272,6 +297,12 @@ const saveSettings = () => {
     GM.setValue('SHOW_KEYWORDS', SHOW_KEYWORDS);
     GM.setValue('KEYWORDS_PANEL_OPEN', KEYWORDS_PANEL_OPEN);
     GM.setValue('SHOW_PARENTS_GUIDE', SHOW_PARENTS_GUIDE);
+    GM.setValue('SHOW_IMDB_REVIEWS', SHOW_IMDB_REVIEWS);
+    GM.setValue('IMDB_REVIEWS_DISPLAY_MODE', IMDB_REVIEWS_DISPLAY_MODE);
+    GM.setValue('HIDE_IMDB_REVIEW_SPOILERS', HIDE_IMDB_REVIEW_SPOILERS);
+    GM.setValue('IMDB_REVIEWS_TAB_ACTIVE_BY_DEFAULT', IMDB_REVIEWS_TAB_ACTIVE_BY_DEFAULT);
+    GM.setValue('SHOW_IMDB_REVIEW_FILTER_CONTROLS', SHOW_IMDB_REVIEW_FILTER_CONTROLS);
+    GM.setValue('DEFAULT_IMDB_REVIEW_FILTER', DEFAULT_IMDB_REVIEW_FILTER);
     GM.setValue('ENABLE_IMDB_RATINGS_PANEL', ENABLE_IMDB_RATINGS_PANEL);
     GM.setValue('ENABLE_IMDB_RATINGS_EXPORT', ENABLE_IMDB_RATINGS_EXPORT);
     GM.setValue('SHOW_RATINGS_METACRITIC', SHOW_RATINGS_METACRITIC);
@@ -344,6 +375,18 @@ const loadSettings = async () => {
     SHOW_KEYWORDS = await GM.getValue('SHOW_KEYWORDS', true);
     KEYWORDS_PANEL_OPEN = await GM.getValue('KEYWORDS_PANEL_OPEN', false);
     SHOW_PARENTS_GUIDE = await GM.getValue('SHOW_PARENTS_GUIDE', true);
+    SHOW_IMDB_REVIEWS = await GM.getValue('SHOW_IMDB_REVIEWS', false);
+    const storedImdbReviewsDisplayMode = await GM.getValue('IMDB_REVIEWS_DISPLAY_MODE', DEFAULT_IMDB_REVIEWS_DISPLAY_MODE);
+    IMDB_REVIEWS_DISPLAY_MODE = IMDB_REVIEWS_DISPLAY_MODES.includes(storedImdbReviewsDisplayMode)
+        ? storedImdbReviewsDisplayMode
+        : DEFAULT_IMDB_REVIEWS_DISPLAY_MODE;
+    HIDE_IMDB_REVIEW_SPOILERS = await GM.getValue('HIDE_IMDB_REVIEW_SPOILERS', true);
+    IMDB_REVIEWS_TAB_ACTIVE_BY_DEFAULT = await GM.getValue('IMDB_REVIEWS_TAB_ACTIVE_BY_DEFAULT', false);
+    SHOW_IMDB_REVIEW_FILTER_CONTROLS = await GM.getValue('SHOW_IMDB_REVIEW_FILTER_CONTROLS', false);
+    const storedDefaultImdbReviewFilter = await GM.getValue('DEFAULT_IMDB_REVIEW_FILTER', DEFAULT_IMDB_REVIEW_FILTER_KEY);
+    DEFAULT_IMDB_REVIEW_FILTER = IMDB_REVIEW_FILTER_OPTIONS[storedDefaultImdbReviewFilter]
+        ? storedDefaultImdbReviewFilter
+        : DEFAULT_IMDB_REVIEW_FILTER_KEY;
     ENABLE_IMDB_RATINGS_PANEL = await GM.getValue('ENABLE_IMDB_RATINGS_PANEL', false);
     ENABLE_IMDB_RATINGS_EXPORT = await GM.getValue('ENABLE_IMDB_RATINGS_EXPORT', false);
     SHOW_RATINGS_METACRITIC = await GM.getValue('SHOW_RATINGS_METACRITIC', true);
@@ -693,6 +736,57 @@ function showSettingsPanel() {
                         <label style="display: block; margin-bottom: 10px; cursor: pointer; margin-left: 20px;">
                             <input type="checkbox" id="hide-text" style="margin-right: 8px;">
                             <span>Hide Parental Guide Text</span>
+                        </label>
+
+                        <h3 style="color: #F2DB83; margin: 24px 0 10px;">IMDb Reviews</h3>
+
+                        <label style="display: block; margin-bottom: 10px; cursor: pointer;">
+                            <input type="checkbox" id="show-imdb-reviews" style="margin-right: 8px;">
+                            <span>Show IMDb Reviews</span>
+                        </label>
+
+                        <label style="display: block; margin-bottom: 10px; cursor: pointer; margin-left: 20px;">
+                            <input type="checkbox" id="hide-imdb-review-spoilers" style="margin-right: 8px;">
+                            <span>Blur IMDb Review Spoilers</span>
+                        </label>
+
+                        <label style="display: block; margin-bottom: 10px; margin-left: 20px;">
+                            <span style="display: block; margin-bottom: 5px;">Display location:</span>
+                            <select id="imdb-reviews-display-mode" style="
+                                width: 100%;
+                                padding: 5px;
+                                background: #444;
+                                color: #fff;
+                                border: 1px solid #666;
+                                border-radius: 3px;
+                            ">
+                                <option value="inline">Inline above site comments</option>
+                                <option value="tab">Separate IMDb reviews tab</option>
+                            </select>
+                        </label>
+
+                        <label style="display: block; margin-bottom: 10px; cursor: pointer; margin-left: 20px;">
+                            <input type="checkbox" id="imdb-reviews-tab-active-by-default" style="margin-right: 8px;">
+                            <span>Show IMDb Reviews Tab by Default</span>
+                        </label>
+
+                        <label style="display: block; margin-bottom: 10px; cursor: pointer; margin-left: 20px;">
+                            <input type="checkbox" id="show-imdb-review-filter-controls" style="margin-right: 8px;">
+                            <span>Show IMDb Review Filter Controls</span>
+                        </label>
+
+                        <label style="display: block; margin-bottom: 10px; margin-left: 20px;">
+                            <span style="display: block; margin-bottom: 5px;">Default review filter:</span>
+                            <select id="default-imdb-review-filter" style="
+                                width: 100%;
+                                padding: 5px;
+                                background: #444;
+                                color: #fff;
+                                border: 1px solid #666;
+                                border-radius: 3px;
+                            ">
+                                ${Object.entries(IMDB_REVIEW_FILTER_OPTIONS).map(([filterKey, option]) => `<option value="${filterKey}">${option.label}</option>`).join('')}
+                            </select>
                         </label>
                     </div>
 
@@ -1504,6 +1598,12 @@ function loadSettingsIntoForm() {
     document.getElementById('toggleable-sections').checked = isToggleableSections;
     document.getElementById('hide-spoilers').checked = hideSpoilers;
     document.getElementById('hide-text').checked = hidetext;
+    document.getElementById('show-imdb-reviews').checked = SHOW_IMDB_REVIEWS;
+    document.getElementById('hide-imdb-review-spoilers').checked = HIDE_IMDB_REVIEW_SPOILERS;
+    document.getElementById('imdb-reviews-display-mode').value = IMDB_REVIEWS_DISPLAY_MODE;
+    document.getElementById('imdb-reviews-tab-active-by-default').checked = IMDB_REVIEWS_TAB_ACTIVE_BY_DEFAULT;
+    document.getElementById('show-imdb-review-filter-controls').checked = SHOW_IMDB_REVIEW_FILTER_CONTROLS;
+    document.getElementById('default-imdb-review-filter').value = DEFAULT_IMDB_REVIEW_FILTER;
     document.getElementById('cache-expiry').value = CACHE_EXPIRY_DAYS;
     document.getElementById('new-movie-ttl').value = NEW_MOVIE_TTL_DAYS;
     document.getElementById('techspecs-location').value = TECHSPECS_LOCATION;
@@ -1594,6 +1694,16 @@ function saveSettingsFromForm() {
     isToggleableSections = document.getElementById('toggleable-sections').checked;
     hideSpoilers = document.getElementById('hide-spoilers').checked;
     hidetext = document.getElementById('hide-text').checked;
+    SHOW_IMDB_REVIEWS = document.getElementById('show-imdb-reviews').checked;
+    HIDE_IMDB_REVIEW_SPOILERS = document.getElementById('hide-imdb-review-spoilers').checked;
+    IMDB_REVIEWS_DISPLAY_MODE = IMDB_REVIEWS_DISPLAY_MODES.includes(document.getElementById('imdb-reviews-display-mode').value)
+        ? document.getElementById('imdb-reviews-display-mode').value
+        : DEFAULT_IMDB_REVIEWS_DISPLAY_MODE;
+    IMDB_REVIEWS_TAB_ACTIVE_BY_DEFAULT = document.getElementById('imdb-reviews-tab-active-by-default').checked;
+    SHOW_IMDB_REVIEW_FILTER_CONTROLS = document.getElementById('show-imdb-review-filter-controls').checked;
+    DEFAULT_IMDB_REVIEW_FILTER = IMDB_REVIEW_FILTER_OPTIONS[document.getElementById('default-imdb-review-filter').value]
+        ? document.getElementById('default-imdb-review-filter').value
+        : DEFAULT_IMDB_REVIEW_FILTER_KEY;
     CACHE_EXPIRY_DAYS = parseInt(document.getElementById('cache-expiry').value) || 7;
     NEW_MOVIE_TTL_DAYS = parseInt(document.getElementById('new-movie-ttl').value) || 3;
     TECHSPECS_LOCATION = parseInt(document.getElementById('techspecs-location').value) || 1;
@@ -1671,6 +1781,12 @@ function handleResetAll() {
         SHOW_KEYWORDS = true;
         KEYWORDS_PANEL_OPEN = false;
         SHOW_PARENTS_GUIDE = true;
+        SHOW_IMDB_REVIEWS = false;
+        IMDB_REVIEWS_DISPLAY_MODE = DEFAULT_IMDB_REVIEWS_DISPLAY_MODE;
+        HIDE_IMDB_REVIEW_SPOILERS = true;
+        IMDB_REVIEWS_TAB_ACTIVE_BY_DEFAULT = false;
+        SHOW_IMDB_REVIEW_FILTER_CONTROLS = false;
+        DEFAULT_IMDB_REVIEW_FILTER = DEFAULT_IMDB_REVIEW_FILTER_KEY;
         ENABLE_IMDB_RATINGS_PANEL = false;
         ENABLE_IMDB_RATINGS_EXPORT = false;
         SHOW_RATINGS_METACRITIC = true;
@@ -2665,6 +2781,375 @@ function escapeHtmlAttribute(value) {
         .replace(/"/g, '&quot;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
+}
+
+function escapeHtml(value) {
+    return escapeHtmlAttribute(value).replace(/'/g, '&#039;');
+}
+
+function formatImdbReviewDate(value) {
+    if (!value) {
+        return '';
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return escapeHtml(value);
+    }
+
+    return date.toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+    });
+}
+
+function formatImdbReviewText(value) {
+    return escapeHtml(value || '').replace(/\r?\n/g, '<br>');
+}
+
+function ensureImdbReviewsStyles() {
+    const styleId = 'ptp-imdb-reviews-style';
+    if (document.getElementById(styleId)) {
+        return;
+    }
+
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = `
+        .imdb-reviews-panel .panel__heading {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .imdb-reviews-list {
+            display: grid;
+            gap: 12px;
+        }
+
+        .imdb-review-filter-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin: 0 0 12px;
+        }
+
+        .imdb-review-filter-button {
+            cursor: pointer;
+            padding: 3px 8px;
+        }
+
+        .imdb-review-filter-button.is-active {
+            font-weight: 700;
+        }
+
+        .imdb-review-card__meta,
+        .imdb-review-forum-meta {
+            color: #a7a7a7;
+            font-size: 12px;
+        }
+
+        .imdb-review-forum-summary {
+            margin-bottom: 8px;
+            font-weight: 700;
+        }
+
+        .imdb-review-forum-text {
+            line-height: 1.45;
+        }
+
+        .imdb-review-card__spoiler-label {
+            color: #d98c8c;
+            font-weight: 700;
+        }
+
+        .imdb-review-card__spoiler-content {
+            filter: blur(5px);
+            transition: filter 0.15s ease;
+        }
+
+        .imdb-review-card__spoiler-content:hover,
+        .imdb-review-card__spoiler-content:focus-within {
+            filter: none;
+        }
+
+        .imdb-review-avatar {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 92px;
+            font-size: 30px;
+            font-weight: 700;
+            color: #111;
+            background: #f2db83;
+        }
+
+        .imdb-reviews-panel .imdb-muted {
+            color: #a7a7a7;
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+function replaceImdbReviewsPanel(currentPanel, nextPanel) {
+    if (currentPanel.id) {
+        nextPanel.id = currentPanel.id;
+    }
+    currentPanel.replaceWith(nextPanel);
+}
+
+function buildImdbReviewsPanel(imdbId, reviewData) {
+    const panel = document.createElement('div');
+    panel.className = 'panel imdb-reviews-panel';
+
+    const reviews = Array.isArray(reviewData?.reviews) ? reviewData.reviews : [];
+    const reviewUrl = `https://www.imdb.com/title/${imdbId}/reviews/`;
+    const activeFilterKey = reviewData?.filterKey || 'balanced';
+    const filterControlsHtml = SHOW_IMDB_REVIEW_FILTER_CONTROLS
+        ? `
+            <div class="imdb-review-filter-controls">
+                ${Object.entries(IMDB_REVIEW_FILTER_OPTIONS).map(([filterKey, option]) => `
+                    <button type="button" class="imdb-review-filter-button${filterKey === activeFilterKey ? ' is-active' : ''}" data-imdb-review-filter="${filterKey}">
+                        ${escapeHtml(option.label)}
+                    </button>
+                `).join('')}
+            </div>
+        `
+        : '';
+    const bodyHtml = reviewData?.pending
+        ? '<div class="imdb-muted">Loading IMDb reviews...</div>'
+        : reviews.length === 0
+        ? '<div class="imdb-muted">No IMDb reviews found for the selected rating spread.</div>'
+        : `
+            <div class="imdb-reviews-list">
+                ${reviews.map((review) => {
+                    const reviewLink = review.id ? `https://www.imdb.com/review/${encodeURIComponent(review.id)}/` : reviewUrl;
+                    const shouldBlurSpoiler = HIDE_IMDB_REVIEW_SPOILERS && review.spoiler;
+                    const reviewIdLabel = review.id ? `#${escapeHtml(review.id)}` : '#IMDb';
+                    const authorName = review.authorName ? escapeHtml(review.authorName) : 'IMDb user';
+                    const authorUrl = review.authorId
+                        ? `https://www.imdb.com/user/${encodeURIComponent(review.authorId)}/`
+                        : 'https://www.imdb.com/';
+                    const submissionDate = formatImdbReviewDate(review.submissionDate);
+                    const helpfulness = review.helpfulness && Number.isFinite(review.helpfulness.upVotes)
+                        ? `${formatCount(review.helpfulness.upVotes)} up / ${formatCount(review.helpfulness.downVotes || 0)} down`
+                        : '';
+                    const metaParts = [
+                        escapeHtml(review.bucketLabel),
+                        Number.isFinite(review.authorRating) ? `${review.authorRating}/10` : null,
+                        submissionDate,
+                        helpfulness,
+                        review.spoiler ? '<span class="imdb-review-card__spoiler-label">spoiler</span>' : null
+                    ].filter(Boolean);
+                    const spoilerClass = shouldBlurSpoiler ? ' imdb-review-card__spoiler-content' : '';
+
+                    return `
+                        <div class="forum-post imdb-review-post">
+                            <div class="forum-post__heading">
+                                <span style="float:left;">
+                                    <a class="forum-post__id" href="${reviewLink}" target="_blank" rel="noreferrer">${reviewIdLabel}</a>
+                                    by <strong><a class="username" href="${authorUrl}" target="_blank" rel="noreferrer">${authorName}</a> (IMDb)</strong>
+                                    ${submissionDate ? `<span class="time" title="${submissionDate}">${submissionDate}</span>` : ''}
+                                    <span class="imdb-review-forum-meta"> - ${metaParts.join(' | ')}</span>
+                                </span>
+                                <span style="float:right;"><a href="#">↑</a></span>
+                            </div>
+                            <div class="forum-post__avatar-and-body">
+                                <div class="forum-post__avatar">
+                                    <div class="forum-post__avatar__image imdb-review-avatar" title="IMDb review">${Number.isFinite(review.authorRating) ? review.authorRating : 'IMDb'}</div>
+                                </div>
+                                <div class="forum-post__body">
+                                    <div class="forum-post__bodyguard">
+                                        ${review.summary ? `<div class="imdb-review-forum-summary${spoilerClass}"><a href="${reviewLink}" target="_blank" rel="noreferrer">${escapeHtml(review.summary)}</a></div>` : ''}
+                                        <div class="imdb-review-forum-text${spoilerClass}">${formatImdbReviewText(review.text)}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+
+    panel.innerHTML = `
+        <div class="panel__heading">
+            <span class="panel__heading__title"><a href="${reviewUrl}" target="_blank" rel="noreferrer">${getIMDbLabelHTML('Reviews')}</a></span>
+            <span class="imdb-review-card__meta">${escapeHtml(IMDB_REVIEW_FILTER_OPTIONS[activeFilterKey]?.label || 'Balanced')}</span>
+        </div>
+        <div class="panel__body">${filterControlsHtml}${bodyHtml}</div>
+    `;
+
+    panel.querySelectorAll('[data-imdb-review-filter]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const filterKey = button.dataset.imdbReviewFilter;
+            if (!filterKey || filterKey === activeFilterKey) {
+                return;
+            }
+
+            if (filterKey === 'balanced') {
+                replaceImdbReviewsPanel(panel, buildImdbReviewsPanel(imdbId, reviewData?.balancedData || reviewData));
+                return;
+            }
+
+            replaceImdbReviewsPanel(panel, buildImdbReviewsPanel(imdbId, {
+                imdbId,
+                filterKey,
+                pending: true,
+                reviews: [],
+                balancedData: reviewData?.balancedData || reviewData
+            }));
+
+            fetchImdbReviewFilterData(imdbId, filterKey)
+                .then((filteredData) => {
+                    const currentPanel = getMountedImdbReviewsPanel();
+                    const nextData = {
+                        ...filteredData,
+                        balancedData: reviewData?.balancedData || reviewData
+                    };
+                    if (currentPanel) {
+                        replaceImdbReviewsPanel(currentPanel, buildImdbReviewsPanel(imdbId, nextData));
+                    }
+                })
+                .catch((error) => {
+                    console.error('Failed to fetch IMDb review filter:', error);
+                    const currentPanel = getMountedImdbReviewsPanel();
+                    if (currentPanel) {
+                        replaceImdbReviewsPanel(currentPanel, buildImdbReviewsPanel(imdbId, reviewData?.balancedData || reviewData));
+                    }
+                });
+        });
+    });
+
+    return panel;
+}
+
+function clearMountedImdbReviews() {
+    document.getElementById('imdb-reviews-inline-panel')?.remove();
+    document.querySelector('[data-imdb-reviews-tab-item="1"]')?.remove();
+    document.getElementById('imdb-reviews-tab')?.remove();
+}
+
+function mountImdbReviewsInline(imdbId, reviewData) {
+    const commentsContainer = document.getElementById('comments-container');
+    const commentsTab = document.getElementById('comments-tab');
+    const parent = commentsContainer?.parentNode || commentsTab;
+    if (!parent) {
+        return false;
+    }
+
+    const panel = buildImdbReviewsPanel(imdbId, reviewData);
+    panel.id = 'imdb-reviews-inline-panel';
+
+    if (commentsContainer?.parentNode) {
+        commentsContainer.parentNode.insertBefore(panel, commentsContainer);
+    } else {
+        parent.insertBefore(panel, parent.firstChild);
+    }
+
+    return true;
+}
+
+function mountImdbReviewsTab(imdbId, reviewData) {
+    const commentsTab = document.getElementById('comments-tab');
+    const tabs = commentsTab?.closest('.tabs');
+    const tabList = tabs?.querySelector('.tabs__bar__list');
+    const panels = tabs?.querySelector('.tabs__panels');
+    const commentsItem = tabList?.querySelector('a[href="#comments-tab"]')?.closest('.tabs__bar__item');
+    if (!tabs || !tabList || !panels || !commentsItem) {
+        return false;
+    }
+
+    const tabItem = document.createElement('li');
+    tabItem.className = 'tabs__bar__item';
+    tabItem.dataset.imdbReviewsTabItem = '1';
+    tabItem.innerHTML = '<a class="tabs__bar__link" href="#imdb-reviews-tab">IMDb reviews</a>';
+
+    const tabPanel = document.createElement('div');
+    tabPanel.className = 'tabs__panel';
+    tabPanel.id = 'imdb-reviews-tab';
+    tabPanel.appendChild(buildImdbReviewsPanel(imdbId, reviewData));
+
+    const activateReviewsTab = () => {
+        tabList.querySelectorAll('.tabs__bar__item').forEach((item) => item.classList.remove('tabs__bar__item--active'));
+        panels.querySelectorAll('.tabs__panel').forEach((panel) => panel.classList.remove('tabs__panel--active'));
+        tabItem.classList.add('tabs__bar__item--active');
+        tabPanel.classList.add('tabs__panel--active');
+    };
+
+    tabItem.querySelector('a').addEventListener('click', (event) => {
+        event.preventDefault();
+        activateReviewsTab();
+        window.location.hash = 'imdb-reviews-tab';
+    });
+
+    if (commentsItem?.nextSibling) {
+        tabList.insertBefore(tabItem, commentsItem.nextSibling);
+    } else {
+        tabList.appendChild(tabItem);
+    }
+    panels.appendChild(tabPanel);
+    if (IMDB_REVIEWS_TAB_ACTIVE_BY_DEFAULT) {
+        activateReviewsTab();
+    }
+    return true;
+}
+
+function mountImdbReviews(imdbId, reviewData) {
+    ensureImdbReviewsStyles();
+    clearMountedImdbReviews();
+
+    if (IMDB_REVIEWS_DISPLAY_MODE === 'tab') {
+        if (mountImdbReviewsTab(imdbId, reviewData)) {
+            return;
+        }
+    }
+
+    mountImdbReviewsInline(imdbId, reviewData);
+}
+
+function getMountedImdbReviewsPanel() {
+    return document.getElementById('imdb-reviews-inline-panel')
+        || document.getElementById('imdb-reviews-tab')?.querySelector('.imdb-reviews-panel')
+        || null;
+}
+
+function mountImdbReviewsWithDefaultFilter(imdbId, balancedData) {
+    const defaultFilter = IMDB_REVIEW_FILTER_OPTIONS[DEFAULT_IMDB_REVIEW_FILTER]
+        ? DEFAULT_IMDB_REVIEW_FILTER
+        : DEFAULT_IMDB_REVIEW_FILTER_KEY;
+
+    if (defaultFilter === DEFAULT_IMDB_REVIEW_FILTER_KEY) {
+        mountImdbReviews(imdbId, balancedData);
+        return;
+    }
+
+    mountImdbReviews(imdbId, {
+        imdbId,
+        filterKey: defaultFilter,
+        pending: true,
+        reviews: [],
+        balancedData
+    });
+
+    fetchImdbReviewFilterData(imdbId, defaultFilter)
+        .then((filteredData) => {
+            const currentPanel = getMountedImdbReviewsPanel();
+            if (currentPanel) {
+                replaceImdbReviewsPanel(currentPanel, buildImdbReviewsPanel(imdbId, {
+                    ...filteredData,
+                    balancedData
+                }));
+            }
+        })
+        .catch((error) => {
+            console.error('Failed to fetch default IMDb review filter:', error);
+            const currentPanel = getMountedImdbReviewsPanel();
+            if (currentPanel) {
+                replaceImdbReviewsPanel(currentPanel, buildImdbReviewsPanel(imdbId, balancedData));
+            }
+        });
 }
 
 function formatPercentAsTenScale(value) {
@@ -5473,6 +5958,230 @@ async function getCache(key) {
     return null;
 }
 
+function normalizeImdbReview(edge, target) {
+    const node = edge?.node;
+    if (!node?.id) {
+        return null;
+    }
+
+    const rawReviewText = node.text?.originalText?.plainText ?? node.text?.originalText;
+    const text = typeof rawReviewText === 'string' ? rawReviewText.trim() : '';
+    const summary = typeof node.summary?.originalText === 'string' ? node.summary.originalText.trim() : '';
+    if (!text && !summary) {
+        return null;
+    }
+
+    return {
+        id: node.id,
+        bucket: target.key,
+        bucketLabel: target.label,
+        authorRating: Number.isFinite(node.authorRating) ? node.authorRating : null,
+        summary,
+        text,
+        spoiler: !!node.spoiler,
+        submissionDate: node.submissionDate || null,
+        helpfulness: node.helpfulness || null,
+        authorName: node.author?.username?.text || node.author?.username || null,
+        authorId: node.author?.userId || null
+    };
+}
+
+function getImdbReviewAlias(targetKey, rating) {
+    return `reviews${targetKey.charAt(0).toUpperCase()}${targetKey.slice(1)}${rating}`;
+}
+
+function hasImdbReviewCandidates(titleData) {
+    return IMDB_REVIEWS_TARGETS.some((target) => target.ratings.some((rating) => {
+        const alias = getImdbReviewAlias(target.key, rating);
+        return Array.isArray(titleData?.[alias]?.edges);
+    }));
+}
+
+function selectImdbReviewsFromTitleData(imdbId, titleData) {
+    const seenReviewIds = new Set();
+    const selectedReviews = [];
+
+    for (const target of IMDB_REVIEWS_TARGETS) {
+        let selectedReview = null;
+
+        for (const rating of target.ratings) {
+            const alias = getImdbReviewAlias(target.key, rating);
+            const edges = titleData?.[alias]?.edges || [];
+            selectedReview = edges
+                .map((edge) => normalizeImdbReview(edge, target))
+                .find((review) => review && !seenReviewIds.has(review.id));
+
+            if (selectedReview) {
+                break;
+            }
+        }
+
+        if (selectedReview) {
+            seenReviewIds.add(selectedReview.id);
+            selectedReviews.push(selectedReview);
+        }
+    }
+
+    const reviewData = {
+        imdbId,
+        filterKey: 'balanced',
+        selectedMode: 'balanced',
+        includesSpoilers: true,
+        reviews: selectedReviews
+    };
+    return reviewData;
+}
+
+function getImdbReviewFilterCacheKey(imdbId, filterKey) {
+    return `imdb_reviews_filter_v1_${imdbId}_${filterKey}`;
+}
+
+function getImdbReviewGraphqlFields() {
+    return `
+        fragment ImdbReviewPick on ReviewsConnection {
+            edges {
+                node {
+                    id
+                    authorRating
+                    spoiler
+                    submissionDate
+                    summary { originalText }
+                    text {
+                        originalText {
+                            plainText
+                        }
+                    }
+                    helpfulness {
+                        upVotes
+                        downVotes
+                        score
+                    }
+                    author {
+                        userId
+                        username { text }
+                    }
+                }
+            }
+        }
+    `;
+}
+
+function requestImdbReviewFilterData(query, variables) {
+    return new Promise((resolve, reject) => {
+        GM_xmlhttpRequest({
+            method: 'POST',
+            url: 'https://api.graphql.imdb.com/',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-imdb-user-country': 'US',
+                'x-imdb-user-language': 'en-US'
+            },
+            data: JSON.stringify({ query, variables }),
+            onload: (response) => {
+                if (response.status < 200 || response.status >= 300) {
+                    reject(new Error(`IMDb reviews request failed: ${response.status}`));
+                    return;
+                }
+
+                try {
+                    const parsed = JSON.parse(response.responseText);
+                    if (Array.isArray(parsed.errors) && parsed.errors.length > 0) {
+                        reject(new Error(parsed.errors.map((error) => error.message || String(error)).join('; ')));
+                        return;
+                    }
+                    resolve(parsed.data?.title || {});
+                } catch (error) {
+                    reject(error);
+                }
+            },
+            onerror: () => reject(new Error('IMDb reviews request failed'))
+        });
+    });
+}
+
+async function fetchImdbReviewFilterData(imdbId, filterKey) {
+    const option = IMDB_REVIEW_FILTER_OPTIONS[filterKey];
+    if (!option || filterKey === 'balanced') {
+        return null;
+    }
+
+    const cacheKey = getImdbReviewFilterCacheKey(imdbId, filterKey);
+    const cached = await getCache(cacheKey);
+    if (cached && Array.isArray(cached.reviews)) {
+        return cached;
+    }
+
+    let titleData;
+    if (Array.isArray(option.ratings)) {
+        const aliases = option.ratings.map((rating) => (
+            `reviews${rating}: reviews(first: 50, filter: { authorRating: ${rating} }, sort: { by: HELPFULNESS_SCORE, order: DESC }) { ...ImdbReviewPick }`
+        )).join('\n');
+        titleData = await requestImdbReviewFilterData(`
+            query getReviewFilter($id: ID!) {
+                title(id: $id) {
+                    ${aliases}
+                }
+            }
+            ${getImdbReviewGraphqlFields()}
+        `, { id: imdbId });
+    } else {
+        titleData = await requestImdbReviewFilterData(`
+            query getReviewFilter($id: ID!) {
+                title(id: $id) {
+                    reviews(first: 50, sort: { by: ${option.sortBy}, order: ${option.sortOrder} }) { ...ImdbReviewPick }
+                }
+            }
+            ${getImdbReviewGraphqlFields()}
+        `, { id: imdbId });
+    }
+
+    const seenReviewIds = new Set();
+    const reviews = [];
+    const target = { key: filterKey, label: option.label };
+    const edgeGroups = Array.isArray(option.ratings)
+        ? option.ratings.map((rating) => titleData?.[`reviews${rating}`]?.edges || [])
+        : [titleData?.reviews?.edges || []];
+
+    edgeGroups.forEach((edges) => {
+        edges
+            .map((edge) => normalizeImdbReview(edge, target))
+            .filter(Boolean)
+            .forEach((review) => {
+                if (!seenReviewIds.has(review.id)) {
+                    seenReviewIds.add(review.id);
+                    reviews.push(review);
+                }
+            });
+    });
+
+    if (option.clientSort) {
+        reviews.sort((left, right) => {
+            const getVotes = (review, key) => {
+                const upVotes = Number.isFinite(review.helpfulness?.upVotes) ? review.helpfulness.upVotes : 0;
+                const downVotes = Number.isFinite(review.helpfulness?.downVotes) ? review.helpfulness.downVotes : 0;
+                if (key === 'upVotes') {
+                    return upVotes;
+                }
+                if (key === 'downVotes') {
+                    return downVotes;
+                }
+                return upVotes + downVotes;
+            };
+            return getVotes(right, option.clientSort) - getVotes(left, option.clientSort);
+        });
+    }
+
+    const reviewData = {
+        imdbId,
+        filterKey,
+        selectedMode: filterKey,
+        includesSpoilers: true,
+        reviews: reviews.slice(0, 50)
+    };
+    await setCache(cacheKey, reviewData);
+    return reviewData;
+}
+
 async function buildRatingsSnapshotFromCache(imdbId) {
     const imdbDataCache = await getCache(`iMDB_data_${imdbId}`);
     const supplementalCache = await getSupplementalRatingsCache(imdbId);
@@ -5627,6 +6336,10 @@ function hasRequiredRatingsData(titleData) {
     }
 
     if (shouldIncludeDemographicsData() && !Array.isArray(titleData.aggregateRatingsBreakdown?.ratingsSummaryByDemographics)) {
+        return false;
+    }
+
+    if (SHOW_IMDB_REVIEWS && !hasImdbReviewCandidates(titleData)) {
         return false;
     }
 
@@ -6135,7 +6848,9 @@ function hasRequiredRatingsData(titleData) {
                 method: "POST",
                 url: url,
                 headers: {
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
+                    "x-imdb-user-country": "US",
+                    "x-imdb-user-language": "en-US"
                 },
                 data: JSON.stringify(query),
                 onload: async function (response) {
@@ -6262,7 +6977,7 @@ function hasRequiredRatingsData(titleData) {
         const url = `https://api.graphql.imdb.com/`;
         const query = {
             query: `
-                query getTitleDetails($id: ID!, $first: Int!, $after: ID, $includeHistogram: Boolean!, $includeCountries: Boolean!, $includeDemographics: Boolean!, $includeTrailerVideoIds: Boolean!) {
+                query getTitleDetails($id: ID!, $first: Int!, $after: ID, $includeHistogram: Boolean!, $includeCountries: Boolean!, $includeDemographics: Boolean!, $includeTrailerVideoIds: Boolean!, $includeReviews: Boolean!) {
                     title(id: $id) {
                         soundtrack(first: 40) {
                             edges {
@@ -6330,6 +7045,18 @@ function hasRequiredRatingsData(titleData) {
                                 score
                             }
                         }
+                        reviewsHighest10: reviews(first: 5, filter: { authorRating: 10 }, sort: { by: HELPFULNESS_SCORE, order: DESC }) @include(if: $includeReviews) { ...ImdbReviewPick }
+                        reviewsHighest9: reviews(first: 5, filter: { authorRating: 9 }, sort: { by: HELPFULNESS_SCORE, order: DESC }) @include(if: $includeReviews) { ...ImdbReviewPick }
+                        reviewsHighest8: reviews(first: 5, filter: { authorRating: 8 }, sort: { by: HELPFULNESS_SCORE, order: DESC }) @include(if: $includeReviews) { ...ImdbReviewPick }
+                        reviewsHighest7: reviews(first: 5, filter: { authorRating: 7 }, sort: { by: HELPFULNESS_SCORE, order: DESC }) @include(if: $includeReviews) { ...ImdbReviewPick }
+                        reviewsMiddle5: reviews(first: 5, filter: { authorRating: 5 }, sort: { by: HELPFULNESS_SCORE, order: DESC }) @include(if: $includeReviews) { ...ImdbReviewPick }
+                        reviewsMiddle6: reviews(first: 5, filter: { authorRating: 6 }, sort: { by: HELPFULNESS_SCORE, order: DESC }) @include(if: $includeReviews) { ...ImdbReviewPick }
+                        reviewsMiddle4: reviews(first: 5, filter: { authorRating: 4 }, sort: { by: HELPFULNESS_SCORE, order: DESC }) @include(if: $includeReviews) { ...ImdbReviewPick }
+                        reviewsMiddle7: reviews(first: 5, filter: { authorRating: 7 }, sort: { by: HELPFULNESS_SCORE, order: DESC }) @include(if: $includeReviews) { ...ImdbReviewPick }
+                        reviewsLowest1: reviews(first: 5, filter: { authorRating: 1 }, sort: { by: HELPFULNESS_SCORE, order: DESC }) @include(if: $includeReviews) { ...ImdbReviewPick }
+                        reviewsLowest2: reviews(first: 5, filter: { authorRating: 2 }, sort: { by: HELPFULNESS_SCORE, order: DESC }) @include(if: $includeReviews) { ...ImdbReviewPick }
+                        reviewsLowest3: reviews(first: 5, filter: { authorRating: 3 }, sort: { by: HELPFULNESS_SCORE, order: DESC }) @include(if: $includeReviews) { ...ImdbReviewPick }
+                        reviewsLowest4: reviews(first: 5, filter: { authorRating: 4 }, sort: { by: HELPFULNESS_SCORE, order: DESC }) @include(if: $includeReviews) { ...ImdbReviewPick }
                         aggregateRatingsBreakdown {
                             histogram @include(if: $includeHistogram) {
                                 demographic {
@@ -6684,6 +7411,32 @@ function hasRequiredRatingsData(titleData) {
                         }
                     }
                 }
+
+                fragment ImdbReviewPick on ReviewsConnection {
+                    edges {
+                        node {
+                            id
+                            authorRating
+                            spoiler
+                            submissionDate
+                            summary { originalText }
+                            text {
+                                originalText {
+                                    plainText
+                                }
+                            }
+                            helpfulness {
+                                upVotes
+                                downVotes
+                                score
+                            }
+                            author {
+                                userId
+                                username { text }
+                            }
+                        }
+                    }
+                }
             `,
             variables: {
                 id: imdbId,
@@ -6692,7 +7445,8 @@ function hasRequiredRatingsData(titleData) {
                 includeHistogram: shouldIncludeHistogramData(),
                 includeCountries: shouldIncludeCountryRatingsData(),
                 includeDemographics: shouldIncludeDemographicsData(),
-                includeTrailerVideoIds: SHOW_IMDB_TRAILERS
+                includeTrailerVideoIds: SHOW_IMDB_TRAILERS,
+                includeReviews: SHOW_IMDB_REVIEWS
             }
         };
 
@@ -6781,6 +7535,7 @@ function hasRequiredRatingsData(titleData) {
 
                             const awardNominations = pageTitleData.awardNominations.edges.map(edge => edge.node);
                             allAwards.push(...awardNominations);
+                            titleData.awardNominationsCombined = allAwards;
 
                             if (!namesPromise) {
                                 const soundtracksForPrefetch = titleData.soundtrack?.edges || [];
@@ -6807,7 +7562,11 @@ function hasRequiredRatingsData(titleData) {
                                 namesPromise = fetchNames(uniqueIdSetForPrefetch);
                             }
 
-                            if (pageTitleData.awardNominations.pageInfo.hasNextPage) {
+                            const shouldPaginateAwards = SHOW_AWARDS
+                                && pageTitleData.awardNominations.pageInfo.hasNextPage
+                                && !checkAwardsData(titleData);
+
+                            if (shouldPaginateAwards) {
                                 fetchIMDBData(
                                     imdbId,
                                     pageTitleData.awardNominations.pageInfo.endCursor,
@@ -6820,7 +7579,6 @@ function hasRequiredRatingsData(titleData) {
                                     .then(resolve)
                                     .catch(reject);
                             } else {
-                                titleData.awardNominationsCombined = allAwards;
                                 delete titleData.awardNominations;
 
                                 // Extract unique IDs from comments
@@ -8647,6 +9405,10 @@ function hasRequiredRatingsData(titleData) {
         }
 
         if (titleData) {
+            if (SHOW_IMDB_REVIEWS) {
+                mountImdbReviewsWithDefaultFilter(imdbId, selectImdbReviewsFromTitleData(imdbId, titleData));
+            }
+
             if (SHOW_SIMILAR_MOVIES && titleData.moreLikeThisTitles) {
                 displaySimilarMovies(titleData.moreLikeThisTitles.edges);
             } else if (SHOW_SIMILAR_MOVIES) {
