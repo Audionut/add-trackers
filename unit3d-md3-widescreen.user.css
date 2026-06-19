@@ -1,0 +1,905 @@
+/* ==UserStyle==
+@name           UNIT3D MD3 Widescreen
+@namespace      github.com/Audionut/add-trackers
+@version        0.1.0
+@description    Standalone UNIT3D Material Design 3 dark widescreen layout with PTP/Gazelle-compatible torrent table styling.
+@author         Audionut
+@preprocessor   default
+@var text unit3dLayoutWidth "Layout width" 2000px
+@var text unit3dSidebarWidth "Sidebar width" 450px
+@var text unit3dSidebarGap "Sidebar gap" 12px
+@var text unit3dMainMenuWidth "Main menu width" 1500px
+@var text unit3dBbcodeImageMaxWidth "Description image max width" 1450px
+@var text unit3dTorrentRowFontSize "Torrent row font size" 13px
+==/UserStyle== */
+
+@-moz-document regexp("^https?://[^/]+/(?:torrents(?:/.*|[?#].*|$)|torrents\\.php\\?id=.*)$")
+{
+  :root {
+    color-scheme: dark;
+
+    --unit3d-md3-version: '0.1.0';
+    --unit3d-layout-width: /*[[unit3dLayoutWidth]]*/ 2000px;
+    --unit3d-sidebar-width: /*[[unit3dSidebarWidth]]*/ 450px;
+    --unit3d-sidebar-gap: /*[[unit3dSidebarGap]]*/ 12px;
+    --unit3d-main-menu-width: /*[[unit3dMainMenuWidth]]*/ 1500px;
+    --unit3d-bbcode-image-max-width: /*[[unit3dBbcodeImageMaxWidth]]*/ 1450px;
+    --unit3d-torrent-row-font-size: /*[[unit3dTorrentRowFontSize]]*/ 13px;
+
+    --unit3d-bg: #1a1820;
+    --unit3d-fg: #d8d7dc;
+    --unit3d-muted: #aaa;
+    --unit3d-subtle: #888;
+    --unit3d-border: #3c3c3c;
+    --unit3d-border-strong: #555;
+    --unit3d-link: #4991f6;
+    --unit3d-link-hover: #7db0ff;
+    --unit3d-surface: #2a292e;
+    --unit3d-surface-container: #302f34;
+    --unit3d-surface-container-high: #343338;
+    --unit3d-surface-container-highest: #3b3942;
+    --unit3d-scrim: rgba(0, 0, 0, 0.72);
+    --unit3d-radius: 8px;
+    --unit3d-radius-sm: 6px;
+    --unit3d-shadow:
+      0 3px 4px 0 rgba(0, 0, 0, 0.14), 0 1px 8px 0 rgba(0, 0, 0, 0.12),
+      0 3px 3px -2px rgba(0, 0, 0, 0.4);
+    --unit3d-row-even: rgba(0, 0, 0, 0.18);
+    --unit3d-row-odd: rgba(0, 0, 0, 0.1);
+    --unit3d-row-hover: rgba(255, 255, 255, 0.06);
+    --unit3d-seeders: #7ad17f;
+    --unit3d-leechers: #e95140;
+    --unit3d-completed: #4f84d7;
+    --unit3d-freeleech: #ffb800;
+    --unit3d-warning: #f9ba13;
+    --unit3d-danger: #ff5252;
+    --unit3d-success: #4cb828;
+
+    --body-bg: var(--unit3d-bg);
+    --body-fg: var(--unit3d-fg);
+    --layout-width: var(--unit3d-layout-width);
+    --sidebar-width: var(--unit3d-sidebar-width);
+    --sidebar-gap: var(--unit3d-sidebar-gap);
+    --main-menu-width: var(--unit3d-main-menu-width);
+    --bbcode-image-default-width: var(--unit3d-bbcode-image-max-width);
+    --torrent-row-font-size: var(--unit3d-torrent-row-font-size);
+
+    --panel-bg: var(--unit3d-surface);
+    --panel-fg: var(--unit3d-muted);
+    --panel-head-bg: var(--unit3d-surface);
+    --panel-head-fg: var(--unit3d-fg);
+    --panel-border: 1px solid var(--unit3d-border);
+    --panel-border-radius: var(--unit3d-radius);
+    --panel-body-border-radius: var(--unit3d-radius);
+    --panel-head-border-radius: var(--unit3d-radius);
+    --panel-box-shadow: var(--unit3d-shadow);
+
+    --data-table-border-radius: var(--unit3d-radius);
+    --data-table-fg: #c0c0c0;
+    --data-table-th-bg: var(--unit3d-surface);
+    --data-table-tr-border: 1px solid var(--unit3d-border);
+    --data-table-tr-even-bg: var(--unit3d-surface);
+    --data-table-tr-hover-bg: var(--unit3d-surface-container);
+    --data-table-tr-odd-bg: var(--unit3d-surface);
+    --torrent-row-seeders-fg: var(--unit3d-seeders);
+    --torrent-row-leechers-fg: var(--unit3d-leechers);
+    --torrent-row-completed-fg: var(--unit3d-completed);
+    --torrent-row-freeleech-fg: var(--unit3d-freeleech);
+  }
+
+  html,
+  body {
+    background: var(--unit3d-bg);
+    color: var(--unit3d-fg);
+  }
+
+  body {
+    max-width: none;
+  }
+
+  a {
+    color: var(--unit3d-link);
+    text-decoration: none;
+  }
+
+  a:hover,
+  a:focus-visible {
+    color: var(--unit3d-link-hover);
+    text-decoration: none;
+  }
+
+  button,
+  input,
+  select,
+  textarea,
+  .form__text,
+  .form__select,
+  .form__button {
+    border-color: var(--unit3d-border-strong);
+  }
+
+  input,
+  select,
+  textarea,
+  .form__text,
+  .form__select {
+    background: var(--unit3d-surface);
+    color: var(--unit3d-muted);
+  }
+
+  main > article,
+  .page__main-content {
+    width: min(var(--unit3d-layout-width), calc(100vw - 24px));
+    max-width: min(var(--unit3d-layout-width), calc(100vw - 24px));
+    margin-right: auto;
+    margin-left: auto;
+  }
+
+  .page__torrent-similar--index main > article,
+  .page__torrent--show main > article,
+  main > article:has(.similar-torrents-list),
+  main > article:has(.movie-page__torrent__panel) {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .page__main-content {
+    overflow: visible;
+    padding: 12px;
+    background: transparent;
+  }
+
+  .page__main-content:has(> .sidebar),
+  .page__main-content:has(> .main-column + .sidebar),
+  #content:has(> .sidebar),
+  #content:has(> .main-column + .sidebar) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(260px, var(--unit3d-sidebar-width));
+    gap: var(--unit3d-sidebar-gap);
+    align-items: start;
+  }
+
+  .main-column {
+    min-width: 0;
+  }
+
+  .sidebar,
+  div.sidebar {
+    float: none;
+    width: auto;
+    min-width: 0;
+  }
+
+  .linkbox {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px 10px;
+    margin: 8px auto 12px;
+    font-size: 13px;
+  }
+
+  .linkbox a,
+  .linkbox_link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    border: 1px solid var(--unit3d-border);
+    border-radius: var(--unit3d-radius-sm);
+    padding: 4px 8px;
+    background: var(--unit3d-surface);
+    color: var(--unit3d-fg);
+  }
+
+  .page__title {
+    margin: 10px 0 12px;
+    color: var(--unit3d-fg);
+    font-size: clamp(24px, 2vw, 34px);
+    line-height: 1.18;
+    text-align: center;
+  }
+
+  .meta {
+    max-width: var(--unit3d-layout-width);
+    margin-right: auto;
+    margin-left: auto;
+  }
+
+  .meta__title {
+    color: var(--unit3d-fg);
+  }
+
+  .meta__description,
+  .meta__chip,
+  .meta-id-tag {
+    color: var(--unit3d-muted);
+  }
+
+  .compact-search,
+  .similar-torrents__filters,
+  .filter-box {
+    border: 1px solid var(--unit3d-border);
+    border-radius: var(--unit3d-radius);
+    background: var(--unit3d-surface);
+    color: var(--unit3d-muted);
+    box-shadow: var(--unit3d-shadow);
+  }
+
+  .similar-torrents__filters {
+    padding: 10px;
+  }
+
+  .compact-search__visible-default,
+  .form__group--short-horizontal {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .form__group {
+    min-width: 0;
+  }
+
+  .form__fieldset {
+    border-color: var(--unit3d-border);
+    border-radius: var(--unit3d-radius);
+  }
+
+  .form__legend,
+  .form__label {
+    color: var(--unit3d-muted);
+  }
+
+  .form__standard-icon-button,
+  .form__button,
+  button,
+  input[type='button'],
+  input[type='submit'] {
+    border-radius: var(--unit3d-radius-sm);
+    background: var(--unit3d-surface-container-high);
+    color: var(--unit3d-fg);
+  }
+
+  .form__standard-icon-button:hover,
+  .form__button:hover,
+  button:hover,
+  input[type='button']:hover,
+  input[type='submit']:hover {
+    background: var(--unit3d-surface-container-highest);
+  }
+
+  .panelV2,
+  .panel,
+  .movie-page__torrent__panel,
+  .box_albumart,
+  .box_tags.panel,
+  #movieinfo,
+  #detailsCollections,
+  #synopsis-and-trailer,
+  .unit3d-inline-torrent {
+    border: var(--panel-border);
+    border-radius: var(--unit3d-radius);
+    background: var(--unit3d-surface);
+    color: var(--unit3d-muted);
+    box-shadow: var(--unit3d-shadow);
+  }
+
+  .panelV2,
+  .panel,
+  .movie-page__torrent__panel {
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+
+  .panel--no-margin {
+    margin-bottom: 0;
+  }
+
+  .panel__header,
+  .panel__heading,
+  .panelV2 > .panel__heading,
+  .panel > .panel__heading {
+    border-bottom: 1px solid var(--unit3d-border);
+    background: var(--unit3d-surface);
+    color: var(--unit3d-fg);
+  }
+
+  .panel__header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+  }
+
+  .panel__heading {
+    margin: 0;
+    padding: 10px 12px;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  .panel__header .panel__heading {
+    border-bottom: 0;
+    padding: 0;
+  }
+
+  .panel__heading__title {
+    font-weight: 700;
+  }
+
+  .panel__heading__toggler,
+  .panel__actions,
+  .panel__action {
+    color: var(--unit3d-muted);
+  }
+
+  .panel__body,
+  .panelV2 > .panel__body,
+  .movie-page__torrent__panel {
+    padding: 12px;
+  }
+
+  .data-table-wrapper,
+  .similar-torrents-list,
+  .torrent-search {
+    min-width: 0;
+  }
+
+  .data-table-wrapper {
+    overflow-x: auto;
+    border-radius: var(--unit3d-radius);
+  }
+
+  .similar-torrents-list > div {
+    gap: 12px !important;
+  }
+
+  .data-table,
+  .similar-torrents__torrents,
+  .table,
+  .table--panel-like,
+  #torrent-table,
+  table.torrent_table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    color: var(--unit3d-muted);
+    font-size: var(--unit3d-torrent-row-font-size);
+  }
+
+  #torrent-table,
+  table.torrent_table {
+    display: table;
+    table-layout: auto;
+  }
+
+  #torrent-table > tbody,
+  table.torrent_table > tbody {
+    display: table-row-group;
+  }
+
+  .data-table th,
+  .data-table td,
+  .similar-torrents__torrents th,
+  .similar-torrents__torrents td,
+  .table th,
+  .table td,
+  .table--panel-like th,
+  .table--panel-like td,
+  #torrent-table th,
+  #torrent-table td,
+  table.torrent_table th,
+  table.torrent_table td {
+    border-bottom: 1px solid var(--unit3d-border);
+    padding: 7px 8px;
+    vertical-align: middle;
+  }
+
+  .data-table thead th,
+  .similar-torrents__headers th,
+  .table--panel-like thead th,
+  #torrent-table thead th,
+  table.torrent_table thead th {
+    background: var(--unit3d-surface);
+    color: var(--unit3d-fg);
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .data-table tbody tr,
+  .similar-torrents__torrents tbody tr,
+  .table tbody tr,
+  #torrent-table tbody tr,
+  table.torrent_table tbody tr {
+    background: var(--unit3d-surface-container);
+  }
+
+  .data-table tbody tr:nth-child(even),
+  .similar-torrents__torrents tbody tr:nth-child(even),
+  .table tbody tr:nth-child(even),
+  #torrent-table tbody tr:nth-child(even),
+  table.torrent_table tbody tr:nth-child(even) {
+    background-image: linear-gradient(var(--unit3d-row-even), var(--unit3d-row-even));
+  }
+
+  .data-table tbody tr:hover,
+  .similar-torrents__torrents tbody tr:hover,
+  .table tbody tr:hover,
+  #torrent-table tbody tr:hover,
+  table.torrent_table tbody tr:hover {
+    background-color: var(--unit3d-surface-container-high);
+    background-image: linear-gradient(var(--unit3d-row-hover), var(--unit3d-row-hover));
+  }
+
+  .similar-torrents__type,
+  .similar-torrents__type-header,
+  .similar-torrents__checkbox,
+  .similar-torrents__checkbox-header,
+  .similar-torrents__edit,
+  .similar-torrents__bookmark,
+  .similar-torrents__download,
+  .similar-torrents__actions-header,
+  .torrent-search--grouped__edit,
+  .torrent-search--grouped__bookmark,
+  .torrent-search--grouped__download {
+    width: 1%;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .torrent-search--grouped__overview {
+    min-width: 360px;
+    width: auto;
+  }
+
+  .torrent-search--grouped__name {
+    margin: 0 0 3px;
+    font-size: var(--unit3d-torrent-row-font-size);
+    line-height: 1.25;
+  }
+
+  .torrent-search--grouped__name a,
+  .torrent-info-link {
+    color: var(--unit3d-fg);
+    font-weight: 700;
+  }
+
+  .torrent-search--grouped__name a:hover,
+  .torrent-info-link:hover {
+    color: var(--unit3d-link-hover);
+  }
+
+  .torrent-search--grouped__size,
+  .similar-torrents__size-header,
+  .size-span,
+  td.nobr {
+    white-space: nowrap;
+  }
+
+  .torrent-search--grouped__seeders,
+  .similar-torrents__seeders-header,
+  .torrent__seeder-count {
+    color: var(--unit3d-seeders);
+    text-align: right;
+  }
+
+  .torrent-search--grouped__leechers,
+  .similar-torrents__leechers-header,
+  .torrent__leecher-count {
+    color: var(--unit3d-leechers);
+    text-align: right;
+  }
+
+  .torrent-search--grouped__completed,
+  .similar-torrents__completed-header,
+  .torrent__times-completed-count {
+    color: var(--unit3d-completed);
+    text-align: right;
+  }
+
+  .torrent-search--grouped__age,
+  .similar-torrents__age-header {
+    white-space: nowrap;
+  }
+
+  .torrent-card,
+  .torrent-search--grouped__result,
+  .comment,
+  .article-preview,
+  .user-card {
+    border-radius: var(--unit3d-radius);
+  }
+
+  #torrent-table tr.group_torrent,
+  table.torrent_table tr.group_torrent,
+  #torrent-table tr.group_torrent_header,
+  table.torrent_table tr.group_torrent_header {
+    display: table-row;
+  }
+
+  #torrent-table tr.group_torrent_header[data-releasename][data-releasegroup],
+  table.torrent_table tr.group_torrent_header[data-releasename][data-releasegroup] {
+    outline: 0 solid transparent;
+  }
+
+  #torrent-table tr.group_torrent_header > td:first-child,
+  table.torrent_table tr.group_torrent_header > td:first-child {
+    width: auto;
+  }
+
+  #torrent-table tr.group_torrent_header > td:nth-child(2),
+  table.torrent_table tr.group_torrent_header > td:nth-child(2) {
+    width: 74px;
+    text-align: right;
+  }
+
+  #torrent-table tr.group_torrent_header > td:nth-child(3),
+  #torrent-table tr.group_torrent_header > td:nth-child(4),
+  #torrent-table tr.group_torrent_header > td:nth-child(5),
+  table.torrent_table tr.group_torrent_header > td:nth-child(3),
+  table.torrent_table tr.group_torrent_header > td:nth-child(4),
+  table.torrent_table tr.group_torrent_header > td:nth-child(5) {
+    width: 54px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  #torrent-table tr.group_torrent_header > td:nth-child(4),
+  table.torrent_table tr.group_torrent_header > td:nth-child(4) {
+    color: var(--unit3d-seeders);
+  }
+
+  #torrent-table tr.group_torrent_header > td:nth-child(5),
+  table.torrent_table tr.group_torrent_header > td:nth-child(5) {
+    color: var(--unit3d-leechers);
+  }
+
+  .basic-movie-list__torrent__action {
+    float: right;
+    margin-left: 8px;
+    white-space: nowrap;
+  }
+
+  .basic-movie-list__torrent__action a,
+  .link_1,
+  .link_2,
+  .link_3 {
+    color: var(--unit3d-link);
+  }
+
+  .link_2 img {
+    width: 12px;
+    height: 12px;
+    vertical-align: -1px;
+  }
+
+  .torrent-info-link--user-seeding {
+    color: var(--unit3d-warning);
+  }
+
+  .torrent-info-link--user-leeching {
+    color: var(--unit3d-danger);
+  }
+
+  .torrent-info-link--user-snatched,
+  .torrent-info-link--user-downloaded {
+    color: var(--unit3d-link);
+  }
+
+  .torrent-info-link--user-uploaded {
+    color: #f432c9;
+  }
+
+  .torrent-info__download-modifier,
+  .torrent-info__download-modifier--free,
+  .torrent-info__download-modifier--half,
+  .torrent-info__download-modifier--neutral {
+    display: inline-block;
+    margin-left: 4px;
+    border-radius: 999px;
+    padding: 1px 6px;
+    background: rgba(255, 184, 0, 0.14);
+    color: var(--unit3d-freeleech);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.45;
+  }
+
+  .torrent-info__download-modifier--half {
+    background: rgba(79, 132, 215, 0.14);
+    color: var(--unit3d-completed);
+  }
+
+  .torrent-info__trumpable {
+    color: var(--unit3d-warning);
+    font-weight: 700;
+  }
+
+  .torrent-info__reported {
+    color: var(--unit3d-danger);
+    font-weight: 700;
+  }
+
+  .filter-box {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+    margin: 3px;
+    padding: 5px 8px;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .filter-box input,
+  .filter-box select,
+  .filter-box button {
+    margin: 0 2px;
+    font-size: 12px;
+  }
+
+  .empty-row,
+  .no-seeders {
+    opacity: 0.58;
+  }
+
+  .no-seeders .torrent-info-link,
+  tr.no-seeders .torrent-info-link {
+    color: var(--unit3d-subtle);
+  }
+
+  #movieinfo,
+  #detailsCollections,
+  .box_albumart,
+  .box_tags.panel {
+    margin-bottom: 12px;
+    padding: 12px;
+  }
+
+  .box_albumart img,
+  .sidebar-cover-image {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin-right: auto;
+    margin-left: auto;
+    border-radius: var(--unit3d-radius-sm);
+  }
+
+  .box_tags.panel ul.list--unstyled {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .box_tags.panel ul.list--unstyled li a[href*='taglist='] {
+    display: inline-flex;
+    border: 1px solid var(--unit3d-border);
+    border-radius: 999px;
+    padding: 2px 8px;
+    color: var(--unit3d-muted);
+  }
+
+  .movie-page__actor-column {
+    min-width: 0;
+  }
+
+  tr.torrent_info_row {
+    display: table-row;
+    background: var(--unit3d-surface) !important;
+  }
+
+  tr.torrent_info_row > td,
+  tr.torrent_info_row > th {
+    padding: 0 !important;
+  }
+
+  tr.torrent_info_row > td > *,
+  tr.torrent_info_row > th > *,
+  .unit3d-inline-torrent,
+  .movie-page__torrent__panel {
+    color: var(--unit3d-muted);
+  }
+
+  tr.torrent_info_row > td > *,
+  tr.torrent_info_row > th > * {
+    margin: 0;
+    padding: 12px;
+  }
+
+  details.unit3d-inline-torrent {
+    padding: 0;
+  }
+
+  details.unit3d-inline-torrent > summary {
+    cursor: pointer;
+    padding: 10px 12px;
+    color: var(--unit3d-fg);
+    font-weight: 700;
+  }
+
+  details.unit3d-inline-torrent[open] > summary {
+    border-bottom: 1px solid var(--unit3d-border);
+  }
+
+  .movie-page__torrent__panel:target,
+  .unit3d-inline-torrent:target {
+    outline: 2px solid var(--unit3d-link);
+    outline-offset: 2px;
+  }
+
+  .bbcode-rendered,
+  .movie-page__torrent__panel,
+  tr.torrent_info_row,
+  .unit3d-inline-torrent {
+    overflow-wrap: anywhere;
+  }
+
+  .bbcode-rendered blockquote,
+  .movie-page__torrent__panel blockquote,
+  tr.torrent_info_row blockquote,
+  .unit3d-inline-torrent blockquote {
+    border-left: 3px solid var(--unit3d-link);
+    border-radius: var(--unit3d-radius-sm);
+    margin: 10px 0;
+    padding: 8px 10px;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--unit3d-muted);
+  }
+
+  .bbcode-rendered pre,
+  .movie-page__torrent__panel pre,
+  tr.torrent_info_row pre,
+  .unit3d-inline-torrent pre,
+  .mediainfo,
+  .bdinfo,
+  .preformatted-text--scrolled {
+    max-width: 100%;
+    overflow-x: auto;
+    border: 1px solid var(--unit3d-border);
+    border-radius: var(--unit3d-radius-sm);
+    padding: 10px;
+    background: #17151c;
+    color: #d0d0d0;
+    white-space: pre;
+  }
+
+  .bbcode-rendered a:has(img),
+  .movie-page__torrent__panel a:has(img),
+  tr.torrent_info_row a:has(img),
+  .unit3d-inline-torrent a:has(img) {
+    display: inline-block;
+    max-width: 100%;
+  }
+
+  .bbcode-rendered img,
+  img.bbcode__image,
+  .movie-page__torrent__panel img,
+  tr.torrent_info_row img,
+  .unit3d-inline-torrent img {
+    max-width: min(var(--unit3d-bbcode-image-max-width), calc(100vw - 80px)) !important;
+    height: auto !important;
+    border-radius: var(--unit3d-radius-sm);
+    vertical-align: top;
+  }
+
+  .sidebar .bbcode-rendered img,
+  .sidebar img.bbcode__image,
+  .box_albumart img {
+    max-width: 100% !important;
+  }
+
+  .lightbox,
+  #lightbox,
+  dialog.lightbox,
+  [popover].lightbox {
+    box-sizing: border-box;
+    max-width: calc(100vw - 32px);
+    max-height: calc(100vh - 32px);
+    border: 1px solid var(--unit3d-border);
+    border-radius: var(--unit3d-radius);
+    padding: 12px;
+    background: var(--unit3d-surface);
+    color: var(--unit3d-fg);
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.72);
+  }
+
+  .lightbox:target,
+  dialog.lightbox[open],
+  [popover].lightbox:popover-open {
+    display: grid;
+    place-items: center;
+  }
+
+  .lightbox__shroud,
+  dialog.lightbox::backdrop,
+  [popover].lightbox::backdrop {
+    background: var(--unit3d-scrim);
+    backdrop-filter: blur(2px);
+  }
+
+  .lightbox img,
+  #lightbox img,
+  dialog.lightbox img,
+  [popover].lightbox img {
+    display: block;
+    width: auto !important;
+    max-width: calc(100vw - 64px) !important;
+    height: auto !important;
+    max-height: calc(100vh - 64px) !important;
+    margin: 0 auto;
+    object-fit: contain;
+  }
+
+  body.lightbox__scroll-lock {
+    overflow: hidden;
+  }
+
+  @media (min-width: 1280px) {
+    .similar-torrents__torrents,
+    #torrent-table,
+    table.torrent_table {
+      font-size: var(--unit3d-torrent-row-font-size);
+    }
+
+    .similar-torrents__torrents th,
+    .similar-torrents__torrents td,
+    #torrent-table th,
+    #torrent-table td,
+    table.torrent_table th,
+    table.torrent_table td {
+      padding-top: 6px;
+      padding-bottom: 6px;
+    }
+  }
+
+  @media (max-width: 980px) {
+    main > article,
+    .page__main-content {
+      width: min(100%, calc(100vw - 12px));
+      max-width: min(100%, calc(100vw - 12px));
+      padding-right: 6px;
+      padding-left: 6px;
+    }
+
+    .page__main-content:has(> .sidebar),
+    .page__main-content:has(> .main-column + .sidebar),
+    #content:has(> .sidebar),
+    #content:has(> .main-column + .sidebar) {
+      display: block;
+    }
+
+    .sidebar,
+    div.sidebar {
+      width: auto;
+      margin-bottom: 12px;
+    }
+
+    .data-table-wrapper,
+    .similar-torrents-list,
+    .panelV2,
+    .panel,
+    .movie-page__torrent__panel {
+      overflow-x: auto;
+    }
+
+    .torrent-search--grouped__overview {
+      min-width: 260px;
+    }
+
+    .bbcode-rendered img,
+    img.bbcode__image,
+    .movie-page__torrent__panel img,
+    tr.torrent_info_row img,
+    .unit3d-inline-torrent img {
+      max-width: calc(100vw - 32px) !important;
+    }
+  }
+}
