@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Layout Change
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.1.0
+// @version      0.1.1
 // @description  Change UNIT3D similar torrents layout with additional details and sorting options.
 // @author       Audionut
 // @match        https://aither.cc/torrents/similar/1*
@@ -9,7 +9,9 @@
 // @match        https://aither.cc/torrents*
 // @downloadURL  https://github.com/Audionut/add-trackers/raw/main/UNIT3D_based/unit3d-layout-change.user.js
 // @updateURL    https://github.com/Audionut/add-trackers/raw/main/UNIT3D_based/unit3d-layout-change.user.js
-// @grant        none
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_registerMenuCommand
 // @run-at       document-start
 // ==/UserScript==
 
@@ -19,6 +21,7 @@
   const CONFIG = {
     detailLoading: 'lazy',
     fetchTimeoutMs: 15000,
+    externalDetailTimeoutMs: 20000,
     initialDomTimeoutMs: 20000,
     maxConcurrentDetailFetches: 2,
     observeDebounceMs: 150,
@@ -26,6 +29,14 @@
   };
 
   const ADAPTER_STYLE_ID = 'unit3d-ptp-widescreen-adapter-style';
+  const SCRIPT_ID = 'UNIT3DLayoutChange';
+  const SETTINGS_PANEL_ID = 'unit3d-layout-change-settings-panel';
+  const SETTINGS_STYLE_ID = 'unit3d-layout-change-settings-style';
+  const EXTERNAL_DETAIL_EVENT_TARGET_ID = 'unit3d-add-releases-private-detail-event-target';
+  const EXTERNAL_DETAIL_REQUEST_EVENT = 'unit3d-add-releases-private-detail-request';
+  const EXTERNAL_DETAIL_RESPONSE_EVENT = 'unit3d-add-releases-private-detail-response';
+  const AITHER_TRACKER_ICON =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAACYElEQVQokT2RS2sUQRSFb9169MOZScc8TBQN0Wg2URBB3Sj+ZHe6VhQloAgu1GjMQxMhycx093RXdVfVvS5G3BzO4izOxye2nzwbLq8MlleK9atSaQAAgLacMpFAzEYjW1XT0999284uzl1dqeTSYHRlrVi/lheFSdLOWSYKfddMxgtX1vPFRZ1mKGVvW52mtiyVybLhyuqtra0+hEjUObuytLRzc3PStABwXs/IBJPnebGYF4tn+98VKpWNFs6qmmK8u3H94damkVIiaim7EGrrPh4ej38dp0Mo1q424wsVuq48PTktp6u3bi/kd3Z/HJwcHTWTsdR6YW19e+PG/Y3rddOc7f8wWc5EqmubP3tfB5eXtm5uPn/x8uDDbvReIAKAMubbYHht597Tx4/eVdWfb19cXSlvbfR+4/6Dz58+7b19TSH4zqGUiLKbzVxdt+UUmKU2s4tz7xwyEYWQDoZ7b15F70PfRe+7pumd7W3bNTNblj9339uq9NZSDDIbjRBRJcnF4UHoXOh7jhEA5gkARJFiTIfD6emJrUqpkwQAlEnGx0eh7ykEZgZmgQjMTDTvJs3q87N2MlFM5J2z5TQGP7crBDIAMwMAMIMQKGVbTr1zIIRMB0MhQCDG3kfvmQgAQMC/NQDFIJWS2ri6jsHLvCjm3DpNo/f/rwMzMzETCGGyvG+a3lkAkCbLmTkGj1JKpVFKZmYiZhaIKJVOUiayVUkhUIxKIEqtmYiJAFGnqeJkji6VQqWEELauhBDSmBiCEkJIpaPv575i8EobVCp6j0r1bUsUo/fALLQWQvwFLByUKNhkQJ4AAAAASUVORK5CYII=';
 
   const QUALITY_SECTIONS = [
     { id: 'sd', label: 'SD', rank: 0 },
@@ -34,6 +45,24 @@
   ];
 
   const QUALITY_SECTION_BY_ID = new Map(QUALITY_SECTIONS.map((section) => [section.id, section]));
+
+  const LAYOUT_SETTINGS = {
+    forceRedirectSingleTorrentLinks: {
+      default: true,
+      label: 'Force single torrent links to similar pages',
+      tooltip:
+        'Redirect /torrents/<id> links and direct torrent pages to /torrents/similar/<category>.<tmdb>.'
+    },
+    metaIdsPlacement: {
+      default: 'sidebar',
+      label: 'Meta IDs placement',
+      options: [
+        { label: 'Sidebar', value: 'sidebar' },
+        { label: 'Below title', value: 'inline' }
+      ],
+      tooltip: 'Move IMDb/TMDB/TVDB IDs into the sidebar or keep them as one icon line below title.'
+    }
+  };
 
   const SORT_COLUMNS = [
     { defaultDirection: 'asc', key: 'releaseName', label: 'Release', type: 'text' },
@@ -60,6 +89,7 @@
     'TrueHD',
     'DD+',
     'DTS',
+    'LPCM',
     'FLAC',
     'Opus',
     'AAC',
@@ -192,6 +222,10 @@ html.unit3d-ptp-adapter-enabled section.meta .torrent__tags {
   margin-block: 0 !important;
 }
 
+html.unit3d-ptp-adapter-enabled section.meta .meta__dropdown {
+  background: var(--panel-bg, rgba(20, 24, 28, 0.96)) !important;
+}
+
 html.unit3d-ptp-adapter-enabled .unit3d-ptp-title-director {
   display: inline;
   margin-left: 0.35em;
@@ -239,6 +273,34 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-ids-panel .meta-id-tag svg {
   max-height: 28px !important;
   width: auto !important;
   max-width: 76px !important;
+}
+
+html.unit3d-ptp-adapter-enabled section.meta .unit3d-ptp-inline-ids {
+  display: flex !important;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  margin: 4px 0 2px !important;
+  padding: 0;
+  list-style: none;
+}
+
+html.unit3d-ptp-adapter-enabled section.meta .unit3d-ptp-inline-ids li {
+  display: inline-flex;
+  margin: 0 !important;
+}
+
+html.unit3d-ptp-adapter-enabled section.meta .unit3d-ptp-inline-ids .meta-id-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+html.unit3d-ptp-adapter-enabled section.meta .unit3d-ptp-inline-ids img,
+html.unit3d-ptp-adapter-enabled section.meta .unit3d-ptp-inline-ids svg {
+  max-height: 28px !important;
+  width: auto !important;
 }
 
 html.unit3d-ptp-adapter-enabled .unit3d-ptp-meta-sidebar-panel [class*="cast"] img:not(.unit3d-ptp-id-icon):not(.unit3d-ptp-poster-image),
@@ -429,6 +491,15 @@ html.unit3d-ptp-adapter-enabled .basic-movie-list__torrent__action {
   white-space: nowrap;
 }
 
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-tracker-icon {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin: 0 6px 0 2px;
+  object-fit: contain;
+  vertical-align: text-bottom;
+}
+
 html.unit3d-ptp-adapter-enabled .unit3d-ptp-row-meta {
   margin-left: 8px;
   color: var(--text-muted, rgba(255, 255, 255, 0.58));
@@ -512,6 +583,11 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-release-token--audio-dts-es {
 
 html.unit3d-ptp-adapter-enabled .unit3d-ptp-release-token--audio-dts-x {
   color: #ff99c8;
+  font-weight: 700;
+}
+
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-release-token--audio-lpcm {
+  color: #cdb4db;
   font-weight: 700;
 }
 
@@ -820,6 +896,67 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-bbcode-image-link {
   white-space: nowrap;
 }
 
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-rendered-bbcode img,
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-rendered-bbcode-image {
+  max-width: 100%;
+  height: auto;
+  vertical-align: top;
+}
+
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-rendered-bbcode {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-rendered-bbcode-image-link {
+  display: inline-block;
+  margin: 4px;
+  max-width: 100%;
+}
+
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-bbcode-hide {
+  margin: 8px 0;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--torrent-group-header-bg, rgba(255, 255, 255, 0.12));
+  border-radius: 6px;
+}
+
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-bbcode-hide > summary {
+  cursor: pointer;
+  padding: 8px 10px;
+  font-weight: 700;
+}
+
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-bbcode-hide[open] > summary {
+  border-bottom: 1px solid var(--torrent-group-header-bg, rgba(255, 255, 255, 0.12));
+}
+
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-bbcode-hide__body {
+  padding: 10px;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-bbcode-table {
+  display: table;
+  width: 100%;
+  max-width: 100%;
+  margin: 8px 0;
+  border-collapse: collapse;
+}
+
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-bbcode-table-row {
+  display: table-row;
+}
+
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-bbcode-table-cell {
+  display: table-cell;
+  padding: 6px 8px;
+  border: 1px solid var(--torrent-group-header-bg, rgba(255, 255, 255, 0.12));
+  vertical-align: top;
+}
+
 html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
   display: none;
 }
@@ -843,6 +980,8 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
   const torrentSimilarUrlCache = new Map();
 
   let activeDetailFetches = 0;
+  let aitherIconObserver = null;
+  let aitherIconTimer = null;
   let alsoDownloadedObserver = null;
   let adapterRoot = null;
   let cookieConsentObserver = null;
@@ -856,15 +995,226 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
   let actionMenuCounter = 0;
   let currentSort = { direction: 'asc', key: 'sizeBytes' };
 
+  GM_registerMenuCommand('UNIT3D - Layout Change Settings', showSettingsPanel);
+
   if (isSimilarTorrentPage()) {
     addReadyClass();
     installAdapterStyles();
+    initAitherTrackerIconDecorator();
     waitForElement(SELECTORS.nativeTable, CONFIG.initialDomTimeoutMs).then((table) => {
       if (!table) return;
       initAdapter();
     });
-  } else if (isTorrentIndexPage()) {
+  } else if (getLayoutSetting('forceRedirectSingleTorrentLinks') && isTorrentIndexPage()) {
     initTorrentIndexLinkRedirector();
+  } else if (getLayoutSetting('forceRedirectSingleTorrentLinks') && isTorrentShowPage()) {
+    initSingleTorrentPageRedirector();
+  }
+
+  function getLayoutSetting(key) {
+    const setting = LAYOUT_SETTINGS[key];
+    return GM_getValue(layoutSettingStorageKey(key), setting?.default);
+  }
+
+  function setLayoutSetting(key, value) {
+    GM_setValue(layoutSettingStorageKey(key), value);
+  }
+
+  function layoutSettingStorageKey(key) {
+    return `${SCRIPT_ID}_${key}`;
+  }
+
+  function showSettingsPanel() {
+    installSettingsStyles();
+    document.getElementById(SETTINGS_PANEL_ID)?.remove();
+
+    const mountPanel = () => {
+      const overlay = document.createElement('div');
+      overlay.id = SETTINGS_PANEL_ID;
+      overlay.className = 'unit3d-layout-settings-overlay';
+
+      const dialog = document.createElement('div');
+      dialog.className = 'unit3d-layout-settings-dialog';
+      dialog.setAttribute('role', 'dialog');
+      dialog.setAttribute('aria-modal', 'true');
+
+      const header = document.createElement('div');
+      header.className = 'unit3d-layout-settings-header';
+      const title = document.createElement('h2');
+      title.textContent = 'UNIT3D Layout Change Settings';
+      const close = document.createElement('button');
+      close.className = 'form__button form__button--text';
+      close.type = 'button';
+      close.textContent = 'Close';
+      close.addEventListener('click', closeSettingsPanel);
+      header.append(title, close);
+
+      const form = document.createElement('form');
+      form.className = 'unit3d-layout-settings-form';
+      form.appendChild(buildSettingsGrid());
+
+      const actions = document.createElement('div');
+      actions.className = 'unit3d-layout-settings-actions';
+      const reset = document.createElement('button');
+      reset.className = 'form__button form__button--outlined';
+      reset.type = 'button';
+      reset.textContent = 'Reset';
+      reset.addEventListener('click', () => {
+        if (!confirm('Reset UNIT3D Layout Change settings?')) return;
+        Object.keys(LAYOUT_SETTINGS).forEach((key) =>
+          setLayoutSetting(key, LAYOUT_SETTINGS[key].default)
+        );
+        location.reload();
+      });
+
+      const save = document.createElement('button');
+      save.className = 'form__button form__button--filled';
+      save.type = 'submit';
+      save.textContent = 'Save';
+      actions.append(reset, save);
+      form.appendChild(actions);
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        saveSettingsForm(form);
+        closeSettingsPanel();
+        location.reload();
+      });
+
+      dialog.append(header, form);
+      overlay.appendChild(dialog);
+      overlay.addEventListener('click', (event) => {
+        if (event.target === overlay) closeSettingsPanel();
+      });
+      document.body.appendChild(overlay);
+    };
+
+    if (document.body) {
+      mountPanel();
+    } else {
+      document.addEventListener('DOMContentLoaded', mountPanel, { once: true });
+    }
+  }
+
+  function buildSettingsGrid() {
+    const grid = document.createElement('div');
+    grid.className = 'unit3d-layout-settings-grid';
+    const group = document.createElement('section');
+    group.className = 'unit3d-layout-settings-group';
+    const heading = document.createElement('h3');
+    heading.textContent = 'Navigation';
+    group.appendChild(heading);
+
+    Object.entries(LAYOUT_SETTINGS).forEach(([key, setting]) => {
+      const label = document.createElement('label');
+      label.className = 'unit3d-layout-setting-row';
+      label.title = setting.tooltip || '';
+      const text = document.createElement('span');
+      text.textContent = setting.label;
+      const input = setting.options
+        ? document.createElement('select')
+        : document.createElement('input');
+      input.name = key;
+      if (setting.options) {
+        const currentValue = getLayoutSetting(key);
+        setting.options.forEach((optionValue) => {
+          const option = document.createElement('option');
+          const value = typeof optionValue === 'string' ? optionValue : optionValue.value;
+          option.value = value;
+          option.textContent = typeof optionValue === 'string' ? optionValue : optionValue.label;
+          option.selected = value === currentValue;
+          input.appendChild(option);
+        });
+      } else {
+        input.type = 'checkbox';
+        input.checked = !!getLayoutSetting(key);
+      }
+      label.append(text, input);
+      group.appendChild(label);
+    });
+
+    grid.appendChild(group);
+    return grid;
+  }
+
+  function saveSettingsForm(form) {
+    Object.keys(LAYOUT_SETTINGS).forEach((key) => {
+      const input = form.elements.namedItem(key);
+      if (input instanceof HTMLInputElement) {
+        setLayoutSetting(key, input.checked);
+      } else if (input instanceof HTMLSelectElement) {
+        setLayoutSetting(key, input.value);
+      }
+    });
+  }
+
+  function closeSettingsPanel() {
+    document.getElementById(SETTINGS_PANEL_ID)?.remove();
+  }
+
+  function installSettingsStyles() {
+    if (document.getElementById(SETTINGS_STYLE_ID)) return;
+
+    const style = document.createElement('style');
+    style.id = SETTINGS_STYLE_ID;
+    style.textContent = `
+.unit3d-layout-settings-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(0, 0, 0, 0.42);
+}
+.unit3d-layout-settings-dialog {
+  width: min(760px, 94vw);
+  max-height: 92vh;
+  margin: 4vh 4vw;
+  overflow: auto;
+  background: var(--panel-bg, #202428);
+  color: var(--text-color, inherit);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  padding: 16px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+}
+.unit3d-layout-settings-header,
+.unit3d-layout-settings-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+.unit3d-layout-settings-header h2 {
+  margin: 0;
+}
+.unit3d-layout-settings-grid {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+.unit3d-layout-settings-group {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 12px;
+}
+.unit3d-layout-settings-group h3 {
+  margin: 0 0 10px;
+}
+.unit3d-layout-setting-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 8px 0;
+}
+.unit3d-layout-setting-row span {
+  min-width: 0;
+}
+.unit3d-layout-setting-row select {
+  max-width: 180px;
+}
+`;
+    (document.head || document.documentElement).appendChild(style);
   }
 
   function addReadyClass() {
@@ -920,6 +1270,22 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
 
   function isTorrentIndexPage() {
     return /^\/torrents\/?$/i.test(location.pathname);
+  }
+
+  function isTorrentShowPage() {
+    return isTorrentShowUrl(location.href);
+  }
+
+  function initSingleTorrentPageRedirector() {
+    waitForElement(
+      '.meta__title-link[href*="/torrents/similar/"], a[href*="/torrents/similar/"]',
+      CONFIG.initialDomTimeoutMs
+    ).then((link) => {
+      const similarUrl = link ? absolutizeUrl(link.getAttribute('href')) : '';
+      if (!isSupportedSimilarTorrentUrl(similarUrl)) return;
+      if (new URL(similarUrl, location.href).href === location.href) return;
+      location.replace(similarUrl);
+    });
   }
 
   function initTorrentIndexLinkRedirector() {
@@ -1122,6 +1488,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
   }
 
   function initAdapter() {
+    decorateAitherTrackerIcons();
     removeAlsoDownloadedPanels();
     removeCompactSearchFilters();
     removeCookieConsentAlerts();
@@ -1291,6 +1658,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
       metaItems.map(getMetaItemSignature).join('\n')
     ].join('\n---meta---\n');
     if (adapterRoot && signature === lastSignature) {
+      decorateAitherTrackerIcons(adapterRoot);
       dispatchReady();
       return;
     }
@@ -1311,6 +1679,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     adapterRoot.classList.toggle('unit3d-ptp-page--with-sidebar', !sidebar.hidden);
     adapterRoot.replaceChildren(buildMainColumn(torrents, metaItems), sidebar);
     ensureCompatibilityShims(adapterRoot);
+    decorateAitherTrackerIcons(adapterRoot);
     watchGeneratedTable();
     dispatchReady();
     maybePrefetchVisibleDetails(torrents);
@@ -1660,6 +2029,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
 
   function shouldKeepMetaChildInHeader(child) {
     return Boolean(
+      (isMetaIdsInlinePlacement() && child.matches('.meta__ids')) ||
       child.matches(
         '.meta__title-link, .meta__actions, .meta__action, .meta__tags, .torrent__tags, [class*="__actions"]'
       )
@@ -1675,7 +2045,11 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
   function enhanceMetaTitleLink() {
     const meta = document.querySelector('section.meta');
     const titleLink = meta?.querySelector('.meta__title-link');
-    if (!meta || !titleLink || titleLink.querySelector('.unit3d-ptp-title-director')) return;
+    if (!meta || !titleLink) return;
+
+    placeMetaIdsInline(meta, titleLink);
+
+    if (titleLink.querySelector('.unit3d-ptp-title-director')) return;
 
     const director = getFirstDirectorName(meta);
     if (!director) return;
@@ -1684,6 +2058,20 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     directorElement.className = 'unit3d-ptp-title-director';
     directorElement.textContent = `(${director})`;
     titleLink.appendChild(directorElement);
+  }
+
+  function placeMetaIdsInline(meta, titleLink) {
+    const ids = meta.querySelector(':scope > .meta__ids');
+    if (!ids) return;
+
+    ids.classList.toggle('unit3d-ptp-inline-ids', isMetaIdsInlinePlacement());
+    if (isMetaIdsInlinePlacement() && ids.previousElementSibling !== titleLink) {
+      titleLink.after(ids);
+    }
+  }
+
+  function isMetaIdsInlinePlacement() {
+    return getLayoutSetting('metaIdsPlacement') === 'inline';
   }
 
   function getFirstDirectorName(meta) {
@@ -2168,7 +2556,13 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     const infoLink = buildReleaseInfoLink(torrent);
     infoLink.dataset.unit3dTorrentId = torrent.id;
 
-    cell.append(actionSpan, document.createTextNode(' '), infoLink);
+    cell.append(
+      actionSpan,
+      document.createTextNode(' '),
+      buildAitherTrackerIcon(),
+      document.createTextNode(' '),
+      infoLink
+    );
     const visionIcons = cloneVisionBadges(torrent.icons);
     if (visionIcons) {
       const badges = document.createElement('span');
@@ -2178,6 +2572,61 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     }
 
     return cell;
+  }
+
+  function buildAitherTrackerIcon() {
+    const img = document.createElement('img');
+    img.className = 'unit3d-ptp-tracker-icon unit3d-ptp-aither-tracker-icon';
+    img.src = AITHER_TRACKER_ICON;
+    img.alt = 'Aither';
+    img.title = 'Aither';
+    img.width = 16;
+    img.height = 16;
+    return img;
+  }
+
+  function decorateAitherTrackerIcons(root = document) {
+    root
+      .querySelectorAll('.unit3d-ptp-overview-cell, .torrent-search--grouped__overview')
+      .forEach((cell) => {
+        decorateAitherTrackerIconCell(cell);
+      });
+  }
+
+  function decorateAitherTrackerIconCell(cell) {
+    if (!cell || cell.closest?.('tr.unit3d-external-release')) return;
+    if (cell.querySelector('.unit3d-ptp-aither-tracker-icon')) return;
+
+    const infoLink =
+      cell.querySelector('a.torrent-info-link[href*="/torrents/"]') ||
+      cell.querySelector('.torrent-search--grouped__name a[href*="/torrents/"]');
+    if (!infoLink || infoLink.dataset.unit3dAddReleasesExternal === 'true') return;
+
+    infoLink.before(buildAitherTrackerIcon(), document.createTextNode(' '));
+  }
+
+  function initAitherTrackerIconDecorator() {
+    decorateAitherTrackerIcons();
+
+    const startObserver = () => {
+      if (aitherIconObserver || !document.body) return;
+      aitherIconObserver = new MutationObserver(scheduleAitherTrackerIconDecorate);
+      aitherIconObserver.observe(document.body, { childList: true, subtree: true });
+      decorateAitherTrackerIcons();
+    };
+
+    if (document.body) {
+      startObserver();
+    } else {
+      document.addEventListener('DOMContentLoaded', startObserver, { once: true });
+    }
+  }
+
+  function scheduleAitherTrackerIconDecorate() {
+    globalThis.clearTimeout(aitherIconTimer);
+    aitherIconTimer = globalThis.setTimeout(() => {
+      decorateAitherTrackerIcons();
+    }, CONFIG.observeDebounceMs);
   }
 
   function buildReleaseInfoLink(torrent) {
@@ -2592,8 +3041,14 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     detailRow.dataset.loading = 'true';
     setDetailState(detailRow, 'Loading torrent details...');
 
-    enqueueDetailFetch(() => fetchTorrentDetail(torrentUrl))
-      .then((html) => parseTorrentDetailPage(html, torrentUrl))
+    const headerRow = detailRow.previousElementSibling;
+    const isExternal = headerRow?.classList.contains('unit3d-add-releases-external');
+    const detailTask = isExternal
+      ? () => requestExternalTorrentDetail(headerRow, torrentUrl)
+      : () =>
+          fetchTorrentDetail(torrentUrl).then((html) => parseTorrentDetailPage(html, torrentUrl));
+
+    enqueueDetailFetch(detailTask)
       .then((detail) => {
         detailCache.set(torrentUrl, detail.cloneNode(true));
         setDetailContent(detailRow, detail);
@@ -2604,6 +3059,58 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
       .finally(() => {
         delete detailRow.dataset.loading;
       });
+  }
+
+  function requestExternalTorrentDetail(headerRow, torrentUrl) {
+    return new Promise((resolve, reject) => {
+      const eventTarget = getExternalDetailEventTarget();
+      const requestId = `unit3d-detail-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const timeout = globalThis.setTimeout(() => {
+        eventTarget.removeEventListener(EXTERNAL_DETAIL_RESPONSE_EVENT, handleResponse);
+        reject(new Error('external detail provider timed out'));
+      }, CONFIG.externalDetailTimeoutMs);
+
+      function handleResponse(event) {
+        const detail = event.detail || {};
+        if (detail.requestId !== requestId) return;
+
+        globalThis.clearTimeout(timeout);
+        eventTarget.removeEventListener(EXTERNAL_DETAIL_RESPONSE_EVENT, handleResponse);
+
+        if (!detail.ok) {
+          reject(new Error(detail.error || 'external detail unavailable'));
+          return;
+        }
+
+        resolve(parseExternalTrackerDetail(detail.payload || {}, torrentUrl));
+      }
+
+      eventTarget.addEventListener(EXTERNAL_DETAIL_RESPONSE_EVENT, handleResponse);
+      eventTarget.dispatchEvent(
+        new CustomEvent(EXTERNAL_DETAIL_REQUEST_EVENT, {
+          bubbles: false,
+          cancelable: false,
+          composed: false,
+          detail: {
+            requestId,
+            torrentId: headerRow?.dataset.unit3dTorrentId || '',
+            torrentUrl
+          }
+        })
+      );
+    });
+  }
+
+  function getExternalDetailEventTarget() {
+    let target = document.getElementById(EXTERNAL_DETAIL_EVENT_TARGET_ID);
+    if (target) return target;
+
+    target = document.createElement('span');
+    target.id = EXTERNAL_DETAIL_EVENT_TARGET_ID;
+    target.hidden = true;
+    target.style.display = 'none';
+    (document.documentElement || document.body || document).appendChild(target);
+    return target;
   }
 
   function enqueueDetailFetch(task) {
@@ -2679,6 +3186,713 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
 
     sanitizeTree(body, torrentUrl);
     return wrapDetailBody(body);
+  }
+
+  function parseExternalTrackerDetail(detail, torrentUrl) {
+    const body = document.createElement('div');
+    body.className = 'unit3d-ptp-detail-body';
+
+    if (detail.title) {
+      const title = document.createElement('p');
+      title.textContent = detail.title;
+      body.appendChild(title);
+    }
+
+    if (isUsableExternalDetailText(detail.mediainfo)) {
+      body.appendChild(buildExternalPrePanel('MediaInfo', detail.mediainfo, true));
+    } else if (detail.mediainfoLazy) {
+      body.appendChild(buildExternalLazyMediaInfoPanel(detail, torrentUrl));
+    }
+
+    if (isUsableExternalDetailText(detail.bdinfo)) {
+      body.appendChild(buildExternalPrePanel('BDInfo', detail.bdinfo, true));
+    }
+
+    const descriptionParts = extractExternalDescriptionMediaInfo(detail.description);
+    descriptionParts.mediaInfoBlocks.forEach((block, index) => {
+      body.appendChild(
+        buildExternalPrePanel(
+          descriptionParts.mediaInfoBlocks.length > 1 ? `MediaInfo ${index + 1}` : 'MediaInfo',
+          block,
+          true
+        )
+      );
+    });
+
+    if (isUsableExternalDetailText(descriptionParts.description)) {
+      body.appendChild(
+        buildExternalTextPanel('Description', descriptionParts.description, {
+          preserveTitle: true,
+          sourceClass: 'unit3d-ptp-description-source'
+        })
+      );
+    }
+
+    if (!body.childElementCount) {
+      const fallback = document.createElement('p');
+      fallback.textContent = 'No external description available.';
+      body.appendChild(fallback);
+    }
+
+    sanitizeTree(body, torrentUrl);
+    return wrapDetailBody(body);
+  }
+
+  function extractExternalDescriptionMediaInfo(value) {
+    const text = stringifyBbcodeText(value);
+    if (!text) return { description: '', mediaInfoBlocks: [] };
+
+    const tagRe = /\[(\/?)(mediainfo|mi)(?:=[^\]]*)?\]/gi;
+    const mediaInfoBlocks = [];
+    const descriptionParts = [];
+    let cursor = 0;
+    let active = null;
+    let match = tagRe.exec(text);
+
+    while (match) {
+      const fullTag = match[0];
+      const closing = match[1] === '/';
+      const tagStart = match.index;
+      const tagEnd = tagStart + fullTag.length;
+
+      if (!closing) {
+        if (active) {
+          addMediaInfoBlock(mediaInfoBlocks, text.slice(active.contentStart, tagStart));
+        } else {
+          descriptionParts.push(text.slice(cursor, tagStart));
+        }
+        active = { contentStart: tagEnd };
+        cursor = tagEnd;
+      } else if (active) {
+        addMediaInfoBlock(mediaInfoBlocks, text.slice(active.contentStart, tagStart));
+        active = null;
+        cursor = tagEnd;
+      } else {
+        descriptionParts.push(text.slice(cursor, tagEnd));
+        cursor = tagEnd;
+      }
+
+      match = tagRe.exec(text);
+    }
+
+    if (active) {
+      addMediaInfoBlock(mediaInfoBlocks, text.slice(active.contentStart));
+      cursor = text.length;
+    }
+
+    descriptionParts.push(text.slice(cursor));
+    return {
+      description: descriptionParts
+        .join('')
+        .replaceAll(/\n{3,}/g, '\n\n')
+        .trim(),
+      mediaInfoBlocks
+    };
+  }
+
+  function addMediaInfoBlock(blocks, value) {
+    const text = decodeBbcodeTextEntities(String(value || '').trim());
+    if (text) blocks.push(text);
+  }
+
+  function decodeBbcodeTextEntities(value) {
+    const textarea = document.createElement('textarea');
+    textarea.innerHTML = String(value || '');
+    return textarea.value;
+  }
+
+  function buildExternalTextPanel(title, text, options = {}) {
+    const panel = buildExternalPanelShell(title, options);
+    const body = panel.querySelector('.panel__body');
+    const content = document.createElement('div');
+    content.className = 'unit3d-ptp-rendered-bbcode';
+    content.appendChild(renderBbcodeFragment(text));
+    body.appendChild(content);
+
+    if (options.sourceClass) {
+      const source = document.createElement('textarea');
+      source.className = options.sourceClass;
+      source.hidden = true;
+      source.value = text;
+      panel.appendChild(source);
+    }
+
+    normalizeRawBbcode(panel);
+    normalizeRenderedComparisons(panel);
+    normalizePanelCopyButtons(panel);
+    deferHiddenBbcodeImages(panel);
+    normalizeDescriptionLightboxImages(panel);
+    return panel;
+  }
+
+  function renderBbcodeFragment(text) {
+    text = stringifyBbcodeText(text);
+    const fragment = document.createDocumentFragment();
+    const stack = [{ tag: 'root', node: fragment }];
+    const tagRe = /\[(\/?)([a-z]+)(?:=([^\]]+))?\]/gi;
+    let cursor = 0;
+    let match = tagRe.exec(text);
+
+    while (match) {
+      const rawTag = match[0];
+      const closing = match[1] === '/';
+      const tag = match[2].toLowerCase();
+      const param = match[3] || '';
+      const tagEnd = match.index + rawTag.length;
+
+      if (!closing && tag === 'img') {
+        appendTextWithBreaks(getBbcodeParent(stack), text.slice(cursor, match.index));
+        const close = /\[\/img\]/i.exec(text.slice(tagEnd));
+        if (!close) {
+          appendTextWithBreaks(getBbcodeParent(stack), rawTag);
+          cursor = tagEnd;
+          match = tagRe.exec(text);
+          continue;
+        }
+
+        const src = normalizeBbcodeUrl(text.slice(tagEnd, tagEnd + close.index));
+        const parent = getBbcodeParent(stack);
+        if (src) {
+          parent.appendChild(
+            parent instanceof HTMLAnchorElement
+              ? buildRenderedBbcodeImageElement(src, param)
+              : buildRenderedBbcodeImage(getOpenBbcodeUrl(stack) || src, src, param)
+          );
+        }
+        cursor = tagEnd + close.index + close[0].length;
+        tagRe.lastIndex = cursor;
+        match = tagRe.exec(text);
+        continue;
+      }
+
+      if (!closing && tag === 'comparison') {
+        appendTextWithBreaks(getBbcodeParent(stack), text.slice(cursor, match.index));
+        const close = /\[\/comparison\]/i.exec(text.slice(tagEnd));
+        if (!close) {
+          appendTextWithBreaks(getBbcodeParent(stack), rawTag);
+          cursor = tagEnd;
+          match = tagRe.exec(text);
+          continue;
+        }
+
+        const comparisonText = text.slice(tagEnd, tagEnd + close.index);
+        getBbcodeParent(stack).appendChild(
+          buildRawComparisonComponent(param, extractUrls(comparisonText))
+        );
+        cursor = tagEnd + close.index + close[0].length;
+        tagRe.lastIndex = cursor;
+        match = tagRe.exec(text);
+        continue;
+      }
+
+      if (!closing && (tag === 'code' || tag === 'pre' || tag === 'quote')) {
+        appendTextWithBreaks(getBbcodeParent(stack), text.slice(cursor, match.index));
+        const close = new RegExp(String.raw`\[\/${tag}\]`, 'i').exec(text.slice(tagEnd));
+        if (!close) {
+          appendTextWithBreaks(getBbcodeParent(stack), rawTag);
+          cursor = tagEnd;
+          match = tagRe.exec(text);
+          continue;
+        }
+
+        const rawContent = text.slice(tagEnd, tagEnd + close.index);
+        getBbcodeParent(stack).appendChild(
+          tag === 'quote'
+            ? buildBbcodeQuoteBlock(rawContent)
+            : tag === 'pre'
+              ? buildBbcodePreBlock(rawContent)
+              : buildBbcodeCodeBlock(rawContent)
+        );
+        cursor = tagEnd + close.index + close[0].length;
+        tagRe.lastIndex = cursor;
+        match = tagRe.exec(text);
+        continue;
+      }
+
+      appendTextWithBreaks(getBbcodeParent(stack), text.slice(cursor, match.index));
+
+      if (closing) {
+        closeBbcodeElement(stack, tag, rawTag);
+      } else {
+        const created = createBbcodeElement(tag, param);
+        if (created) {
+          const element = created.element || created;
+          const node = created.node || element;
+          getBbcodeParent(stack).appendChild(element);
+          stack.push({ tag, node, element, param });
+        } else {
+          appendTextWithBreaks(getBbcodeParent(stack), rawTag);
+        }
+      }
+
+      cursor = tagEnd;
+      match = tagRe.exec(text);
+    }
+
+    appendTextWithBreaks(getBbcodeParent(stack), text.slice(cursor));
+    return fragment;
+  }
+
+  function stringifyBbcodeText(value) {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number') return value === 0 ? '' : String(value);
+    if (typeof value === 'boolean') return '';
+    if (Array.isArray(value)) return value.map(stringifyBbcodeText).filter(Boolean).join('\n');
+    if (typeof value === 'object') {
+      for (const key of [
+        'description',
+        'descr',
+        'bbcode_description',
+        'release_description',
+        'text',
+        'body',
+        'message',
+        'value',
+        'data',
+        'result',
+        'results'
+      ]) {
+        if (value[key] === undefined || value[key] === value) continue;
+        const text = stringifyBbcodeText(value[key]);
+        if (text.trim()) return text;
+      }
+    }
+    return String(value);
+  }
+
+  function isUsableExternalDetailText(value) {
+    const text = stringifyBbcodeText(value).trim();
+    return !!text && text !== '0';
+  }
+
+  function getBbcodeParent(stack) {
+    return stack[stack.length - 1].node;
+  }
+
+  function createBbcodeElement(tag, param) {
+    if (tag === 'center' || tag === 'right' || tag === 'left') {
+      const element = document.createElement('div');
+      element.style.textAlign = tag === 'center' ? 'center' : tag;
+      return element;
+    }
+    if (tag === 'b') return document.createElement('strong');
+    if (tag === 'i') return document.createElement('em');
+    if (tag === 'u') {
+      const element = document.createElement('span');
+      element.style.textDecoration = 'underline';
+      return element;
+    }
+    if (tag === 'color') {
+      const color = sanitizeBbcodeColor(param);
+      const element = document.createElement('span');
+      if (color) element.style.color = color;
+      return element;
+    }
+    if (tag === 'size') {
+      const size = sanitizeBbcodeSize(param);
+      const element = document.createElement('span');
+      if (size) element.style.fontSize = `${size}px`;
+      return element;
+    }
+    if (tag === 'font') {
+      const element = document.createElement('span');
+      const font = sanitizeBbcodeFont(param);
+      if (font) element.style.fontFamily = font;
+      if (font === 'monospace') element.style.whiteSpace = 'pre-wrap';
+      return element;
+    }
+    if (tag === 'hide' || tag === 'spoiler') {
+      const details = document.createElement('details');
+      details.className = 'unit3d-ptp-bbcode-hide';
+      const summary = document.createElement('summary');
+      summary.textContent = normalizeWhitespace(param) || 'Hidden';
+      const body = document.createElement('div');
+      body.className = 'unit3d-ptp-bbcode-hide__body';
+      details.append(summary, body);
+      return { element: details, node: body };
+    }
+    if (tag === 'table') {
+      const table = document.createElement('table');
+      table.className = 'unit3d-ptp-bbcode-table';
+      const tbody = document.createElement('tbody');
+      table.appendChild(tbody);
+      return { element: table, node: tbody };
+    }
+    if (tag === 'tr') {
+      const row = document.createElement('tr');
+      row.className = 'unit3d-ptp-bbcode-table-row';
+      return row;
+    }
+    if (tag === 'td' || tag === 'th') {
+      const cell = document.createElement(tag);
+      cell.className = 'unit3d-ptp-bbcode-table-cell';
+      return cell;
+    }
+    if (tag === 'url') {
+      const element = document.createElement('a');
+      const href = normalizeBbcodeUrl(param);
+      if (href) element.href = href;
+      openLinkInNewTab(element);
+      return element;
+    }
+    return null;
+  }
+
+  function closeBbcodeElement(stack, tag, rawTag) {
+    for (let index = stack.length - 1; index > 0; index -= 1) {
+      if (stack[index].tag !== tag) continue;
+
+      if (
+        tag === 'url' &&
+        stack[index].node instanceof HTMLAnchorElement &&
+        !stack[index].node.href
+      ) {
+        stack[index].node.href = normalizeBbcodeUrl(stack[index].node.textContent || '');
+      }
+      stack.length = index;
+      return;
+    }
+
+    if (!isKnownBbcodeTag(tag)) appendTextWithBreaks(getBbcodeParent(stack), rawTag);
+  }
+
+  function isKnownBbcodeTag(tag) {
+    return [
+      'b',
+      'center',
+      'code',
+      'color',
+      'font',
+      'hide',
+      'i',
+      'img',
+      'left',
+      'pre',
+      'quote',
+      'right',
+      'size',
+      'spoiler',
+      'table',
+      'td',
+      'th',
+      'tr',
+      'u',
+      'url'
+    ].includes(tag);
+  }
+
+  function getOpenBbcodeUrl(stack) {
+    for (let index = stack.length - 1; index > 0; index -= 1) {
+      const item = stack[index];
+      if (item.tag === 'url' && item.node instanceof HTMLAnchorElement) {
+        return normalizeBbcodeUrl(item.node.getAttribute('href') || item.param || '');
+      }
+    }
+    return '';
+  }
+
+  function appendTextWithBreaks(parent, text) {
+    if (!text) return;
+    if (
+      /^[\s\r\n]*$/.test(text) &&
+      parent instanceof HTMLElement &&
+      /^(table|tbody|thead|tfoot|tr)$/i.test(parent.tagName)
+    ) {
+      return;
+    }
+
+    const parts = String(text)
+      .replace(/\r\n?/g, '\n')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .split('\n');
+    parts.forEach((part, index) => {
+      if (index > 0) parent.appendChild(document.createElement('br'));
+      if (part) appendHtmlAndLinkedText(parent, decodeBbcodeTextEntities(part));
+    });
+  }
+
+  function appendHtmlAndLinkedText(parent, text) {
+    if (!/<\/?[a-z][\s\S]*>/i.test(text)) {
+      appendLinkedText(parent, text);
+      return;
+    }
+
+    const template = document.createElement('template');
+    template.innerHTML = text;
+    if (!template.content.childNodes.length) {
+      appendLinkedText(parent, text);
+      return;
+    }
+
+    template.content.childNodes.forEach((node) => appendSafeHtmlNode(parent, node));
+  }
+
+  function appendSafeHtmlNode(parent, node) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      appendLinkedText(parent, node.nodeValue || '');
+      return;
+    }
+
+    if (!(node instanceof HTMLElement)) return;
+
+    const tag = node.tagName.toLowerCase();
+    if (tag === 'br') {
+      parent.appendChild(document.createElement('br'));
+      return;
+    }
+
+    const element = createSafeHtmlElement(node);
+    if (!element) {
+      appendLinkedText(parent, node.textContent || '');
+      return;
+    }
+
+    node.childNodes.forEach((child) => appendSafeHtmlNode(element, child));
+    parent.appendChild(element);
+  }
+
+  function createSafeHtmlElement(source) {
+    const tag = source.tagName.toLowerCase();
+    if (tag === 'a') {
+      const href = normalizeBbcodeUrl(source.getAttribute('href') || '');
+      const link = document.createElement('a');
+      if (href) link.href = href;
+      openLinkInNewTab(link);
+      return link;
+    }
+    if (tag === 'img') {
+      const src = normalizeBbcodeUrl(source.getAttribute('src') || '');
+      if (!src) return null;
+      return buildRenderedBbcodeImageElement(src, source.getAttribute('width') || '');
+    }
+    if (tag === 'b' || tag === 'strong') return document.createElement('strong');
+    if (tag === 'i' || tag === 'em') return document.createElement('em');
+    if (tag === 'u') {
+      const element = document.createElement('span');
+      element.style.textDecoration = 'underline';
+      return element;
+    }
+    if (tag === 'span' || tag === 'p' || tag === 'div') {
+      return document.createElement(tag === 'span' ? 'span' : 'div');
+    }
+    if (tag === 'font') {
+      const element = document.createElement('span');
+      const color = sanitizeBbcodeColor(source.getAttribute('color') || '');
+      const font = sanitizeBbcodeFont(source.getAttribute('face') || '');
+      if (color) element.style.color = color;
+      if (font) element.style.fontFamily = font;
+      if (font === 'monospace') element.style.whiteSpace = 'pre-wrap';
+      return element;
+    }
+    return null;
+  }
+
+  function appendLinkedText(parent, text) {
+    const urlRe = /https?:\/\/[^\s<>"\]]+/gi;
+    let cursor = 0;
+    let match = urlRe.exec(text);
+
+    while (match) {
+      if (match.index > cursor) {
+        parent.appendChild(document.createTextNode(text.slice(cursor, match.index)));
+      }
+
+      const rawUrl = match[0];
+      const url = normalizeBbcodeUrl(rawUrl);
+      const trailing = rawUrl.slice(url.length);
+      if (isPtpDirectImageUrl(url)) {
+        parent.appendChild(buildRenderedBbcodeImage(url, url, ''));
+      } else {
+        const link = document.createElement('a');
+        link.href = url;
+        link.textContent = url;
+        openLinkInNewTab(link);
+        parent.appendChild(link);
+      }
+      if (trailing) parent.appendChild(document.createTextNode(trailing));
+      cursor = match.index + rawUrl.length;
+      match = urlRe.exec(text);
+    }
+
+    if (cursor < text.length) {
+      parent.appendChild(document.createTextNode(text.slice(cursor)));
+    }
+  }
+
+  function isPtpDirectImageUrl(value) {
+    try {
+      const url = new URL(value);
+      return (
+        url.hostname === 'passthepopcorn.me' &&
+        /^\/i\/[^/?#]+\.(?:avif|gif|jpe?g|png|webp)$/i.test(url.pathname)
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  function buildRenderedBbcodeImage(href, src, widthValue) {
+    const image = buildRenderedBbcodeImageElement(src, widthValue);
+    const link = document.createElement('a');
+    link.className = 'unit3d-ptp-rendered-bbcode-image-link';
+    link.href = normalizeThumbnailDirectImageUrl(normalizeBbcodeUrl(href || src));
+    openLinkInNewTab(link);
+    link.appendChild(image);
+    return link;
+  }
+
+  function buildRenderedBbcodeImageElement(src, widthValue) {
+    const image = document.createElement('img');
+    image.className = 'unit3d-ptp-rendered-bbcode-image';
+    image.src = src;
+    image.loading = 'lazy';
+    image.alt = '';
+
+    const width = parseInteger(widthValue);
+    if (width) {
+      image.width = Math.min(Math.max(width, 40), 1200);
+    }
+
+    return image;
+  }
+
+  function buildBbcodeCodeBlock(text) {
+    const pre = document.createElement('pre');
+    const code = document.createElement('code');
+    code.textContent = text;
+    pre.appendChild(code);
+    return pre;
+  }
+
+  function buildBbcodePreBlock(text) {
+    const pre = document.createElement('pre');
+    pre.className = 'unit3d-ptp-bbcode-pre';
+    pre.appendChild(renderBbcodeFragment(text));
+    return pre;
+  }
+
+  function buildBbcodeQuoteBlock(text) {
+    const quote = document.createElement('blockquote');
+    appendTextWithBreaks(quote, text);
+    return quote;
+  }
+
+  function deferHiddenBbcodeImages(root) {
+    root.querySelectorAll('details.unit3d-ptp-bbcode-hide').forEach((details) => {
+      if (!details.dataset.unit3dPtpHideToggleAttached) {
+        details.dataset.unit3dPtpHideToggleAttached = 'true';
+        details.addEventListener('toggle', handleBbcodeHideToggle);
+      }
+
+      if (details.open) return;
+      details.querySelectorAll('img[src]').forEach((image) => {
+        if (image.dataset.unit3dPtpDeferredSrc) return;
+
+        image.dataset.unit3dPtpDeferredSrc = image.getAttribute('src') || '';
+        image.removeAttribute('src');
+        image.loading = 'lazy';
+      });
+    });
+  }
+
+  function handleBbcodeHideToggle(event) {
+    const details = event.currentTarget;
+    if (!(details instanceof HTMLDetailsElement) || !details.open) return;
+
+    details.querySelectorAll('img[data-unit3d-ptp-deferred-src]').forEach((image) => {
+      image.setAttribute('src', image.dataset.unit3dPtpDeferredSrc || '');
+      delete image.dataset.unit3dPtpDeferredSrc;
+      image.loading = 'lazy';
+    });
+
+    const panel = details.closest('.panelV2');
+    if (panel) normalizeDescriptionLightboxImages(panel);
+  }
+
+  function sanitizeBbcodeColor(value) {
+    const color = String(value || '').trim();
+    if (/^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/i.test(color)) return color;
+    if (/^transparent$/i.test(color)) return 'transparent';
+    if (/^[a-z]+$/i.test(color)) return color.toLowerCase();
+    return '';
+  }
+
+  function sanitizeBbcodeSize(value) {
+    const size = Number.parseInt(String(value || '').replace(/[^\d]/g, ''), 10);
+    if (!Number.isFinite(size)) return 0;
+    return Math.min(Math.max(size, 8), 32);
+  }
+
+  function sanitizeBbcodeFont(value) {
+    const font = String(value || '')
+      .trim()
+      .toLowerCase();
+    if (!font) return '';
+    if (/^(monospace|serif|sans-serif|cursive|fantasy)$/.test(font)) return font;
+    if (/^(courier|courier new|consolas|monaco|menlo)$/.test(font)) return 'monospace';
+    return '';
+  }
+
+  function buildExternalPrePanel(title, text, mediaInfo = false) {
+    const panel = buildExternalPanelShell(title, {
+      collapsible: mediaInfo,
+      preserveTitle: true
+    });
+    const body = panel.querySelector('.panel__body');
+    const dump = document.createElement('div');
+    if (mediaInfo) dump.className = 'torrent-mediainfo-dump';
+    const pre = document.createElement('pre');
+    const code = document.createElement('code');
+    code.textContent = text;
+    pre.appendChild(code);
+    dump.appendChild(pre);
+    body.appendChild(dump);
+    normalizeMediaInfoPanel(panel);
+    normalizePanelCopyButtons(panel);
+    return panel;
+  }
+
+  function buildExternalLazyMediaInfoPanel(detail, torrentUrl) {
+    const panel = buildExternalPrePanel('MediaInfo', 'Expand to load MediaInfo.', true);
+    panel.dataset.unit3dPtpLazyMediainfo = 'true';
+    panel.dataset.unit3dPtpExternalTorrentId = detail.externalDetailId || '';
+    panel.dataset.unit3dPtpExternalTorrentUrl = detail.torrentPage || torrentUrl || '';
+    return panel;
+  }
+
+  function buildExternalPanelShell(title, options = {}) {
+    const panel = document.createElement('section');
+    panel.className = 'panelV2 unit3d-ptp-source-panel';
+    const header = document.createElement('header');
+    header.className = 'panel__header';
+    const heading = document.createElement('h2');
+    heading.className = 'panel__heading';
+    if (options.collapsible) {
+      const plus = document.createElement('i');
+      plus.className = 'fas fa-plus-circle fa-pull-right';
+      const minus = document.createElement('i');
+      minus.className = 'fas fa-minus-circle fa-pull-right';
+      heading.append(plus, minus, document.createTextNode(' '));
+    }
+    heading.appendChild(
+      document.createTextNode(options.preserveTitle ? title : normalizeMetaSidebarTitle(title))
+    );
+    const actions = document.createElement('div');
+    actions.className = 'panel__actions';
+    const action = document.createElement('div');
+    action.className = 'panel__action';
+    const copy = document.createElement('button');
+    copy.className = 'form__button form__button--text unit3d-ptp-copy-button';
+    copy.type = 'button';
+    copy.textContent = 'Copy';
+    action.appendChild(copy);
+    actions.appendChild(action);
+    header.append(heading, actions);
+    const body = document.createElement('div');
+    body.className = 'panel__body';
+    panel.append(header, body);
+    return panel;
   }
 
   function extractDetailActionMenu(doc) {
@@ -2870,7 +4084,29 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
 
     const absolute = absolutizeUrl(value);
     if (!isSafeUrl(absolute, location.href, 'href')) return '';
-    return isDirectImageUrl(absolute) ? absolute : '';
+    const normalized = normalizeThumbnailDirectImageUrl(absolute);
+    return isDirectImageUrl(normalized) ? normalized : '';
+  }
+
+  function normalizeThumbnailDirectImageUrl(value) {
+    try {
+      const url = new URL(value, location.href);
+      if (/(^|\.)imgbox\.com$/i.test(url.hostname)) {
+        url.hostname = url.hostname.replace(/^thumbs(\d*)\./i, 'images$1.');
+        url.pathname = url.pathname.replace(/_t(\.(?:png|jpe?g|gif|webp|avif|bmp))$/i, '_o$1');
+        return url.href;
+      }
+
+      if (!/(^|\.)(?:beyondhd\.co|ptscreens\.com)$/i.test(url.hostname)) return value;
+
+      url.pathname = url.pathname.replace(
+        /(.+)\.[^.\/]+(\.(?:png|jpe?g|gif|webp|avif|bmp))$/i,
+        '$1$2'
+      );
+      return url.href;
+    } catch {
+      return value;
+    }
   }
 
   function isDirectImageUrl(value) {
@@ -2968,7 +4204,9 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     const header = event.target.closest('.panel__header, .panel__heading');
     if (!header || !panel.contains(header)) return;
 
-    setMediaInfoExpanded(panel, panel.querySelector('.torrent-mediainfo-dump')?.hidden === true);
+    const expanded = panel.querySelector('.torrent-mediainfo-dump')?.hidden === true;
+    setMediaInfoExpanded(panel, expanded);
+    if (expanded) loadLazyExternalMediaInfo(panel);
   }
 
   function setMediaInfoExpanded(panel, expanded) {
@@ -2980,6 +4218,84 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
 
     const minusIcon = panel.querySelector('.panel__heading .fa-minus-circle');
     if (minusIcon) minusIcon.hidden = !expanded;
+  }
+
+  function loadLazyExternalMediaInfo(panel) {
+    if (panel.dataset.unit3dPtpLazyMediainfo !== 'true') return;
+    if (
+      panel.dataset.unit3dPtpLazyLoading === 'true' ||
+      panel.dataset.unit3dPtpLazyLoaded === 'true'
+    ) {
+      return;
+    }
+
+    const dump = panel.querySelector('.torrent-mediainfo-dump');
+    if (!dump) return;
+
+    panel.dataset.unit3dPtpLazyLoading = 'true';
+    setExternalPrePanelText(panel, 'Loading MediaInfo...');
+
+    requestExternalMediaInfo(
+      panel.dataset.unit3dPtpExternalTorrentId || '',
+      panel.dataset.unit3dPtpExternalTorrentUrl || ''
+    )
+      .then((text) => {
+        setExternalPrePanelText(panel, text || 'No MediaInfo available.');
+        panel.dataset.unit3dPtpLazyLoaded = 'true';
+        normalizePanelCopyButtons(panel);
+      })
+      .catch((error) => {
+        setExternalPrePanelText(panel, `Could not load MediaInfo: ${error.message}`);
+      })
+      .finally(() => {
+        delete panel.dataset.unit3dPtpLazyLoading;
+      });
+  }
+
+  function setExternalPrePanelText(panel, text) {
+    const code = panel.querySelector('.torrent-mediainfo-dump pre code');
+    if (code) code.textContent = text;
+  }
+
+  function requestExternalMediaInfo(torrentId, torrentUrl) {
+    return new Promise((resolve, reject) => {
+      const eventTarget = getExternalDetailEventTarget();
+      const requestId = `unit3d-mediainfo-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const timeout = globalThis.setTimeout(() => {
+        eventTarget.removeEventListener(EXTERNAL_DETAIL_RESPONSE_EVENT, handleResponse);
+        reject(new Error('external MediaInfo provider timed out'));
+      }, CONFIG.externalDetailTimeoutMs);
+
+      function handleResponse(event) {
+        const detail = event.detail || {};
+        if (detail.requestId !== requestId) return;
+
+        globalThis.clearTimeout(timeout);
+        eventTarget.removeEventListener(EXTERNAL_DETAIL_RESPONSE_EVENT, handleResponse);
+
+        if (!detail.ok) {
+          reject(new Error(detail.error || 'external MediaInfo unavailable'));
+          return;
+        }
+
+        resolve(stringifyBbcodeText(detail.payload?.mediainfo || ''));
+      }
+
+      eventTarget.addEventListener(EXTERNAL_DETAIL_RESPONSE_EVENT, handleResponse);
+      eventTarget.dispatchEvent(
+        new CustomEvent(EXTERNAL_DETAIL_REQUEST_EVENT, {
+          bubbles: false,
+          cancelable: false,
+          composed: false,
+          detail: {
+            field: 'mediainfo',
+            requestId,
+            torrentId,
+            torrentUrl
+          }
+        })
+      );
+    });
   }
 
   function normalizePanelCopyButtons(panel) {
@@ -3207,7 +4523,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
   function normalizeRawBbcode(root) {
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
       acceptNode(node) {
-        if (!/\[(?:comparison|url=|img(?:=|\]))/i.test(node.nodeValue || '')) {
+        if (!hasRenderableRawBbcode(node.nodeValue || '')) {
           return NodeFilter.FILTER_REJECT;
         }
 
@@ -3224,8 +4540,19 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     textNodes.forEach(replaceRawBbcodeTextNode);
   }
 
+  function hasRenderableRawBbcode(text) {
+    return /\[(?:\/?(?:b|center|color|font|i|left|right|size|u)|comparison(?:=|\])|url(?:=|\])|img(?:=|\]))/i.test(
+      text
+    );
+  }
+
   function replaceRawBbcodeTextNode(textNode) {
     const text = textNode.nodeValue || '';
+    if (/\[(?:\/?(?:b|center|color|font|i|left|right|size|u)|url\])/i.test(text)) {
+      textNode.replaceWith(renderBbcodeFragment(text));
+      return;
+    }
+
     const fragment = document.createDocumentFragment();
     let cursor = 0;
     let changed = false;
@@ -3892,7 +5219,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
 
   function addReleaseTokenRanges(ranges, text, token, className) {
     const pattern = new RegExp(
-      `(^|[^A-Za-z0-9+:-])(${escapeRegExp(token)})(?=$|[^A-Za-z0-9+:-])`,
+      `(^|[^A-Za-z0-9+:-])(${escapeRegExp(token)})(?=$|[^A-Za-z0-9+:])`,
       'gi'
     );
     let match = pattern.exec(text);
@@ -3907,9 +5234,9 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
   }
 
   function addAudioTokenRanges(ranges, text, token, className) {
-    const channelPattern = String.raw`(?:\s+(?:1|2|3|4|5|6|7)\.(?:0|1|2))?`;
+    const channelPattern = String.raw`(?:[\s-]+(?:1|2|3|4|5|6|7)\.(?:0|1|2))?`;
     const pattern = new RegExp(
-      `(^|[^A-Za-z0-9+:-])(${escapeRegExp(token)}${channelPattern})(?=$|[^A-Za-z0-9+:-])`,
+      `(^|[^A-Za-z0-9+:-])(${escapeRegExp(token)}${channelPattern})(?=$|[^A-Za-z0-9+:])`,
       'gi'
     );
     let match = pattern.exec(text);
