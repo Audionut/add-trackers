@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Layout Change
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.1.1
+// @version      0.1.2
 // @description  Change UNIT3D similar torrents layout with additional details and sorting options.
 // @author       Audionut
 // @match        https://aither.cc/torrents/similar/1*
@@ -5338,30 +5338,75 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
   }
 
   function compareRowPairs(left, right, sort) {
+    const crossSeedGroupTie = compareCrossSeedRowPairOrder(left.header, right.header);
+    if (crossSeedGroupTie !== null) return crossSeedGroupTie;
+
     const column = SORT_COLUMN_BY_KEY.get(sort.key) || SORT_COLUMN_BY_KEY.get('sizeBytes');
     const direction = sort.direction === 'desc' ? -1 : 1;
+    const leftSortHeader = getCrossSeedSortHeader(left.header);
+    const rightSortHeader = getCrossSeedSortHeader(right.header);
     const primary = compareValues(
-      getRowSortValue(left.header, column.key),
-      getRowSortValue(right.header, column.key),
+      getRowSortValue(leftSortHeader, column.key),
+      getRowSortValue(rightSortHeader, column.key),
       column.type
     );
     if (primary !== 0) return primary * direction;
 
     const sizeTie = compareValues(
-      getRowSortValue(left.header, 'sizeBytes'),
-      getRowSortValue(right.header, 'sizeBytes'),
+      getRowSortValue(leftSortHeader, 'sizeBytes'),
+      getRowSortValue(rightSortHeader, 'sizeBytes'),
       'number'
     );
     if (sizeTie !== 0) return sizeTie;
 
     const nameTie = compareValues(
-      getRowSortValue(left.header, 'releaseName'),
-      getRowSortValue(right.header, 'releaseName'),
+      getRowSortValue(leftSortHeader, 'releaseName'),
+      getRowSortValue(rightSortHeader, 'releaseName'),
       'text'
     );
     if (nameTie !== 0) return nameTie;
 
+    const crossSeedIndexTie = compareValues(
+      getCrossSeedGroupSortIndex(left.header, left.index),
+      getCrossSeedGroupSortIndex(right.header, right.index),
+      'number'
+    );
+    if (crossSeedIndexTie !== 0) return crossSeedIndexTie;
+
     return left.index - right.index;
+  }
+
+  function compareCrossSeedRowPairOrder(left, right) {
+    const leftGroup = left.dataset.unit3dCrossSeedGroup || '';
+    const rightGroup = right.dataset.unit3dCrossSeedGroup || '';
+    if (!leftGroup || leftGroup !== rightGroup) return null;
+
+    const leftOrder = Number.parseInt(left.dataset.unit3dCrossSeedOrder || '', 10);
+    const rightOrder = Number.parseInt(right.dataset.unit3dCrossSeedOrder || '', 10);
+    if (!Number.isFinite(leftOrder) || !Number.isFinite(rightOrder)) return null;
+    if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+    return null;
+  }
+
+  function getCrossSeedSortHeader(row) {
+    const group = row.dataset.unit3dCrossSeedGroup || '';
+    if (!group) return row;
+    if (row.dataset.unit3dCrossSeedOrder === '0') return row;
+
+    return (
+      row
+        .closest('tbody')
+        ?.querySelector(
+          `tr.group_torrent_header[data-unit3d-cross-seed-group="${cssEscape(
+            group
+          )}"][data-unit3d-cross-seed-order="0"]`
+        ) || row
+    );
+  }
+
+  function getCrossSeedGroupSortIndex(row, fallbackIndex) {
+    const groupIndex = Number.parseInt(row.dataset.unit3dCrossSeedGroupIndex || '', 10);
+    return Number.isFinite(groupIndex) ? groupIndex : fallbackIndex;
   }
 
   function getRowSortValue(row, key) {

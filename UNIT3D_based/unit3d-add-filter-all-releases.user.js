@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.1.0
+// @version      0.1.1
 // @description  Add releases from other trackers to UNIT3D similar torrent pages.
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://aither.cc/torrents/similar/1*
@@ -25,6 +25,8 @@
   const EXTERNAL_DETAIL_RESPONSE_EVENT = 'unit3d-add-releases-private-detail-response';
   const STATUS_PANEL_ID = 'unit3d-add-releases-status-panel';
   const STATUS_STYLE_ID = 'unit3d-add-releases-status-style';
+  const CROSS_SEED_STYLE_ID = 'unit3d-add-releases-cross-seed-style';
+  const CREDENTIAL_MASK = '.....';
 
   const fields = {
     aither: {
@@ -377,6 +379,73 @@
       tooltip:
         'Run this script by default on page load, else click Other Trackers under title to run the script'
     },
+    cross_seed: {
+      label: 'UNIT3D cross-seed markers',
+      type: 'checkbox',
+      default: true,
+      tooltip: 'Mark added rows that can likely cross-seed from an existing UNIT3D row'
+    },
+    cross_seed_partial: {
+      label: 'Show partial cross-seedable',
+      type: 'checkbox',
+      default: true,
+      tooltip: 'Show SCS/PCS markers for same-size or close-size likely cross-seeds'
+    },
+    cross_seed_second_pass: {
+      label: 'Cross-seed match added rows',
+      type: 'checkbox',
+      default: false,
+      tooltip: 'Match remaining added rows against each other after UNIT3D row matching'
+    },
+    cross_seed_tcs_mib: {
+      label: 'TCS size tolerance (MiB)',
+      type: 'int',
+      default: 0,
+      tooltip: 'Size tolerance for strict cross-seed matches'
+    },
+    cross_seed_pcs_mib: {
+      label: 'PCS size tolerance (MiB)',
+      type: 'int',
+      default: 10,
+      tooltip: 'Size tolerance for partial cross-seed matches'
+    },
+    cross_seed_show_markers: {
+      label: 'Show cross-seed marker links',
+      type: 'checkbox',
+      default: true,
+      tooltip: 'Show TCS/SCS/PCS links in the torrent action area'
+    },
+    cross_seed_highlight_mode: {
+      label: 'Cross-seed row highlighting',
+      type: 'select',
+      options: ['All', 'TCS', 'Off'],
+      default: 'All',
+      tooltip: 'Highlight no rows, only TCS matches, or both TCS and SCS/PCS matches'
+    },
+    cross_seed_tcs_color: {
+      label: 'TCS highlight color',
+      type: 'color',
+      default: '#8bc34a',
+      tooltip: 'Highlight color for TCS matched rows'
+    },
+    cross_seed_tcs_transparency: {
+      label: 'TCS highlight transparency (%)',
+      type: 'int',
+      default: 82,
+      tooltip: '0 is solid, 100 is fully transparent'
+    },
+    cross_seed_pcs_color: {
+      label: 'PCS/SCS highlight color',
+      type: 'color',
+      default: '#ff9800',
+      tooltip: 'Highlight color for PCS and SCS matched rows'
+    },
+    cross_seed_pcs_transparency: {
+      label: 'PCS/SCS highlight transparency (%)',
+      type: 'int',
+      default: 82,
+      tooltip: '0 is solid, 100 is fully transparent'
+    },
     ptp_name: {
       label: 'Show release name',
       type: 'checkbox',
@@ -566,6 +635,19 @@
     'timerDuration',
     'debugging'
   ];
+  const CROSS_SEED_SETTING_KEYS = [
+    'cross_seed',
+    'cross_seed_partial',
+    'cross_seed_second_pass',
+    'cross_seed_tcs_mib',
+    'cross_seed_pcs_mib',
+    'cross_seed_show_markers',
+    'cross_seed_highlight_mode',
+    'cross_seed_tcs_color',
+    'cross_seed_tcs_transparency',
+    'cross_seed_pcs_color',
+    'cross_seed_pcs_transparency'
+  ];
   const DEFAULT_SETTINGS = Object.fromEntries(
     Object.entries(fields)
       .filter(([key]) => !['ptp_name', 'funky_tags'].includes(key))
@@ -699,10 +781,12 @@
           !isSuppressedSettingKey(key) &&
           !TRACKER_SETTING_KEYS.includes(key) &&
           !DISPLAY_SETTING_KEYS.includes(key) &&
+          !CROSS_SEED_SETTING_KEYS.includes(key) &&
           !/_token$/i.test(key)
       )
     );
     appendGroup('Display / Filtering', DISPLAY_SETTING_KEYS);
+    appendGroup('UNIT3D Cross-Seed', CROSS_SEED_SETTING_KEYS);
     appendGroup(
       'Stored Tokens',
       Object.keys(DEFAULT_SETTINGS).filter(
@@ -753,8 +837,26 @@
       });
     } else {
       input = document.createElement('input');
-      input.type = field.type === 'int' ? 'number' : 'text';
-      input.value = String(GM_config.get(key) ?? '');
+      input.type = field.type === 'int' ? 'number' : field.type === 'color' ? 'color' : 'text';
+      if (key.endsWith('_transparency')) {
+        input.min = '0';
+        input.max = '100';
+        input.step = '1';
+      }
+      const storedValue = String(GM_config.get(key) ?? '');
+      if (isCredentialSettingKey(key) && storedValue) {
+        input.value = CREDENTIAL_MASK;
+        input.dataset.maskedCredential = 'true';
+        input.addEventListener('focus', () => {
+          if (input.dataset.maskedCredential !== 'true') return;
+          input.select();
+        });
+        input.addEventListener('input', () => {
+          if (input.value !== CREDENTIAL_MASK) input.dataset.maskedCredential = 'false';
+        });
+      } else {
+        input.value = storedValue;
+      }
     }
 
     input.name = key;
@@ -829,6 +931,17 @@
     return apiKey in DEFAULT_SETTINGS ? [apiKey] : [];
   }
 
+  function isCredentialSettingKey(key) {
+    return (
+      key in DEFAULT_SETTINGS &&
+      !isSuppressedSettingKey(key) &&
+      !TRACKER_SETTING_KEYS.includes(key) &&
+      !DISPLAY_SETTING_KEYS.includes(key) &&
+      !CROSS_SEED_SETTING_KEYS.includes(key) &&
+      !/_token$/i.test(key)
+    );
+  }
+
   function cssEscape(value) {
     if (window.CSS?.escape) return CSS.escape(value);
     return String(value).replaceAll(/["\\]/g, '\\$&');
@@ -842,8 +955,20 @@
         GM_config.set(key, input.checked);
       } else if (fields[key]?.type === 'int') {
         const parsed = Number.parseInt(input.value, 10);
-        GM_config.set(key, Number.isFinite(parsed) ? parsed : defaultValue);
+        if (key.endsWith('_transparency') && Number.isFinite(parsed)) {
+          GM_config.set(key, Math.min(100, Math.max(0, parsed)));
+        } else {
+          GM_config.set(key, Number.isFinite(parsed) ? parsed : defaultValue);
+        }
       } else {
+        if (
+          input instanceof HTMLInputElement &&
+          isCredentialSettingKey(key) &&
+          input.dataset.maskedCredential === 'true' &&
+          input.value === CREDENTIAL_MASK
+        ) {
+          return;
+        }
         GM_config.set(key, input.value);
       }
     });
@@ -1242,6 +1367,17 @@
     const open_in_new_tab = GM_config.get('new_tab'); // false : when you click external torrent, it will open the page in new tab. ||| true : it will replace current tab.
     let hide_tags = GM_config.get('hide_tags'); // true = will hide all of the tags. Featured, DU, reported, etc.
     const run_by_default = GM_config.get('run_default'); // false = won't run the script by default, but will add an "Other Trackers" link under the page title, which when clicked will run the script.
+    const crossSeedEnabled = GM_config.get('cross_seed');
+    const crossSeedPartialEnabled = GM_config.get('cross_seed_partial');
+    const crossSeedSecondPassEnabled = GM_config.get('cross_seed_second_pass');
+    const crossSeedTcsToleranceMiB = GM_config.get('cross_seed_tcs_mib');
+    const crossSeedPcsToleranceMiB = GM_config.get('cross_seed_pcs_mib');
+    const crossSeedShowMarkers = GM_config.get('cross_seed_show_markers');
+    const crossSeedHighlightMode = GM_config.get('cross_seed_highlight_mode');
+    const crossSeedTcsColor = GM_config.get('cross_seed_tcs_color');
+    const crossSeedTcsTransparency = GM_config.get('cross_seed_tcs_transparency');
+    const crossSeedPcsColor = GM_config.get('cross_seed_pcs_color');
+    const crossSeedPcsTransparency = GM_config.get('cross_seed_pcs_transparency');
     const timer = GM_config.get('timer') * 1000; // Convert to milliseconds
     const timerDuration = GM_config.get('timerDuration') * 1000; // Convert to milliseconds
     let ptp_release_name = GM_config.get('ptp_name'); // true = show release name - false = original PTP release style. Ignored if Improved Tags  = true
@@ -6756,6 +6892,7 @@
       filters = buildUnit3dFilterState(doms);
       if (!hide_filters_div) addUnit3dFilterPanel();
       filter_torrents();
+      runCrossSeedMarkerPass();
 
       if (debug) console.log('Finished adding UNIT3D releases from other trackers');
       document.dispatchEvent(new CustomEvent('PTPAddReleasesFromOtherTrackersComplete'));
@@ -7233,6 +7370,465 @@
       return String(value || '')
         .replace(/\s+/g, ' ')
         .trim();
+    }
+
+    function runCrossSeedMarkerPass() {
+      if (!crossSeedEnabled) return;
+      installCrossSeedStyle();
+      clearCrossSeedMarkers();
+
+      const rows = doms
+        .map((entry) => buildCrossSeedRowData(entry))
+        .filter((entry) => entry && entry.row && entry.size > 0);
+      const unit3dRows = rows.filter((entry) => !entry.row.classList.contains(EXTERNAL_ROW_CLASS));
+      const addedRows = rows.filter((entry) => entry.row.classList.contains(EXTERNAL_ROW_CLASS));
+
+      if (unit3dRows.length === 0 || addedRows.length === 0) return;
+
+      const unmatchedRows = matchCrossSeedRows(unit3dRows, addedRows);
+      if (crossSeedSecondPassEnabled) matchRemainingCrossSeedRows(unmatchedRows);
+      reorderCrossSeedMatches(rows);
+    }
+
+    function clearCrossSeedMarkers() {
+      document
+        .querySelectorAll('.unit3d-cross-seed-marker, .unit3d-cross-seed-separator')
+        .forEach((node) => node.remove());
+      document
+        .querySelectorAll(
+          '.tcs-matched, .scs-matched, .pcs-matched, .unit3d-cross-seed-source, .unit3d-cross-seed-match'
+        )
+        .forEach((row) => {
+          row.classList.remove(
+            'tcs-matched',
+            'scs-matched',
+            'pcs-matched',
+            'unit3d-cross-seed-source',
+            'unit3d-cross-seed-source--tcs',
+            'unit3d-cross-seed-source--pcs',
+            'unit3d-cross-seed-match'
+          );
+          row.removeAttribute('data-pl-href');
+          delete row.dataset.unit3dCrossSeedGroup;
+          delete row.dataset.unit3dCrossSeedGroupIndex;
+          delete row.dataset.unit3dCrossSeedOrder;
+        });
+    }
+
+    function installCrossSeedStyle() {
+      if (document.getElementById(CROSS_SEED_STYLE_ID)) return;
+      const style = document.createElement('style');
+      style.id = CROSS_SEED_STYLE_ID;
+      const tcsColor = sanitizeCrossSeedColor(crossSeedTcsColor, '#8bc34a');
+      const pcsColor = sanitizeCrossSeedColor(crossSeedPcsColor, '#ff9800');
+      const tcsAlpha = crossSeedHighlightAlpha(crossSeedTcsTransparency);
+      const pcsAlpha = crossSeedHighlightAlpha(crossSeedPcsTransparency);
+      const tcsHighlightCss =
+        crossSeedHighlightMode === 'TCS' || crossSeedHighlightMode === 'All'
+          ? `
+tr.unit3d-cross-seed-source.unit3d-cross-seed-source--tcs > td,
+tr.unit3d-cross-seed-match.tcs-matched > td {
+  background: ${hexToRgba(tcsColor, tcsAlpha)} !important;
+  box-shadow: inset 4px 0 ${hexToRgba(tcsColor, 0.95)};
+}
+`
+          : '';
+      const pcsHighlightCss =
+        crossSeedHighlightMode === 'All'
+          ? `
+tr.unit3d-cross-seed-source.unit3d-cross-seed-source--pcs > td,
+tr.unit3d-cross-seed-match.scs-matched > td,
+tr.unit3d-cross-seed-match.pcs-matched > td {
+  background: ${hexToRgba(pcsColor, pcsAlpha)} !important;
+  box-shadow: inset 4px 0 ${hexToRgba(pcsColor, 0.95)};
+}
+`
+          : '';
+      style.textContent = `
+${pcsHighlightCss}
+${tcsHighlightCss}
+.unit3d-cross-seed-marker-host {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  margin-left: 0.45rem;
+  white-space: nowrap;
+}
+.unit3d-cross-seed-marker {
+  font-weight: 700;
+  text-decoration: none;
+}
+`;
+      (document.head || document.documentElement).appendChild(style);
+    }
+
+    function sanitizeCrossSeedColor(value, fallback) {
+      const text = String(value || '').trim();
+      return /^#[0-9a-f]{6}$/i.test(text) ? text : fallback;
+    }
+
+    function crossSeedHighlightAlpha(transparency) {
+      const parsed = Number.parseInt(transparency, 10);
+      const clamped = Math.min(100, Math.max(0, Number.isFinite(parsed) ? parsed : 82));
+      return Number(((100 - clamped) / 100).toFixed(2));
+    }
+
+    function hexToRgba(hex, alpha) {
+      const value = sanitizeCrossSeedColor(hex, '#8bc34a').slice(1);
+      const red = Number.parseInt(value.slice(0, 2), 16);
+      const green = Number.parseInt(value.slice(2, 4), 16);
+      const blue = Number.parseInt(value.slice(4, 6), 16);
+      return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+    }
+
+    function buildCrossSeedRowData(entry) {
+      if (!entry?.dom_path) return null;
+      const row = entry.dom_path;
+      const rawName = normalizeUnit3dText(
+        row.dataset.releasename || entry.info_text || row.textContent || ''
+      );
+      const size = getCrossSeedRowSizeBytes(entry);
+      const group = normalizeUnit3dText(row.dataset.releasegroup || entry.group_id || '');
+      const tracker = normalizeUnit3dText(
+        row.dataset.unit3dAddReleasesTracker || entry.tracker || ''
+      );
+
+      return {
+        classid: entry.dom_id || '',
+        domEntry: entry,
+        group,
+        parsedName: parseCrossSeedReleaseName(rawName),
+        pl: getCrossSeedPermalink(row),
+        rawName,
+        row,
+        size,
+        tracker
+      };
+    }
+
+    function getCrossSeedRowSizeBytes(entry) {
+      const row = entry.dom_path;
+      const datasetSize = Number.parseInt(row.dataset.sizeBytes, 10);
+      if (Number.isFinite(datasetSize) && datasetSize > 0) return datasetSize;
+
+      const spanSize = Number.parseInt(
+        String(row.querySelector('.size-span')?.getAttribute('title') || '').replaceAll(',', ''),
+        10
+      );
+      if (Number.isFinite(spanSize) && spanSize > 0) return spanSize;
+
+      const mib = Number.parseFloat(entry.size);
+      return Number.isFinite(mib) && mib > 0 ? Math.round(mib * 1024 * 1024) : 0;
+    }
+
+    function getCrossSeedPermalink(row) {
+      const link =
+        row.querySelector('a[title="Permalink"], a[title="View torrent page"], a.link_3') ||
+        row.querySelector('a.torrent-info-link[href]');
+      return link?.href || link?.getAttribute('href') || '#';
+    }
+
+    function parseCrossSeedReleaseName(name) {
+      const raw = String(name || '').replace(/\.(?:torrent|mkv|mp4|avi|iso|ts)$/i, '');
+      const normalized = canonicalizeExternalReleaseText(raw);
+      return {
+        resolution: /\b([0-9]{3,4}p|[0-9]{3,4}i|4k|uhd)\b/i.exec(normalized)?.[1] || '',
+        title: normalized
+      };
+    }
+
+    function matchCrossSeedRows(referenceRows, candidateRows) {
+      const unmatchedRows = [];
+
+      candidateRows.forEach((candidate) => {
+        const comparableReferences = referenceRows.filter((reference) =>
+          canCrossSeedCompare(reference, candidate)
+        );
+        const tcsMatch = findTcsCrossSeedMatch(comparableReferences, candidate);
+
+        if (tcsMatch) {
+          markCrossSeedRow(candidate, tcsMatch, {
+            className: 'tcs-matched',
+            color: 'greenyellow',
+            label: 'TCS',
+            title: 'Total Cross-Seed compatibility - Identical Release'
+          });
+          return;
+        }
+
+        if (!crossSeedPartialEnabled) {
+          unmatchedRows.push(candidate);
+          return;
+        }
+
+        const pcsMatch = findPcsCrossSeedMatch(comparableReferences, candidate);
+        if (pcsMatch) {
+          markCrossSeedRow(candidate, pcsMatch.row, pcsMatch);
+        } else {
+          unmatchedRows.push(candidate);
+        }
+      });
+
+      return unmatchedRows;
+    }
+
+    function matchRemainingCrossSeedRows(unmatchedRows) {
+      unmatchedRows.forEach((reference, index) => {
+        for (let i = index + 1; i < unmatchedRows.length; i += 1) {
+          const candidate = unmatchedRows[i];
+          if (!canCrossSeedCompare(reference, candidate)) continue;
+          const tcsMatch = findTcsCrossSeedMatch([reference], candidate);
+          if (!tcsMatch) continue;
+          markCrossSeedRow(candidate, tcsMatch, {
+            className: 'tcs-matched',
+            color: 'greenyellow',
+            label: 'TCS',
+            title: 'Total Cross-Seed compatibility - Identical Release'
+          });
+          break;
+        }
+      });
+    }
+
+    function findTcsCrossSeedMatch(referenceRows, candidate) {
+      const toleranceBytes = Math.max(0, Number(crossSeedTcsToleranceMiB) || 0) * 1024 * 1024;
+      const exactMatch = referenceRows.find((reference) => {
+        return (
+          (reference.size === candidate.size && sameCrossSeedGroup(reference, candidate)) ||
+          (reference.size === candidate.size && sameCrossSeedName(reference, candidate))
+        );
+      });
+      if (exactMatch) return exactMatch;
+
+      return referenceRows.find((reference) => {
+        const sizeDifference = Math.abs(reference.size - candidate.size);
+        return (
+          sizeDifference <= toleranceBytes &&
+          (sameCrossSeedGroup(reference, candidate) || sameCrossSeedName(reference, candidate))
+        );
+      });
+    }
+
+    function canCrossSeedCompare(reference, candidate) {
+      if (!reference || !candidate || reference === candidate) return false;
+      if (!reference.tracker || !candidate.tracker) return true;
+      return reference.tracker.toLowerCase() !== candidate.tracker.toLowerCase();
+    }
+
+    function findPcsCrossSeedMatch(referenceRows, candidate) {
+      if (/Audio Only Track/i.test(candidate.rawName)) return null;
+
+      const candidateProfile = getCrossSeedProfile(candidate);
+      const sameSizeMatch = referenceRows.find((reference) => {
+        const referenceProfile = getCrossSeedProfile(reference);
+        return (
+          reference.size === candidate.size &&
+          referenceProfile.title === candidateProfile.title &&
+          referenceProfile.resolution === candidateProfile.resolution &&
+          referenceProfile.dv === candidateProfile.dv &&
+          referenceProfile.hdr === candidateProfile.hdr &&
+          referenceProfile.threeD === candidateProfile.threeD
+        );
+      });
+      if (sameSizeMatch) {
+        return {
+          className: 'scs-matched',
+          color: 'gold',
+          label: 'SCS',
+          row: sameSizeMatch,
+          title: 'Same-Size Cross-Seed compatibility - Exact size match, but failed strict TCS rules'
+        };
+      }
+
+      const toleranceBytes = Math.max(0, Number(crossSeedPcsToleranceMiB) || 0) * 1024 * 1024;
+      const exactToleranceBytes =
+        Math.max(0, Number(crossSeedTcsToleranceMiB) || 0) * 1024 * 1024;
+      const toleranceMatch = referenceRows.find((reference) => {
+        const referenceProfile = getCrossSeedProfile(reference);
+        const sizeDifference = Math.abs(reference.size - candidate.size);
+        return (
+          sizeDifference <= toleranceBytes &&
+          !(sameCrossSeedGroup(reference, candidate) && sizeDifference <= exactToleranceBytes) &&
+          (!candidate.group || sameCrossSeedGroup(reference, candidate)) &&
+          referenceProfile.title === candidateProfile.title &&
+          referenceProfile.resolution === candidateProfile.resolution &&
+          referenceProfile.dv === candidateProfile.dv &&
+          referenceProfile.hdr === candidateProfile.hdr &&
+          referenceProfile.threeD === candidateProfile.threeD
+        );
+      });
+
+      return toleranceMatch
+        ? {
+            className: 'pcs-matched',
+            color: 'orange',
+            label: 'PCS',
+            row: toleranceMatch,
+            title: 'Partial Cross-Seed compatibility - Re-verify File/Folder Structure'
+          }
+        : null;
+    }
+
+    function getCrossSeedProfile(entry) {
+      const title = normalizeCrossSeedTitle(entry.parsedName.title || entry.rawName || '');
+      return {
+        dv: /\bdv\b|dolby\s*vision/i.test(title),
+        hdr: /\bhdr(?:10\+?)?\b/i.test(title),
+        resolution: String(entry.parsedName.resolution || '').toLowerCase(),
+        threeD: /\b3d\b/i.test(title),
+        title
+      };
+    }
+
+    function normalizeCrossSeedTitle(title) {
+      return canonicalizeExternalReleaseText(title)
+        .replace(/\b(?:mkv|avi|mp4|mov|m2ts|torrent)\b/gi, '')
+        .toLowerCase()
+        .trim();
+    }
+
+    function sameCrossSeedGroup(left, right) {
+      return !!left.group && !!right.group && left.group.toLowerCase() === right.group.toLowerCase();
+    }
+
+    function sameCrossSeedName(left, right) {
+      return (
+        !!left.rawName &&
+        !!right.rawName &&
+        normalizeCrossSeedTitle(left.rawName) === normalizeCrossSeedTitle(right.rawName)
+      );
+    }
+
+    function markCrossSeedRow(candidate, reference, marker) {
+      const groupId =
+        reference.row.dataset.unit3dCrossSeedGroup ||
+        `unit3d-cross-seed-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      reference.row.dataset.unit3dCrossSeedGroup = groupId;
+      candidate.row.dataset.unit3dCrossSeedGroup = groupId;
+      const groupIndex =
+        reference.row.dataset.unit3dCrossSeedGroupIndex ||
+        String(getCrossSeedHeaderIndex(reference.row));
+      reference.row.dataset.unit3dCrossSeedGroupIndex = groupIndex;
+      candidate.row.dataset.unit3dCrossSeedGroupIndex = groupIndex;
+      if (!reference.row.dataset.unit3dCrossSeedOrder) {
+        reference.row.dataset.unit3dCrossSeedOrder = '0';
+      }
+      reference.row.classList.add(
+        'unit3d-cross-seed-source',
+        marker.className === 'tcs-matched'
+          ? 'unit3d-cross-seed-source--tcs'
+          : 'unit3d-cross-seed-source--pcs'
+      );
+
+      if (!reference.crossSeedMatches) reference.crossSeedMatches = [];
+      if (!reference.crossSeedMatches.includes(candidate)) {
+        reference.crossSeedMatches.push(candidate);
+      }
+      candidate.row.dataset.unit3dCrossSeedOrder = String(
+        reference.crossSeedMatches.indexOf(candidate) + 1
+      );
+      candidate.row.classList.add('unit3d-cross-seed-match', marker.className);
+      candidate.row.dataset.plHref = reference.pl || '#';
+
+      if (!crossSeedShowMarkers) return;
+      const markerHost = getCrossSeedMarkerHost(candidate.row);
+      if (
+        !markerHost ||
+        markerHost.querySelector(`.unit3d-cross-seed-marker--${marker.label}`)
+      ) {
+        return;
+      }
+
+      const mainLink = document.createElement('a');
+      mainLink.href = reference.pl || '#';
+      mainLink.className = `link_2 unit3d-cross-seed-marker unit3d-cross-seed-marker--${marker.label}`;
+      mainLink.title = marker.title;
+      mainLink.textContent = marker.label;
+      mainLink.style.color = marker.color;
+      mainLink.style.textShadow = `0 0 5px ${marker.color}`;
+
+      const infoLink = document.createElement('a');
+      infoLink.href = '#';
+      infoLink.className = 'link_4 unit3d-cross-seed-marker unit3d-cross-seed-marker--info';
+      infoLink.textContent = 'INFO';
+      infoLink.style.color = '#ff1493';
+      infoLink.style.textShadow = '0 0 5px #ff1493';
+      infoLink.addEventListener('click', (event) => {
+        event.preventDefault();
+        reference.row.querySelector('.torrent-info-link')?.click();
+        infoLink.focus();
+      });
+
+      markerHost.append(mainLink, buildCrossSeedSeparator('/'), infoLink);
+    }
+
+    function buildCrossSeedSeparator(text) {
+      const separator = document.createElement('span');
+      separator.className = 'unit3d-cross-seed-separator';
+      separator.textContent = text;
+      return separator;
+    }
+
+    function getCrossSeedMarkerHost(row) {
+      const iconCell = [...row.children].find((cell) => cell.querySelector?.('.torrent-icons'));
+      const cell =
+        row.querySelector('.unit3d-ptp-status-badges-cell') ||
+        iconCell ||
+        row.children[1] ||
+        row.lastElementChild;
+      if (!cell) return null;
+
+      let host = cell.querySelector('.unit3d-cross-seed-marker-host');
+      if (host) return host;
+
+      host = document.createElement('span');
+      host.className = 'unit3d-cross-seed-marker-host';
+      const icons = cell.querySelector('.torrent-icons');
+      if (icons) {
+        icons.insertAdjacentElement('afterend', host);
+        return host;
+      }
+
+      const badges = cell.querySelector('.unit3d-ptp-badges, .torrent-icons') || cell;
+      badges.appendChild(host);
+      return host;
+    }
+
+    function reorderCrossSeedMatches(referenceRows) {
+      referenceRows.forEach((reference) => {
+        const matches = reference.crossSeedMatches || [];
+        if (matches.length === 0) return;
+
+        let anchor = getCrossSeedInsertAnchor(reference);
+        matches.forEach((match) => {
+          getCrossSeedRowsForMove(match).forEach((row) => {
+            if (!row?.parentNode || !anchor?.parentNode) return;
+            anchor.parentNode.insertBefore(row, anchor.nextSibling);
+            anchor = row;
+          });
+        });
+      });
+    }
+
+    function getCrossSeedInsertAnchor(entry) {
+      const rows = getCrossSeedRowsForMove(entry).filter((row) => row?.isConnected);
+      return rows[rows.length - 1] || entry.row;
+    }
+
+    function getCrossSeedRowsForMove(entry) {
+      const rows = [entry.row];
+      if (entry.domEntry) {
+        getFilterDetailRows(entry.domEntry).forEach((row) => {
+          if (row && !rows.includes(row)) rows.push(row);
+        });
+      }
+      return rows;
+    }
+
+    function getCrossSeedHeaderIndex(row) {
+      return [...document.querySelectorAll('#torrent-table tr.group_torrent.group_torrent_header')]
+        .indexOf(row);
     }
 
     function buildUnit3dExternalHeaderRow(torrent, id) {
