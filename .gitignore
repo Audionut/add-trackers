@@ -1,2 +1,4 @@
 config*
 node_modules/
+my_stuff/
+docs/
