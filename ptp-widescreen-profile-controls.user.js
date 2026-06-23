@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP Widescreen Profile Controls
 // @namespace    https://passthepopcorn.me/
-// @version      1.0.2
+// @version      1.0.6
 // @description  Add a Widescreen tab to profile edit pages and control widescreen.css width variables.
 // @author       Audionut
 // @match        https://passthepopcorn.me/*
@@ -9,6 +9,7 @@
 // @downloadURL  https://github.com/Audionut/add-trackers/raw/refs/heads/main/ptp-widescreen-profile-controls.user.js
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        unsafeWindow
 // @run-at       document-start
 // ==/UserScript==
 
@@ -16,7 +17,7 @@
   'use strict';
 
   const SETTINGS_KEY = 'ptp_widescreen_profile_controls_v1';
-  const SCRIPT_VERSION = '1.0.2';
+  const SCRIPT_VERSION = '1.0.6';
   const TORRENTS_VIEW_MODE_KEY = 'ptp_widescreen_torrents_view_mode_v1';
   const TOP10_VIEW_MODE_KEY = 'ptp_widescreen_top10_view_mode_v1';
   const TORRENTS_SMALL_COVER_VIEW_MODE = 'SmallCover';
@@ -2312,12 +2313,700 @@
     );
   }
 
+  function getMovieTooltipTriggerer(element) {
+    if (!(element instanceof Element)) return null;
+    if (element.matches('.js-movie-tooltip-triggerer')) return element;
+    return element.closest('.js-movie-tooltip-triggerer') || element.querySelector('.js-movie-tooltip-triggerer');
+  }
+
+  function getMovieGroupIdFromHref(href) {
+    const value = String(href || '');
+    if (!value) return '';
+    try {
+      return new URL(value, location.href).searchParams.get('id') || '';
+    } catch (error) {
+      const match = value.match(/[?&]id=(\d+)/);
+      return match ? match[1] : '';
+    }
+  }
+
+  function movieHrefsMatch(leftHref, rightHref) {
+    if (!leftHref || !rightHref) return false;
+    if (leftHref === rightHref) return true;
+    const leftGroupId = getMovieGroupIdFromHref(leftHref);
+    const rightGroupId = getMovieGroupIdFromHref(rightHref);
+    return !!leftGroupId && leftGroupId === rightGroupId;
+  }
+
+  function getPageWindowValue(name) {
+    try {
+      if (typeof unsafeWindow !== 'undefined' && unsafeWindow && unsafeWindow[name] !== undefined) {
+        return unsafeWindow[name];
+      }
+    } catch (error) {
+      console.debug('PTP Widescreen Controls: read unsafeWindow value failed', error);
+    }
+    try {
+      if (globalThis[name] !== undefined) return globalThis[name];
+    } catch (error) {
+      console.debug('PTP Widescreen Controls: read global value failed', error);
+    }
+    return null;
+  }
+
+  function normalizeCoverViewJsonSections(value, sourceName) {
+    if (!value) return [];
+    if (Array.isArray(value)) {
+      return value.map(function (section, index) {
+        return { section, index, sourceName: sourceName || '' };
+      });
+    }
+    if (value.Movies && Array.isArray(value.Movies)) {
+      return [{ section: value, index: 0, sourceName: sourceName || '' }];
+    }
+    return [];
+  }
+
+  function normalizePageDataSections(pageData) {
+    if (!pageData || typeof pageData !== 'object') return [];
+    return ['Movies', 'RecentRatings', 'RecentSnatches', 'RecentUploads']
+      .filter(function (key) {
+        return Array.isArray(pageData[key]);
+      })
+      .map(function (key) {
+        return {
+          section: { Movies: pageData[key] },
+          index: '',
+          sourceName: `PageData.${key}`
+        };
+      });
+  }
+
+  function parseCoverViewJsonSectionsFromScripts() {
+    const sections = [];
+    document.querySelectorAll('script').forEach(function (script) {
+      const text = script.textContent || '';
+      if (
+        text.indexOf('coverViewJsonData') === -1 &&
+        text.indexOf('coverviewJsonData') === -1 &&
+        text.indexOf('ungroupedCoverViewJsonData') === -1 &&
+        text.indexOf('PageData') === -1
+      ) {
+        return;
+      }
+
+      ['coverViewJsonData', 'coverviewJsonData', 'ungroupedCoverViewJsonData'].forEach(function (variableName) {
+        if (text.indexOf(variableName) === -1) return;
+        const escapedVariableName = variableName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+        const indexedPattern = new RegExp(`${escapedVariableName}\\[\\s*(\\d+)\\s*\\]\\s*=\\s*({.*?});`, 'gs');
+        let indexedMatch;
+        while ((indexedMatch = indexedPattern.exec(text)) !== null) {
+          try {
+            const section = JSON.parse(indexedMatch[2]);
+            sections.push({ section, index: Number(indexedMatch[1]), sourceName: variableName });
+          } catch (error) {
+            console.debug(`PTP Widescreen Controls: parse indexed ${variableName} failed`, error);
+          }
+        }
+
+        const arrayMatch = text.match(new RegExp(`${escapedVariableName}\\s*=\\s*(\\[.*?\\]);`, 's'));
+        if (arrayMatch) {
+          try {
+            sections.push(...normalizeCoverViewJsonSections(JSON.parse(arrayMatch[1]), variableName));
+          } catch (error) {
+            console.debug(`PTP Widescreen Controls: parse ${variableName} array failed`, error);
+          }
+          return;
+        }
+
+        const objectMatch = text.match(new RegExp(`${escapedVariableName}\\s*=\\s*({.*?});`, 's'));
+        if (objectMatch) {
+          try {
+            sections.push(...normalizeCoverViewJsonSections(JSON.parse(objectMatch[1]), variableName));
+          } catch (error) {
+            console.debug(`PTP Widescreen Controls: parse ${variableName} object failed`, error);
+          }
+        }
+      });
+
+      const pageDataMatch = text.match(/(?:var\s+)?PageData\s*=\s*({[\s\S]*?});/);
+      if (pageDataMatch) {
+        try {
+          sections.push(...normalizePageDataSections(JSON.parse(pageDataMatch[1])));
+        } catch (error) {
+          console.debug('PTP Widescreen Controls: parse PageData failed', error);
+        }
+      }
+    });
+    return sections;
+  }
+
+  function getCoverViewJsonSections() {
+    const sections = [
+      ...normalizeCoverViewJsonSections(getPageWindowValue('coverViewJsonData'), 'coverViewJsonData'),
+      ...normalizeCoverViewJsonSections(getPageWindowValue('coverviewJsonData'), 'coverviewJsonData'),
+      ...normalizeCoverViewJsonSections(getPageWindowValue('ungroupedCoverViewJsonData'), 'ungroupedCoverViewJsonData'),
+      ...normalizePageDataSections(getPageWindowValue('PageData'))
+    ];
+    return sections.length ? sections : parseCoverViewJsonSectionsFromScripts();
+  }
+
+  function getPreferredCoverViewIndex(root) {
+    const store = root instanceof Element
+      ? root.closest('.js-cover-view-index-store') || root.querySelector('.js-cover-view-index-store')
+      : null;
+    return store && store.dataset ? store.dataset.coverviewindex || '' : '';
+  }
+
+  function findCoverViewJsonMovieMetadata(root, href) {
+    const groupId = getMovieGroupIdFromHref(href);
+    if (!groupId) return null;
+
+    const preferredIndex = getPreferredCoverViewIndex(root);
+    const sections = getCoverViewJsonSections();
+    if (!sections.length) return null;
+
+    const orderedSections = preferredIndex === ''
+      ? sections
+      : sections
+        .filter(function (entry) {
+          return String(entry.index) === preferredIndex;
+        })
+        .concat(
+          sections.filter(function (entry) {
+            return String(entry.index) !== preferredIndex;
+          })
+        );
+
+    for (const entry of orderedSections) {
+      const movies = entry && entry.section && Array.isArray(entry.section.Movies) ? entry.section.Movies : [];
+      for (let movieIndex = 0; movieIndex < movies.length; movieIndex += 1) {
+        const movie = movies[movieIndex];
+        if (!movie || String(movie.GroupId || '') !== groupId) continue;
+        return {
+          coverViewIndex: String(entry.index),
+          coverViewJsonIndex: String(movieIndex),
+          sourceName: entry.sourceName || '',
+          movie
+        };
+      }
+    }
+    return null;
+  }
+
+  function applyCoverViewJsonMetadata(target, metadata) {
+    if (!(target instanceof Element) || !metadata) return;
+    if (metadata.coverViewIndex !== undefined && metadata.coverViewIndex !== '') {
+      target.dataset.coverviewindex = String(metadata.coverViewIndex);
+    }
+    if (metadata.coverViewJsonIndex !== undefined && metadata.coverViewJsonIndex !== '') {
+      target.dataset.coverviewjsonindex = String(metadata.coverViewJsonIndex);
+    }
+  }
+
+  function applyCommonCoverViewStoreMetadata(container, movies) {
+    if (!(container instanceof Element)) return;
+    const indexes = new Set();
+    movies.forEach(function (movie) {
+      if (movie && movie.coverViewIndex !== undefined && movie.coverViewIndex !== '') {
+        indexes.add(String(movie.coverViewIndex));
+      }
+    });
+    if (indexes.size === 1) {
+      container.dataset.coverviewindex = Array.from(indexes)[0];
+    }
+  }
+
+  function findMovieTooltipSource(root, href, fallback) {
+    const fallbackTriggerer = getMovieTooltipTriggerer(fallback);
+    if (fallbackTriggerer) return fallbackTriggerer;
+    if (!href || !root || !root.querySelectorAll) return null;
+
+    const links = root.querySelectorAll('a[href]');
+    for (const link of links) {
+      if (
+        link.closest('.widescreen-torrents-small-cover-view') ||
+        link.closest('.widescreen-top10-small-cover-view')
+      ) {
+        continue;
+      }
+      if (!movieHrefsMatch(link.getAttribute('href') || '', href)) continue;
+      const triggerer = getMovieTooltipTriggerer(link);
+      if (triggerer) return triggerer;
+    }
+    return null;
+  }
+
+  function copyMovieTooltipData(target, source) {
+    const triggerer = getMovieTooltipTriggerer(source);
+    if (!(target instanceof Element) || !triggerer || !triggerer.dataset) return;
+
+    Object.keys(triggerer.dataset).forEach(function (key) {
+      if (key.indexOf('widescreen') === 0) return;
+      target.dataset[key] = triggerer.dataset[key];
+    });
+  }
+
+  function getMovieTooltipJQuery() {
+    const candidates = [];
+    try {
+      candidates.push(globalThis.$jq, globalThis.jQuery, globalThis.$);
+    } catch (error) {
+      console.debug('PTP Widescreen Controls: read userscript jquery failed', error);
+    }
+    try {
+      if (typeof unsafeWindow !== 'undefined' && unsafeWindow) {
+        candidates.push(unsafeWindow.$jq, unsafeWindow.jQuery, unsafeWindow.$);
+      }
+    } catch (error) {
+      console.debug('PTP Widescreen Controls: read page jquery failed', error);
+    }
+    try {
+      const view = document.defaultView;
+      if (view) {
+        candidates.push(view.$jq, view.jQuery, view.$);
+      }
+    } catch (error) {
+      console.debug('PTP Widescreen Controls: read document jquery failed', error);
+    }
+
+    return candidates.find(function (candidate) {
+      return candidate && candidate.fn && typeof candidate.fn.qtip === 'function';
+    }) || null;
+  }
+
+  function getFirstMovieValue(movie, keys) {
+    if (!movie) return '';
+    for (const key of keys) {
+      const value = movie[key];
+      if (value !== undefined && value !== null && String(value).trim() !== '') return value;
+    }
+    return '';
+  }
+
+  function stripHtml(value) {
+    const template = document.createElement('template');
+    template.innerHTML = String(value || '');
+    return template.content.textContent || '';
+  }
+
+  function appendMovieTooltipAnchor(parent, className, text, href) {
+    const link = document.createElement('a');
+    if (className) link.className = className;
+    link.href = href || '#';
+    link.textContent = String(text || '');
+    parent.appendChild(link);
+    return link;
+  }
+
+  function appendMovieTooltipRating(parent, label, href, rating) {
+    if (rating === undefined || rating === null || String(rating).trim() === '') return;
+    const container = document.createElement('div');
+    container.className = 'movie-tooltip__rating-container';
+
+    const title = document.createElement('span');
+    title.className = 'movie-tooltip__rating__title';
+    const link = appendMovieTooltipAnchor(title, '', label, href);
+    link.target = '_blank';
+    link.rel = 'noreferrer';
+    title.appendChild(document.createTextNode(': '));
+
+    const value = document.createElement('span');
+    value.className = 'movie-tooltip__rating__rating';
+    value.textContent = String(rating);
+
+    container.appendChild(title);
+    container.appendChild(value);
+    parent.appendChild(container);
+  }
+
+  function getMovieDirectors(movie) {
+    const directors = movie && (
+      movie.Directors ||
+      movie.DirectorList ||
+      movie.Director ||
+      movie.Artists ||
+      movie.ArtistList
+    );
+    if (!directors) return [];
+    if (Array.isArray(directors)) {
+      return directors.map(function (director) {
+        if (typeof director === 'string') return { name: stripHtml(director), id: '' };
+        return {
+          name: getFirstMovieValue(director, ['Name', 'name', 'ArtistName', 'artistName']),
+          id: getFirstMovieValue(director, ['Id', 'ID', 'ArtistId', 'artistId'])
+        };
+      }).filter(function (director) {
+        return director.name;
+      });
+    }
+    if (typeof directors === 'string') {
+      return stripHtml(directors).split(/\s*,\s*/).filter(Boolean).map(function (name) {
+        return { name, id: '' };
+      });
+    }
+    return [];
+  }
+
+  function getMovieTags(movie) {
+    const tags = movie && movie.Tags;
+    if (Array.isArray(tags)) {
+      return tags.map(function (tag) {
+        return String(tag || '').trim();
+      }).filter(Boolean);
+    }
+    if (typeof tags === 'string') {
+      return tags.split(/\s*,\s*/).filter(Boolean);
+    }
+    return [];
+  }
+
+  function getMovieYoutubeId(movie) {
+    const value = getFirstMovieValue(movie, [
+      'YoutubeId',
+      'YouTubeId',
+      'YoutubeID',
+      'YouTubeID',
+      'TrailerId',
+      'TrailerID',
+      'Trailer'
+    ]);
+    const match = String(value || '').match(/(?:v=|youtu\.be\/|embed\/)?([A-Za-z0-9_-]{8,})/);
+    return match ? match[1] : '';
+  }
+
+  function getTorrentFormatLabels(torrent) {
+    const labels = [];
+    ['Resolution', 'Codec', 'Source', 'Container', 'ReleaseGroup'].forEach(function (key) {
+      const value = torrent && torrent[key];
+      if (value !== undefined && value !== null && String(value).trim() !== '') {
+        labels.push(String(value).trim());
+      }
+    });
+
+    const title = torrent && torrent.Title ? String(torrent.Title) : '';
+    if (title) {
+      const template = document.createElement('template');
+      template.innerHTML = title;
+      template.content.querySelectorAll('[data-attr]').forEach(function (node) {
+        const value = node.getAttribute('data-attr') || node.textContent || '';
+        if (value && !/release group/i.test(value)) labels.push(value.trim());
+      });
+      const titleText = stripHtml(title);
+      ['2160p', '1080p', '720p', '576p', '480p', 'Remux'].forEach(function (token) {
+        if (new RegExp(token, 'i').test(titleText)) labels.push(token);
+      });
+    }
+
+    return Array.from(new Set(labels.filter(Boolean)));
+  }
+
+  function appendMovieTooltipTorrents(parent, movie) {
+    const qualities = movie && Array.isArray(movie.GroupingQualities) ? movie.GroupingQualities : [];
+    if (!qualities.length) return;
+
+    const torrents = document.createElement('div');
+    torrents.className = 'movie-tooltip__torrents';
+
+    qualities.forEach(function (quality) {
+      const qualityName = getFirstMovieValue(quality, ['QualityName', 'Name', 'Quality']);
+      if (!qualityName) return;
+      const torrentLabels = [];
+      (Array.isArray(quality.Torrents) ? quality.Torrents : []).forEach(function (torrent) {
+        getTorrentFormatLabels(torrent).forEach(function (label) {
+          torrentLabels.push(label);
+        });
+      });
+      const labels = Array.from(new Set(torrentLabels));
+      if (!labels.length) return;
+
+      const row = document.createElement('div');
+      const strong = document.createElement('strong');
+      strong.textContent = qualityName;
+      row.appendChild(strong);
+      row.appendChild(document.createTextNode(': ' + labels.join(', ')));
+      torrents.appendChild(row);
+    });
+
+    if (torrents.children.length) parent.appendChild(torrents);
+  }
+
+  function createMovieTooltipContent(movie) {
+    const content = document.createElement('div');
+    if (!movie) return content;
+
+    const groupId = String(getFirstMovieValue(movie, ['GroupId', 'GroupID', 'Id', 'ID']));
+    const titleText = String(getFirstMovieValue(movie, ['Title', 'Name']) || 'Unknown title');
+    const yearText = getFirstMovieValue(movie, ['Year', 'ReleaseYear']);
+
+    const titleRow = document.createElement('div');
+    titleRow.className = 'movie-tooltip__title-row';
+    appendMovieTooltipAnchor(titleRow, 'movie-tooltip__title', titleText, groupId ? `torrents.php?id=${groupId}` : '#');
+    if (yearText) {
+      titleRow.appendChild(document.createTextNode(' '));
+      const year = document.createElement('span');
+      year.className = 'movie-tooltip__year';
+      year.textContent = `[${yearText}]`;
+      titleRow.appendChild(year);
+    }
+    content.appendChild(titleRow);
+
+    const directors = getMovieDirectors(movie);
+    if (directors.length) {
+      const directorList = document.createElement('div');
+      directorList.className = 'movie-tooltip__director-list';
+      directorList.appendChild(document.createTextNode('by '));
+      directors.forEach(function (director, index) {
+        if (index > 0) directorList.appendChild(document.createTextNode(', '));
+        appendMovieTooltipAnchor(
+          directorList,
+          'movie-tooltip__director',
+          director.name,
+          director.id ? `artist.php?id=${director.id}` : '#'
+        );
+      });
+      content.appendChild(directorList);
+    }
+
+    const ratings = document.createElement('div');
+    ratings.className = 'movie-tooltip__ratings';
+    const imdbId = getFirstMovieValue(movie, ['ImdbId', 'IMDbId', 'imdbId']);
+    appendMovieTooltipRating(
+      ratings,
+      'IMDb',
+      imdbId ? `https://www.imdb.com/title/${imdbId}/` : '#',
+      getFirstMovieValue(movie, ['ImdbRating', 'IMDbRating', 'Imdb', 'IMDb'])
+    );
+    appendMovieTooltipRating(
+      ratings,
+      'MC',
+      getFirstMovieValue(movie, ['MetacriticUrl', 'McUrl', 'MCUrl']) || '#',
+      getFirstMovieValue(movie, ['MetacriticRating', 'McRating', 'MCRating'])
+    );
+    appendMovieTooltipRating(
+      ratings,
+      'PTP',
+      groupId ? `torrents.php?action=ratings&id=${groupId}` : '#',
+      getFirstMovieValue(movie, ['PtpRating', 'PTPRating', 'Ptp', 'PTP'])
+    );
+    if (ratings.children.length) content.appendChild(ratings);
+
+    const tags = getMovieTags(movie);
+    if (tags.length) {
+      const tagList = document.createElement('div');
+      tagList.className = 'movie-tooltip__tags';
+      tags.forEach(function (tag, index) {
+        if (index > 0) tagList.appendChild(document.createTextNode(', '));
+        appendMovieTooltipAnchor(tagList, 'movie-tooltip__tag', tag, `torrents.php?taglist=${tag}&cover=1`);
+      });
+      content.appendChild(tagList);
+    }
+
+    const youtubeId = getMovieYoutubeId(movie);
+    if (youtubeId) {
+      const trailer = document.createElement('div');
+      trailer.className = 'movie-tooltip__trailer';
+      trailer.setAttribute('onclick', `ShowYoutubePopUp( '${youtubeId}' );`);
+
+      const thumbnail = document.createElement('img');
+      thumbnail.className = 'movie-tooltip__trailer__image';
+      thumbnail.src = `https://img.youtube.com/vi/${youtubeId}/default.jpg`;
+      trailer.appendChild(thumbnail);
+
+      const play = document.createElement('img');
+      play.className = 'movie-tooltip__trailer__play';
+      play.src = 'https://static.passthepopcorn.me/static/common/symbols/play.png';
+      trailer.appendChild(play);
+      content.appendChild(trailer);
+    }
+
+    const synopsisText = getFirstMovieValue(movie, ['Synopsis', 'Plot', 'Overview', 'Description']);
+    if (synopsisText) {
+      const synopsis = document.createElement('div');
+      synopsis.className = 'movie-tooltip__synopsis';
+      synopsis.textContent = stripHtml(synopsisText);
+      content.appendChild(synopsis);
+    }
+
+    appendMovieTooltipTorrents(content, movie);
+
+    if (groupId) {
+      const actionRow = document.createElement('div');
+      actionRow.className = 'movie-tooltip__action-row';
+      const bookmark = document.createElement('span');
+      bookmark.className = 'movie-tooltip__bookmark';
+      const bookmarkLink = appendMovieTooltipAnchor(bookmark, '', 'Bookmark', '#');
+      bookmarkLink.setAttribute('onclick', `CoverTooltipBookmark( this, ${groupId} ); return false;`);
+      actionRow.appendChild(bookmark);
+      actionRow.appendChild(document.createTextNode('\u00a0\u00a0|\u00a0\u00a0'));
+      const rate = document.createElement('span');
+      rate.className = 'movie-tooltip__rate';
+      const rateLink = appendMovieTooltipAnchor(rate, '', 'Rate', '#');
+      rateLink.setAttribute('onclick', `ShowMovieTooltipVoteWindow( this, ${groupId} ); return false;`);
+      actionRow.appendChild(rate);
+      content.appendChild(actionRow);
+    }
+
+    return content;
+  }
+
+  function getQtipApi(jquery, element) {
+    if (!jquery || !(element instanceof Element)) return null;
+    try {
+      const api = jquery(element).data('qtip');
+      if (api) return api;
+    } catch (error) {
+      console.debug('PTP Widescreen Controls: read qtip data failed', error);
+    }
+    try {
+      return jquery(element).qtip('api') || null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function createMovieTooltipOptions(sourceOptions, item) {
+    const options = Object.assign({}, sourceOptions || {});
+    delete options.id;
+
+    if (sourceOptions && sourceOptions.content) {
+      options.content = Object.assign({}, sourceOptions.content);
+    }
+    if (sourceOptions && sourceOptions.position) {
+      options.position = Object.assign({}, sourceOptions.position);
+      if (options.position.target && options.position.target !== 'mouse') {
+        options.position.target = item;
+      }
+    }
+    if (sourceOptions && sourceOptions.show) {
+      options.show = Object.assign({}, sourceOptions.show, { target: item });
+    }
+    if (sourceOptions && sourceOptions.hide) {
+      options.hide = Object.assign({}, sourceOptions.hide, { target: item });
+    }
+
+    return options;
+  }
+
+  function bindMovieTooltipFromJson(item, movie) {
+    if (!(item instanceof Element) || !movie) return false;
+    const jquery = getMovieTooltipJQuery();
+    if (!jquery) return false;
+    if (getQtipApi(jquery, item)) return true;
+
+    try {
+      jquery(item).qtip({
+        content: {
+          text: function () {
+            return jquery(createMovieTooltipContent(movie));
+          }
+        },
+        position: {
+          my: 'top left',
+          at: 'bottom left',
+          target: item,
+          viewport: jquery(document.defaultView || globalThis)
+        },
+        show: {
+          event: 'mouseenter focus'
+        },
+        hide: {
+          event: 'mouseleave blur',
+          fixed: true,
+          delay: 100
+        },
+        style: {
+          classes: 'qtip-ptp qtip-shadow'
+        }
+      });
+      return true;
+    } catch (error) {
+      console.debug('PTP Widescreen Controls: bind json movie tooltip failed', error);
+      return false;
+    }
+  }
+
+  function bindMovieTooltipFromSource(item, source, movie) {
+    const triggerer = getMovieTooltipTriggerer(source);
+    if (!(item instanceof Element)) return true;
+    if (bindMovieTooltipFromJson(item, movie)) return true;
+    if (!triggerer) return !movie;
+
+    const jquery = getMovieTooltipJQuery();
+    if (!jquery) return false;
+    if (getQtipApi(jquery, item)) return true;
+
+    const sourceApi = getQtipApi(jquery, triggerer);
+    if (!sourceApi || !sourceApi.options) return false;
+
+    try {
+      jquery(item).qtip(createMovieTooltipOptions(sourceApi.options, item));
+      return true;
+    } catch (error) {
+      console.debug('PTP Widescreen Controls: bind movie tooltip failed', error);
+      return false;
+    }
+  }
+
+  function showBoundMovieTooltip(item, event) {
+    const jquery = getMovieTooltipJQuery();
+    const api = getQtipApi(jquery, item);
+    if (!api) return;
+
+    try {
+      api.show(event);
+    } catch (error) {
+      try {
+        jquery(item).qtip('show');
+      } catch (showError) {
+        console.debug('PTP Widescreen Controls: show movie tooltip failed', showError || error);
+      }
+    }
+  }
+
+  function bindMovieTooltipOnDemand(binding, event, attempt) {
+    if (!binding || !(binding.item instanceof Element) || !binding.item.isConnected) return;
+
+    const jquery = getMovieTooltipJQuery();
+    if (getQtipApi(jquery, binding.item)) {
+      showBoundMovieTooltip(binding.item, event);
+      return;
+    }
+
+    if (bindMovieTooltipFromSource(binding.item, binding.source, binding.movie)) {
+      showBoundMovieTooltip(binding.item, event);
+      return;
+    }
+
+    if ((attempt || 0) < 30) {
+      globalThis.setTimeout(function () {
+        bindMovieTooltipOnDemand(binding, event, (attempt || 0) + 1);
+      }, 100);
+    }
+  }
+
+  function bindMovieTooltipsFromSources(bindings) {
+    bindings.forEach(function (binding) {
+      if (!binding || !(binding.item instanceof Element)) return;
+      if (binding.item.dataset.widescreenMovieTooltipLazyBound === 'true') return;
+      binding.item.dataset.widescreenMovieTooltipLazyBound = 'true';
+
+      binding.item.addEventListener('mouseenter', function (event) {
+        bindMovieTooltipOnDemand(binding, event, 0);
+      });
+      binding.item.addEventListener('focusin', function (event) {
+        bindMovieTooltipOnDemand(binding, event, 0);
+      });
+    });
+  }
+
   function addTorrentsSmallCoverMovie(movies, seenKeys, movie) {
     if (!movie || !movie.href || !movie.coverUrl) return;
     const key = movie.href || movie.coverUrl;
     if (seenKeys.has(key)) return;
     seenKeys.add(key);
-    movies.push(movie);
+    movies.push(Object.assign({}, findCoverViewJsonMovieMetadata(movie.metadataRoot, movie.href), movie));
   }
 
   function collectTorrentsSmallCoverMovies(container) {
@@ -2331,7 +3020,9 @@
         href: link ? link.getAttribute('href') || '' : '',
         coverUrl: getElementBackgroundUrl(link),
         title: (item.querySelector('.cover-movie-list__movie__title') || link || item).textContent.trim(),
-        seen: !!(link && link.className.indexOf('--seen') !== -1)
+        seen: !!(link && link.className.indexOf('--seen') !== -1),
+        tooltipSource: findMovieTooltipSource(container, link ? link.getAttribute('href') || '' : '', item),
+        metadataRoot: container
       });
     });
 
@@ -2342,7 +3033,9 @@
         href: link ? link.getAttribute('href') || '' : '',
         coverUrl: getElementBackgroundUrl(link),
         title: (item.querySelector('.huge-movie-list__movie__title') || link || item).textContent.trim(),
-        seen: !!(link && link.className.indexOf('--seen') !== -1)
+        seen: !!(link && link.className.indexOf('--seen') !== -1),
+        tooltipSource: findMovieTooltipSource(container, link ? link.getAttribute('href') || '' : '', item),
+        metadataRoot: container
       });
     });
 
@@ -2350,11 +3043,14 @@
       if (row.closest('.widescreen-torrents-small-cover-view')) return;
       const link = row.querySelector('.basic-movie-list__movie__cover-link');
       const image = row.querySelector('.basic-movie-list__movie__cover');
+      const href = link ? link.getAttribute('href') || '' : '';
       addTorrentsSmallCoverMovie(movies, seenKeys, {
-        href: link ? link.getAttribute('href') || '' : '',
+        href,
         coverUrl: image ? image.currentSrc || image.src || '' : getElementBackgroundUrl(link),
         title: (row.querySelector('.basic-movie-list__movie__title') || image || link || row).textContent.trim(),
-        seen: !!(link && link.className.indexOf('--seen') !== -1)
+        seen: !!(link && link.className.indexOf('--seen') !== -1),
+        tooltipSource: findMovieTooltipSource(container, href, row) || getMovieTooltipTriggerer(link) || getMovieTooltipTriggerer(image),
+        metadataRoot: container
       });
     });
 
@@ -2394,12 +3090,16 @@
 
     const smallCoverView = document.createElement('div');
     smallCoverView.className =
-      'small-cover-movie-list__container js-small-cover-movie-list__container clearfix widescreen-torrents-small-cover-view';
+      'small-cover-movie-list__container js-small-cover-movie-list__container js-cover-view-index-store clearfix widescreen-torrents-small-cover-view';
+    applyCommonCoverViewStoreMetadata(smallCoverView, movies);
+    const tooltipBindings = [];
 
     movies.forEach(function (movie, index) {
       const item = document.createElement('div');
       item.className = 'small-cover-movie-list__movie js-movie-tooltip-triggerer';
       item.dataset.coverviewjsonindex = String(index);
+      applyCoverViewJsonMetadata(item, movie);
+      copyMovieTooltipData(item, movie.tooltipSource);
 
       const link = document.createElement('a');
       link.className = movie.seen
@@ -2412,6 +3112,7 @@
 
       item.appendChild(link);
       smallCoverView.appendChild(item);
+      tooltipBindings.push({ item, source: movie.tooltipSource, movie: movie.movie });
     });
 
     Array.from(movieView.children).forEach(function (child) {
@@ -2422,6 +3123,7 @@
 
     movieView.classList.add('widescreen-torrents-small-cover-view-active');
     movieView.insertBefore(smallCoverView, movieView.firstChild);
+    bindMovieTooltipsFromSources(tooltipBindings);
     torrentsSmallCoverViewRendering = false;
   }
 
@@ -2595,11 +3297,16 @@
     const key = movie.href || movie.coverUrl;
     if (seenKeys.has(key)) return;
     seenKeys.add(key);
+    const metadata = findCoverViewJsonMovieMetadata(movie.metadataRoot, movie.href);
     movies.push({
       href: movie.href,
       coverUrl: movie.coverUrl,
       title: movie.title || '',
       seen: !!movie.seen,
+      tooltipSource: movie.tooltipSource || null,
+      coverViewIndex: metadata && metadata.coverViewIndex !== undefined ? metadata.coverViewIndex : '',
+      coverViewJsonIndex: metadata && metadata.coverViewJsonIndex !== undefined ? metadata.coverViewJsonIndex : '',
+      movie: metadata ? metadata.movie : null,
       index: movies.length
     });
   }
@@ -2613,32 +3320,41 @@
     ) {
       const coverLink = coverItem.querySelector('.cover-movie-list__movie__cover-link');
       const coverUrl = getTop10CoverUrlFromCoverLink(coverLink);
+      const href = coverLink ? coverLink.getAttribute('href') || '' : '';
       addTop10SmallCoverMovie(movies, seenKeys, {
-        href: coverLink ? coverLink.getAttribute('href') || '' : '',
+        href,
         coverUrl,
         title: (coverItem.querySelector('.cover-movie-list__movie__title') || coverLink || coverItem).textContent.trim(),
-        seen: !!(coverLink && coverLink.className.indexOf('--seen') !== -1)
+        seen: !!(coverLink && coverLink.className.indexOf('--seen') !== -1),
+        tooltipSource: findMovieTooltipSource(store, href, coverItem),
+        metadataRoot: store
       });
     });
 
     store.querySelectorAll(':scope > .js-huge_view_container .huge-movie-list__movie').forEach(function (hugeItem) {
       const coverLink = hugeItem.querySelector('.huge-movie-list__movie__cover__link');
+      const href = coverLink ? coverLink.getAttribute('href') || '' : '';
       addTop10SmallCoverMovie(movies, seenKeys, {
-        href: coverLink ? coverLink.getAttribute('href') || '' : '',
+        href,
         coverUrl: getElementBackgroundUrl(coverLink),
         title: (hugeItem.querySelector('.huge-movie-list__movie__title') || coverLink || hugeItem).textContent.trim(),
-        seen: !!(coverLink && coverLink.className.indexOf('--seen') !== -1)
+        seen: !!(coverLink && coverLink.className.indexOf('--seen') !== -1),
+        tooltipSource: findMovieTooltipSource(store, href, hugeItem),
+        metadataRoot: store
       });
     });
 
     store.querySelectorAll(':scope > .js-basic-movie-list .basic-movie-list__details-row').forEach(function (row) {
       const coverLink = row.querySelector('.basic-movie-list__movie__cover-link');
       const image = row.querySelector('.basic-movie-list__movie__cover');
+      const href = coverLink ? coverLink.getAttribute('href') || '' : '';
       addTop10SmallCoverMovie(movies, seenKeys, {
-        href: coverLink ? coverLink.getAttribute('href') || '' : '',
+        href,
         coverUrl: image ? image.currentSrc || image.src || '' : getElementBackgroundUrl(coverLink),
         title: (row.querySelector('.basic-movie-list__movie__title') || image || coverLink || row).textContent.trim(),
-        seen: !!(coverLink && coverLink.className.indexOf('--seen') !== -1)
+        seen: !!(coverLink && coverLink.className.indexOf('--seen') !== -1),
+        tooltipSource: findMovieTooltipSource(store, href, row) || getMovieTooltipTriggerer(coverLink) || getMovieTooltipTriggerer(image),
+        metadataRoot: store
       });
     });
 
@@ -2683,11 +3399,14 @@
         const smallCoverView = document.createElement('div');
         smallCoverView.className =
           'small-cover-movie-list__container js-small-cover-movie-list__container clearfix widescreen-top10-small-cover-view';
+        const tooltipBindings = [];
 
         movies.forEach(function (movie) {
           const item = document.createElement('div');
           item.className = 'small-cover-movie-list__movie js-movie-tooltip-triggerer';
           item.dataset.coverviewjsonindex = String(movie.index);
+          applyCoverViewJsonMetadata(item, movie);
+          copyMovieTooltipData(item, movie.tooltipSource);
 
           const link = document.createElement('a');
           link.className = movie.seen
@@ -2700,6 +3419,7 @@
 
           item.appendChild(link);
           smallCoverView.appendChild(item);
+          tooltipBindings.push({ item, source: movie.tooltipSource, movie: movie.movie });
         });
 
         Array.from(store.children).forEach(function (child) {
@@ -2710,6 +3430,7 @@
 
         store.classList.add('widescreen-top10-small-cover-view-active');
         store.insertBefore(smallCoverView, store.firstChild);
+        bindMovieTooltipsFromSources(tooltipBindings);
       });
     } finally {
       top10SmallCoverViewRendering = false;
