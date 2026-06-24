@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Layout Change
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.1.3
+// @version      0.1.4
 // @description  Change UNIT3D similar torrents layout with additional details and sorting options.
 // @author       Audionut
 // @match        https://aither.cc/torrents/similar/1*
@@ -12,6 +12,8 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
+// @grant        GM_xmlhttpRequest
+// @connect      ibb.co
 // @run-at       document-start
 // ==/UserScript==
 
@@ -978,6 +980,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
 
   const detailCache = new Map();
   const detailFetchQueue = [];
+  const imgbbDirectImageUrlCache = new Map();
   const torrentSimilarResolvePromises = new Map();
   const torrentSimilarUrlCache = new Map();
 
@@ -4121,18 +4124,28 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
       if (image.closest('.unit3d-ptp-comparison')) return;
 
       const imageUrl = getDescriptionImageLightboxUrl(image);
-      if (!imageUrl) return;
-
-      image.classList.add('unit3d-ptp-description-lightbox-trigger');
-      image.dataset.unit3dPtpLightboxUrl = imageUrl;
-      image.title = image.title || 'Open full-size image';
-
       const link = image.closest('a[href]');
-      if (link) {
-        link.classList.add('unit3d-ptp-description-lightbox-link');
-        link.dataset.unit3dPtpLightboxUrl = imageUrl;
-      }
+      if (imageUrl) applyDescriptionImageLightboxUrl(image, link, imageUrl);
+
+      const imgbbViewerUrl = getImgbbViewerUrlForDescriptionImage(image);
+      if (!imgbbViewerUrl) return;
+
+      resolveImgbbViewerDirectImageUrl(imgbbViewerUrl)
+        .then((directUrl) => {
+          if (directUrl) applyDescriptionImageLightboxUrl(image, link, directUrl);
+        })
+        .catch(() => {});
     });
+  }
+
+  function applyDescriptionImageLightboxUrl(image, link, imageUrl) {
+    image.classList.add('unit3d-ptp-description-lightbox-trigger');
+    image.dataset.unit3dPtpLightboxUrl = imageUrl;
+    image.title = image.title || 'Open full-size image';
+
+    if (!link) return;
+    link.classList.add('unit3d-ptp-description-lightbox-link');
+    link.dataset.unit3dPtpLightboxUrl = imageUrl;
   }
 
   function normalizeDescriptionCopySource(panel) {
@@ -4186,6 +4199,93 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     if (directLinkedUrl) return directLinkedUrl;
 
     return getDirectImageUrl(srcUrl);
+  }
+
+  function getImgbbViewerUrlForDescriptionImage(image) {
+    const linkedUrl = normalizeImgbbViewerUrl(image.closest('a[href]')?.getAttribute('href') || '');
+    if (linkedUrl) return linkedUrl;
+
+    const thumbnailSource = getWsrvSourceUrl(image.getAttribute('src') || '');
+    return normalizeImgbbViewerUrl(thumbnailSource);
+  }
+
+  function normalizeImgbbViewerUrl(value) {
+    if (!value) return '';
+
+    try {
+      const url = new URL(value, location.href);
+      if (!/(^|\.)ibb\.co$/i.test(url.hostname)) return '';
+      const id = /^\/([A-Za-z0-9]+)\/?$/.exec(url.pathname)?.[1] || '';
+      return id ? `https://ibb.co/${id}` : '';
+    } catch {
+      return '';
+    }
+  }
+
+  function getWsrvSourceUrl(value) {
+    if (!value) return '';
+
+    try {
+      const url = new URL(value, location.href);
+      if (!/(^|\.)wsrv\.nl$/i.test(url.hostname)) return '';
+      return url.searchParams.get('url') || '';
+    } catch {
+      return '';
+    }
+  }
+
+  function resolveImgbbViewerDirectImageUrl(viewerUrl) {
+    if (imgbbDirectImageUrlCache.has(viewerUrl)) return imgbbDirectImageUrlCache.get(viewerUrl);
+
+    const promise = fetchCrossOriginText(viewerUrl)
+      .then((html) => extractImgbbDirectImageUrl(html, viewerUrl))
+      .catch((error) => {
+        imgbbDirectImageUrlCache.delete(viewerUrl);
+        throw error;
+      });
+    imgbbDirectImageUrlCache.set(viewerUrl, promise);
+    return promise;
+  }
+
+  function fetchCrossOriginText(url) {
+    if (typeof GM_xmlhttpRequest === 'function') {
+      return new Promise((resolve, reject) => {
+        GM_xmlhttpRequest({
+          method: 'GET',
+          url,
+          onerror: () => reject(new Error('request failed')),
+          onload: (response) => {
+            if (response.status < 200 || response.status >= 300) {
+              reject(new Error(`HTTP ${response.status}`));
+              return;
+            }
+            resolve(response.responseText || '');
+          },
+          ontimeout: () => reject(new Error('request timed out')),
+          timeout: CONFIG.fetchTimeoutMs
+        });
+      });
+    }
+
+    return fetch(url).then((response) => {
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.text();
+    });
+  }
+
+  function extractImgbbDirectImageUrl(html, viewerUrl) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const candidates = [
+      doc.querySelector('meta[property="og:image"]')?.getAttribute('content') || '',
+      doc.querySelector('link[rel="image_src"]')?.getAttribute('href') || ''
+    ];
+
+    for (const candidate of candidates) {
+      const directUrl = getDirectImageUrl(new URL(candidate, viewerUrl).href);
+      if (directUrl) return directUrl;
+    }
+
+    return '';
   }
 
   function getDirectImageUrl(value) {
