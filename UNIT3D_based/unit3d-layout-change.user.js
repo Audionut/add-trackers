@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Layout Change
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.1.2
+// @version      0.1.3
 // @description  Change UNIT3D similar torrents layout with additional details and sorting options.
 // @author       Audionut
 // @match        https://aither.cc/torrents/similar/1*
@@ -32,6 +32,8 @@
   const SCRIPT_ID = 'UNIT3DLayoutChange';
   const SETTINGS_PANEL_ID = 'unit3d-layout-change-settings-panel';
   const SETTINGS_STYLE_ID = 'unit3d-layout-change-settings-style';
+  const SINGLE_TORRENT_VIEW_BYPASS_STORAGE_KEY = `${SCRIPT_ID}_singleTorrentViewBypass`;
+  const SINGLE_TORRENT_VIEW_BYPASS_TTL_MS = 2 * 60 * 1000;
   const EXTERNAL_DETAIL_EVENT_TARGET_ID = 'unit3d-add-releases-private-detail-event-target';
   const EXTERNAL_DETAIL_REQUEST_EVENT = 'unit3d-add-releases-private-detail-request';
   const EXTERNAL_DETAIL_RESPONSE_EVENT = 'unit3d-add-releases-private-detail-response';
@@ -1277,6 +1279,8 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
   }
 
   function initSingleTorrentPageRedirector() {
+    if (consumeSingleTorrentViewBypass(location.href)) return;
+
     waitForElement(
       '.meta__title-link[href*="/torrents/similar/"], a[href*="/torrents/similar/"]',
       CONFIG.initialDomTimeoutMs
@@ -1291,15 +1295,6 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
   function initTorrentIndexLinkRedirector() {
     document.addEventListener('click', handleTorrentIndexLinkClick, true);
     document.addEventListener('auxclick', handleTorrentIndexLinkClick, true);
-    document.addEventListener('focusin', handleTorrentIndexLinkPrepare, true);
-    document.addEventListener('pointerover', handleTorrentIndexLinkPrepare, true);
-  }
-
-  function handleTorrentIndexLinkPrepare(event) {
-    const link = getTorrentIndexShowLink(event.target);
-    if (!link) return;
-
-    prepareTorrentIndexSimilarLink(link).catch(() => {});
   }
 
   function handleTorrentIndexLinkClick(event) {
@@ -1323,7 +1318,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
       ? globalThis.open('', '_blank', 'noopener')
       : null;
 
-    prepareTorrentIndexSimilarLink(link)
+    prepareTorrentIndexSimilarLink(link, { priority: true })
       .then((similarUrl) => {
         navigateResolvedTorrentLink(
           similarUrl || getOriginalTorrentLinkHref(link),
@@ -1345,7 +1340,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     return link;
   }
 
-  function prepareTorrentIndexSimilarLink(link) {
+  function prepareTorrentIndexSimilarLink(link, options = {}) {
     const originalHref = getOriginalTorrentLinkHref(link);
     const id = extractTorrentId(originalHref);
     if (!id) return Promise.resolve('');
@@ -1363,14 +1358,15 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
       return Promise.resolve(nearbySimilarUrl);
     }
 
-    if (torrentSimilarResolvePromises.has(id)) {
+    if (!options.priority && torrentSimilarResolvePromises.has(id)) {
       return torrentSimilarResolvePromises.get(id).then((similarUrl) => {
         if (similarUrl) rewriteTorrentIndexLink(link, similarUrl);
         return similarUrl;
       });
     }
 
-    const promise = enqueueDetailFetch(() => fetchTorrentDetail(originalHref))
+    const detailFetch = () => fetchTorrentDetail(originalHref);
+    const promise = (options.priority ? detailFetch() : enqueueDetailFetch(detailFetch))
       .then((html) => extractSimilarUrlFromTorrentDetail(html, originalHref))
       .then((similarUrl) => {
         if (similarUrl) {
@@ -1508,9 +1504,96 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     document.addEventListener('click', handleMediaInfoToggleClick);
     document.addEventListener('click', handleDescriptionLightboxClick);
     document.addEventListener('click', handleInlineCopyClick, true);
+    initSimilarPageSingleTorrentViewBypass();
     document.addEventListener('keydown', handleComparisonKeydown);
     document.addEventListener('keydown', handleDescriptionLightboxKeydown);
     document.addEventListener('mousemove', handleComparisonMousemove);
+  }
+
+  function initSimilarPageSingleTorrentViewBypass() {
+    document.addEventListener('click', handleSimilarPageSingleTorrentViewIntent, true);
+    document.addEventListener('auxclick', handleSimilarPageSingleTorrentViewIntent, true);
+    document.addEventListener('pointerdown', handleSimilarPageSingleTorrentViewIntent, true);
+  }
+
+  function handleSimilarPageSingleTorrentViewIntent(event) {
+    const link = getSimilarPageSingleTorrentViewLink(event.target);
+    if (!link) return;
+
+    rememberSingleTorrentViewBypass(link.href);
+  }
+
+  function getSimilarPageSingleTorrentViewLink(target) {
+    const link = target?.closest?.('a[href]');
+    if (!(link instanceof HTMLAnchorElement)) return null;
+    if (!isTorrentShowUrl(link.href)) return null;
+    if (link.closest('.unit3d-ptp-detail-actions')) return null;
+    if (!link.closest('.unit3d-ptp-overview-cell, .torrent-search--grouped__overview')) return null;
+
+    const isViewAction =
+      link.classList.contains('link_1') ||
+      normalizeWhitespace(link.textContent).toLowerCase() === 'view' ||
+      link.getAttribute('title') === 'View torrent page';
+    return isViewAction ? link : null;
+  }
+
+  function rememberSingleTorrentViewBypass(torrentUrl) {
+    const key = normalizeSingleTorrentViewBypassKey(torrentUrl);
+    if (!key) return;
+
+    const entries = readSingleTorrentViewBypassEntries();
+    const now = Date.now();
+    pruneSingleTorrentViewBypassEntries(entries, now);
+    entries[key] = now + SINGLE_TORRENT_VIEW_BYPASS_TTL_MS;
+    writeSingleTorrentViewBypassEntries(entries);
+  }
+
+  function consumeSingleTorrentViewBypass(torrentUrl) {
+    const key = normalizeSingleTorrentViewBypassKey(torrentUrl);
+    if (!key) return false;
+
+    const entries = readSingleTorrentViewBypassEntries();
+    const now = Date.now();
+    const expiresAt = Number(entries[key] || 0);
+    const matched = expiresAt > now;
+    delete entries[key];
+    pruneSingleTorrentViewBypassEntries(entries, now);
+    writeSingleTorrentViewBypassEntries(entries);
+    return matched;
+  }
+
+  function readSingleTorrentViewBypassEntries() {
+    const raw = GM_getValue(SINGLE_TORRENT_VIEW_BYPASS_STORAGE_KEY, '{}');
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) return { ...raw };
+    if (typeof raw !== 'string') return {};
+
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function writeSingleTorrentViewBypassEntries(entries) {
+    GM_setValue(SINGLE_TORRENT_VIEW_BYPASS_STORAGE_KEY, JSON.stringify(entries));
+  }
+
+  function pruneSingleTorrentViewBypassEntries(entries, now) {
+    Object.keys(entries).forEach((key) => {
+      if (Number(entries[key] || 0) <= now) delete entries[key];
+    });
+  }
+
+  function normalizeSingleTorrentViewBypassKey(value) {
+    try {
+      const url = new URL(value, location.href);
+      if (url.origin !== location.origin) return '';
+      if (!isTorrentShowUrl(url.href)) return '';
+      return `${url.origin}${url.pathname.replace(/\/+$/, '')}`;
+    } catch {
+      return '';
+    }
   }
 
   function watchNativeList() {
@@ -3963,24 +4046,50 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
 
   function getDetailPanels(doc) {
     return [...doc.querySelectorAll('.panelV2')]
-      .filter((panel) => {
-        const heading = normalizeWhitespace(
-          panel.querySelector('.panel__heading')?.textContent || ''
-        );
-        return /description|mediainfo|bdinfo|subtitles|internal/i.test(heading);
-      })
+      .filter((panel) => isExtractableDetailPanel(panel))
       .map((panel) => {
         const clone = cloneDetailPanel(panel);
         clone.classList.add('unit3d-ptp-source-panel');
-        normalizeMediaInfoPanel(clone);
-        normalizeVisionIcons(clone);
-        normalizeRenderedComparisons(clone);
-        normalizeRawBbcode(clone);
-        normalizePanelCopyButtons(clone);
-        normalizeDescriptionCopySource(clone);
-        normalizeDescriptionLightboxImages(clone);
+        if (isCommentsPanel(clone)) {
+          normalizeCommentsPanel(clone);
+        } else {
+          normalizeMediaInfoPanel(clone);
+          normalizeVisionIcons(clone);
+          normalizeRenderedComparisons(clone);
+          normalizeRawBbcode(clone);
+          normalizePanelCopyButtons(clone);
+          normalizeDescriptionCopySource(clone);
+          normalizeDescriptionLightboxImages(clone);
+        }
         return clone;
       });
+  }
+
+  function isExtractableDetailPanel(panel) {
+    const heading = normalizeWhitespace(panel.querySelector('.panel__heading')?.textContent || '');
+    return /description|mediainfo|bdinfo|subtitles|internal|comments/i.test(heading);
+  }
+
+  function isCommentsPanel(panel) {
+    const heading = normalizeWhitespace(panel.querySelector('.panel__heading')?.textContent || '');
+    return panel.id === 'comments' || /\bcomments?\b/i.test(heading);
+  }
+
+  function normalizeCommentsPanel(panel) {
+    panel.classList.add('unit3d-ptp-comments-panel');
+    panel
+      .querySelectorAll(
+        ['form.new-comment', 'form[wire\\:submit]', '.new-comment', '#new-comment__textarea'].join(
+          ','
+        )
+      )
+      .forEach((element) => {
+        const form = element.closest('form');
+        (form || element).remove();
+      });
+    panel.querySelectorAll('form').forEach((form) => {
+      if (form.querySelector('textarea[name="comment"]')) form.remove();
+    });
   }
 
   function cloneDetailPanel(panel) {
