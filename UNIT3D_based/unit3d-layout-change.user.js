@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Layout Change
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.1.4
+// @version      0.1.5
 // @description  Change UNIT3D similar torrents layout with additional details and sorting options.
 // @author       Audionut
 // @match        https://aither.cc/torrents/similar/1*
@@ -859,9 +859,58 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions .form__button {
   min-width: max-content;
 }
 
-html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions .form__group {
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions > .form__group,
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions > li > .form__group {
   width: auto !important;
   min-width: 0;
+}
+
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions [popover],
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions [role='dialog'],
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions .dialog,
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions .modal,
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions .modal-dialog,
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions .dropdown-menu {
+  box-sizing: border-box;
+  max-width: min(920px, calc(100vw - 32px)) !important;
+  min-width: min(640px, calc(100vw - 32px)) !important;
+  overflow-wrap: anywhere;
+  text-align: left;
+  white-space: normal;
+}
+
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions [popover] .form__group,
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions [role='dialog'] .form__group,
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions .dialog .form__group,
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions .modal .form__group,
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions .dropdown-menu .form__group,
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions [popover] form,
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions [role='dialog'] form,
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions .dialog form,
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions .modal form,
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions .dropdown-menu form {
+  box-sizing: border-box;
+  max-width: 100%;
+  width: 100% !important;
+}
+
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions [popover] input,
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions [popover] select,
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions [popover] textarea,
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions [role='dialog'] input,
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions [role='dialog'] select,
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions [role='dialog'] textarea,
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions .dialog input,
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions .dialog select,
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions .dialog textarea,
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions .modal input,
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions .modal select,
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions .modal textarea,
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions .dropdown-menu input,
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions .dropdown-menu select,
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-actions .dropdown-menu textarea {
+  max-width: 100%;
+  white-space: normal;
 }
 
 html.unit3d-ptp-adapter-enabled .unit3d-ptp-internal-message {
@@ -4027,22 +4076,26 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
   }
 
   function initializeDynamicActionMenu(root) {
-    const actionMenu = root.querySelector('.unit3d-ptp-detail-actions');
-    if (!actionMenu) return;
+    const dynamicRoots = [
+      ...root.querySelectorAll('.unit3d-ptp-detail-actions, .unit3d-ptp-comments-panel')
+    ];
+    if (dynamicRoots.length === 0) return;
 
     requestAnimationFrame(() => {
       try {
-        if (globalThis.Alpine && typeof globalThis.Alpine.initTree === 'function') {
-          globalThis.Alpine.initTree(actionMenu);
-        }
+        dynamicRoots.forEach((dynamicRoot) => {
+          if (globalThis.Alpine && typeof globalThis.Alpine.initTree === 'function') {
+            globalThis.Alpine.initTree(dynamicRoot);
+          }
 
-        if (globalThis.Livewire && typeof globalThis.Livewire.initTree === 'function') {
-          globalThis.Livewire.initTree(actionMenu);
-        } else if (globalThis.Livewire && typeof globalThis.Livewire.rescan === 'function') {
-          globalThis.Livewire.rescan(actionMenu);
-        }
+          if (globalThis.Livewire && typeof globalThis.Livewire.initTree === 'function') {
+            globalThis.Livewire.initTree(dynamicRoot);
+          } else if (globalThis.Livewire && typeof globalThis.Livewire.rescan === 'function') {
+            globalThis.Livewire.rescan(dynamicRoot);
+          }
+        });
       } catch (error) {
-        console.warn('[UNIT3D PTP Adapter] Could not initialize inline action menu', error);
+        console.warn('[UNIT3D PTP Adapter] Could not initialize inline dynamic controls', error);
       }
     });
   }
@@ -4080,18 +4133,8 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
 
   function normalizeCommentsPanel(panel) {
     panel.classList.add('unit3d-ptp-comments-panel');
-    panel
-      .querySelectorAll(
-        ['form.new-comment', 'form[wire\\:submit]', '.new-comment', '#new-comment__textarea'].join(
-          ','
-        )
-      )
-      .forEach((element) => {
-        const form = element.closest('form');
-        (form || element).remove();
-      });
-    panel.querySelectorAll('form').forEach((form) => {
-      if (form.querySelector('textarea[name="comment"]')) form.remove();
+    panel.querySelectorAll('form[action]').forEach((form) => {
+      form.setAttribute('action', absolutizeUrl(form.getAttribute('action')));
     });
   }
 
@@ -4198,6 +4241,10 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     const directLinkedUrl = getDirectImageUrl(linkedUrl);
     if (directLinkedUrl) return directLinkedUrl;
 
+    const wsrvSourceUrl = getWsrvSourceUrl(srcUrl);
+    const directWsrvSourceUrl = getDirectImageUrl(wsrvSourceUrl);
+    if (directWsrvSourceUrl) return directWsrvSourceUrl;
+
     return getDirectImageUrl(srcUrl);
   }
 
@@ -4293,7 +4340,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
 
     const absolute = absolutizeUrl(value);
     if (!isSafeUrl(absolute, location.href, 'href')) return '';
-    const normalized = normalizeThumbnailDirectImageUrl(absolute);
+    const normalized = normalizeThumbnailDirectImageUrl(getWsrvSourceUrl(absolute) || absolute);
     return isDirectImageUrl(normalized) ? normalized : '';
   }
 
@@ -4306,7 +4353,9 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
         return url.href;
       }
 
-      if (!/(^|\.)(?:beyondhd\.co|ptscreens\.com)$/i.test(url.hostname)) return value;
+      if (!/(^|\.)(?:beyondhd\.co|ptscreens\.com|img\.blutopia\.cc)$/i.test(url.hostname)) {
+        return value;
+      }
 
       url.pathname = url.pathname.replace(
         /(.+)\.[^.\/]+(\.(?:png|jpe?g|gif|webp|avif|bmp))$/i,
@@ -5229,7 +5278,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
 
   function shouldRemoveAttribute(element, name) {
     if (name.startsWith('on')) return true;
-    if (isDynamicActionMenuAttribute(element, name)) return false;
+    if (isInlineDynamicControlAttribute(element, name)) return false;
 
     return (
       name === 'id' ||
@@ -5241,8 +5290,8 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     );
   }
 
-  function isDynamicActionMenuAttribute(element, name) {
-    if (!element.closest('.unit3d-ptp-detail-actions')) return false;
+  function isInlineDynamicControlAttribute(element, name) {
+    if (!element.closest('.unit3d-ptp-detail-actions, .unit3d-ptp-comments-panel')) return false;
 
     return (
       name === 'id' ||
