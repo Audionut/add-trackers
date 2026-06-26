@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - IMDb Combined
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.1.1
+// @version      0.1.2
 // @description  Add IMDb-derived panels and shared IMDb cache/events to UNIT3D similar torrent pages using the UNIT3D layout change userscript.
 // @author       Audionut
 // @match        https://aither.cc/torrents/similar/1*
@@ -36,6 +36,7 @@
   const PANEL_ROOT_ID = 'unit3d-imdb-panels';
   const SIDEBAR_ROOT_ID = 'unit3d-imdb-sidebar-panels';
   const CACHE_PREFIX = 'iMDB_data_';
+  const TITLE_CACHE_VERSION = 2;
   const NAME_CACHE_PREFIX = 'unit3d_imdb_names_';
   const VIDEO_CACHE_PREFIX = 'unit3d_imdb_video_';
   const VIDEO_CACHE_VERSION = 4;
@@ -3998,7 +3999,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
       nameElement.textContent = name;
       card.appendChild(nameElement);
 
-      const roleText = credit.category?.text || '';
+      const roleText = buildCastRoleText(credit);
       if (roleText) {
         const role = document.createElement('span');
         role.className = 'unit3d-imdb-cast-role';
@@ -4014,6 +4015,14 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
       id: 'unit3d-imdb-cast',
       url: `${imdbTitleUrl(titleData.id)}fullcredits/`
     });
+  }
+
+  function buildCastRoleText(credit) {
+    const characters = joinText(credit?.characters, 'name', ', ');
+    if (characters) return characters;
+    const jobs = joinText(credit?.jobs, 'text', ', ');
+    if (jobs) return jobs;
+    return credit?.category?.text || '';
   }
 
   function filterCreditsForCast(edges) {
@@ -4143,8 +4152,12 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
 
   async function getTitleBundle(imdbId) {
     const cached = await getCachedTitleData(imdbId);
-    if (cached?.data?.title && hasRequiredTitleData(cached.data.title)) {
-      const titleData = cached.data.title;
+    if (
+      cached?.version === TITLE_CACHE_VERSION &&
+      cached?.data?.title &&
+      hasRequiredTitleData(cached.data.title)
+    ) {
+      const titleData = prepareTitleCredits(cached.data.title);
       const namesData = await fetchNames(getNameIds(titleData));
       const trailerData = settings.showTrailerPanel
         ? await fetchIMDbTrailerData(imdbId, titleData)
@@ -4158,12 +4171,15 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
       };
     }
 
-    const titleData = await fetchTitleData(imdbId);
+    const titleData = prepareTitleCredits(await fetchTitleData(imdbId));
     const namesData = await fetchNames(getNameIds(titleData));
     const trailerData = settings.showTrailerPanel
       ? await fetchIMDbTrailerData(imdbId, titleData)
       : null;
-    await setCache(`${CACHE_PREFIX}${imdbId}`, { data: { title: titleData } });
+    await setCache(`${CACHE_PREFIX}${imdbId}`, {
+      data: { title: titleData },
+      version: TITLE_CACHE_VERSION
+    });
     return {
       namesData,
       soundtracks: processSoundtracks(titleData, namesData),
@@ -4224,6 +4240,70 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
       return false;
     }
     return true;
+  }
+
+  function prepareTitleCredits(titleData) {
+    if (!titleData) return titleData;
+
+    const fullCredits = titleData.credits?.edges || [];
+    const principalCredits = getPrincipalCreditEdges(titleData);
+    if (principalCredits.length === 0) return titleData;
+
+    const fullCreditsByNameId = new Map(
+      fullCredits.map((edge) => [edge.node?.name?.id, edge]).filter(([id]) => id)
+    );
+    const mergedPrincipalCredits = principalCredits.map((edge) => {
+      const fallback = fullCreditsByNameId.get(edge.node?.name?.id)?.node;
+      if (!fallback) return edge;
+      const characters = edge.node?.characters?.length
+        ? edge.node.characters
+        : fallback.characters || [];
+      return {
+        ...edge,
+        node: {
+          ...fallback,
+          ...edge.node,
+          characters
+        }
+      };
+    });
+    const principalIds = new Set(
+      mergedPrincipalCredits.map((edge) => edge.node?.name?.id).filter(Boolean)
+    );
+    titleData.credits = {
+      ...(titleData.credits || {}),
+      edges: [
+        ...mergedPrincipalCredits,
+        ...fullCredits.filter((edge) => !principalIds.has(edge.node?.name?.id))
+      ]
+    };
+    return titleData;
+  }
+
+  function getPrincipalCreditEdges(titleData) {
+    return (titleData.principalCreditsV2 || []).flatMap((group) =>
+      (group?.credits || [])
+        .map((credit, index) => {
+          const firstRole = credit?.creditedRoles?.edges?.[0]?.node;
+          const characters = (firstRole?.characters?.edges || [])
+            .map((edge) => ({ name: edge?.node?.name }))
+            .filter((character) => character.name);
+          const name = credit?.name;
+          if (!name?.id) return null;
+          return {
+            node: {
+              name,
+              category: firstRole?.category || { id: 'actor', text: 'Actor' },
+              characters,
+              isPrincipal: true,
+              principalGrouping: group?.grouping?.text || '',
+              positionInGrouping: index,
+              title: { id: titleData.id, titleText: titleData.titleText }
+            }
+          };
+        })
+        .filter(Boolean)
+    );
   }
 
   function hasImdbReviewCandidates(titleData) {
@@ -4890,11 +4970,37 @@ query Unit3dImdbCombined($id: ID!) {
         severity { text }
       }
     }
+    principalCreditsV2 {
+      grouping { id text }
+      credits {
+        ... on CreditV2 {
+          id
+          name { id nameText { text } }
+          creditedRoles(first: 10) {
+            edges {
+              node {
+                category { id text }
+                characters(first: 10) {
+                  edges {
+                    node { name }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
     credits(first: 130) {
       edges {
         node {
           name { id nameText { text } }
           category { id text }
+          ... on Cast {
+            characters(limit: 10) {
+              name
+            }
+          }
           title { id titleText { text } }
         }
       }
