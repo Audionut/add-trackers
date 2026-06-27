@@ -1,18 +1,20 @@
 // ==UserScript==
 // @name         UNIT3D - Layout Change
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.1.5
+// @version      0.1.6
 // @description  Change UNIT3D similar torrents layout with additional details and sorting options.
 // @author       Audionut
 // @match        https://aither.cc/torrents/similar/1*
 // @match        https://aither.cc/torrents/similar/2*
 // @match        https://aither.cc/torrents*
+// @match        https://aither.cc/*
 // @downloadURL  https://github.com/Audionut/add-trackers/raw/main/UNIT3D_based/unit3d-layout-change.user.js
 // @updateURL    https://github.com/Audionut/add-trackers/raw/main/UNIT3D_based/unit3d-layout-change.user.js
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
 // @grant        GM_xmlhttpRequest
+// @grant        GM_openInTab
 // @connect      ibb.co
 // @run-at       document-start
 // ==/UserScript==
@@ -34,6 +36,9 @@
   const SCRIPT_ID = 'UNIT3DLayoutChange';
   const SETTINGS_PANEL_ID = 'unit3d-layout-change-settings-panel';
   const SETTINGS_STYLE_ID = 'unit3d-layout-change-settings-style';
+  const SINGLE_TORRENT_INLINE_HASH_PARAM = 'unit3d-ptp-open';
+  const SINGLE_TORRENT_INLINE_INTENT_STORAGE_KEY = `${SCRIPT_ID}_singleTorrentInlineIntent`;
+  const SINGLE_TORRENT_INLINE_INTENT_TTL_MS = 5 * 60 * 1000;
   const SINGLE_TORRENT_VIEW_BYPASS_STORAGE_KEY = `${SCRIPT_ID}_singleTorrentViewBypass`;
   const SINGLE_TORRENT_VIEW_BYPASS_TTL_MS = 2 * 60 * 1000;
   const EXTERNAL_DETAIL_EVENT_TARGET_ID = 'unit3d-add-releases-private-detail-event-target';
@@ -1029,6 +1034,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
 
   const detailCache = new Map();
   const detailFetchQueue = [];
+  const expandedTorrentDetailIds = new Set();
   const imgbbDirectImageUrlCache = new Map();
   const torrentSimilarResolvePromises = new Map();
   const torrentSimilarUrlCache = new Map();
@@ -1045,6 +1051,10 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
   let metaObserver = null;
   let nativeObserver = null;
   let pairingObserver = null;
+  let pendingSingleTorrentInlineStartedAt = 0;
+  let pendingSingleTorrentInlineTorrentId = '';
+  let pendingSingleTorrentInlineTorrentUrl = '';
+  let pendingSingleTorrentInlineTimer = null;
   let rebuildTimer = null;
   let actionMenuCounter = 0;
   let currentSort = { direction: 'asc', key: 'sizeBytes' };
@@ -1052,17 +1062,19 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
   GM_registerMenuCommand('UNIT3D - Layout Change Settings', showSettingsPanel);
 
   if (isSimilarTorrentPage()) {
+    pendingSingleTorrentInlineTorrentId = consumeSingleTorrentInlineIntent();
     addReadyClass();
     installAdapterStyles();
     initAitherTrackerIconDecorator();
+    if (getLayoutSetting('forceRedirectSingleTorrentLinks')) initTorrentIndexLinkRedirector();
     waitForElement(SELECTORS.nativeTable, CONFIG.initialDomTimeoutMs).then((table) => {
       if (!table) return;
       initAdapter();
     });
-  } else if (getLayoutSetting('forceRedirectSingleTorrentLinks') && isTorrentIndexPage()) {
-    initTorrentIndexLinkRedirector();
   } else if (getLayoutSetting('forceRedirectSingleTorrentLinks') && isTorrentShowPage()) {
     initSingleTorrentPageRedirector();
+  } else if (getLayoutSetting('forceRedirectSingleTorrentLinks')) {
+    initTorrentIndexLinkRedirector();
   }
 
   function getLayoutSetting(key) {
@@ -1322,16 +1334,14 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     return /^\/torrents\/similar\/[12]\.\d+(?:\/)?$/i.test(location.pathname);
   }
 
-  function isTorrentIndexPage() {
-    return /^\/torrents\/?$/i.test(location.pathname);
-  }
-
   function isTorrentShowPage() {
     return isTorrentShowUrl(location.href);
   }
 
   function initSingleTorrentPageRedirector() {
-    if (consumeSingleTorrentViewBypass(location.href)) return;
+    if (consumeSingleTorrentViewBypass(location.href)) {
+      return;
+    }
 
     waitForElement(
       '.meta__title-link[href*="/torrents/similar/"], a[href*="/torrents/similar/"]',
@@ -1340,7 +1350,8 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
       const similarUrl = link ? absolutizeUrl(link.getAttribute('href')) : '';
       if (!isSupportedSimilarTorrentUrl(similarUrl)) return;
       if (new URL(similarUrl, location.href).href === location.href) return;
-      location.replace(similarUrl);
+      rememberSingleTorrentInlineIntent(similarUrl, location.href);
+      location.replace(addSingleTorrentInlineIntent(similarUrl, location.href));
     });
   }
 
@@ -1360,27 +1371,22 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     const cachedUrl = getCachedSimilarUrlForTorrentLink(link);
     if (cachedUrl) {
       rewriteTorrentIndexLink(link, cachedUrl);
+      rememberSingleTorrentInlineIntent(cachedUrl, getOriginalTorrentLinkHref(link));
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      navigateResolvedTorrentLink(cachedUrl, link, event);
       return;
     }
 
     event.preventDefault();
     event.stopImmediatePropagation();
 
-    const pendingWindow = shouldOpenLinkInNewContext(link, event)
-      ? globalThis.open('', '_blank', 'noopener')
-      : null;
-
     prepareTorrentIndexSimilarLink(link, { priority: true })
       .then((similarUrl) => {
-        navigateResolvedTorrentLink(
-          similarUrl || getOriginalTorrentLinkHref(link),
-          link,
-          event,
-          pendingWindow
-        );
+        navigateResolvedTorrentLink(similarUrl || getOriginalTorrentLinkHref(link), link, event);
       })
-      .catch(() => {
-        navigateResolvedTorrentLink(getOriginalTorrentLinkHref(link), link, event, pendingWindow);
+      .catch((error) => {
+        navigateResolvedTorrentLink(getOriginalTorrentLinkHref(link), link, event);
       });
   }
 
@@ -1446,7 +1452,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
 
     link.dataset.unit3dPtpOriginalHref = getOriginalTorrentLinkHref(link);
     link.dataset.unit3dPtpSimilarUrl = similarUrl;
-    link.href = similarUrl;
+    link.href = addSingleTorrentInlineIntent(similarUrl, link.dataset.unit3dPtpOriginalHref);
   }
 
   function getOriginalTorrentLinkHref(link) {
@@ -1520,19 +1526,201 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     );
   }
 
-  function navigateResolvedTorrentLink(url, link, event, pendingWindow) {
-    if (pendingWindow && !pendingWindow.closed) {
-      pendingWindow.opener = null;
-      pendingWindow.location.href = url;
-      return;
-    }
+  function navigateResolvedTorrentLink(url, link, event) {
+    const originalUrl = getOriginalTorrentLinkHref(link);
+    const targetUrl = addSingleTorrentInlineIntent(url, originalUrl);
+    rememberSingleTorrentInlineIntent(targetUrl, originalUrl);
 
     if (shouldOpenLinkInNewContext(link, event)) {
-      globalThis.open(url, '_blank', 'noopener');
+      openResolvedLinkInNewContext(targetUrl);
       return;
     }
 
-    location.assign(url);
+    location.assign(targetUrl);
+  }
+
+  function openResolvedLinkInNewContext(url) {
+    if (typeof GM_openInTab === 'function') {
+      GM_openInTab(url, { active: true, insert: true, setParent: true });
+      return;
+    }
+
+    globalThis.open(url, '_blank', 'noopener');
+  }
+
+  function addSingleTorrentInlineIntent(similarUrl, torrentUrl) {
+    if (!isSupportedSimilarTorrentUrl(similarUrl)) {
+      return similarUrl;
+    }
+
+    const torrentId = extractTorrentId(torrentUrl);
+    if (!torrentId) {
+      return similarUrl;
+    }
+
+    try {
+      const url = new URL(similarUrl, location.href);
+      const hash = url.hash.replace(/^#/, '');
+      const params =
+        hash === '' || hash.includes('=') ? new URLSearchParams(hash) : new URLSearchParams();
+      params.set(SINGLE_TORRENT_INLINE_HASH_PARAM, torrentId);
+      url.hash = params.toString();
+      return url.href;
+    } catch {
+      return similarUrl;
+    }
+  }
+
+  function consumeSingleTorrentInlineIntent() {
+    const hashTorrentId = getSingleTorrentInlineIntentId();
+    const storedIntent = consumeStoredSingleTorrentInlineIntent(location.href);
+    const torrentId = hashTorrentId || storedIntent.torrentId;
+    if (!torrentId) return '';
+
+    pendingSingleTorrentInlineStartedAt = Date.now();
+    pendingSingleTorrentInlineTorrentUrl = storedIntent.torrentUrl || '';
+    clearSingleTorrentInlineIntent();
+    return torrentId;
+  }
+
+  function rememberSingleTorrentInlineIntent(similarUrl, torrentUrl) {
+    if (!isSupportedSimilarTorrentUrl(similarUrl)) return;
+
+    const torrentId = extractTorrentId(torrentUrl);
+    if (!torrentId) {
+      return;
+    }
+
+    const entries = readSingleTorrentInlineIntentEntries();
+    const now = Date.now();
+    pruneSingleTorrentInlineIntentEntries(entries, now);
+    entries[normalizeSimilarTorrentIntentKey(similarUrl)] = {
+      expiresAt: now + SINGLE_TORRENT_INLINE_INTENT_TTL_MS,
+      torrentId,
+      torrentUrl: normalizeTorrentIntentUrl(torrentUrl)
+    };
+    writeSingleTorrentInlineIntentEntries(entries);
+  }
+
+  function consumeStoredSingleTorrentInlineIntent(similarUrl) {
+    const key = normalizeSimilarTorrentIntentKey(similarUrl);
+    if (!key) {
+      return {};
+    }
+
+    const entries = readSingleTorrentInlineIntentEntries();
+    const now = Date.now();
+    const entry = entries[key];
+    const torrentId =
+      entry && Number(entry.expiresAt || 0) > now && /^[1-9]\d*$/.test(entry.torrentId || '')
+        ? entry.torrentId
+        : '';
+    const torrentUrl =
+      torrentId && isTorrentShowUrl(entry.torrentUrl || '')
+        ? normalizeTorrentIntentUrl(entry.torrentUrl)
+        : '';
+
+    delete entries[key];
+    pruneSingleTorrentInlineIntentEntries(entries, now);
+    writeSingleTorrentInlineIntentEntries(entries);
+    return { torrentId, torrentUrl };
+  }
+
+  function readSingleTorrentInlineIntentEntries() {
+    const raw = GM_getValue(SINGLE_TORRENT_INLINE_INTENT_STORAGE_KEY, '{}');
+    const gmEntries =
+      raw && typeof raw === 'object' && !Array.isArray(raw)
+        ? { ...raw }
+        : parseSingleTorrentInlineIntentEntries(raw);
+    return {
+      ...readLocalSingleTorrentInlineIntentEntries(),
+      ...gmEntries
+    };
+  }
+
+  function parseSingleTorrentInlineIntentEntries(raw) {
+    if (typeof raw !== 'string') return {};
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function writeSingleTorrentInlineIntentEntries(entries) {
+    GM_setValue(SINGLE_TORRENT_INLINE_INTENT_STORAGE_KEY, JSON.stringify(entries));
+    writeLocalSingleTorrentInlineIntentEntries(entries);
+  }
+
+  function readLocalSingleTorrentInlineIntentEntries() {
+    try {
+      return parseSingleTorrentInlineIntentEntries(
+        globalThis.localStorage?.getItem(SINGLE_TORRENT_INLINE_INTENT_STORAGE_KEY) || '{}'
+      );
+    } catch {
+      return {};
+    }
+  }
+
+  function writeLocalSingleTorrentInlineIntentEntries(entries) {
+    try {
+      globalThis.localStorage?.setItem(
+        SINGLE_TORRENT_INLINE_INTENT_STORAGE_KEY,
+        JSON.stringify(entries)
+      );
+    } catch {}
+  }
+
+  function pruneSingleTorrentInlineIntentEntries(entries, now) {
+    Object.keys(entries).forEach((key) => {
+      if (Number(entries[key]?.expiresAt || 0) <= now) delete entries[key];
+    });
+  }
+
+  function normalizeSimilarTorrentIntentKey(value) {
+    try {
+      const url = new URL(value, location.href);
+      if (!isSupportedSimilarTorrentUrl(url.href)) return '';
+      return `${url.origin}${url.pathname.replace(/\/+$/, '')}`;
+    } catch {
+      return '';
+    }
+  }
+
+  function normalizeTorrentIntentUrl(value) {
+    try {
+      const url = new URL(value, location.href);
+      if (!isTorrentShowUrl(url.href)) return '';
+      url.hash = '';
+      url.search = '';
+      return `${url.origin}${url.pathname.replace(/\/+$/, '')}`;
+    } catch {
+      return '';
+    }
+  }
+
+  function getSingleTorrentInlineIntentId() {
+    const hash = location.hash.replace(/^#/, '');
+    if (!hash) return '';
+
+    const torrentId = new URLSearchParams(hash).get(SINGLE_TORRENT_INLINE_HASH_PARAM) || '';
+    return /^[1-9]\d*[A-Za-z0-9_-]*$/.test(torrentId) ? torrentId : '';
+  }
+
+  function clearSingleTorrentInlineIntent() {
+    try {
+      const url = new URL(location.href);
+      const hash = url.hash.replace(/^#/, '');
+      const params = new URLSearchParams(hash);
+      if (!params.has(SINGLE_TORRENT_INLINE_HASH_PARAM)) return;
+
+      params.delete(SINGLE_TORRENT_INLINE_HASH_PARAM);
+      url.hash = params.toString();
+      history.replaceState(history.state, document.title, url.href);
+    } catch {
+      // Keep the hash if History API cleanup fails; the intent is still consumed in memory.
+    }
   }
 
   function initAdapter() {
@@ -1563,9 +1751,31 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
   }
 
   function initSimilarPageSingleTorrentViewBypass() {
-    document.addEventListener('click', handleSimilarPageSingleTorrentViewIntent, true);
+    document.addEventListener('click', handleSimilarPageSingleTorrentViewClick, true);
     document.addEventListener('auxclick', handleSimilarPageSingleTorrentViewIntent, true);
-    document.addEventListener('pointerdown', handleSimilarPageSingleTorrentViewIntent, true);
+    document.addEventListener('pointerdown', handleSimilarPageSingleTorrentViewPointerIntent, true);
+  }
+
+  function handleSimilarPageSingleTorrentViewClick(event) {
+    const link = getSimilarPageSingleTorrentViewLink(event.target);
+    if (!link) return;
+
+    if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+      rememberSingleTorrentViewBypass(link.href);
+      return;
+    }
+
+    const headerRow = link.closest('tr.group_torrent.group_torrent_header');
+    if (!headerRow || !adapterRoot?.contains(headerRow)) return;
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    openInlineDetailForHeaderRow(headerRow, { scroll: true });
+  }
+
+  function handleSimilarPageSingleTorrentViewPointerIntent(event) {
+    if (event.button !== 1 && !event.ctrlKey && !event.metaKey && !event.shiftKey) return;
+    handleSimilarPageSingleTorrentViewIntent(event);
   }
 
   function handleSimilarPageSingleTorrentViewIntent(event) {
@@ -1782,7 +1992,9 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
   function rebuildAdapter() {
     const nativeTables = collectNativeTorrentTables();
     const nativeTable = nativeTables[0];
-    if (!nativeTable) return;
+    if (!nativeTable) {
+      return;
+    }
 
     enhanceMetaTitleLink();
 
@@ -1795,6 +2007,8 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     if (adapterRoot && signature === lastSignature) {
       decorateAitherTrackerIcons(adapterRoot);
       dispatchReady();
+      maybeOpenPendingSingleTorrentInlineDetail();
+      restoreExpandedInlineDetails();
       return;
     }
 
@@ -1817,6 +2031,8 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     decorateAitherTrackerIcons(adapterRoot);
     watchGeneratedTable();
     dispatchReady();
+    maybeOpenPendingSingleTorrentInlineDetail();
+    restoreExpandedInlineDetails();
     maybePrefetchVisibleDetails(torrents);
   }
 
@@ -3144,12 +3360,120 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     if (!detailRow.hidden) {
       detailRow.hidden = true;
       link.setAttribute('aria-expanded', 'false');
+      if (headerRow.dataset.unit3dTorrentId) {
+        expandedTorrentDetailIds.delete(headerRow.dataset.unit3dTorrentId);
+      }
       return;
     }
 
     detailRow.hidden = false;
     link.setAttribute('aria-expanded', 'true');
+    if (headerRow.dataset.unit3dTorrentId) {
+      expandedTorrentDetailIds.add(headerRow.dataset.unit3dTorrentId);
+    }
     loadDetailRow(detailRow, link.href);
+  }
+
+  function openInlineDetailForHeaderRow(headerRow, options = {}) {
+    if (!headerRow) {
+      return false;
+    }
+
+    const detailRow = findDetailRow(headerRow);
+    const link = headerRow.querySelector('a.torrent-info-link');
+    if (!detailRow || !link) {
+      return false;
+    }
+
+    if (headerRow.hidden && headerRow.dataset.unit3dTvGroupKey) {
+      toggleTvGroup(headerRow.dataset.unit3dTvGroupKey, true);
+    }
+
+    headerRow.hidden = false;
+    detailRow.hidden = false;
+    link.setAttribute('aria-expanded', 'true');
+    if (headerRow.dataset.unit3dTorrentId) {
+      expandedTorrentDetailIds.add(headerRow.dataset.unit3dTorrentId);
+    }
+    loadDetailRow(detailRow, link.href);
+    if (options.scroll) headerRow.scrollIntoView({ block: 'center' });
+    return true;
+  }
+
+  function restoreExpandedInlineDetails() {
+    if (!adapterRoot || expandedTorrentDetailIds.size === 0) return;
+
+    expandedTorrentDetailIds.forEach((torrentId) => {
+      const headerRow = adapterRoot.querySelector(
+        `tr.group_torrent.group_torrent_header[data-unit3d-torrent-id="${cssEscape(torrentId)}"]`
+      );
+      if (!headerRow) {
+        return;
+      }
+      openInlineDetailForHeaderRow(headerRow, { scroll: false });
+    });
+  }
+
+  function maybeOpenPendingSingleTorrentInlineDetail() {
+    if (!pendingSingleTorrentInlineTorrentId || !adapterRoot) {
+      return;
+    }
+
+    const torrentId = pendingSingleTorrentInlineTorrentId;
+    const headerRow =
+      adapterRoot.querySelector(
+        `tr.group_torrent.group_torrent_header[data-unit3d-torrent-id="${cssEscape(torrentId)}"]`
+      ) || findTorrentHeaderRowByTorrentUrl(pendingSingleTorrentInlineTorrentUrl);
+    if (!headerRow) {
+      retryPendingSingleTorrentInlineDetail();
+      return;
+    }
+
+    if (openInlineDetailForHeaderRow(headerRow, { scroll: true })) {
+      clearPendingSingleTorrentInlineRetry();
+      pendingSingleTorrentInlineStartedAt = 0;
+      pendingSingleTorrentInlineTorrentId = '';
+      pendingSingleTorrentInlineTorrentUrl = '';
+    }
+  }
+
+  function retryPendingSingleTorrentInlineDetail() {
+    if (pendingSingleTorrentInlineTimer) {
+      return;
+    }
+    if (!pendingSingleTorrentInlineStartedAt) pendingSingleTorrentInlineStartedAt = Date.now();
+    if (Date.now() - pendingSingleTorrentInlineStartedAt > CONFIG.initialDomTimeoutMs) {
+      pendingSingleTorrentInlineStartedAt = 0;
+      pendingSingleTorrentInlineTorrentId = '';
+      pendingSingleTorrentInlineTorrentUrl = '';
+      return;
+    }
+
+    pendingSingleTorrentInlineTimer = globalThis.setTimeout(() => {
+      pendingSingleTorrentInlineTimer = null;
+      maybeOpenPendingSingleTorrentInlineDetail();
+    }, CONFIG.observeDebounceMs);
+  }
+
+  function clearPendingSingleTorrentInlineRetry() {
+    if (!pendingSingleTorrentInlineTimer) return;
+    globalThis.clearTimeout(pendingSingleTorrentInlineTimer);
+    pendingSingleTorrentInlineTimer = null;
+  }
+
+  function findTorrentHeaderRowByTorrentUrl(torrentUrl) {
+    const normalized = normalizeTorrentIntentUrl(torrentUrl);
+    if (!normalized || !adapterRoot) {
+      return null;
+    }
+
+    const row =
+      [...adapterRoot.querySelectorAll('tr.group_torrent.group_torrent_header')].find((row) =>
+        [...row.querySelectorAll('a[href]')].some(
+          (link) => normalizeTorrentIntentUrl(link.href) === normalized
+        )
+      ) || null;
+    return row;
   }
 
   function findDetailRow(headerRow) {
@@ -5360,7 +5684,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
   }
 
   function extractTorrentId(url) {
-    const match = /\/torrents\/(\d+)(?:[/?#]|$)/.exec(String(url));
+    const match = /\/torrents\/(\d+)[A-Za-z0-9_-]*(?:[/?#]|$)/.exec(String(url));
     return match ? match[1] : '';
   }
 
