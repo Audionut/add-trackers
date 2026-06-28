@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Layout Change
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.1.6
+// @version      0.1.7
 // @description  Change UNIT3D similar torrents layout with additional details and sorting options.
 // @author       Audionut
 // @match        https://aither.cc/torrents/similar/1*
@@ -4565,10 +4565,6 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     const directLinkedUrl = getDirectImageUrl(linkedUrl);
     if (directLinkedUrl) return directLinkedUrl;
 
-    const wsrvSourceUrl = getWsrvSourceUrl(srcUrl);
-    const directWsrvSourceUrl = getDirectImageUrl(wsrvSourceUrl);
-    if (directWsrvSourceUrl) return directWsrvSourceUrl;
-
     return getDirectImageUrl(srcUrl);
   }
 
@@ -4598,7 +4594,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
 
     try {
       const url = new URL(value, location.href);
-      if (!/(^|\.)wsrv\.nl$/i.test(url.hostname)) return '';
+      if (!/^(?:.*\.)?(?:wsrv\.nl|wsrv\.aither\.cc)$/i.test(url.hostname)) return '';
       return url.searchParams.get('url') || '';
     } catch {
       return '';
@@ -4664,8 +4660,35 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
 
     const absolute = absolutizeUrl(value);
     if (!isSafeUrl(absolute, location.href, 'href')) return '';
+    const proxied = normalizeAitherWsrvBlutopiaImageUrl(absolute);
+    if (proxied) return proxied;
+
     const normalized = normalizeThumbnailDirectImageUrl(getWsrvSourceUrl(absolute) || absolute);
     return isDirectImageUrl(normalized) ? normalized : '';
+  }
+
+  function normalizeAitherWsrvBlutopiaImageUrl(value) {
+    try {
+      const url = new URL(value, location.href);
+      if (!/(^|\.)wsrv\.aither\.cc$/i.test(url.hostname)) return '';
+
+      const source = url.searchParams.get('url') || '';
+      if (!source) return '';
+
+      const sourceUrl = new URL(source, location.href);
+      if (!/(^|\.)img\.blutopia\.cc$/i.test(sourceUrl.hostname)) return '';
+
+      const normalizedSource = normalizeThumbnailDirectImageUrl(sourceUrl.href);
+      if (!isDirectImageUrl(normalizedSource)) return '';
+
+      url.search = url.search.replace(
+        /([?&]url=)[^&]*/i,
+        `$1${encodeURIComponent(normalizedSource)}`
+      );
+      return url.href;
+    } catch {
+      return '';
+    }
   }
 
   function normalizeThumbnailDirectImageUrl(value) {
