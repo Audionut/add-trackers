@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - iMDB Combined Script
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.4.0
+// @version      1.4.1
 // @description  Add many iMDB functions into one script
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -3422,7 +3422,7 @@ function calculateBayesianHistogramMean(histogramValues, priorMean = 6.5, priorV
     return ((mean * totalVotes) + (priorMean * priorVotes)) / (totalVotes + priorVotes);
 }
 
-function calculateWeightedScoreFromHistogram(histogramValues, weightingType) {
+function calculateWeightedScoreFromHistogram(histogramValues, weightingType, bayesianPriorMean = 6.5) {
     switch (weightingType) {
         case 'mean':
             return calculateHistogramMean(histogramValues);
@@ -3433,7 +3433,7 @@ function calculateWeightedScoreFromHistogram(histogramValues, weightingType) {
         case 'median':
             return calculateWeightedMedian(histogramValues);
         case 'bayesian':
-            return calculateBayesianHistogramMean(histogramValues);
+            return calculateBayesianHistogramMean(histogramValues, bayesianPriorMean);
         default:
             return null;
     }
@@ -3452,7 +3452,7 @@ function getWeightedScoreSummary(histogramValues, options = {}) {
         return null;
     }
 
-    const score = calculateWeightedScoreFromHistogram(histogramValues, activeType);
+    const score = calculateWeightedScoreFromHistogram(histogramValues, activeType, 6.5 / displayScoreMultiplier);
     if (!Number.isFinite(score)) {
         return null;
     }
@@ -4379,7 +4379,11 @@ function getAggregateScoreSummary(imdbData, ptpData, supplemental) {
 
                 const letterboxdWeightedType = getAggregateWeightedScoreType(settings.option);
                 if (letterboxdWeightedType) {
-                    const weightedScore = calculateWeightedScoreFromHistogram(adjustedLetterboxdHistogramValues, letterboxdWeightedType);
+                    const weightedScore = calculateWeightedScoreFromHistogram(
+                        adjustedLetterboxdHistogramValues,
+                        letterboxdWeightedType,
+                        3.25
+                    );
                     addSource(
                         Number.isFinite(weightedScore) ? weightedScore * 2 : null,
                         IMDB_WEIGHTED_SCORE_TYPE_LABELS[letterboxdWeightedType],

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - IMDb Combined
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.1.2
+// @version      0.1.3
 // @description  Add IMDb-derived panels and shared IMDb cache/events to UNIT3D similar torrent pages using the UNIT3D layout change userscript.
 // @author       Audionut
 // @match        https://aither.cc/torrents/similar/1*
@@ -2008,7 +2008,6 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
     if (shouldShowLetterboxdPanels() && settings.showLetterboxd) {
       const lb = currentSupplementalRatings.letterboxd;
       const weighted = getWeightedScoreSummary(lb?.data?.histogram || [], {
-        displayScoreMultiplier: 2,
         enabled: settings.showLetterboxdWeightedScore,
         sourceLabel: 'Letterboxd'
       });
@@ -2375,7 +2374,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
             addSource(
               sourceKey,
               item.option,
-              Number.isFinite(weightedScore) ? weightedScore * 2 : null,
+              weightedScore,
               weightedType ? IMDB_WEIGHTED_SCORE_TYPE_LABELS[weightedType] : '',
               getHistogramVoteCount(lb?.histogram || []),
               item.weight
@@ -2390,14 +2389,32 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
 
     let usedSources = sources.slice();
     let discardedSources = [];
+    let protectedSources = [];
     if (settings.ratingsAggregateDropExtremes && usedSources.length >= 4) {
-      const sorted = usedSources.slice().sort((left, right) => left.score - right.score);
+      const sorted = usedSources.slice().sort((left, right) => {
+        if (left.score !== right.score) return left.score - right.score;
+        return left.label.localeCompare(right.label);
+      });
       const lowest = sorted[0];
       const highest = sorted[sorted.length - 1];
-      discardedSources = [lowest, highest].filter((source) => {
-        if (!settings.ratingsAggregateKeepRottenTomatoes) return true;
-        return source.sourceKey !== 'rottenTomatoes';
-      });
+      const keepLowestRottenTomatoes =
+        settings.ratingsAggregateKeepRottenTomatoes &&
+        lowest.sourceKey === 'rottenTomatoes' &&
+        !isExtremeRottenTomatoesOutlier(lowest, sorted, 'low');
+      const keepHighestRottenTomatoes =
+        settings.ratingsAggregateKeepRottenTomatoes &&
+        highest.sourceKey === 'rottenTomatoes' &&
+        !isExtremeRottenTomatoesOutlier(highest, sorted, 'high');
+
+      if (keepLowestRottenTomatoes) protectedSources.push(lowest);
+      else discardedSources.push(lowest);
+
+      if (highest !== lowest) {
+        if (keepHighestRottenTomatoes) protectedSources.push(highest);
+        else discardedSources.push(highest);
+      }
+
+      discardedSources = [...new Set(discardedSources)];
       const discardedSet = new Set(discardedSources);
       usedSources = usedSources.filter((source) => !discardedSet.has(source));
     }
@@ -2416,6 +2433,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
     return {
       discardedSources,
       methodLabel,
+      protectedSources,
       score,
       tooltip,
       usedSources,
@@ -2695,7 +2713,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
   }
 
   function getAggregateVoteCountWeightRule(voteCount) {
-    if (!Number.isFinite(voteCount)) return null;
+    if (!Number.isFinite(voteCount) || voteCount <= 0) return null;
     return (
       RATINGS_AGGREGATE_VOTE_COUNT_WEIGHT_RULES.find(
         (rule) => voteCount < rule.maxVotesExclusive
@@ -2707,10 +2725,31 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
     return Math.max(0, Number(source.weight) || 0) * (source.voteCountWeightMultiplier || 1);
   }
 
+  function getAggregateSourceAverageWeight(source) {
+    if (!settings.ratingsAggregateUseVoteCountWeighting) return 1;
+    return Number.isFinite(source?.voteCountWeightMultiplier) &&
+      source.voteCountWeightMultiplier > 0
+      ? source.voteCountWeightMultiplier
+      : 1;
+  }
+
   function calculateAggregateMean(sources, method) {
     if (!sources.length) return null;
-    if (method === 'average' && !settings.ratingsAggregateUseVoteCountWeighting) {
-      return sources.reduce((sum, source) => sum + source.score, 0) / sources.length;
+    if (method === 'average') {
+      if (!settings.ratingsAggregateUseVoteCountWeighting) {
+        return sources.reduce((sum, source) => sum + source.score, 0) / sources.length;
+      }
+      const totalWeight = sources.reduce(
+        (sum, source) => sum + getAggregateSourceAverageWeight(source),
+        0
+      );
+      if (totalWeight <= 0) return null;
+      return (
+        sources.reduce(
+          (sum, source) => sum + source.score * getAggregateSourceAverageWeight(source),
+          0
+        ) / totalWeight
+      );
     }
     const totalWeight = sources.reduce(
       (sum, source) => sum + getAggregateSourceEffectiveWeight(source),
@@ -2730,18 +2769,61 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
       .filter(
         (source) => Number.isFinite(source.score) && getAggregateSourceEffectiveWeight(source) > 0
       )
-      .sort((left, right) => left.score - right.score);
+      .sort((left, right) => {
+        if (left.score !== right.score) return left.score - right.score;
+        return left.label.localeCompare(right.label);
+      });
     const totalWeight = sorted.reduce(
       (sum, source) => sum + getAggregateSourceEffectiveWeight(source),
       0
     );
     if (totalWeight <= 0) return null;
-    let running = 0;
-    for (const source of sorted) {
-      running += getAggregateSourceEffectiveWeight(source);
-      if (running >= totalWeight / 2) return source.score;
+    if (sorted.length === 1) return sorted[0].score;
+
+    let cumulativeWeight = 0;
+    const weightedPositions = sorted.map((source) => {
+      const start = cumulativeWeight / totalWeight;
+      cumulativeWeight += getAggregateSourceEffectiveWeight(source);
+      const end = cumulativeWeight / totalWeight;
+      return { position: (start + end) / 2, score: source.score };
+    });
+
+    if (0.5 <= weightedPositions[0].position) return weightedPositions[0].score;
+    for (let index = 1; index < weightedPositions.length; index += 1) {
+      const previous = weightedPositions[index - 1];
+      const current = weightedPositions[index];
+      if (0.5 <= current.position) {
+        const span = current.position - previous.position;
+        if (span <= 0) return current.score;
+        const ratio = (0.5 - previous.position) / span;
+        return previous.score + (current.score - previous.score) * ratio;
+      }
     }
-    return sorted.at(-1)?.score ?? null;
+    return weightedPositions.at(-1)?.score ?? null;
+  }
+
+  function calculateMedianValue(values) {
+    const sorted = (values || [])
+      .filter((value) => Number.isFinite(value))
+      .sort((left, right) => left - right);
+    if (!sorted.length) return null;
+    const middle = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+  }
+
+  function isExtremeRottenTomatoesOutlier(source, allSources, direction) {
+    if (source?.sourceKey !== 'rottenTomatoes' || !Number.isFinite(source?.score)) return false;
+    const otherScores = (allSources || [])
+      .filter((entry) => entry !== source && Number.isFinite(entry?.score))
+      .map((entry) => entry.score)
+      .sort((left, right) => left - right);
+    if (otherScores.length < 3) return false;
+
+    const medianScore = calculateMedianValue(otherScores);
+    const nearestScore = direction === 'low' ? otherScores[0] : otherScores[otherScores.length - 1];
+    return (
+      Math.abs(source.score - medianScore) >= 2 && Math.abs(source.score - nearestScore) >= 1.5
+    );
   }
 
   function formatDemographicLabel(demographic = {}) {
