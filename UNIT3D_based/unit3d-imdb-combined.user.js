@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - IMDb Combined
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.1.3
+// @version      0.1.4
 // @description  Add IMDb-derived panels and shared IMDb cache/events to UNIT3D similar torrent pages using the UNIT3D layout change userscript.
 // @author       Audionut
 // @match        https://aither.cc/torrents/similar/1*
@@ -36,7 +36,7 @@
   const PANEL_ROOT_ID = 'unit3d-imdb-panels';
   const SIDEBAR_ROOT_ID = 'unit3d-imdb-sidebar-panels';
   const CACHE_PREFIX = 'iMDB_data_';
-  const TITLE_CACHE_VERSION = 2;
+  const TITLE_CACHE_VERSION = 3;
   const NAME_CACHE_PREFIX = 'unit3d_imdb_names_';
   const VIDEO_CACHE_PREFIX = 'unit3d_imdb_video_';
   const VIDEO_CACHE_VERSION = 4;
@@ -109,6 +109,7 @@
     ['collapseMovieInfoPanel', 'unit3d-imdb-movie-info', 'Movie/TV Info'],
     ['collapseTechnicalSpecsPanel', 'unit3d-imdb-technical-specs', 'Technical Specs'],
     ['collapseBoxOfficePanel', 'unit3d-imdb-box-office', 'Box Office'],
+    ['collapseFilmSeriesPanel', 'unit3d-imdb-film-series', 'Film Series'],
     ['collapseAwardsPanel', 'unit3d-imdb-awards', 'Awards'],
     ['collapseSoundtracksPanel', 'unit3d-imdb-soundtrack', 'Soundtrack'],
     ['collapseReviewsPanel', 'unit3d-imdb-reviews', 'Reviews'],
@@ -168,6 +169,7 @@
     collapseMovieInfoPanel: false,
     collapseTechnicalSpecsPanel: false,
     collapseBoxOfficePanel: false,
+    collapseFilmSeriesPanel: false,
     collapseAwardsPanel: false,
     collapseSoundtracksPanel: false,
     collapseReviewsPanel: false,
@@ -180,6 +182,7 @@
     showAlternateVersions: true,
     showAwards: true,
     showBoxOffice: true,
+    showFilmSeries: true,
     showCastPhotos: true,
     showNativeCastWhenImdbCastOff: true,
     showImdbCountryAverages: false,
@@ -327,6 +330,11 @@
     ['showSimilarTitles', 'Show similar titles', 'Display IMDb More Like This.'],
     ['showTechnicalSpecs', 'Show technical specs', 'Display IMDb technical specs in the sidebar.'],
     ['showBoxOffice', 'Show box office', 'Display IMDb box office in the sidebar.'],
+    [
+      'showFilmSeries',
+      'Show film series',
+      'Display IMDb follows/followed-by titles in the sidebar.'
+    ],
     ['showAwards', 'Show awards', 'Display IMDb awards in the sidebar.'],
     ['showSoundtracks', 'Show soundtracks', 'Display IMDb soundtrack in the main column.'],
     ['showAlternateVersions', 'Show alternate versions', 'Display IMDb alternate versions.'],
@@ -601,6 +609,20 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-list {
 
 html.unit3d-ptp-adapter-enabled .unit3d-imdb-list li + li {
   margin-top: 5px;
+}
+
+html.unit3d-ptp-adapter-enabled .unit3d-imdb-film-series-group + .unit3d-imdb-film-series-group {
+  margin-top: 12px;
+}
+
+html.unit3d-ptp-adapter-enabled .unit3d-imdb-film-series-heading {
+  font-size: 1em;
+  margin: 0 0 5px;
+}
+
+html.unit3d-ptp-adapter-enabled .unit3d-imdb-film-series-links {
+  display: grid;
+  gap: 5px;
 }
 
 html.unit3d-ptp-adapter-enabled .unit3d-imdb-awards-table {
@@ -1285,18 +1307,21 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
     currentImdbId = imdbId;
 
     try {
-      const result = await getTitleBundle(imdbId);
+      const result = await getTitleBundle(imdbId, (titleData, source) => {
+        currentTitleData = titleData;
+        currentSupplementalRatings = createInitialSupplementalState();
+        publishTagHiddenTitleData(imdbId, currentTitleData, source);
+        publishGenreSnapshot(imdbId, currentTitleData);
+        publishRatingsSnapshot(imdbId, currentTitleData, false);
+        renderPanelsImmediately();
+        void fetchSupplementalRatings(imdbId, currentTitleData);
+      });
       currentTitleData = result.titleData;
       currentNamesData = result.namesData;
       currentSoundtracks = result.soundtracks;
       currentTrailerData = result.trailerData;
-      currentSupplementalRatings = createInitialSupplementalState();
-
-      publishTagHiddenTitleData(imdbId, currentTitleData, result.source);
-      publishGenreSnapshot(imdbId, currentTitleData);
-      publishRatingsSnapshot(imdbId, currentTitleData, true);
-      scheduleRender();
-      fetchSupplementalRatings(imdbId, currentTitleData);
+      currentRenderToken = '';
+      renderPanelsImmediately();
 
       document.dispatchEvent(
         new CustomEvent('imdbProcessingComplete', {
@@ -1381,6 +1406,23 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
     renderTimer = setTimeout(renderPanels, 80);
   }
 
+  function renderPanelsImmediately() {
+    clearTimeout(renderTimer);
+    renderTimer = null;
+    renderPanels();
+  }
+
+  function buildCurrentRenderToken() {
+    return [
+      currentImdbId,
+      document.querySelector('.unit3d-ptp-page')?.isConnected ? 'layout' : 'no-layout',
+      currentTitleData?.titleText?.text || '',
+      currentTitleData?.primaryImage?.url || '',
+      JSON.stringify(settings),
+      JSON.stringify(currentSupplementalRatings)
+    ].join('|');
+  }
+
   function renderPanels() {
     if (!currentImdbId || !currentTitleData) return;
 
@@ -1390,14 +1432,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
 
     cleanupDuplicateSidebarPanels(sidebar);
 
-    const token = [
-      currentImdbId,
-      document.querySelector('.unit3d-ptp-page')?.isConnected ? 'layout' : 'no-layout',
-      currentTitleData.titleText?.text || '',
-      currentTitleData.primaryImage?.url || '',
-      JSON.stringify(settings),
-      JSON.stringify(currentSupplementalRatings)
-    ].join('|');
+    const token = buildCurrentRenderToken();
     if (token === currentRenderToken && document.getElementById(PANEL_ROOT_ID)) {
       syncSynopsisTrailer(mainColumn);
       ensureMainPanelOrder(mainColumn);
@@ -1436,6 +1471,27 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
         else sidebar.appendChild(root);
       }
     }
+  }
+
+  function refreshRatingsPanel() {
+    if (!settings.showRatingsPanel || !currentTitleData) return;
+
+    const currentPanel = document.getElementById('unit3d-imdb-ratings');
+    const nextPanel = buildRatingsPanel(currentTitleData);
+    if (!currentPanel || !nextPanel) {
+      renderPanelsImmediately();
+      return;
+    }
+
+    const currentBody = currentPanel.querySelector(':scope > .panel__body');
+    const nextBody = nextPanel.querySelector(':scope > .panel__body');
+    if (!currentBody || !nextBody) {
+      currentPanel.replaceWith(nextPanel);
+    } else {
+      nextBody.hidden = currentBody.hidden;
+      currentBody.replaceWith(nextBody);
+    }
+    currentRenderToken = buildCurrentRenderToken();
   }
 
   function appendMainPanels(root) {
@@ -1580,6 +1636,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
     const movieInfo = settings.showMovieInfo ? buildMovieInfoPanel(currentTitleData) : null;
     const specs = settings.showTechnicalSpecs ? buildTechnicalSpecsPanel(currentTitleData) : null;
     const boxOffice = settings.showBoxOffice ? buildBoxOfficePanel(currentTitleData) : null;
+    const filmSeries = settings.showFilmSeries ? buildFilmSeriesPanel(currentTitleData) : null;
     const awards = settings.showAwards ? buildAwardsPanel(currentTitleData) : null;
     const parentalGuide = settings.showParentsGuide
       ? buildParentsGuidePanel(currentTitleData)
@@ -1590,7 +1647,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
         : null;
     const keywords = settings.showKeywords ? buildKeywordsPanel(currentTitleData) : null;
 
-    [movieInfo, specs, boxOffice, awards, parentalGuide, similar, keywords]
+    [movieInfo, specs, boxOffice, filmSeries, awards, parentalGuide, similar, keywords]
       .filter(Boolean)
       .forEach((panel) => {
         root.appendChild(panel);
@@ -3294,6 +3351,173 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
     });
   }
 
+  function buildFilmSeriesPanel(titleData) {
+    const titles = getFilmSeriesTitles(titleData);
+    if (titles.length === 0) return null;
+
+    const content = document.createElement('div');
+    const collectionPosters = getNativeCollectionPosterEntries();
+    const directUrlsByImdbId = matchFilmSeriesTitlesToCollectionPosters(titles, collectionPosters);
+    [
+      ['follows', 'Follows'],
+      ['followed_by', 'Followed By']
+    ].forEach(([relationId, label]) => {
+      const relatedTitles = titles.filter((title) => title.relations.has(relationId));
+      if (relatedTitles.length === 0) return;
+
+      const group = document.createElement('section');
+      group.className = 'unit3d-imdb-film-series-group';
+      const heading = document.createElement('h4');
+      heading.className = 'unit3d-imdb-film-series-heading';
+      heading.textContent = label;
+      const links = document.createElement('div');
+      links.className = 'unit3d-imdb-film-series-links';
+
+      relatedTitles.forEach((title) => {
+        const directUrl = directUrlsByImdbId.get(title.id) || '';
+        const link = document.createElement('a');
+        link.href = directUrl || unit3dTorrentSearchByImdbUrl(title.id);
+        link.textContent = title.year ? `${title.text} (${title.year})` : title.text;
+        link.title = directUrl
+          ? `Open ${title.text} similar torrents`
+          : `Search UNIT3D for ${title.text}`;
+        openInNewTab(link);
+        links.appendChild(link);
+      });
+
+      group.append(heading, links);
+      content.appendChild(group);
+    });
+
+    return createPanel('IMDb Film Series', content, {
+      id: 'unit3d-imdb-film-series',
+      url: `${imdbTitleUrl(titleData.id)}movieconnections/`
+    });
+  }
+
+  function getFilmSeriesTitles(titleData) {
+    const currentId = normalizeText(titleData?.id);
+    const currentTypeId = normalizeText(titleData?.titleType?.id);
+    if (!currentId) return [];
+
+    const titlesById = new Map();
+    const addTitle = (title, relationId = '') => {
+      const id = normalizeText(title?.id);
+      const text = normalizeText(title?.titleText?.text);
+      const titleTypeId = normalizeText(title?.titleType?.id);
+      if (!id || !text) return;
+      if (id === currentId) return;
+      if (currentTypeId && titleTypeId && titleTypeId !== currentTypeId) return;
+
+      const existing = titlesById.get(id);
+      if (existing) {
+        if (relationId) existing.relations.add(relationId);
+        return;
+      }
+
+      const year = Number(title?.releaseYear?.year);
+      titlesById.set(id, {
+        id,
+        relations: new Set(relationId ? [relationId] : []),
+        text,
+        year: Number.isFinite(year) ? year : null
+      });
+    };
+
+    (titleData.connections?.edges || []).forEach((edge) => {
+      const relationId = normalizeText(edge?.node?.category?.id);
+      if (relationId !== 'follows' && relationId !== 'followed_by') return;
+      addTitle(edge?.node?.associatedTitle, relationId);
+    });
+
+    return [...titlesById.values()].sort((left, right) => {
+      const yearDifference =
+        (left.year ?? Number.POSITIVE_INFINITY) - (right.year ?? Number.POSITIVE_INFINITY);
+      return (
+        yearDifference || left.text.localeCompare(right.text) || left.id.localeCompare(right.id)
+      );
+    });
+  }
+
+  function getNativeCollectionPosterEntries() {
+    const entries = [];
+    document
+      .querySelectorAll('.collection-posters .torrent-search--poster__result')
+      .forEach((poster) => {
+        const link = poster.querySelector('a[href*="/torrents/similar/"]');
+        const text = normalizeText(
+          poster.querySelector('.torrent-search--poster__title')?.textContent || ''
+        );
+        const yearText = normalizeText(
+          poster.querySelector('.torrent-search--poster__release-date')?.textContent || ''
+        );
+        const url = normalizeUnit3dSimilarUrl(link?.href || link?.getAttribute('href') || '');
+        const titleKey = normalizeTitleMatchKey(text);
+        if (!url || !titleKey) return;
+
+        const year = Number.parseInt(yearText, 10);
+        entries.push({
+          titleKey,
+          url,
+          year: Number.isFinite(year) ? year : null
+        });
+      });
+    return entries;
+  }
+
+  function matchFilmSeriesTitlesToCollectionPosters(titles, entries) {
+    const uniqueEntries = [...new Map(entries.map((entry) => [entry.url, entry])).values()];
+    const unmatchedEntryIndexes = new Set(uniqueEntries.map((_, index) => index));
+    const matchedUrls = new Map();
+
+    const matchPass = (isYearMatch) => {
+      titles.forEach((title) => {
+        if (matchedUrls.has(title.id)) return;
+        const titleKey = normalizeTitleMatchKey(title.text);
+        if (!titleKey || !title.year) return;
+
+        const candidates = [...unmatchedEntryIndexes].filter((index) => {
+          const entry = uniqueEntries[index];
+          return entry.titleKey === titleKey && isYearMatch(title.year, entry.year);
+        });
+        if (candidates.length !== 1) return;
+
+        const matchedIndex = candidates[0];
+        matchedUrls.set(title.id, uniqueEntries[matchedIndex].url);
+        unmatchedEntryIndexes.delete(matchedIndex);
+      });
+    };
+
+    matchPass((imdbYear, collectionYear) => collectionYear === imdbYear);
+    matchPass(
+      (imdbYear, collectionYear) =>
+        Number.isFinite(collectionYear) && Math.abs(collectionYear - imdbYear) === 1
+    );
+    return matchedUrls;
+  }
+
+  function normalizeTitleMatchKey(value) {
+    return normalizeText(value)
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLocaleLowerCase('en-US')
+      .replace(/&/g, ' and ')
+      .replace(/([a-z])(\d)/g, '$1 $2')
+      .replace(/(\d)([a-z])/g, '$1 $2')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+  }
+
+  function normalizeUnit3dSimilarUrl(value) {
+    try {
+      const url = new URL(value, location.href);
+      if (url.origin !== location.origin) return '';
+      return /^\/torrents\/similar\/[12]\.\d+\/?$/i.test(url.pathname) ? url.href : '';
+    } catch {
+      return '';
+    }
+  }
+
   function buildAwardsPanel(titleData) {
     const oscarWins = titleData.prestigiousAwardSummary?.wins ?? 0;
     const oscarNominations = titleData.prestigiousAwardSummary?.nominations ?? 0;
@@ -4232,7 +4456,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
     return settingKey ? !!settings[settingKey] : false;
   }
 
-  async function getTitleBundle(imdbId) {
+  async function getTitleBundle(imdbId, onTitleData) {
     const cached = await getCachedTitleData(imdbId);
     if (
       cached?.version === TITLE_CACHE_VERSION &&
@@ -4240,10 +4464,11 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
       hasRequiredTitleData(cached.data.title)
     ) {
       const titleData = prepareTitleCredits(cached.data.title);
-      const namesData = await fetchNames(getNameIds(titleData));
-      const trailerData = settings.showTrailerPanel
-        ? await fetchIMDbTrailerData(imdbId, titleData)
-        : null;
+      onTitleData?.(titleData, 'cache-hit');
+      const [namesData, trailerData] = await Promise.all([
+        fetchNames(getNameIds(titleData)),
+        settings.showTrailerPanel ? fetchIMDbTrailerData(imdbId, titleData) : Promise.resolve(null)
+      ]);
       return {
         namesData,
         soundtracks: processSoundtracks(titleData, namesData),
@@ -4254,14 +4479,15 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
     }
 
     const titleData = prepareTitleCredits(await fetchTitleData(imdbId));
-    const namesData = await fetchNames(getNameIds(titleData));
-    const trailerData = settings.showTrailerPanel
-      ? await fetchIMDbTrailerData(imdbId, titleData)
-      : null;
-    await setCache(`${CACHE_PREFIX}${imdbId}`, {
-      data: { title: titleData },
-      version: TITLE_CACHE_VERSION
-    });
+    onTitleData?.(titleData, 'api-fetch');
+    const [namesData, trailerData] = await Promise.all([
+      fetchNames(getNameIds(titleData)),
+      settings.showTrailerPanel ? fetchIMDbTrailerData(imdbId, titleData) : Promise.resolve(null),
+      setCache(`${CACHE_PREFIX}${imdbId}`, {
+        data: { title: titleData },
+        version: TITLE_CACHE_VERSION
+      })
+    ]);
     return {
       namesData,
       soundtracks: processSoundtracks(titleData, namesData),
@@ -4275,6 +4501,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
     if (!titleData) return false;
     if (!titleData.ratingsSummary || !titleData.meterRank) return false;
     if (!titleData.primaryImage) return false;
+    if (settings.showFilmSeries && !titleData.connections) return false;
     if (
       settings.showTrailerPanel &&
       !titleData.latestTrailer &&
@@ -4572,6 +4799,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
         'showSimilarTitles',
         'showTechnicalSpecs',
         'showBoxOffice',
+        'showFilmSeries',
         'showAwards',
         'showSoundtracks',
         'showAlternateVersions',
@@ -4872,8 +5100,22 @@ query Unit3dImdbCombined($id: ID!) {
   title(id: $id) {
     id
     titleText { text }
+    titleType { id text }
     primaryImage { url }
     releaseYear { year }
+    connections(first: 100, filter: { categories: ["follows", "followed_by"] }) {
+      edges {
+        node {
+          category { id text }
+          associatedTitle {
+            id
+            titleText { text }
+            titleType { id text }
+            releaseYear { year }
+          }
+        }
+      }
+    }
     genres { genres { id text } }
     countriesOfOrigin { countries { id text } }
     spokenLanguages { spokenLanguages { id text } }
@@ -5202,7 +5444,8 @@ fragment ImdbReviewPick on ReviewsConnection {
       };
       console.warn(`[UNIT3D IMDb Combined] ${key} fetch failed`, error);
     }
-    scheduleRender();
+    publishRatingsSnapshot(currentImdbId, currentTitleData, false);
+    refreshRatingsPanel();
   }
 
   async function getSupplementalRatingsCache(imdbId) {
