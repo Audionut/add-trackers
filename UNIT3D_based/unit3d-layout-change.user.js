@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Layout Change
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.1.7
+// @version      0.1.8
 // @description  Change UNIT3D similar torrents layout with additional details and sorting options.
 // @author       Audionut
 // @match        https://aither.cc/torrents/similar/1*
@@ -58,9 +58,9 @@
   const LAYOUT_SETTINGS = {
     forceRedirectSingleTorrentLinks: {
       default: true,
-      label: 'Force single torrent links to similar pages',
+      label: 'Force torrent links to similar pages',
       tooltip:
-        'Redirect /torrents/<id> links and direct torrent pages to /torrents/similar/<category>.<tmdb>.'
+        'Redirect /torrents/<id> and /torrents?imdbId=<id> links or pages to /torrents/similar/<category>.<tmdb>.'
     },
     metaIdsPlacement: {
       default: 'sidebar',
@@ -1073,6 +1073,8 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     });
   } else if (getLayoutSetting('forceRedirectSingleTorrentLinks') && isTorrentShowPage()) {
     initSingleTorrentPageRedirector();
+  } else if (getLayoutSetting('forceRedirectSingleTorrentLinks') && isImdbTorrentSearchPage()) {
+    initImdbTorrentSearchPageRedirector();
   } else if (getLayoutSetting('forceRedirectSingleTorrentLinks')) {
     initTorrentIndexLinkRedirector();
   }
@@ -1338,6 +1340,10 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     return isTorrentShowUrl(location.href);
   }
 
+  function isImdbTorrentSearchPage() {
+    return isImdbTorrentSearchUrl(location.href);
+  }
+
   function initSingleTorrentPageRedirector() {
     if (consumeSingleTorrentViewBypass(location.href)) {
       return;
@@ -1355,6 +1361,18 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     });
   }
 
+  function initImdbTorrentSearchPageRedirector() {
+    const sourceUrl = buildImdbGroupedSearchUrl(location.href);
+    fetchTorrentDetail(sourceUrl)
+      .then((html) => extractSimilarUrlFromTorrentDetail(html, sourceUrl))
+      .then((similarUrl) => {
+        if (!isSupportedSimilarTorrentUrl(similarUrl)) return;
+        if (new URL(similarUrl, location.href).href === location.href) return;
+        location.replace(similarUrl);
+      })
+      .catch(() => {});
+  }
+
   function initTorrentIndexLinkRedirector() {
     document.addEventListener('click', handleTorrentIndexLinkClick, true);
     document.addEventListener('auxclick', handleTorrentIndexLinkClick, true);
@@ -1365,7 +1383,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     if (event.type === 'click' && event.button !== 0) return;
     if (event.type === 'auxclick' && event.button !== 1) return;
 
-    const link = getTorrentIndexShowLink(event.target);
+    const link = getRedirectableTorrentLink(event.target);
     if (!link) return;
 
     const cachedUrl = getCachedSimilarUrlForTorrentLink(link);
@@ -1390,20 +1408,21 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
       });
   }
 
-  function getTorrentIndexShowLink(target) {
+  function getRedirectableTorrentLink(target) {
     const link = target?.closest?.('a[href]');
     if (!(link instanceof HTMLAnchorElement)) return null;
-    if (!isTorrentShowUrl(getOriginalTorrentLinkHref(link))) return null;
-    if (link.closest('.unit3d-ptp-page, .unit3d-ptp-detail-actions')) return null;
-    return link;
+    const href = getOriginalTorrentLinkHref(link);
+    if (isImdbTorrentSearchUrl(href)) return link;
+    if (!isTorrentShowUrl(href)) return null;
+    return link.closest('.unit3d-ptp-page, .unit3d-ptp-detail-actions') ? null : link;
   }
 
   function prepareTorrentIndexSimilarLink(link, options = {}) {
     const originalHref = getOriginalTorrentLinkHref(link);
-    const id = extractTorrentId(originalHref);
-    if (!id) return Promise.resolve('');
+    const resolutionKey = getTorrentSimilarResolutionKey(originalHref);
+    if (!resolutionKey) return Promise.resolve('');
 
-    const cached = torrentSimilarUrlCache.get(id);
+    const cached = torrentSimilarUrlCache.get(resolutionKey);
     if (cached) {
       rewriteTorrentIndexLink(link, cached);
       return Promise.resolve(cached);
@@ -1411,39 +1430,40 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
 
     const nearbySimilarUrl = findNearbySimilarTorrentUrl(link);
     if (nearbySimilarUrl) {
-      cacheSimilarTorrentUrl(id, nearbySimilarUrl);
+      cacheSimilarTorrentUrl(resolutionKey, nearbySimilarUrl);
       rewriteTorrentIndexLink(link, nearbySimilarUrl);
       return Promise.resolve(nearbySimilarUrl);
     }
 
-    if (!options.priority && torrentSimilarResolvePromises.has(id)) {
-      return torrentSimilarResolvePromises.get(id).then((similarUrl) => {
+    if (!options.priority && torrentSimilarResolvePromises.has(resolutionKey)) {
+      return torrentSimilarResolvePromises.get(resolutionKey).then((similarUrl) => {
         if (similarUrl) rewriteTorrentIndexLink(link, similarUrl);
         return similarUrl;
       });
     }
 
-    const detailFetch = () => fetchTorrentDetail(originalHref);
+    const sourceUrl = buildImdbGroupedSearchUrl(originalHref);
+    const detailFetch = () => fetchTorrentDetail(sourceUrl);
     const promise = (options.priority ? detailFetch() : enqueueDetailFetch(detailFetch))
-      .then((html) => extractSimilarUrlFromTorrentDetail(html, originalHref))
+      .then((html) => extractSimilarUrlFromTorrentDetail(html, sourceUrl))
       .then((similarUrl) => {
         if (similarUrl) {
-          cacheSimilarTorrentUrl(id, similarUrl);
+          cacheSimilarTorrentUrl(resolutionKey, similarUrl);
           rewriteTorrentIndexLink(link, similarUrl);
         }
         return similarUrl;
       })
       .finally(() => {
-        torrentSimilarResolvePromises.delete(id);
+        torrentSimilarResolvePromises.delete(resolutionKey);
       });
 
-    torrentSimilarResolvePromises.set(id, promise);
+    torrentSimilarResolvePromises.set(resolutionKey, promise);
     return promise;
   }
 
   function getCachedSimilarUrlForTorrentLink(link) {
-    const id = extractTorrentId(getOriginalTorrentLinkHref(link));
-    const cached = id ? torrentSimilarUrlCache.get(id) : '';
+    const resolutionKey = getTorrentSimilarResolutionKey(getOriginalTorrentLinkHref(link));
+    const cached = resolutionKey ? torrentSimilarUrlCache.get(resolutionKey) : '';
     return cached || link.dataset.unit3dPtpSimilarUrl || '';
   }
 
@@ -1480,6 +1500,9 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     const doc = new DOMParser().parseFromString(html, 'text/html');
     const candidates = [
       ...doc.querySelectorAll(
+        '.torrent-search--grouped__title-name > a[href*="/torrents/similar/"]'
+      ),
+      ...doc.querySelectorAll(
         '.meta__title-link[href*="/torrents/similar/"], a[href*="/torrents/similar/"]'
       )
     ];
@@ -1491,9 +1514,9 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     return link ? new URL(link.getAttribute('href'), torrentUrl).href : '';
   }
 
-  function cacheSimilarTorrentUrl(torrentId, similarUrl) {
-    if (!torrentId || !similarUrl) return;
-    torrentSimilarUrlCache.set(torrentId, similarUrl);
+  function cacheSimilarTorrentUrl(resolutionKey, similarUrl) {
+    if (!resolutionKey || !similarUrl) return;
+    torrentSimilarUrlCache.set(resolutionKey, similarUrl);
   }
 
   function isTorrentShowUrl(value) {
@@ -1504,6 +1527,37 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     } catch {
       return false;
     }
+  }
+
+  function isImdbTorrentSearchUrl(value) {
+    return !!extractImdbIdFromTorrentSearchUrl(value);
+  }
+
+  function extractImdbIdFromTorrentSearchUrl(value) {
+    try {
+      const url = new URL(value, location.href);
+      if (url.origin !== location.origin) return '';
+      if (!/^\/torrents\/?$/i.test(url.pathname)) return '';
+      const match = /^(?:tt)?(\d{7,10})$/i.exec(url.searchParams.get('imdbId') || '');
+      return match?.[1] || '';
+    } catch {
+      return '';
+    }
+  }
+
+  function buildImdbGroupedSearchUrl(value) {
+    if (!isImdbTorrentSearchUrl(value)) return value;
+
+    const url = new URL(value, location.href);
+    url.searchParams.set('view', 'group');
+    return url.href;
+  }
+
+  function getTorrentSimilarResolutionKey(value) {
+    const torrentId = extractTorrentId(value);
+    if (torrentId) return `torrent:${torrentId}`;
+    const imdbId = extractImdbIdFromTorrentSearchUrl(value);
+    return imdbId ? `imdb:${imdbId}` : '';
   }
 
   function isSupportedSimilarTorrentUrl(value) {
