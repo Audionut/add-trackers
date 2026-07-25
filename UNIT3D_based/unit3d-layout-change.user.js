@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Layout Change
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.2.0
+// @version      0.2.1
 // @description  Change UNIT3D similar torrents layout with additional details and sorting options.
 // @author       Audionut
 // @match        https://aither.cc/torrents/similar/1*
@@ -6033,13 +6033,12 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
   function classifyReleaseQuality(name) {
     const text = normalizeWhitespace(name).toLowerCase();
 
-    if (/\b(2160p|4320p|4k|uhd|ultra\s*hd)\b/.test(text)) return 'uhd';
-    if (/\b(720p|1080p|1080i|hd|blu-?ray|bdrip|web-?dl|webrip)\b/.test(text)) {
-      return 'hd';
-    }
-    if (/\b(480p|480i|576p|576i|sd|dvd|dvdrip|ntsc|pal|xvid|divx)\b/.test(text)) {
-      return 'sd';
-    }
+    if (/\b(2160p|4320p)\b/.test(text)) return 'uhd';
+    if (/\b(720p|1080p|1080i)\b/.test(text)) return 'hd';
+    if (/\b(480p|480i|576p|576i)\b/.test(text)) return 'sd';
+    if (/\b(4k|uhd|ultra\s*hd)\b/.test(text)) return 'uhd';
+    if (/\b(hd|blu-?ray|bdrip|web-?dl|webrip)\b/.test(text)) return 'hd';
+    if (/\b(sd|dvd|dvdrip|ntsc|pal|xvid|divx)\b/.test(text)) return 'sd';
 
     return 'sd';
   }
