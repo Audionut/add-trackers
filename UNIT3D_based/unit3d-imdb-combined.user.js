@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - IMDb Combined
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.1.4
+// @version      0.1.5
 // @description  Add IMDb-derived panels and shared IMDb cache/events to UNIT3D similar torrent pages using the UNIT3D layout change userscript.
 // @author       Audionut
 // @match        https://aither.cc/torrents/similar/1*
@@ -103,6 +103,17 @@
   const IMDB_TRAILER_PREVIEW_HEIGHT = 200;
   const MAX_KEYWORDS = 60;
   const MAX_SIMILAR_TITLES = 12;
+  const SIDEBAR_PANEL_DEFINITIONS = [
+    ['movieInfo', 'Movie/TV Info'],
+    ['technicalSpecs', 'Technical Specs'],
+    ['boxOffice', 'Box Office'],
+    ['filmSeries', 'Film Series'],
+    ['awards', 'Awards'],
+    ['parentsGuide', 'Parents Guide'],
+    ['moreLikeThis', 'More Like This'],
+    ['keywords', 'Keywords']
+  ];
+  const DEFAULT_SIDEBAR_PANEL_ORDER = SIDEBAR_PANEL_DEFINITIONS.map(([key]) => key);
   const COLLAPSIBLE_PANEL_SETTINGS = [
     ['collapseRatingsPanel', 'unit3d-imdb-ratings', 'Ratings'],
     ['collapseCastPanel', 'unit3d-imdb-cast', 'Cast'],
@@ -203,6 +214,7 @@
     showRottenTomatoes: false,
     showSimilarTitles: true,
     similarTitlesPlacement: 'sidebar',
+    sidebarPanelOrder: DEFAULT_SIDEBAR_PANEL_ORDER,
     showSoundtracks: true,
     showTechnicalSpecs: true,
     showTmdb: false,
@@ -1276,6 +1288,51 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
   margin: 0 0 8px;
 }
 
+.unit3d-imdb-sidebar-order {
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.unit3d-imdb-sidebar-order h4 {
+  font-size: 0.95em;
+  margin: 0;
+}
+
+.unit3d-imdb-sidebar-order-help {
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 0.85em;
+  margin: 4px 0 8px;
+}
+
+.unit3d-imdb-sidebar-order-list {
+  display: grid;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.unit3d-imdb-sidebar-order-item {
+  align-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 4px 6px;
+}
+
+.unit3d-imdb-sidebar-order-actions {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.unit3d-imdb-sidebar-order-button {
+  min-width: 30px;
+  padding: 2px 7px;
+}
+
 .unit3d-imdb-setting-row {
   align-items: center;
   display: flex;
@@ -1633,21 +1690,24 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
   }
 
   function appendSidebarPanels(root) {
-    const movieInfo = settings.showMovieInfo ? buildMovieInfoPanel(currentTitleData) : null;
-    const specs = settings.showTechnicalSpecs ? buildTechnicalSpecsPanel(currentTitleData) : null;
-    const boxOffice = settings.showBoxOffice ? buildBoxOfficePanel(currentTitleData) : null;
-    const filmSeries = settings.showFilmSeries ? buildFilmSeriesPanel(currentTitleData) : null;
-    const awards = settings.showAwards ? buildAwardsPanel(currentTitleData) : null;
-    const parentalGuide = settings.showParentsGuide
-      ? buildParentsGuidePanel(currentTitleData)
-      : null;
-    const similar =
-      settings.showSimilarTitles && settings.similarTitlesPlacement === 'sidebar'
-        ? buildSimilarTitlesPanel(currentTitleData)
-        : null;
-    const keywords = settings.showKeywords ? buildKeywordsPanel(currentTitleData) : null;
+    const panels = {
+      movieInfo: settings.showMovieInfo ? buildMovieInfoPanel(currentTitleData) : null,
+      technicalSpecs: settings.showTechnicalSpecs
+        ? buildTechnicalSpecsPanel(currentTitleData)
+        : null,
+      boxOffice: settings.showBoxOffice ? buildBoxOfficePanel(currentTitleData) : null,
+      filmSeries: settings.showFilmSeries ? buildFilmSeriesPanel(currentTitleData) : null,
+      awards: settings.showAwards ? buildAwardsPanel(currentTitleData) : null,
+      parentsGuide: settings.showParentsGuide ? buildParentsGuidePanel(currentTitleData) : null,
+      moreLikeThis:
+        settings.showSimilarTitles && settings.similarTitlesPlacement === 'sidebar'
+          ? buildSimilarTitlesPanel(currentTitleData)
+          : null,
+      keywords: settings.showKeywords ? buildKeywordsPanel(currentTitleData) : null
+    };
 
-    [movieInfo, specs, boxOffice, filmSeries, awards, parentalGuide, similar, keywords]
+    settings.sidebarPanelOrder
+      .map((key) => panels[key])
       .filter(Boolean)
       .forEach((panel) => {
         root.appendChild(panel);
@@ -4656,6 +4716,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
     )
       ? normalized.similarTitlesPlacement
       : DEFAULT_SETTINGS.similarTitlesPlacement;
+    normalized.sidebarPanelOrder = normalizeSidebarPanelOrder(normalized.sidebarPanelOrder);
     normalized.imdbWeightedScoreType =
       normalized.imdbWeightedScoreType in IMDB_WEIGHTED_SCORE_TYPE_LABELS
         ? normalized.imdbWeightedScoreType
@@ -4709,6 +4770,17 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
       DEFAULT_SETTINGS.newTitleTtlDays
     );
     return normalized;
+  }
+
+  function normalizeSidebarPanelOrder(value) {
+    const validKeys = new Set(DEFAULT_SIDEBAR_PANEL_ORDER);
+    const order = Array.isArray(value)
+      ? value.filter((key, index) => validKeys.has(key) && value.indexOf(key) === index)
+      : [];
+    DEFAULT_SIDEBAR_PANEL_ORDER.forEach((key) => {
+      if (!order.includes(key)) order.push(key);
+    });
+    return order;
   }
 
   function settingKey(key) {
@@ -4858,7 +4930,75 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
         ['main', 'More Like This in main']
       ])
     );
+    group.appendChild(buildSidebarPanelOrderSetting());
     return group;
+  }
+
+  function buildSidebarPanelOrderSetting() {
+    const container = document.createElement('div');
+    container.className = 'unit3d-imdb-sidebar-order';
+
+    const label = document.createElement('h4');
+    label.textContent = 'Sidebar panel order';
+
+    const help = document.createElement('p');
+    help.className = 'unit3d-imdb-sidebar-order-help';
+    help.textContent = 'Use the arrows to set top-to-bottom order. Hidden panels keep their place.';
+
+    const list = document.createElement('ol');
+    list.className = 'unit3d-imdb-sidebar-order-list';
+    const labels = new Map(SIDEBAR_PANEL_DEFINITIONS);
+    settings.sidebarPanelOrder.forEach((key) => {
+      const panelLabel = labels.get(key) || humanizeSettingKey(key);
+      const item = document.createElement('li');
+      item.className = 'unit3d-imdb-sidebar-order-item';
+      item.dataset.sidebarPanelKey = key;
+
+      const text = document.createElement('span');
+      text.textContent = panelLabel;
+
+      const actions = document.createElement('span');
+      actions.className = 'unit3d-imdb-sidebar-order-actions';
+      actions.append(
+        buildSidebarPanelOrderButton(list, item, panelLabel, -1),
+        buildSidebarPanelOrderButton(list, item, panelLabel, 1)
+      );
+      item.append(text, actions);
+      list.appendChild(item);
+    });
+
+    updateSidebarPanelOrderButtons(list);
+    container.append(label, help, list);
+    return container;
+  }
+
+  function buildSidebarPanelOrderButton(list, item, panelLabel, direction) {
+    const moveUp = direction < 0;
+    const button = document.createElement('button');
+    button.className = 'form__button form__button--outlined unit3d-imdb-sidebar-order-button';
+    button.type = 'button';
+    button.textContent = moveUp ? '↑' : '↓';
+    button.title = `Move ${panelLabel} ${moveUp ? 'up' : 'down'}`;
+    button.setAttribute('aria-label', button.title);
+    button.dataset.direction = String(direction);
+    button.addEventListener('click', () => {
+      const sibling = moveUp ? item.previousElementSibling : item.nextElementSibling;
+      if (!sibling) return;
+      if (moveUp) sibling.before(item);
+      else sibling.after(item);
+      updateSidebarPanelOrderButtons(list);
+    });
+    return button;
+  }
+
+  function updateSidebarPanelOrderButtons(list) {
+    const items = [...list.querySelectorAll('.unit3d-imdb-sidebar-order-item')];
+    items.forEach((item, index) => {
+      const up = item.querySelector('[data-direction="-1"]');
+      const down = item.querySelector('[data-direction="1"]');
+      if (up) up.disabled = index === 0;
+      if (down) down.disabled = index === items.length - 1;
+    });
   }
 
   function buildPanelCollapseSettingsGroup() {
@@ -5054,6 +5194,9 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
     next.similarTitlesPlacement =
       form.elements.namedItem('similarTitlesPlacement')?.value ||
       DEFAULT_SETTINGS.similarTitlesPlacement;
+    next.sidebarPanelOrder = [
+      ...form.querySelectorAll('.unit3d-imdb-sidebar-order-item[data-sidebar-panel-key]')
+    ].map((item) => item.dataset.sidebarPanelKey);
     next.imdbDemographicScoreOverrideKey =
       form.elements.namedItem('imdbDemographicScoreOverrideKey')?.value ||
       DEFAULT_SETTINGS.imdbDemographicScoreOverrideKey;
