@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         UNIT3D - Tonemap Toggle
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.1.0
+// @version      0.1.1
 // @description  Add per-torrent tonemapping and Firefox HDR-black recovery to UNIT3D full-size lightbox images.
 // @author       Audionut
 // @match        https://aither.cc/torrents/similar/1*
 // @match        https://aither.cc/torrents/similar/2*
+// @require      https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd/ffmpeg-core.js
 // @downloadURL  https://github.com/Audionut/add-trackers/raw/main/UNIT3D_based/unit3d-tonemap-toggle.user.js
 // @updateURL    https://github.com/Audionut/add-trackers/raw/main/UNIT3D_based/unit3d-tonemap-toggle.user.js
 // @grant        GM.getValue
@@ -18,6 +19,8 @@
 // @connect      cdn.jsdelivr.net
 // @run-at       document-end
 // ==/UserScript==
+
+/* global createFFmpegCore */
 
 'use strict';
 
@@ -35,7 +38,7 @@
   };
   const PANEL_SELECTOR = '.unit3d-ptp-detail.movie-page__torrent__panel';
   const DETAIL_ROW_SELECTOR = 'tr.torrent_info_row[data-unit3d-torrent-id]';
-  const ELIGIBLE_PANEL_ATTRIBUTE = 'data-unit3d-hdr-eligible';
+  const ELIGIBLE_PANEL_ATTRIBUTE = 'data-unit3d-tonemap-eligible';
   const TORRENT_CONTAINER_SELECTOR = `${PANEL_SELECTOR}, ${DETAIL_ROW_SELECTOR}`;
   const LIGHTBOX_TRIGGER_SELECTOR = [
     '.unit3d-ptp-description-lightbox-trigger[data-unit3d-ptp-lightbox-url]',
@@ -52,6 +55,8 @@
   const TONEMAP_UI_STYLE_ID = 'unit3d-tonemap-ui-style';
   const HDR_CONVERSION_VERSION = 'hdr-v1';
   const FFMPEG_IDLE_CLEANUP_MS = 10_000;
+  const NETWORK_REQUEST_TIMEOUT_MS = 60_000;
+  const FFMPEG_LOAD_TIMEOUT_MS = 120_000;
   const DEFAULT_HDR_SETTINGS = {
     tonemapOnlyContrast: 1,
     tonemapOnlyBrightness: 1,
@@ -62,11 +67,7 @@
     tonemapPeak: 12
   };
   const LOCAL_FFMPEG_WASM_BASE_URL = 'https://audionut.github.io/add-trackers/vendor/ffmpeg-wasm';
-  const LOCAL_FFMPEG_WASM_ESM_BASE_URL = `${LOCAL_FFMPEG_WASM_BASE_URL}/esm`;
-  const CDN_FFMPEG_WASM_ESM_BASE_URL =
-    'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm';
-  const CDN_FFMPEG_CORE_BASE_URL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm';
-  const CSP_COMPATIBLE_FFMPEG_CORE_URL = `${CDN_FFMPEG_CORE_BASE_URL}/ffmpeg-core.js`;
+  const CDN_FFMPEG_CORE_BASE_URL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd';
   const analyzedImages = new WeakSet();
   const analyzedImageKeys = new WeakMap();
   const pendingImages = new WeakSet();
@@ -81,15 +82,11 @@
   const tonemapTrackedSourcesByTorrent = new Map();
   const tonemapSourceToTorrent = new Map();
   const ffmpegWasmState = {
-    module: null,
-    modulePromise: null,
     instance: null,
     instancePromise: null,
-    blobUrls: [],
     idleCleanupTimer: null,
     assetBaseUrl: null,
-    assetLabel: null,
-    disabled: false
+    assetLabel: null
   };
   let lastClickedHdrSource = '';
   let lastClickedTorrentId = '';
@@ -580,6 +577,7 @@
         method: 'GET',
         url,
         responseType,
+        timeout: NETWORK_REQUEST_TIMEOUT_MS,
         onload: (response) => {
           if (response.status >= 200 && response.status < 300) {
             resolve(response);
@@ -587,147 +585,26 @@
             reject(new Error(`HTTP ${response.status} for ${url}`));
           }
         },
-        onerror: () => reject(new Error(`Request failed for ${url}`))
+        onerror: () => reject(new Error(`Request failed for ${url}`)),
+        ontimeout: () => reject(new Error(`Request timed out for ${url}`))
       });
     });
   }
 
-  async function fetchTextAsset(url) {
-    const response = await gmRequest(url, 'text');
-    return response.responseText ?? response.response;
+  function withTimeout(promise, timeoutMs, label) {
+    let timeoutId;
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
+    });
+
+    return Promise.race([promise, timeoutPromise]).finally(() => {
+      clearTimeout(timeoutId);
+    });
   }
 
   async function fetchBinaryAsset(url) {
     const response = await gmRequest(url, 'arraybuffer');
     return response.response;
-  }
-
-  function createBlobUrl(content, type) {
-    const blobUrl = URL.createObjectURL(new Blob([content], { type }));
-    ffmpegWasmState.blobUrls.push(blobUrl);
-    return blobUrl;
-  }
-
-  function replaceModuleImports(source, replacements) {
-    let output = source;
-    for (const [from, to] of Object.entries(replacements)) {
-      output = output.replaceAll(from, to);
-    }
-    return output;
-  }
-
-  function patchFfmpegWorkerForEmbeddedWasm(source) {
-    const loadSignature =
-      'const load = async ({ coreURL: _coreURL, wasmURL: _wasmURL, workerURL: _workerURL, }) => {';
-    const embeddedWasmLoadSignature =
-      'const load = async ({ coreURL: _coreURL, wasmURL: _wasmURL, workerURL: _workerURL, wasmBinary: _wasmBinary, }) => {';
-    const coreFactoryConfig =
-      'mainScriptUrlOrBlob: `${coreURL}#${btoa(JSON.stringify({ wasmURL, workerURL }))}`,';
-    const embeddedWasmCoreFactoryConfig = `${coreFactoryConfig}
-        wasmBinary: _wasmBinary ? new Uint8Array(_wasmBinary) : undefined,`;
-
-    const output = source
-      .replace(loadSignature, embeddedWasmLoadSignature)
-      .replace(coreFactoryConfig, embeddedWasmCoreFactoryConfig);
-
-    if (output === source || !output.includes('wasmBinary: _wasmBinary')) {
-      throw new Error('Unable to patch FFmpeg worker for embedded WASM');
-    }
-
-    return output;
-  }
-
-  async function loadFfmpegWasmModule() {
-    if (ffmpegWasmState.disabled) {
-      return null;
-    }
-
-    if (ffmpegWasmState.module) {
-      return ffmpegWasmState.module;
-    }
-
-    if (ffmpegWasmState.modulePromise) {
-      return ffmpegWasmState.modulePromise;
-    }
-
-    ffmpegWasmState.modulePromise = (async () => {
-      const candidates = [
-        {
-          label: 'local',
-          esmBaseUrl: LOCAL_FFMPEG_WASM_ESM_BASE_URL,
-          coreWasmUrl: `${LOCAL_FFMPEG_WASM_BASE_URL}/ffmpeg-core.wasm`
-        },
-        {
-          label: 'cdn',
-          esmBaseUrl: CDN_FFMPEG_WASM_ESM_BASE_URL,
-          coreWasmUrl: `${CDN_FFMPEG_CORE_BASE_URL}/ffmpeg-core.wasm`
-        }
-      ];
-
-      for (const candidate of candidates) {
-        try {
-          ffmpegWasmState.blobUrls.forEach((url) => URL.revokeObjectURL(url));
-          ffmpegWasmState.blobUrls = [];
-
-          const [classesText, constText, errorsText, utilsText, workerText, coreWasmBuffer] =
-            await Promise.all([
-              fetchTextAsset(`${candidate.esmBaseUrl}/classes.js`),
-              fetchTextAsset(`${candidate.esmBaseUrl}/const.js`),
-              fetchTextAsset(`${candidate.esmBaseUrl}/errors.js`),
-              fetchTextAsset(`${candidate.esmBaseUrl}/utils.js`),
-              fetchTextAsset(`${candidate.esmBaseUrl}/worker.js`),
-              fetchBinaryAsset(candidate.coreWasmUrl)
-            ]);
-
-          const constUrl = createBlobUrl(constText, 'text/javascript');
-          const errorsUrl = createBlobUrl(errorsText, 'text/javascript');
-          const utilsUrl = createBlobUrl(utilsText, 'text/javascript');
-
-          const workerPatched = replaceModuleImports(patchFfmpegWorkerForEmbeddedWasm(workerText), {
-            './const.js': constUrl,
-            './errors.js': errorsUrl
-          });
-          const workerUrl = createBlobUrl(workerPatched, 'text/javascript');
-
-          const classesPatched = replaceModuleImports(classesText, {
-            './const.js': constUrl,
-            './utils.js': utilsUrl,
-            './errors.js': errorsUrl
-          });
-          const classesUrl = createBlobUrl(classesPatched, 'text/javascript');
-
-          const module = await import(/* webpackIgnore: true */ classesUrl);
-          if (!module?.FFmpeg) {
-            throw new Error('FFmpeg module missing FFmpeg export');
-          }
-
-          ffmpegWasmState.module = {
-            FFmpeg: module.FFmpeg,
-            classWorkerURL: workerUrl,
-            coreURL: CSP_COMPATIBLE_FFMPEG_CORE_URL,
-            wasmBinary: coreWasmBuffer
-          };
-          ffmpegWasmState.assetBaseUrl = candidate.esmBaseUrl;
-          ffmpegWasmState.assetLabel = candidate.label;
-          log('ffmpeg.wasm module ready', { candidate: candidate.label });
-          return ffmpegWasmState.module;
-        } catch (error) {
-          logError('ffmpeg.wasm module load failed', {
-            candidate: candidate.label,
-            error: String(error)
-          });
-        }
-      }
-
-      ffmpegWasmState.disabled = true;
-      return null;
-    })();
-
-    try {
-      return await ffmpegWasmState.modulePromise;
-    } finally {
-      ffmpegWasmState.modulePromise = null;
-    }
   }
 
   function cancelFfmpegIdleCleanup() {
@@ -775,11 +652,84 @@
     );
   }
 
-  async function loadFfmpegWasmInstance() {
-    if (ffmpegWasmState.disabled) {
-      return null;
+  function getFfmpegCoreFactory() {
+    const factory =
+      typeof createFFmpegCore === 'function' ? createFFmpegCore : globalThis.createFFmpegCore;
+    if (typeof factory !== 'function') {
+      throw new Error('FFmpeg core factory was not loaded by @require');
+    }
+    return factory;
+  }
+
+  async function fetchFfmpegCoreWasm() {
+    const candidates = [
+      {
+        label: 'local',
+        url: `${LOCAL_FFMPEG_WASM_BASE_URL}/ffmpeg-core.wasm`
+      },
+      {
+        label: 'cdn',
+        url: `${CDN_FFMPEG_CORE_BASE_URL}/ffmpeg-core.wasm`
+      }
+    ];
+
+    for (const candidate of candidates) {
+      try {
+        const wasmBinary = await fetchBinaryAsset(candidate.url);
+        ffmpegWasmState.assetBaseUrl = candidate.url;
+        ffmpegWasmState.assetLabel = candidate.label;
+        return wasmBinary;
+      } catch (error) {
+        logError('ffmpeg.wasm binary load failed', {
+          candidate: candidate.label,
+          error: String(error)
+        });
+      }
     }
 
+    throw new Error('Unable to load ffmpeg-core.wasm');
+  }
+
+  function createFfmpegCoreAdapter(core) {
+    let activeCore = core;
+    const requireCore = () => {
+      if (!activeCore) {
+        throw new Error('FFmpeg core instance was released');
+      }
+      return activeCore;
+    };
+
+    return {
+      on(event, callback) {
+        if (event === 'log') {
+          requireCore().setLogger(callback);
+        }
+      },
+      async writeFile(path, data) {
+        requireCore().FS.writeFile(path, data);
+      },
+      async exec(args, timeout = -1) {
+        const instance = requireCore();
+        instance.setTimeout(timeout);
+        try {
+          return instance.exec(...args);
+        } finally {
+          instance.reset();
+        }
+      },
+      async readFile(path) {
+        return requireCore().FS.readFile(path);
+      },
+      async deleteFile(path) {
+        requireCore().FS.unlink(path);
+      },
+      terminate() {
+        activeCore = null;
+      }
+    };
+  }
+
+  async function loadFfmpegWasmInstance() {
     if (ffmpegWasmState.instance) {
       return ffmpegWasmState.instance;
     }
@@ -789,24 +739,22 @@
     }
 
     ffmpegWasmState.instancePromise = (async () => {
-      const module = await loadFfmpegWasmModule();
-      if (!module?.FFmpeg) {
-        ffmpegWasmState.disabled = true;
-        return null;
-      }
-
-      const ffmpeg = new module.FFmpeg();
+      const coreFactory = getFfmpegCoreFactory();
+      const wasmBinary = await fetchFfmpegCoreWasm();
+      const core = await withTimeout(
+        coreFactory({
+          wasmBinary: new Uint8Array(wasmBinary)
+        }),
+        FFMPEG_LOAD_TIMEOUT_MS,
+        'ffmpeg.wasm core load'
+      );
+      const ffmpeg = createFfmpegCoreAdapter(core);
       if (isDebugLevelAtLeast('verbose')) {
         ffmpeg.on('log', (event) => {
           log('ffmpeg.wasm', event.message);
         });
       }
 
-      await ffmpeg.load({
-        classWorkerURL: module.classWorkerURL,
-        coreURL: module.coreURL,
-        wasmBinary: module.wasmBinary
-      });
       ffmpegWasmState.instance = ffmpeg;
       log('ffmpeg.wasm instance ready', {
         assetBaseUrl: ffmpegWasmState.assetBaseUrl,
@@ -814,7 +762,7 @@
       });
       return ffmpeg;
     })().catch((error) => {
-      ffmpegWasmState.disabled = true;
+      ffmpegWasmState.instance = null;
       logError('ffmpeg.wasm instance load failed', {
         error: String(error),
         assetBaseUrl: ffmpegWasmState.assetBaseUrl,
@@ -958,6 +906,18 @@
     });
   }
 
+  function isAddReleasesExternalTorrent(torrentId) {
+    const headerRow = getTorrentHeaderRow(torrentId);
+    return Boolean(
+      headerRow?.classList.contains('unit3d-add-releases-external') ||
+      headerRow?.hasAttribute('data-unit3d-add-releases-tracker')
+    );
+  }
+
+  function torrentSupportsTonemap(torrentId) {
+    return torrentHasHdrMetadata(torrentId) || isAddReleasesExternalTorrent(torrentId);
+  }
+
   function shouldProcessImage(img) {
     if (!(img instanceof HTMLImageElement) || !isActiveUnit3dLightboxImage(img)) {
       return false;
@@ -1031,7 +991,7 @@
       return trackedTorrentId;
     }
 
-    if (!lastClickedTorrentId || !torrentHasHdrMetadata(lastClickedTorrentId)) {
+    if (!lastClickedTorrentId || !torrentSupportsTonemap(lastClickedTorrentId)) {
       return '';
     }
 
@@ -1041,7 +1001,7 @@
   function isLightboxTonemapContextActive() {
     return (
       Boolean(lastClickedTorrentId) &&
-      torrentHasHdrMetadata(lastClickedTorrentId) &&
+      torrentSupportsTonemap(lastClickedTorrentId) &&
       isTonemapEnabledForTorrent(lastClickedTorrentId) &&
       !isHdrFixEnabledForTorrent(lastClickedTorrentId)
     );
@@ -1055,7 +1015,7 @@
     if (
       !lastClickedTorrentId ||
       !lastClickedHdrSource ||
-      !torrentHasHdrMetadata(lastClickedTorrentId)
+      !torrentSupportsTonemap(lastClickedTorrentId)
     ) {
       return false;
     }
@@ -1103,8 +1063,11 @@
   }
 
   function getImageToggleState(img) {
-    const torrentId =
-      getTorrentId(img) || (img.closest(LIGHTBOX_SELECTOR) ? getLightboxContextTorrentId(img) : '');
+    const isLightboxImage = Boolean(img?.closest?.(LIGHTBOX_SELECTOR));
+    const processingTorrentId = imageProcessingTorrent.get(img)?.torrentId || '';
+    const torrentId = isLightboxImage
+      ? processingTorrentId || getLightboxContextTorrentId(img)
+      : getTorrentId(img);
     return {
       torrentId,
       tonemapEnabled: isTonemapEnabledForTorrent(torrentId),
@@ -1768,6 +1731,7 @@
         method: 'GET',
         url,
         responseType: 'blob',
+        timeout: NETWORK_REQUEST_TIMEOUT_MS,
         onload: (response) => {
           log('fetchBlob response', {
             url,
@@ -1793,13 +1757,18 @@
   }
 
   async function getToneMappedHdrBlobFromFfmpegWasm(src, img) {
+    log('fetching HDR source', { src });
+    const sourceBlob = await fetchBlob(src);
+    log('HDR source ready', { src, bytes: sourceBlob.size, type: sourceBlob.type });
+
+    log('acquiring ffmpeg.wasm instance', { src });
     const lease = await acquireFfmpegWasmInstance();
     if (!lease?.ffmpeg) {
       return null;
     }
 
     const { ffmpeg, release } = lease;
-    const sourceBlob = await fetchBlob(src);
+    log('ffmpeg.wasm instance acquired', { src });
     const inputBytes = new Uint8Array(await sourceBlob.arrayBuffer());
     const sourceWidthHint = img.naturalWidth || 3840;
     const inputName = `input-${Date.now()}-${Math.random().toString(36).slice(2)}.png`;
@@ -1836,7 +1805,12 @@
       return new Blob([outputData], { type: 'image/png' });
     } catch (error) {
       logError('ffmpeg.wasm tonemap failed', { src, error: String(error) });
-      ffmpegWasmState.disabled = true;
+      try {
+        ffmpeg.terminate?.();
+      } catch {}
+      if (ffmpegWasmState.instance === ffmpeg) {
+        ffmpegWasmState.instance = null;
+      }
       return null;
     } finally {
       try {
@@ -2012,6 +1986,11 @@
     }
 
     if (!hdrFixEnabled) {
+      logNormal('analyzeImage skip: HDR fix disabled for resolved torrent', {
+        torrentId,
+        processingTorrentId: processingContext?.torrentId || '',
+        src
+      });
       restoreOriginalImageSource(img);
       img.dataset.unit3dHdrFixApplied = '0';
       img.dataset.unit3dHdrFixMode = 'disabled';
@@ -2175,23 +2154,7 @@
       return false;
     }
 
-    if (img.complete) {
-      enqueueImageAnalysis(img, force);
-      return true;
-    }
-
-    const onLoad = () => {
-      img.removeEventListener('error', onError);
-      enqueueImageAnalysis(img, force);
-    };
-    const onError = () => {
-      img.removeEventListener('load', onLoad);
-      logNormal('image load failed before HDR processing', { src: getImageSrc(img) });
-      finishHdrProcessingForImage(img, true);
-    };
-
-    img.addEventListener('load', onLoad, { once: true });
-    img.addEventListener('error', onError, { once: true });
+    enqueueImageAnalysis(img, force);
     return true;
   }
 
@@ -2270,7 +2233,7 @@
         return;
       }
 
-      const isEligible = torrentHasHdrMetadata(torrentId);
+      const isEligible = torrentSupportsTonemap(torrentId);
       setPanelEligibility(panel, isEligible);
 
       if (!isEligible) {
@@ -2361,6 +2324,8 @@
           previewSrc: img instanceof HTMLImageElement ? img.currentSrc || img.src || '' : ''
         }
       );
+      queueClickedLightboxHdrFix(lastClickedTorrentId, lightboxSource);
+      scheduleRefresh();
       scheduleLightboxSync();
     },
     true
@@ -2368,6 +2333,49 @@
   // Watch for dynamically opened torrent panels (expand/collapse)
   let refreshScheduled = false;
   let lightboxSyncScheduled = false;
+
+  function queueClickedLightboxHdrFix(torrentId, source) {
+    const normalizedSource = normalizeUrlCandidate(source);
+    if (!torrentId || !normalizedSource || !isHdrFixEnabledForTorrent(torrentId)) {
+      return;
+    }
+
+    setTimeout(() => {
+      if (
+        lastClickedTorrentId !== torrentId ||
+        normalizeUrlCandidate(lastClickedHdrSource) !== normalizedSource ||
+        !isHdrFixEnabledForTorrent(torrentId)
+      ) {
+        return;
+      }
+
+      const lightbox = document.querySelector(`${LIGHTBOX_SELECTOR}:not([hidden])`);
+      const img = lightbox?.querySelector(LIGHTBOX_IMAGE_SELECTOR);
+      if (!(img instanceof HTMLImageElement)) {
+        logNormal('opened lightbox image unavailable for HDR processing', {
+          torrentId,
+          src: normalizedSource
+        });
+        return;
+      }
+
+      clearImageAnalysisState(img);
+      img.dataset.unit3dHdrOriginalSrc = normalizedSource;
+      img.dataset.unit3dHdrOriginalSrcset = '';
+
+      const context = {
+        torrentId,
+        generation: startHdrProcessing(torrentId, 1)
+      };
+      imageProcessingTorrent.set(img, context);
+      enqueueImageAnalysis(img, true);
+      ensureLightboxHdrProcessingNote();
+      log('queued opened lightbox HDR fix', {
+        torrentId,
+        src: normalizedSource
+      });
+    }, 0);
+  }
 
   function syncLightboxImages() {
     document.querySelectorAll(LIGHTBOX_IMAGE_SELECTOR).forEach((img) => {
@@ -2404,13 +2412,13 @@
     });
   }
 
-  function isEligibleHdrPanel(panel) {
+  function isEligibleTonemapPanel(panel) {
     if (!(panel instanceof Element) || !panel.matches(PANEL_SELECTOR)) {
       return false;
     }
 
     const torrentId = getTorrentId(panel);
-    return Boolean(torrentId && torrentHasHdrMetadata(torrentId));
+    return Boolean(torrentId && torrentSupportsTonemap(torrentId));
   }
 
   function shouldRefreshForAddedElement(node) {
@@ -2423,7 +2431,7 @@
     }
 
     if (node.matches(PANEL_SELECTOR)) {
-      return isEligibleHdrPanel(node);
+      return isEligibleTonemapPanel(node);
     }
 
     if (node.matches(LIGHTBOX_IMAGE_SELECTOR)) {
@@ -2432,7 +2440,7 @@
 
     if (node.matches(LIGHTBOX_TRIGGER_SELECTOR)) {
       const panel = node.closest(PANEL_SELECTOR);
-      return isEligibleHdrPanel(panel);
+      return isEligibleTonemapPanel(panel);
     }
 
     if (node.querySelector?.(LIGHTBOX_IMAGE_SELECTOR)) {
@@ -2440,18 +2448,19 @@
     }
 
     const nestedPanels = node.querySelectorAll?.(PANEL_SELECTOR) || [];
-    if ([...nestedPanels].some((panel) => isEligibleHdrPanel(panel))) {
+    if ([...nestedPanels].some((panel) => isEligibleTonemapPanel(panel))) {
       return true;
     }
 
     const nestedTriggers = node.querySelectorAll?.(LIGHTBOX_TRIGGER_SELECTOR) || [];
     return [...nestedTriggers].some((trigger) =>
-      isEligibleHdrPanel(trigger.closest(PANEL_SELECTOR))
+      isEligibleTonemapPanel(trigger.closest(PANEL_SELECTOR))
     );
   }
 
   if (IS_UNIT3D) {
     document.addEventListener('unit3d:ptp-dom-ready', scheduleRefresh);
+    document.addEventListener('PTPAddReleasesFromOtherTrackersComplete', scheduleRefresh);
 
     const observer = new MutationObserver((mutations) => {
       const shouldRefresh = mutations.some((mutation) => {
