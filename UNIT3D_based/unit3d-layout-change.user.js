@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Layout Change
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.1.8
+// @version      0.1.9
 // @description  Change UNIT3D similar torrents layout with additional details and sorting options.
 // @author       Audionut
 // @match        https://aither.cc/torrents/similar/1*
@@ -4616,10 +4616,51 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     const linkedUrl = image.closest('a[href]')?.getAttribute('href') || '';
     const srcUrl = image.getAttribute('src') || '';
 
+    const backupOriginalUrl = getDescriptionBackupOriginalImageUrl(image, linkedUrl, srcUrl);
+    if (backupOriginalUrl) return backupOriginalUrl;
+
     const directLinkedUrl = getDirectImageUrl(linkedUrl);
     if (directLinkedUrl) return directLinkedUrl;
 
     return getDirectImageUrl(srcUrl);
+  }
+
+  function getDescriptionBackupOriginalImageUrl(image, linkedUrl, srcUrl) {
+    const wrapper = image.closest('.bbcode-description-backup-image--wrapper');
+    const originalAction = [...(wrapper?.querySelectorAll('a[href]') || [])].find((link) =>
+      /open original image/i.test(link.getAttribute('title') || '')
+    );
+    const explicitOriginalUrl = getDirectImageUrl(originalAction?.getAttribute('href') || '');
+    if (explicitOriginalUrl) return explicitOriginalUrl;
+
+    if (!isAitherBackupImageUrl(srcUrl)) return '';
+    return getOnlyImageDirectImageUrl(linkedUrl);
+  }
+
+  function isAitherBackupImageUrl(value) {
+    if (!value) return false;
+
+    try {
+      return new URL(value, location.href).hostname.toLowerCase() === 'file.aither.cc';
+    } catch {
+      return false;
+    }
+  }
+
+  function getOnlyImageDirectImageUrl(value) {
+    if (!value) return '';
+
+    try {
+      const url = new URL(value, location.href);
+      if (!/^(?:www\.)?onlyimage\.org$/i.test(url.hostname)) return '';
+
+      const imageId = /^\/image\/([A-Za-z0-9]+)\/?$/i.exec(url.pathname)?.[1] || '';
+      return imageId
+        ? normalizeThumbnailDirectImageUrl(`https://img.onlyimage.org/${imageId}.md.png`)
+        : '';
+    } catch {
+      return '';
+    }
   }
 
   function getImgbbViewerUrlForDescriptionImage(image) {
@@ -4751,6 +4792,11 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
       if (/(^|\.)imgbox\.com$/i.test(url.hostname)) {
         url.hostname = url.hostname.replace(/^thumbs(\d*)\./i, 'images$1.');
         url.pathname = url.pathname.replace(/_t(\.(?:png|jpe?g|gif|webp|avif|bmp))$/i, '_o$1');
+        return url.href;
+      }
+
+      if (/(^|\.)img\.onlyimage\.org$/i.test(url.hostname)) {
+        url.pathname = url.pathname.replace(/\.md(\.(?:png|jpe?g|gif|webp|avif|bmp))$/i, '$1');
         return url.href;
       }
 
