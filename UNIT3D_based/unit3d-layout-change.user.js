@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Layout Change
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.1.9
+// @version      0.2.0
 // @description  Change UNIT3D similar torrents layout with additional details and sorting options.
 // @author       Audionut
 // @match        https://aither.cc/torrents/similar/1*
@@ -4755,11 +4755,24 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
 
     const absolute = absolutizeUrl(value);
     if (!isSafeUrl(absolute, location.href, 'href')) return '';
+    if (isPixhostViewerUrl(absolute)) return '';
     const proxied = normalizeAitherWsrvBlutopiaImageUrl(absolute);
     if (proxied) return proxied;
 
     const normalized = normalizeThumbnailDirectImageUrl(getWsrvSourceUrl(absolute) || absolute);
     return isDirectImageUrl(normalized) ? normalized : '';
+  }
+
+  function isPixhostViewerUrl(value) {
+    try {
+      const url = new URL(value, location.href);
+      return (
+        /^(?:www\.)?pixhost\.(?:to|cc)$/i.test(url.hostname) &&
+        /^\/show\/[^/]+\/[^/]+\.(?:png|jpe?g|gif|webp)$/i.test(url.pathname)
+      );
+    } catch {
+      return false;
+    }
   }
 
   function normalizeAitherWsrvBlutopiaImageUrl(value) {
@@ -4800,12 +4813,18 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
         return url.href;
       }
 
+      if (/^t\d+\.pixhost\.(?:to|cc)$/i.test(url.hostname)) {
+        url.hostname = url.hostname.replace(/^t(\d+)\./i, 'img$1.');
+        url.pathname = url.pathname.replace(/^\/thumbs\//i, '/images/');
+        return url.href;
+      }
+
       if (!/(^|\.)(?:beyondhd\.co|ptscreens\.com|img\.blutopia\.cc)$/i.test(url.hostname)) {
         return value;
       }
 
       url.pathname = url.pathname.replace(
-        /(.+)\.[^.\/]+(\.(?:png|jpe?g|gif|webp|avif|bmp))$/i,
+        /(.+)\.(?:md|th|thumb)(\.(?:png|jpe?g|gif|webp|avif|bmp))$/i,
         '$1$2'
       );
       return url.href;
