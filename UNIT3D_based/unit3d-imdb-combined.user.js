@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - IMDb Combined
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.1.5
+// @version      0.1.6
 // @description  Add IMDb-derived panels and shared IMDb cache/events to UNIT3D similar torrent pages using the UNIT3D layout change userscript.
 // @author       Audionut
 // @match        https://aither.cc/torrents/similar/1*
@@ -15,7 +15,7 @@
 // @grant        GM.deleteValue
 // @grant        GM_registerMenuCommand
 // @run-at       document-idle
-// @connect      api.graphql.imdb.com
+// @connect      caching.graphql.imdb.com
 // @connect      metacritic.com
 // @connect      www.metacritic.com
 // @connect      query.wikidata.org
@@ -4266,9 +4266,6 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
 
   async function requestImdbReviewFilterData(query, variables) {
     const response = await imdbGraphqlRequest(query, variables);
-    if (response.errors?.length) {
-      throw new Error(response.errors.map((error) => error.message).join('; '));
-    }
     return response.data?.title || {};
   }
 
@@ -5489,9 +5486,6 @@ fragment ImdbReviewPick on ReviewsConnection {
   }
 }`;
     const response = await imdbGraphqlRequest(query, { id: imdbId });
-    if (response.errors?.length) {
-      throw new Error(response.errors.map((error) => error.message).join('; '));
-    }
     if (!response.data?.title) {
       throw new Error(`IMDb title not found: ${imdbId}`);
     }
@@ -6564,9 +6558,11 @@ query Unit3dImdbNames($ids: [ID!]!) {
     primaryImage { url }
   }
 }`;
-    const response = await imdbGraphqlRequest(query, { ids: uniqueIds });
-    if (response.errors?.length) {
-      console.warn('[UNIT3D IMDb Combined] name lookup failed', response.errors);
+    let response;
+    try {
+      response = await imdbGraphqlRequest(query, { ids: uniqueIds });
+    } catch (error) {
+      console.warn('[UNIT3D IMDb Combined] name lookup failed', error);
       return [];
     }
     const names = Array.isArray(response.data?.names) ? response.data.names : [];
@@ -6574,36 +6570,82 @@ query Unit3dImdbNames($ids: [ID!]!) {
     return names;
   }
 
-  function imdbGraphqlRequest(query, variables = {}) {
-    return new Promise((resolve, reject) => {
-      GM_xmlhttpRequest({
-        data: JSON.stringify({ query, variables }),
-        headers: {
-          'Content-Type': 'application/json',
-          'x-imdb-user-country': 'US',
-          'x-imdb-user-language': 'en-US'
-        },
-        method: 'POST',
-        onerror: () => reject(new Error('IMDb GraphQL request error')),
-        onload: (response) => {
-          if (response.status < 200 || response.status >= 300) {
-            reject(
-              new Error(
-                `IMDb GraphQL HTTP ${response.status}: ${(response.responseText || '').slice(0, 300)}`
-              )
-            );
-            return;
-          }
+  async function imdbGraphqlRequest(query, variables = {}) {
+    const endpoint = 'https://caching.graphql.imdb.com/';
+    const operationName = query.match(/\bquery\s+([_A-Za-z][_0-9A-Za-z]*)\s*(?:\(|\{)/)?.[1];
+    if (!operationName) throw new Error('IMDb GraphQL query requires a named operation');
 
-          try {
-            resolve(JSON.parse(response.responseText));
-          } catch (error) {
-            reject(error);
-          }
-        },
-        url: 'https://api.graphql.imdb.com/'
+    const queryHash = [
+      ...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(query)))
+    ]
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join('');
+    const extensions = { persistedQuery: { sha256Hash: queryHash, version: 1 } };
+    const request = (method, url, data) =>
+      new Promise((resolve, reject) => {
+        GM_xmlhttpRequest({
+          data,
+          headers: {
+            Accept: 'application/graphql+json, application/json',
+            'Content-Type': 'application/json',
+            Origin: 'https://www.imdb.com',
+            'X-Imdb-Client-Name': 'imdb-web-next-localized',
+            'X-Imdb-User-Country': 'US',
+            'X-Imdb-User-Language': 'en-US'
+          },
+          method,
+          onerror: () => reject(new Error('IMDb GraphQL request error')),
+          onload: (response) => {
+            if (response.status < 200 || response.status >= 300) {
+              reject(
+                new Error(
+                  `IMDb GraphQL HTTP ${response.status}: ${(response.responseText || '').slice(0, 300)}`
+                )
+              );
+              return;
+            }
+            if (new Blob([response.responseText || '']).size > 32 << 20) {
+              reject(new Error('IMDb GraphQL response exceeds 33554432 bytes'));
+              return;
+            }
+
+            try {
+              resolve(JSON.parse(response.responseText));
+            } catch (error) {
+              reject(error);
+            }
+          },
+          url
+        });
       });
+
+    const params = new URLSearchParams({
+      extensions: JSON.stringify(extensions),
+      operationName,
+      variables: JSON.stringify(variables)
     });
+    let response = await request('GET', `${endpoint}?${params}`);
+    if (
+      response.errors?.some(
+        (error) =>
+          error.extensions?.code === 'PERSISTED_QUERY_NOT_FOUND' ||
+          error.message === 'PersistedQueryNotFound'
+      )
+    ) {
+      response = await request(
+        'POST',
+        endpoint,
+        JSON.stringify({ extensions, operationName, query, variables })
+      );
+    }
+    if (response.errors?.length) {
+      const details = response.errors
+        .map((error) => [error.extensions?.code, error.message].filter(Boolean).join(': '))
+        .filter(Boolean)
+        .join('; ');
+      throw new Error(`IMDb GraphQL ${operationName}: ${details || 'unknown error'}`);
+    }
+    return response;
   }
 
   function textRequest(url, headers = {}) {
