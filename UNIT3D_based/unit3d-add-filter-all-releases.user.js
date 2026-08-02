@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.1.1
+// @version      0.1.2
 // @description  Add releases from other trackers to UNIT3D similar torrent pages.
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://aither.cc/torrents/similar/1*
@@ -14,6 +14,7 @@
 // @grant        GM_registerMenuCommand
 // @require      https://github.com/Audionut/add-trackers/raw/main/scene_groups.js
 // @run-at       document-idle
+// @connect      digitalcore.club
 // @connect      passthepopcorn.me
 // ==/UserScript==
 
@@ -101,6 +102,13 @@
       tooltip: 'Enter API key below'
     },
     dp_api: { label: 'darkpeers.org API token', type: 'text', default: '' },
+    dc: {
+      label: 'digitalcore.club',
+      type: 'checkbox',
+      default: false,
+      tooltip: 'Enter API key below'
+    },
+    dc_api: { label: 'digitalcore.club API key', type: 'text', default: '' },
     fl: { label: 'filelist.io', type: 'checkbox', default: false, tooltip: 'Enter API key below' },
     fl_user: { label: 'filelist.io username', type: 'text', default: '' },
     fl_pass: {
@@ -568,6 +576,7 @@
     'btn',
     'cg',
     'cinemaz',
+    'dc',
     'dp',
     'fl',
     'hdb',
@@ -1225,6 +1234,7 @@
         OE: GM_config.get('oe'),
         AvistaZ: GM_config.get('avistaz'),
         CinemaZ: GM_config.get('cinemaz'),
+        DC: GM_config.get('dc'),
         PHD: GM_config.get('phd'),
         RTF: GM_config.get('rtf'),
         LST: GM_config.get('lst'),
@@ -1345,6 +1355,7 @@
     const AR_PASS = GM_config.get('ar_pass');
     const OTW_API_TOKEN = GM_config.get('otw_api');
     const DP_API_TOKEN = GM_config.get('dp_api');
+    const DIGITALCORE_API_TOKEN = GM_config.get('dc_api');
     const YUS_API_TOKEN = GM_config.get('yus_api');
     const LDU_API_TOKEN = GM_config.get('ldu_api');
     const RAS_API_TOKEN = GM_config.get('ras_api');
@@ -1760,6 +1771,7 @@
     get_default_doms();
 
     const trackerIcons = {
+      DC: 'https://digitalcore.club/favicon.ico',
       BHD: ' data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAABm1BMVEUAAAAZS9cgXc8jYswjY8siYMwgXM8cStogXM8eWNAAAP8hXc8gXM4gWs4laMkfWNAbR9kZStghW8sgW88jYMkhYMsjYssjY8sjY8shYcsiX8sgW8wgWc0ZRtckZ8kjZ8kfWdInacomacoeWtAAAP8hW8shXMwgWM8gWs4XRNYgWcwjY8siYMshXM0ZTNYladEob9Uma80lackma8wnb9QmatQqd+UmbM4laMkmackbYsYeZMcqd+Qqd+YmacodY8ZGe9c4ctMfZcYlacoladInbM4jZ8gfZMcMVsTN1/ijt/IJVMIgZcclaMgmatUob9YSW8UHUsNLftf////8+f8sZdQNV8UUXMYnb9U4b9WzxPTJ1fb19v/s7v/Q2vm6yPc3cNMhZsceYcqtwPH9/v/+/v+ct+obYcciZsgmasomaMkgZscJVMSSreuHp+cHU8IiZscOWcNpk95ok94PWcMPWcSyx/CVru2SrOyyxvEQWcQfZMh0leZIedkMVsMLVsM/dNZzluYhZcgYX8YXX8UkaMgZYMUnbM8ladQQmoZOAAAAL3RSTlMAM6Xn+u+qN5afAsPMkf6dLzSjqefs+fv87OumpzP+/p3+/pcBxsKZlzim+eakMhtflnAAAAD5SURBVHicYwABRiZmFhZWNnYwBwg49A0MjYyMTUw5ucB8bjNzC0sra0sLcxsekAivrR2fhb2Do5OFhbMZPwODgIsrn5u7h6eXt4+br7mfIIOQv6VbQGBQcEhoWLibZYQwg4ihfWRUdExwcGxcfIK9sSiDmHNiUnJwcEpqcHBaeoaROINYZlZ2Tm4wEOTlF2QZSTBIGltYFBaBBIpLLCyMpRikIyzcSsuCyyuCK6vcLAxkGGRNzeWqa2rr6hsam+TNTWUZGBTM7BSbW1ot2lqUMs2UgS5VUTUzb7UAgtZ2MzWI59Q7IoyNnA0N9DVg3tXUkpLQ1tHVA7EB7Jc4ygIVY/MAAAAASUVORK5CYII=',
       BLU: ' data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAACGVBMVEUAAAAAdeIAduMAcdwAZ8UAacQAbMkAefIAdOMAc98AdN4AZsMAZsUAY8MAcdUAc+EAdd8AdN4AZsMAasUAasoAduIAasUAdN8AbMcAeOMAdN4AZ8MAaMcAgOoAct0AaMQAccYAcN0AacQAb90AaMUAcd8AacQAdN8AacUAdeEAasUAdeQAdN8AacQAbMYAceM3keY9i9AAacUAbdsAceMAdOAAacUAcMwAduYActwAacYAa8IAeusAbd8AYsUAbM0Af/MAfO4AdeMAZtuNwPGRvOMAXb8WeM4QedYAatMAgvoAeOcAdN8AcdwAZ9o6keT///9EjtIlbsUzhM7G3PIkgdUAb9kAduMAdeEAcNwIdd0eft/H4PifyO+aw+rD2/AAVrwAYMBtp9wqgtAAZcUAc+IQet8vi+MJdN3d7Pvl7/kAZcIAX78Wc8gQdMwHeuYCb9wAbtzk8Pvq8voIasQlfMsAasouku8VfuAAa9vc6/rg7PgAY8EbdsgCaMMAbc48m/QKeN4AZNlfpulvqNwAXL4AZsIAcNEUhfIsieM2juMyhM4AXr8AcdQAe/ECbtwghOGkyfKjxej8/f4fesoActUAhP0AcN4Aatra6vqJvvB1r+t6rN6EtuHg7PcAZsQAd+AAgfcAduUSfN8CbNuUxPGdxOYDYcAScccAdNoAduEAefMAbeEAYMMAbNUAasYAd+QAc+UAaMt/Lf+4AAAAPHRSTlMAI3/m5H4hE2O+/Pu8YhIzsf79sDBqZUA7JPv5IAzt6gnZ1cG8paGIg29qMPTyLQn+/oUHG56bGTTT0TI1uk9cAAAA+ElEQVR4nGMAA0YmZhZWNgibgYGdg5PLxtbOnpuHlw/I5RcQdHB0cnZxdXP38BQSFmEQ9fL28fXzDwgIDAoOCQ0TYxAPj4iMio6JjYtPSExKTpFgkJRKTUvPyAwIyMrOyc2TlmGQlcv3LygsCggozi4pLZNXYGBQLK+o9KsKCKiuqa2rVwJao9zQ2NQcAAQtrW3tKkAB1Y7OLhA/IKC7p1cNKKDe1z8hIGDipMkBUxKnagAFNKdNnzFz1uw5c+clzl+gBRTQ1lm4aPGSpcuWryhbqasH8ou++qrVawwM165bb2QM9Z6J6YaNm9abmcO8CwQWllbWEBYAex5Hkh1GjloAAAAASUVORK5CYII=',
       Aither:
@@ -1832,6 +1844,7 @@
     const use_post_instead = (tracker) => {
       return (
         tracker === 'BHD' ||
+        tracker === 'DC' ||
         tracker === 'HDB' ||
         tracker === 'NBL' ||
         tracker === 'BTN' ||
@@ -3004,6 +3017,10 @@
           Accept: 'application/json',
           ApiUser: PTP_API_USER,
           ApiKey: PTP_API_KEY
+        },
+        DC: {
+          Accept: 'application/json',
+          'X-API-KEY': DIGITALCORE_API_TOKEN
         }
         // Add more trackers and their headers as needed
       };
@@ -3030,7 +3047,8 @@
         PTP: 'GET',
         YUS: 'GET',
         OTW: 'GET',
-        HHD: 'GET'
+        HHD: 'GET',
+        DC: 'GET'
       };
       const method = methodMapping[tracker] || 'POST';
 
@@ -3085,6 +3103,9 @@
             }
             console.warn(`${tracker} returned ${response.status}: ${errorMessage}`);
             displayAlert(`${tracker} returned ${response.status}: ${errorMessage}`);
+            return null;
+          } else if (tracker === 'DC' && response.status === 401) {
+            displayAlert('DC API key rejected');
             return null;
           } else if (response.status === 401) {
             const jsonResponse = parseJsonResponse(response, tracker);
@@ -3378,6 +3399,18 @@
             rsskey: BHD_RSS_KEY,
             imdb_id: imdb_id.split('tt')[1]
           };
+        } else if (tracker === 'DC') {
+          if (!DIGITALCORE_API_TOKEN) {
+            console.warn('DC skipped: API key missing');
+            displayAlert('DC skipped: API key missing');
+            clearTimeout(timer);
+            resolve([]);
+            return;
+          }
+          post_query_url =
+            'https://digitalcore.club/api/v1/torrents?dead=true&extendedDead=true&extendedSearch=false&freeleech=false&index=0&limit=100&order=desc&page=search&searchText=' +
+            encodeURIComponent(imdb_id) +
+            '&section=all&sort=d&stereoscopic=false&watchview=false';
         } else if (tracker === 'BLU') {
           api_query_url = 'https://blutopia.cc/api/torrents/filter';
         } else if (tracker === 'TIK') {
@@ -3616,6 +3649,13 @@
                           resolve(get_post_torrent_objects(tracker, result));
                         }
                     }
+                  } else if (tracker === 'DC' && Array.isArray(result)) {
+                    console.log(
+                      result.length === 0
+                        ? 'DC reached successfully but no results were returned'
+                        : 'Data fetched successfully from DC'
+                    );
+                    resolve(get_post_torrent_objects(tracker, result));
                   } else if (tracker === 'NBL' && result?.error) {
                     const nblMessage = result.error?.message || 'Unknown NBL API error';
                     console.warn(`NBL API error: ${nblMessage}`);
@@ -4027,6 +4067,39 @@
       return `${base}?torrentid=${torrentId}`;
     }
 
+    const mapDigitalCoreTorrent = (torrent) => {
+      const id = String(torrent?.id ?? '').trim();
+      const name = String(torrent?.name ?? '').trim();
+      const sizeBytes = Number(torrent?.size);
+      const time = toUnixTime(`${String(torrent?.added ?? '').trim()} +02:00`);
+      if (!id || !name || !Number.isFinite(sizeBytes) || sizeBytes < 0 || Number.isNaN(time)) {
+        return null;
+      }
+
+      const filecount = Number.parseInt(torrent.numfiles, 10);
+      const torrentObj = {
+        api_size: sizeBytes,
+        datasetRelease: name,
+        size: Math.trunc(sizeBytes / 1024 / 1024),
+        info_text: name,
+        tracker: 'DC',
+        site: 'DC',
+        snatch: torrent.times_completed || 0,
+        seed: torrent.seeders || 0,
+        leech: torrent.leechers || 0,
+        download_link: `https://digitalcore.club/api/v1/torrents/download/${id}`,
+        torrent_page: `https://digitalcore.club/torrent/${id}/`,
+        externalId: id,
+        discount: Number(torrent.frileech) === 1 ? (simplediscounts ? 'FL' : 'Freeleech') : 'None',
+        status: 'default',
+        groupId: extractExternalReleaseGroup({}, name),
+        time,
+        filecount: Number.isFinite(filecount) ? filecount : null
+      };
+
+      return { ...torrentObj, quality: get_torrent_quality(torrentObj) };
+    };
+
     const get_post_torrent_objects = async (tracker, postData, isMiniSeries) => {
       let torrent_objs = [];
 
@@ -4118,6 +4191,8 @@
         } catch (error) {
           console.error('An error occurred while processing PTP tracker:', error);
         }
+      } else if (tracker === 'DC') {
+        torrent_objs = postData.map(mapDigitalCoreTorrent).filter(Boolean);
       } else if (tracker === 'BHD') {
         // Process for BHD tracker
         try {
