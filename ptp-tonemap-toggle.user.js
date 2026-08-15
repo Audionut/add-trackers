@@ -1,10 +1,13 @@
 // ==UserScript==
 // @name         PTP - Tonemap Toggle
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.6.1
-// @description  Adds per-panel CSS tonemapping toggles for BBCode images.
+// @version      0.6.0
+// @description  Adds per-panel toggles for tonemapping and Firefox HDR-black recovery on BBCode images.
 // @author       Audionut
+// @match        http://*/*
+// @match        https://*/*
 // @match        https://passthepopcorn.me/*
+// @match        https://slow.pics/c/*
 // @icon         https://passthepopcorn.me/favicon.ico
 // @downloadURL  https://github.com/Audionut/add-trackers/raw/main/ptp-tonemap-toggle.user.js
 // @updateURL    https://github.com/Audionut/add-trackers/raw/main/ptp-tonemap-toggle.user.js
@@ -12,6 +15,11 @@
 // @grant        GM.setValue
 // @grant        GM.registerMenuCommand
 // @grant        GM_registerMenuCommand
+// @grant        GM_xmlhttpRequest
+// @grant        unsafeWindow
+// @connect      *
+// @connect      audionut.github.io
+// @connect      cdn.jsdelivr.net
 // @run-at       document-end
 // ==/UserScript==
 
@@ -35,9 +43,7 @@
   const ELIGIBLE_PANEL_ATTRIBUTE = 'data-ptp-hdr-eligible';
   const TORRENT_CONTAINER_SELECTOR = `${PANEL_SELECTOR}, ${DETAIL_ROW_SELECTOR}`;
   const IMAGE_SELECTOR = 'img.bbcode__image';
-  // ponytail: FFmpeg HDR conversion disabled; re-enable only after @ffmpeg/core ships a maintained FFmpeg build.
-  const HDR_FIX_AVAILABLE = false;
-  const IS_FIREFOX = HDR_FIX_AVAILABLE && /firefox/i.test(navigator.userAgent);
+  const IS_FIREFOX = /firefox/i.test(navigator.userAgent);
   const IS_PTP = globalThis.location.hostname === 'passthepopcorn.me';
   const IS_SLOWPICS_COLLECTION =
     globalThis.location.hostname === 'slow.pics' && /^\/c\//i.test(globalThis.location.pathname);
@@ -61,10 +67,11 @@
     tonemapDesat: 10,
     tonemapPeak: 12
   };
-  const LOCAL_FFMPEG_WASM_BASE_URL = '';
+  const LOCAL_FFMPEG_WASM_BASE_URL = 'https://audionut.github.io/add-trackers/vendor/ffmpeg-wasm';
   const LOCAL_FFMPEG_WASM_ESM_BASE_URL = `${LOCAL_FFMPEG_WASM_BASE_URL}/esm`;
-  const CDN_FFMPEG_WASM_ESM_BASE_URL = '';
-  const CDN_FFMPEG_CORE_BASE_URL = '';
+  const CDN_FFMPEG_WASM_ESM_BASE_URL =
+    'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm';
+  const CDN_FFMPEG_CORE_BASE_URL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm';
   const analyzedImages = new WeakSet();
   const pendingImages = new WeakSet();
   const queuedImages = new WeakMap();
@@ -85,7 +92,7 @@
     idleCleanupTimer: null,
     assetBaseUrl: null,
     assetLabel: null,
-    disabled: !HDR_FIX_AVAILABLE
+    disabled: false
   };
   let hdrCacheDbPromise = null;
   let lastClickedHdrSource = '';
@@ -104,7 +111,7 @@
   let debugLevel = normalizeDebugLevel(await GM.getValue(DEBUG_PREF_KEY, 'off'));
 
   Object.keys(hdrFixEnabledByTorrent).forEach((torrentId) => {
-    if (HDR_FIX_AVAILABLE && hdrFixEnabledByTorrent[torrentId]) {
+    if (hdrFixEnabledByTorrent[torrentId]) {
       tonemapEnabledByTorrent[torrentId] = false;
     }
   });
@@ -591,7 +598,7 @@
     panel.style.boxSizing = 'border-box';
 
     panel.innerHTML = `
-      <div style="font-size: 18px; margin-bottom: 12px;">PTP Tonemap Settings</div>
+      <div style="font-size: 18px; margin-bottom: 12px;">PTP Tonemap HDR Settings</div>
       <div style="margin-bottom: 12px; border:1px solid #3a3a3a; border-radius:6px; padding:10px;">
         <div style="font-size: 14px; font-weight: 700; margin-bottom: 8px; color:#9ad3ff;">Tonemapping Only</div>
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
@@ -614,8 +621,8 @@
         </div>
       </div>
       <div style="margin-bottom: 12px; border:1px solid #3a3a3a; border-radius:6px; padding:10px;">
-        <div style="font-size: 14px; font-weight: 700; margin-bottom: 8px; color:#ffd89a;">HDR Fix unavailable</div>
-        <div style="font-size: 12px; color:#c7c7c7; margin-bottom: 8px;">Disabled until FFmpeg ships a maintained browser build</div>
+        <div style="font-size: 14px; font-weight: 700; margin-bottom: 8px; color:#ffd89a;">HDR Fix</div>
+        <div style="font-size: 12px; color:#c7c7c7; margin-bottom: 8px;">FFmpeg conversion</div>
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
           <label style="display:flex; align-items:center; gap:8px; grid-column:1 / -1;">
             <input id="ptp-hdr-force-fix" type="checkbox" />
@@ -828,7 +835,7 @@
       ? GM.registerMenuCommand.bind(GM)
       : null) || globalThis.GM_registerMenuCommand;
   if (typeof registerMenuCommand === 'function') {
-    registerMenuCommand('PTP Tonemap Settings', openHdrSettingsModal);
+    registerMenuCommand('PTP Tonemap HDR Settings', openHdrSettingsModal);
   }
 
   function log(...args) {
@@ -908,7 +915,7 @@
   }
 
   async function loadFfmpegWasmModule() {
-    if (!HDR_FIX_AVAILABLE || ffmpegWasmState.disabled) {
+    if (ffmpegWasmState.disabled) {
       return null;
     }
 
@@ -1443,7 +1450,7 @@
   }
 
   function isHdrFixEnabledForTorrent(torrentId) {
-    return HDR_FIX_AVAILABLE && Boolean(torrentId && hdrFixEnabledByTorrent[torrentId]);
+    return Boolean(torrentId && hdrFixEnabledByTorrent[torrentId]);
   }
 
   function getImageToggleState(img) {
@@ -3073,7 +3080,7 @@
   }
 
   function initCustomSiteProfile() {
-    if (!HDR_FIX_AVAILABLE || !activeCustomSiteProfile) {
+    if (!activeCustomSiteProfile) {
       return;
     }
 
@@ -3742,7 +3749,7 @@
   }
 
   function initSlowPicsCollection() {
-    if (!HDR_FIX_AVAILABLE || !IS_SLOWPICS_COLLECTION) {
+    if (!IS_SLOWPICS_COLLECTION) {
       return;
     }
 
@@ -3929,7 +3936,7 @@
   }
 
   function shouldRunOnCurrentPage() {
-    return IS_PTP;
+    return IS_PTP || IS_SLOWPICS_COLLECTION || Boolean(activeCustomSiteProfile);
   }
 
   if (!shouldRunOnCurrentPage()) {
