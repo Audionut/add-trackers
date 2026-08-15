@@ -1,0 +1,8 @@
+requests==2.34.2
+qbittorrent-api==2026.8.0
+bencodepy==0.9.5
+certifi==2026.7.22
+charset-normalizer==3.5.1
+idna==3.18
+packaging==26.3
+urllib3==2.7.0

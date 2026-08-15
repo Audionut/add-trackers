@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.1.2
+// @version      0.1.3
 // @description  Add releases from other trackers to UNIT3D similar torrent pages.
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://aither.cc/torrents/similar/1*
@@ -12,7 +12,7 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
-// @require      https://github.com/Audionut/add-trackers/raw/main/scene_groups.js
+// @require      https://raw.githubusercontent.com/Audionut/add-trackers/4512abc672f4cf86809c7a81b3c77d641799bf13/scene_groups.js
 // @run-at       document-idle
 // @connect      digitalcore.club
 // @connect      passthepopcorn.me

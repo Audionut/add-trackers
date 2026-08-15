@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PTP - Add Time Column and Highlight Recent Torrents
 // @namespace    PTP-Add-Time-Column-and-Highlight-Recent-Torrents
-// @version      0.5.6
+// @version      0.5.7
 // @description  Add a Time column to the Torrent Group Page, Collage Page,
 //               Artist Page, and Bookmark Page.
 //               Highlight recent and latest torrent within a group.
@@ -10,7 +10,7 @@
 // @match        https://passthepopcorn.me/collages.php?*
 // @match        https://passthepopcorn.me/artist.php?*
 // @match        https://passthepopcorn.me/bookmarks.php*
-// @require      https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.27.0/moment.js
+// @require      https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.30.1/moment.min.js
 // @downloadURL  https://github.com/Audionut/add-trackers/raw/main/PTP-Add-Time-Column-and-Highlight-Recent-Torrents-anut.js
 // @updateURL    https://github.com/Audionut/add-trackers/raw/main/PTP-Add-Time-Column-and-Highlight-Recent-Torrents-anut.js
 // ==/UserScript==

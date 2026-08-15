@@ -1,22 +1,17 @@
 // ==UserScript==
 // @name         UNIT3D - Tonemap Toggle
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.1.1
-// @description  Add per-torrent tonemapping and Firefox HDR-black recovery to UNIT3D full-size lightbox images.
+// @version      0.1.2
+// @description  Add per-torrent CSS tonemapping to UNIT3D full-size lightbox images.
 // @author       Audionut
 // @match        https://aither.cc/torrents/similar/1*
 // @match        https://aither.cc/torrents/similar/2*
-// @require      https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd/ffmpeg-core.js
 // @downloadURL  https://github.com/Audionut/add-trackers/raw/main/UNIT3D_based/unit3d-tonemap-toggle.user.js
 // @updateURL    https://github.com/Audionut/add-trackers/raw/main/UNIT3D_based/unit3d-tonemap-toggle.user.js
 // @grant        GM.getValue
 // @grant        GM.setValue
 // @grant        GM.registerMenuCommand
 // @grant        GM_registerMenuCommand
-// @grant        GM_xmlhttpRequest
-// @connect      *
-// @connect      audionut.github.io
-// @connect      cdn.jsdelivr.net
 // @run-at       document-end
 // ==/UserScript==
 
@@ -46,7 +41,9 @@
   ].join(', ');
   const LIGHTBOX_SELECTOR = '.unit3d-ptp-lightbox';
   const LIGHTBOX_IMAGE_SELECTOR = `${LIGHTBOX_SELECTOR} img`;
-  const IS_FIREFOX = /firefox/i.test(navigator.userAgent);
+  // ponytail: FFmpeg HDR conversion disabled; re-enable only after @ffmpeg/core ships a maintained FFmpeg build.
+  const HDR_FIX_AVAILABLE = false;
+  const IS_FIREFOX = HDR_FIX_AVAILABLE && /firefox/i.test(navigator.userAgent);
   const IS_UNIT3D =
     globalThis.location.hostname === 'aither.cc' &&
     /^\/torrents\/similar\/[12]/i.test(globalThis.location.pathname);
@@ -66,8 +63,8 @@
     tonemapDesat: 10,
     tonemapPeak: 12
   };
-  const LOCAL_FFMPEG_WASM_BASE_URL = 'https://audionut.github.io/add-trackers/vendor/ffmpeg-wasm';
-  const CDN_FFMPEG_CORE_BASE_URL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd';
+  const LOCAL_FFMPEG_WASM_BASE_URL = '';
+  const CDN_FFMPEG_CORE_BASE_URL = '';
   const analyzedImages = new WeakSet();
   const analyzedImageKeys = new WeakMap();
   const pendingImages = new WeakSet();
@@ -98,7 +95,7 @@
   let debugLevel = normalizeDebugLevel(await GM.getValue(DEBUG_PREF_KEY, 'off'));
 
   Object.keys(hdrFixEnabledByTorrent).forEach((torrentId) => {
-    if (hdrFixEnabledByTorrent[torrentId]) {
+    if (HDR_FIX_AVAILABLE && hdrFixEnabledByTorrent[torrentId]) {
       tonemapEnabledByTorrent[torrentId] = false;
     }
   });
@@ -425,7 +422,7 @@
     panel.style.boxSizing = 'border-box';
 
     panel.innerHTML = `
-      <div style="font-size: 18px; margin-bottom: 12px;">UNIT3D Tonemap HDR Settings</div>
+      <div style="font-size: 18px; margin-bottom: 12px;">UNIT3D Tonemap Settings</div>
       <div style="margin-bottom: 12px; border:1px solid #3a3a3a; border-radius:6px; padding:10px;">
         <div style="font-size: 14px; font-weight: 700; margin-bottom: 8px; color:#9ad3ff;">Tonemapping Only</div>
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
@@ -448,8 +445,8 @@
         </div>
       </div>
       <div style="margin-bottom: 12px; border:1px solid #3a3a3a; border-radius:6px; padding:10px;">
-        <div style="font-size: 14px; font-weight: 700; margin-bottom: 8px; color:#ffd89a;">HDR Fix</div>
-        <div style="font-size: 12px; color:#c7c7c7; margin-bottom: 8px;">FFmpeg conversion</div>
+        <div style="font-size: 14px; font-weight: 700; margin-bottom: 8px; color:#ffd89a;">HDR Fix unavailable</div>
+        <div style="font-size: 12px; color:#c7c7c7; margin-bottom: 8px;">Disabled until FFmpeg ships a maintained browser build</div>
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
           <div>
             <label for="unit3d-hdr-tonemap-mobius" style="display:block; margin-bottom:4px;">Mobius Param</label>
@@ -550,7 +547,7 @@
       ? GM.registerMenuCommand.bind(GM)
       : null) || globalThis.GM_registerMenuCommand;
   if (typeof registerMenuCommand === 'function') {
-    registerMenuCommand('UNIT3D Tonemap HDR Settings', openHdrSettingsModal);
+    registerMenuCommand('UNIT3D Tonemap Settings', openHdrSettingsModal);
   }
 
   function log(...args) {
@@ -730,6 +727,10 @@
   }
 
   async function loadFfmpegWasmInstance() {
+    if (!HDR_FIX_AVAILABLE) {
+      return null;
+    }
+
     if (ffmpegWasmState.instance) {
       return ffmpegWasmState.instance;
     }
@@ -1059,7 +1060,7 @@
   }
 
   function isHdrFixEnabledForTorrent(torrentId) {
-    return Boolean(torrentId && hdrFixEnabledByTorrent[torrentId]);
+    return HDR_FIX_AVAILABLE && Boolean(torrentId && hdrFixEnabledByTorrent[torrentId]);
   }
 
   function getImageToggleState(img) {

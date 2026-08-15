@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         PTP - Alternate Versions Sidebar
-// @version      1.5.3
+// @version      1.5.4
 // @description  Add alternate versions tracking to the sidebar
 // @author       Audionut
 // @match        https://passthepopcorn.me/torrents.php?id=*
@@ -8,7 +8,7 @@
 // @updateURL    https://raw.githubusercontent.com/Audionut/add-trackers/refs/heads/main/ptp-alternate-versions.js
 // @grant        GM.getValue
 // @grant        GM.setValue
-// @require      https://raw.githubusercontent.com/Audionut/add-trackers/refs/heads/main/distributors.js
+// @require      https://raw.githubusercontent.com/Audionut/add-trackers/4512abc672f4cf86809c7a81b3c77d641799bf13/distributors.js
 // ==/UserScript==
 
 (function () {

@@ -7,15 +7,12 @@
     "lint": "eslint \"**/*.js\"",
     "lint:fix": "eslint \"**/*.js\" --fix",
     "format": "prettier \"**/*.{js,css,md,json}\" --write",
-    "format:check": "prettier \"**/*.{js,css,md,json}\" --check"
+    "format:check": "prettier \"**/*.{js,css,md,json}\" --check",
+    "security:check": "npm audit --audit-level=moderate && node --test test/dependency-policy.test.js"
   },
   "devDependencies": {
     "eslint": "^9.22.0",
     "eslint-formatter-compact": "^9.0.1",
     "prettier": "^3.5.3"
-  },
-  "dependencies": {
-    "@ffmpeg/core": "^0.12.10",
-    "@ffmpeg/ffmpeg": "^0.12.10"
   }
 }
