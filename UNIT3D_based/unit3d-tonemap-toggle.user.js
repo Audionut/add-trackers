@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Tonemap Toggle
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.1.1
+// @version      0.1.3
 // @description  Add per-torrent tonemapping and Firefox HDR-black recovery to UNIT3D full-size lightbox images.
 // @author       Audionut
 // @match        https://aither.cc/torrents/similar/1*
