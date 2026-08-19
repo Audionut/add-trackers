@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Layout Change
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.2.1
+// @version      0.2.2
 // @description  Change UNIT3D similar torrents layout with additional details and sorting options.
 // @author       Audionut
 // @match        https://aither.cc/torrents/similar/1*
@@ -83,7 +83,7 @@
 
   const SORT_COLUMN_BY_KEY = new Map(SORT_COLUMNS.map((column) => [column.key, column]));
 
-  const TORRENT_TABLE_COLUMN_COUNT = SORT_COLUMNS.length + 1;
+  const TORRENT_TABLE_COLUMN_COUNT = SORT_COLUMNS.length + 2;
 
   const RELEASE_TYPES = ['Full Disc', 'Remux', 'Encode', 'WEB-DL', 'WEBRip', 'HDTV', 'Other'];
 
@@ -428,6 +428,11 @@ html.unit3d-ptp-adapter-enabled #torrent-table th:not(:first-child),
 html.unit3d-ptp-adapter-enabled #torrent-table td:not(:first-child) {
   text-align: right;
   white-space: nowrap;
+}
+
+html.unit3d-ptp-adapter-enabled #torrent-table td.torrent-search--grouped__age {
+  width: 2%;
+  padding: 6px 8px;
 }
 
 html.unit3d-ptp-adapter-enabled #torrent-table .unit3d-ptp-section-row th {
@@ -1411,6 +1416,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
   function getRedirectableTorrentLink(target) {
     const link = target?.closest?.('a[href]');
     if (!(link instanceof HTMLAnchorElement)) return null;
+    if (link.dataset.unit3dPtpBypassSimilarRedirect === 'true') return null;
     const href = getOriginalTorrentLinkHref(link);
     if (isImdbTorrentSearchUrl(href)) return link;
     if (!isTorrentShowUrl(href)) return null;
@@ -1814,6 +1820,11 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     const link = getSimilarPageSingleTorrentViewLink(event.target);
     if (!link) return;
 
+    if (link.dataset.unit3dPtpBypassSimilarRedirect === 'true') {
+      rememberSingleTorrentViewBypass(link.href);
+      return;
+    }
+
     if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
       rememberSingleTorrentViewBypass(link.href);
       return;
@@ -2123,9 +2134,11 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
       sizeElement ? sizeElement.getAttribute('title') || sizeElement.textContent : ''
     );
     const quality = classifyReleaseQuality(releaseName);
+    const ageCell = row.querySelector(SELECTORS.rowAge);
 
     return {
-      age: getCellText(row, SELECTORS.rowAge),
+      age: normalizeWhitespace(ageCell ? ageCell.textContent : ''),
+      ageCell: cloneOptional(ageCell),
       completed: parseInteger(getCellText(row, SELECTORS.rowCompleted)),
       downloadUrl: findDownloadUrl(row),
       icons: cloneOptional(row.querySelector(SELECTORS.rowIcons)),
@@ -2851,6 +2864,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
       th.append(document.createTextNode(column.label), buildSortIndicator(column.key));
       row.appendChild(th);
     });
+    row.appendChild(buildStaticHeaderCell('Age'));
     updateSortHeaderState(row);
     thead.appendChild(row);
     return thead;
@@ -2940,7 +2954,8 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
       buildSizeCell(torrent),
       buildNumericCell(torrent.seeders, 'seeders'),
       buildNumericCell(torrent.leechers, 'leechers'),
-      buildNumericCell(torrent.completed, 'completed')
+      buildNumericCell(torrent.completed, 'completed'),
+      buildAgeCell(torrent)
     );
 
     return row;
@@ -2952,8 +2967,10 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
 
     const actionSpan = document.createElement('span');
     actionSpan.className = 'basic-movie-list__torrent__action';
+    const viewLink = buildActionLink('link_1', torrent.torrentUrl, 'View', 'View torrent page');
+    viewLink.dataset.unit3dPtpBypassSimilarRedirect = 'true';
     actionSpan.append(
-      buildActionLink('link_1', torrent.torrentUrl, 'View', 'View torrent page'),
+      viewLink,
       document.createTextNode(' '),
       buildActionLink('link_2', torrent.downloadUrl || torrent.torrentUrl, 'DL', 'Download torrent')
     );
@@ -3079,6 +3096,13 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     span.textContent = torrent.sizeText || formatBytes(torrent.sizeBytes);
     cell.appendChild(span);
 
+    return cell;
+  }
+
+  function buildAgeCell(torrent) {
+    const cell = cloneOptional(torrent.ageCell) || document.createElement('td');
+    cell.classList.add('torrent-search--grouped__age');
+    if (!cell.hasChildNodes()) cell.textContent = torrent.age;
     return cell;
   }
 
@@ -5192,7 +5216,9 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
   function normalizeTorrentTags(tags) {
     tags.querySelectorAll(':scope > li').forEach((item) => {
       if (
-        !item.matches('.torrent__uploader, .torrent__uploaded-at') &&
+        !item.matches(
+          '.torrent__uploader, .torrent__uploaded-at, .torrent__region, .torrent__distributor'
+        ) &&
         !item.querySelector(':scope > .torrent-icons')
       ) {
         item.remove();
