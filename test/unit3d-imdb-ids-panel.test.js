@@ -44,6 +44,7 @@ const sidebarDefinitionsExpression = extract(
 const sidebarOrder = new Function(`return (${sidebarDefinitionsExpression});`)().map(
   ([key]) => key
 );
+assert.equal(sidebarOrder.includes('coversPosters'), true);
 const normalizeOrderSource = extract(
   '  function normalizeSidebarPanelOrder',
   '\n  function settingKey'
@@ -52,7 +53,7 @@ const normalizeOrder = new Function(
   'DEFAULT_SIDEBAR_PANEL_ORDER',
   `${normalizeOrderSource}\nreturn normalizeSidebarPanelOrder;`
 )(sidebarOrder);
-const previousOrder = sidebarOrder.filter((key) => key !== 'nativeIds');
+const previousOrder = sidebarOrder.filter((key) => key !== 'nativeIds' && key !== 'coversPosters');
 assert.deepEqual(normalizeOrder(previousOrder), sidebarOrder);
 
 const insertSource = extract(
