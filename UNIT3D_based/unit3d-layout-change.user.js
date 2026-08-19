@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Layout Change
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.2.3
+// @version      0.2.4
 // @description  Change UNIT3D similar torrents layout with additional details and sorting options.
 // @author       Audionut
 // @match        https://aither.cc/torrents/similar/1*
@@ -45,6 +45,8 @@
   const EXTERNAL_DETAIL_EVENT_TARGET_ID = 'unit3d-add-releases-private-detail-event-target';
   const EXTERNAL_DETAIL_REQUEST_EVENT = 'unit3d-add-releases-private-detail-request';
   const EXTERNAL_DETAIL_RESPONSE_EVENT = 'unit3d-add-releases-private-detail-response';
+  const NATIVE_IDS_PLACEMENT_ATTRIBUTE = 'data-unit3d-imdb-native-ids-placement';
+  const NATIVE_IDS_PLACEMENT_EVENT = 'unit3d:imdb-native-ids-placement';
   const TVMAZE_ID_CACHE_PREFIX = `${SCRIPT_ID}_tvmazeId_`;
   const TVMAZE_ICON =
     'data:image/png;base64,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';
@@ -1086,6 +1088,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
   GM_registerMenuCommand('UNIT3D - Layout Change Settings', showSettingsPanel);
 
   if (isSimilarTorrentPage()) {
+    document.addEventListener(NATIVE_IDS_PLACEMENT_EVENT, scheduleRebuild);
     pendingSingleTorrentInlineTorrentId = consumeSingleTorrentInlineIntent();
     addReadyClass();
     installAdapterStyles();
@@ -2454,6 +2457,13 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
       .filter((child) => child instanceof HTMLElement)
       .filter((child) => !shouldRemoveMetaChild(child))
       .filter((child) => {
+        if (child.matches('.meta__ids')) {
+          const placement = getEffectiveMetaIdsPlacement();
+          child.classList.toggle('unit3d-ptp-meta-sidebar-hidden', placement !== 'inline');
+          child.classList.toggle('unit3d-ptp-inline-ids', placement === 'inline');
+          return placement === 'sidebar';
+        }
+
         const keep = shouldKeepMetaChildInHeader(child);
         child.classList.toggle('unit3d-ptp-meta-sidebar-hidden', !keep);
         return !keep;
@@ -2467,7 +2477,6 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
 
   function shouldKeepMetaChildInHeader(child) {
     return Boolean(
-      (isMetaIdsInlinePlacement() && child.matches('.meta__ids')) ||
       child.matches(
         '.meta__title-link, .meta__actions, .meta__action, .meta__tags, .torrent__tags, [class*="__actions"]'
       )
@@ -2502,14 +2511,22 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     const ids = meta.querySelector(':scope > .meta__ids');
     if (!ids) return;
 
-    ids.classList.toggle('unit3d-ptp-inline-ids', isMetaIdsInlinePlacement());
-    if (isMetaIdsInlinePlacement() && ids.previousElementSibling !== titleLink) {
+    const inline = isMetaIdsInlinePlacement();
+    ids.classList.toggle('unit3d-ptp-inline-ids', inline);
+    if (inline && ids.previousElementSibling !== titleLink) {
       titleLink.after(ids);
     }
   }
 
+  function getEffectiveMetaIdsPlacement() {
+    const imdbPlacement = document.documentElement?.getAttribute(NATIVE_IDS_PLACEMENT_ATTRIBUTE);
+    if (imdbPlacement === 'original') return 'inline';
+    if (imdbPlacement === 'hidden' || imdbPlacement === 'sidebar') return imdbPlacement;
+    return getLayoutSetting('metaIdsPlacement') === 'inline' ? 'inline' : 'sidebar';
+  }
+
   function isMetaIdsInlinePlacement() {
-    return getLayoutSetting('metaIdsPlacement') === 'inline';
+    return getEffectiveMetaIdsPlacement() === 'inline';
   }
 
   async function addTvmazeIdLink() {

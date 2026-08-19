@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - IMDb Combined
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.1.8
+// @version      0.1.9
 // @description  Add IMDb-derived panels and shared IMDb cache/events to UNIT3D similar torrent pages using the UNIT3D layout change userscript.
 // @author       Audionut
 // @match        https://aither.cc/torrents/similar/1*
@@ -37,6 +37,8 @@
   const SIDEBAR_ROOT_ID = 'unit3d-imdb-sidebar-panels';
   const COVERS_POSTERS_PANEL_ID = 'unit3d-covers-posters';
   const COVERS_POSTERS_READY_EVENT = 'unit3d:covers-posters-ready';
+  const NATIVE_IDS_PLACEMENT_ATTRIBUTE = 'data-unit3d-imdb-native-ids-placement';
+  const NATIVE_IDS_PLACEMENT_EVENT = 'unit3d:imdb-native-ids-placement';
   const CACHE_PREFIX = 'iMDB_data_';
   const TITLE_CACHE_VERSION = 3;
   const NAME_CACHE_PREFIX = 'unit3d_imdb_names_';
@@ -1367,6 +1369,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
   async function bootstrap() {
     await waitForDocument();
     await loadSettings();
+    publishNativeIdsPlacement();
     installStyles();
     const imdbId = await findImdbIdWithRetry();
     if (!imdbId) return;
@@ -1503,7 +1506,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
     const nativeIdsPanel =
       settings.nativeIdsPlacement === 'sidebar' ? buildNativeIdsPanel(sidebar) : null;
     syncNativeIdsSource();
-    cleanupDuplicateSidebarPanels(sidebar);
+    cleanupDuplicateSidebarPanels(sidebar, nativeIdsPanel);
 
     const token = buildCurrentRenderToken();
     if (token === currentRenderToken && document.getElementById(PANEL_ROOT_ID)) {
@@ -1533,6 +1536,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
     currentRenderToken = token;
 
     if (coversPostersPanel?.closest(`#${SIDEBAR_ROOT_ID}`)) coversPostersPanel.remove();
+    if (nativeIdsPanel?.closest(`#${SIDEBAR_ROOT_ID}`)) nativeIdsPanel.remove();
     document.getElementById(PANEL_ROOT_ID)?.remove();
     document.getElementById(SIDEBAR_ROOT_ID)?.remove();
 
@@ -1845,10 +1849,12 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
     }
   }
 
-  function cleanupDuplicateSidebarPanels(sidebar) {
+  function cleanupDuplicateSidebarPanels(sidebar, retainedNativeIdsPanel = null) {
     if (!sidebar) return;
 
-    getNativeIdsSidebarPanels(sidebar).forEach((panel) => panel.remove());
+    getNativeIdsSidebarPanels(sidebar).forEach((panel) => {
+      if (panel !== retainedNativeIdsPanel) panel.remove();
+    });
     sidebar.querySelectorAll('.unit3d-ptp-meta-sidebar-panel').forEach((panel) => {
       const heading = normalizeText(panel.querySelector('.panel__heading')?.textContent);
       if (/^(tags?|chips)$/i.test(heading)) panel.remove();
@@ -1867,7 +1873,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
 
   function buildNativeIdsPanel(sidebar) {
     const existing = getNativeIdsSidebarPanels(sidebar)[0];
-    if (existing) return prepareNativeIdsPanel(existing.cloneNode(true));
+    if (existing) return prepareNativeIdsPanel(existing);
 
     const source = document.querySelector('section.meta > .meta__ids');
     if (!source) return null;
@@ -1893,6 +1899,15 @@ html.unit3d-ptp-adapter-enabled .unit3d-imdb-trailer-video-loading::after {
     ids?.classList.add('unit3d-ptp-meta-sidebar-item');
     panel.querySelectorAll('script').forEach((script) => script.remove());
     return panel;
+  }
+
+  function publishNativeIdsPlacement() {
+    const root = document.documentElement;
+    const placement = settings.nativeIdsPlacement;
+    if (!root || root.getAttribute(NATIVE_IDS_PLACEMENT_ATTRIBUTE) === placement) return;
+
+    root.setAttribute(NATIVE_IDS_PLACEMENT_ATTRIBUTE, placement);
+    document.dispatchEvent(new CustomEvent(NATIVE_IDS_PLACEMENT_EVENT, { detail: { placement } }));
   }
 
   function syncNativeIdsSource() {

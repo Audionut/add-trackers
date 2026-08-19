@@ -6,13 +6,17 @@ const source = readFileSync(
   resolve(__dirname, '..', 'UNIT3D_based', 'unit3d-imdb-combined.user.js'),
   'utf8'
 );
+const layoutSource = readFileSync(
+  resolve(__dirname, '..', 'UNIT3D_based', 'unit3d-layout-change.user.js'),
+  'utf8'
+);
 
-function extract(startMarker, endMarker) {
-  const start = source.indexOf(startMarker);
-  const end = source.indexOf(endMarker, start);
+function extract(startMarker, endMarker, scriptSource = source) {
+  const start = scriptSource.indexOf(startMarker);
+  const end = scriptSource.indexOf(endMarker, start);
   assert.notEqual(start, -1, `${startMarker} missing`);
   assert.notEqual(end, -1, `${endMarker} missing`);
-  return source.slice(start, end);
+  return scriptSource.slice(start, end);
 }
 
 const optionsExpression = extract(
@@ -110,3 +114,58 @@ placement.nativeIdsPlacement = 'sidebar';
 syncIds();
 assert.equal(classes.has('unit3d-ptp-meta-sidebar-hidden'), true);
 assert.equal(classes.has('unit3d-ptp-inline-ids'), false);
+
+const buildNativeIdsSource = extract(
+  '  function buildNativeIdsPanel',
+  '\n  function prepareNativeIdsPanel'
+);
+const retainedPanel = {};
+const buildNativeIdsPanel = new Function(
+  'getNativeIdsSidebarPanels',
+  'prepareNativeIdsPanel',
+  'document',
+  `${buildNativeIdsSource}\nreturn buildNativeIdsPanel;`
+)(
+  () => [retainedPanel],
+  (panel) => panel,
+  {}
+);
+assert.equal(buildNativeIdsPanel({}), retainedPanel);
+
+const duplicatePanel = { remove: () => (duplicatePanel.removed = true) };
+retainedPanel.remove = () => (retainedPanel.removed = true);
+const cleanupSource = extract(
+  '  function cleanupDuplicateSidebarPanels',
+  '\n  function getNativeIdsSidebarPanels'
+);
+const cleanupDuplicateSidebarPanels = new Function(
+  'getNativeIdsSidebarPanels',
+  `${cleanupSource}\nreturn cleanupDuplicateSidebarPanels;`
+)(() => [retainedPanel, duplicatePanel]);
+cleanupDuplicateSidebarPanels({ querySelectorAll: () => [] }, retainedPanel);
+assert.equal(retainedPanel.removed, undefined);
+assert.equal(duplicatePanel.removed, true);
+
+const effectivePlacementSource = extract(
+  '  function getEffectiveMetaIdsPlacement',
+  '\n  function isMetaIdsInlinePlacement',
+  layoutSource
+);
+let imdbPlacement = 'original';
+const getEffectiveMetaIdsPlacement = new Function(
+  'document',
+  'NATIVE_IDS_PLACEMENT_ATTRIBUTE',
+  'getLayoutSetting',
+  `${effectivePlacementSource}\nreturn getEffectiveMetaIdsPlacement;`
+)(
+  { documentElement: { getAttribute: () => imdbPlacement } },
+  'data-unit3d-imdb-native-ids-placement',
+  () => 'sidebar'
+);
+assert.equal(getEffectiveMetaIdsPlacement(), 'inline');
+imdbPlacement = 'hidden';
+assert.equal(getEffectiveMetaIdsPlacement(), 'hidden');
+imdbPlacement = 'sidebar';
+assert.equal(getEffectiveMetaIdsPlacement(), 'sidebar');
+imdbPlacement = null;
+assert.equal(getEffectiveMetaIdsPlacement(), 'sidebar');
