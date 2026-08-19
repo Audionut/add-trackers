@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Layout Change
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.2.2
+// @version      0.2.3
 // @description  Change UNIT3D similar torrents layout with additional details and sorting options.
 // @author       Audionut
 // @match        https://aither.cc/torrents/similar/1*
@@ -15,6 +15,7 @@
 // @grant        GM_registerMenuCommand
 // @grant        GM_xmlhttpRequest
 // @grant        GM_openInTab
+// @connect      api.tvmaze.com
 // @connect      ibb.co
 // @run-at       document-start
 // ==/UserScript==
@@ -44,6 +45,9 @@
   const EXTERNAL_DETAIL_EVENT_TARGET_ID = 'unit3d-add-releases-private-detail-event-target';
   const EXTERNAL_DETAIL_REQUEST_EVENT = 'unit3d-add-releases-private-detail-request';
   const EXTERNAL_DETAIL_RESPONSE_EVENT = 'unit3d-add-releases-private-detail-response';
+  const TVMAZE_ID_CACHE_PREFIX = `${SCRIPT_ID}_tvmazeId_`;
+  const TVMAZE_ICON =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAH4AAAAoCAMAAAAPKr5QAAACplBMVEUAAABwxbsTlotuxLoWl4w6Q0wYmI0dIiZswrhYuK5burBtw7kto5guXlgqoZYvpJk7RE1ErqRHsKVBraJPtKpNs6k3qJ5StqtVt61Ksac+q6E7qp81p5wypptKh4UKFRQwc3IDCQgGBwgDBAUbmo8fm5AJCwwVGh1pwbdkv7QNIR4LGhgRFBdgvLI6QEkYLS4VJyVmwLZVsahNsKZGqZ8+qZ86qJ48enkqMzkPMS0gJSoUFhoEDQxIraM1qZ41pZpGoJconpMinZIxbGwyZGQjQT4TMzAjKzAbMC8RJSMZHSEPExUIEhEHEA8BAgJivrRKr6VBoZlHlY5KhYM9gn48UFc5R08wP0UINTEWLisKHhtXtqxTtKpUq6NEq6JLoZoooJU+nZUln5RBnJQ1m5IsmpFDmJEfmo8tl41Gj4ksjoctioIwfnhAcnI1Z2YuZWEOZl8pYl81W14lYV02T1QzS08nSkoQTkkyO0MuPEIiKC0MDg9cua9QsqhAq6BQpJ09pZxEpZtJpJsxpJk8opgvnpVKm5I9mJE4lY9Qlo4zlo4cmI0/lY0Zlowwk4xIi4hEjIQzhn8kfXUre3Q0dXQweHE4dXAwcXA2cmsvcGk4aGhFZGguVlcjVVArUVA0SE4iSUUgR0UaR0MvOD4YQDwbOzcfNzcULCwNKigPHh0OEBJnv7U2ppwzopg0npVFnZU5nZQ+j4kzi4ZAiIM5iINGgoEmiYA9fnhDd3dAdnY8enMmeXEid287bm8odG0ibWU6YmU/YGQvY10dYVsuYFs5VlsSYVpAU1ksRUkxREgkS0cQQUMpOD0QOTUlMTUKNzNiqqROqqJQqqFOoptNnZQ1j4RNaW4ncWotbGUhaWQuXV4QYFkPYFkgXFgYVlEfTkk1PkYEGBedOIaFAAAAAXRSTlMAQObYZgAABe9JREFUWMPF1gdT02AYwPHHgaUlbU3Spk3SOlpaWsABiiI4EBEURRBx4N57Cwq4995777333nvvvb+JT9IkfcE7Du7q+b/z8j6vSX4JPQZUCWENIVDbCl/xv/lqIUzjK3wFREREhIeiCEzjIyoahIf76oeFoFf4CCqfXLMihfnCw8HnOwqhaLHP51N5r64iJR/1+SAuzh8aPi4uDvnK5I+LA78/OzS83++vJF/P74fs7Hoh4Qu2bt3aoZJ8djbUqxcaPgo/TRdUqmlIGwzT5PU9I1l7gLr5xnw8KGUZ8w/joeMq4xPQqm388FBd39lkzO+oDtFGslV1AdoTczuVNxiQ1wPWaYSB7ArA/lxDfJC/Yugj8+8Mhicxyl7+WYPBqKxjNhgMeaC2wECWK/HxxMYBkNMjr9f3AszdR0+2AKVeev0GUNqFe/vxeDher5+5S3n3Tbh5EZRG4LBDHXL1ZH2yANr2ImblQ8ItsNt7y2/ftUstzG6Pl47nuwG4utjt/SBQ81y7fWYULjrMtNvtc9BHva0d2wKB7kmD9iyFeJNA8XjHh8i1w8XKwFaXrp1ArrfdDjabReZ1YVK9bW/q46F+JkDsY5vNtkn50uJyjFfi39qwOzJ/UlqOVcBV0rBA+fC9v8KULvXGC5PcyE+32boqm0kKj1tgsVhBq+50yxxtyBhhsTSOll9+nMXyutgrmf0sUikxsN0ip/AxKfLUHkq3GfdW7o0F5BtZLJOhdLgFVmsjgm9kDfLJt61WhV9mta5MBpm3Skm8VU7h0/E2jazWoVlA9rSx1dqvGHXkc6zWsjxeADyfQ/A5fEpwepHC8+slP4bnW9z3ynwKn3M+h+cHfeJ5fmguz6cFXn4Qz48Yw/PLSvHRs/G621Eg8y14viyPW8AwNMG3YDoHJ9dlhpkt8ZsZZmgyBD5whtlxiZGbXXiOYQJ8MxwnFjRmmJ+kvh53Lwd0aNCXYfD/sdXNNJ5hgKb7EnxfekBwcndvTNP7APbQNH3LG+AH0XT6s6G01BjdaJpOk3c303TnAxnLaHo9aPXc3pmmT3dTebyVWjoE6kvTwLIzCH4GS/DgymPZedHNJ7Fs50SVZ9n9RwpnsSx7NunIaJYdJ2+vZtm8TNiGu9GgtmceXvY4FhQ+gVVb6Fb2ZrAsCEICwScIpwg+tjBBEPbtEwRhA+oyv1AQ0l0l1xOEATujYK0gyPxBvMkjgIwBgjAhS335U3jZrSS3ys8ShLymct3UR8Kbgyg2Ifgm4mCCd5ecFsUbo0RxXoHGi2I6uIqu593XAawVRYmvfRNv0iTw732Wot8QRbHpXtRVXhQD3/eJ2u9FPB047hjBH+NIHlxbOO7EKI47lwwKv4jj0gGSi8KKvMhz3ARpcwUXbI/CD+a4RcWoq3wrjtsNpcMtcDhaEXwrxxIgchcPdmCttoHGOxzNQO2qwyHxh/CUlnK4+AhSd3F1omsSwR93OP7iHQ5wOucS/FzncCBzrXNiSzI0fonTSfBOp8SvcTrPhNWXwrNHPZd5vGpLFADBO51l+blOJ5jNFMFTZuTJDlBmszktU+NXmM1B/prZPAlfHs/44pI3Hs03m3sCxNzErSFnzErSAx2cj5Ay/1B+5uMMFGUieBNVho9aTVFDukOQpyiCpyjk11DU8GcglzSKoi40B7hAlaqjxGuTdgcTRYHJ1Jrgh5hGlubdO0ymdSXaOHW0acghbfpsaj0ZYFJr0+gjys42k+m79HGYyEbiA2WOJGY3yLU2maB/f4J3F2zcWYbfm9amKDi6ureZmEQOOoDEiW0SlR1vRtrYF3jsvrFOsDbdXPjcOzcG51iF798fBg5MBa0O+Pfi1DK+TpdJ8Im6KGLSZejkPzITEZCLLdFJy0wdmaRNTQzO6jd+6sCBkJrqgf/UsNRU8HiGwb/p6RSsbnm8x/MP+Zcej+cBlNNS5CMjlypTyPnIyMjy+chI5JeHVv3dXFn0QP4rlNNy5GuEuvGg8jh8K5evUQOqh7ogX4GToWqoC/IVOPk/838Aw+9yFSVtd6wAAAAASUVORK5CYII=';
   const AITHER_TRACKER_ICON =
     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAACYElEQVQokT2RS2sUQRSFb9169MOZScc8TBQN0Wg2URBB3Sj+ZHe6VhQloAgu1GjMQxMhycx093RXdVfVvS5G3BzO4izOxye2nzwbLq8MlleK9atSaQAAgLacMpFAzEYjW1XT0999284uzl1dqeTSYHRlrVi/lheFSdLOWSYKfddMxgtX1vPFRZ1mKGVvW52mtiyVybLhyuqtra0+hEjUObuytLRzc3PStABwXs/IBJPnebGYF4tn+98VKpWNFs6qmmK8u3H94damkVIiaim7EGrrPh4ej38dp0Mo1q424wsVuq48PTktp6u3bi/kd3Z/HJwcHTWTsdR6YW19e+PG/Y3rddOc7f8wWc5EqmubP3tfB5eXtm5uPn/x8uDDbvReIAKAMubbYHht597Tx4/eVdWfb19cXSlvbfR+4/6Dz58+7b19TSH4zqGUiLKbzVxdt+UUmKU2s4tz7xwyEYWQDoZ7b15F70PfRe+7pumd7W3bNTNblj9339uq9NZSDDIbjRBRJcnF4UHoXOh7jhEA5gkARJFiTIfD6emJrUqpkwQAlEnGx0eh7ykEZgZmgQjMTDTvJs3q87N2MlFM5J2z5TQGP7crBDIAMwMAMIMQKGVbTr1zIIRMB0MhQCDG3kfvmQgAQMC/NQDFIJWS2ri6jsHLvCjm3DpNo/f/rwMzMzETCGGyvG+a3lkAkCbLmTkGj1JKpVFKZmYiZhaIKJVOUiayVUkhUIxKIEqtmYiJAFGnqeJkji6VQqWEELauhBDSmBiCEkJIpaPv575i8EobVCp6j0r1bUsUo/fALLQWQvwFLByUKNhkQJ4AAAAASUVORK5CYII=';
 
@@ -69,7 +73,13 @@
         { label: 'Sidebar', value: 'sidebar' },
         { label: 'Below title', value: 'inline' }
       ],
-      tooltip: 'Move IMDb/TMDB/TVDB IDs into the sidebar or keep them as one icon line below title.'
+      tooltip:
+        'Move IMDb/TMDB/TVDB/TVmaze IDs into the sidebar or keep them as one icon line below title.'
+    },
+    showTvmazeId: {
+      default: false,
+      label: 'Add TVmaze to IDs',
+      tooltip: 'Resolve TVmaze from IMDb and add its icon after TVDB.'
     }
   };
 
@@ -310,6 +320,14 @@ html.unit3d-ptp-adapter-enabled section.meta .unit3d-ptp-inline-ids img,
 html.unit3d-ptp-adapter-enabled section.meta .unit3d-ptp-inline-ids svg {
   max-height: 28px !important;
   width: auto !important;
+}
+
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-ids-panel .meta-id-tag img.unit3d-ptp-tvmaze-icon,
+html.unit3d-ptp-adapter-enabled section.meta .meta-id-tag img.unit3d-ptp-tvmaze-icon {
+  height: 24px !important;
+  max-height: 24px !important;
+  width: auto !important;
+  max-width: 76px !important;
 }
 
 html.unit3d-ptp-adapter-enabled .unit3d-ptp-meta-sidebar-panel [class*="cast"] img:not(.unit3d-ptp-id-icon):not(.unit3d-ptp-poster-image),
@@ -1041,6 +1059,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
   const detailFetchQueue = [];
   const expandedTorrentDetailIds = new Set();
   const imgbbDirectImageUrlCache = new Map();
+  const tvmazeLookupPromises = new Map();
   const torrentSimilarResolvePromises = new Map();
   const torrentSimilarUrlCache = new Map();
 
@@ -2062,6 +2081,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     }
 
     enhanceMetaTitleLink();
+    if (getLayoutSetting('showTvmazeId')) void addTvmazeIdLink();
 
     const torrents = extractTorrentRowsFromTables(nativeTables);
     const metaItems = collectMetaItems();
@@ -2492,6 +2512,74 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     return getLayoutSetting('metaIdsPlacement') === 'inline';
   }
 
+  async function addTvmazeIdLink() {
+    const ids = document.querySelector('section.meta > .meta__ids');
+    if (!ids || ids.querySelector(':scope > .meta__tvmaze')) return;
+
+    const imdbId = extractImdbIdFromMetaIds(ids);
+    if (!imdbId) return;
+
+    const tvmazeId = await getTvmazeId(imdbId);
+    if (!tvmazeId || !ids.isConnected || ids.querySelector(':scope > .meta__tvmaze')) return;
+
+    const item = document.createElement('li');
+    item.className = 'meta__tvmaze';
+
+    const link = document.createElement('a');
+    link.className = 'meta-id-tag';
+    link.href = `https://www.tvmaze.com/shows/${tvmazeId}`;
+    link.title = `TVmaze ID: ${tvmazeId}`;
+    openLinkInNewTab(link);
+
+    const icon = document.createElement('img');
+    icon.className = 'unit3d-ptp-id-icon unit3d-ptp-tvmaze-icon';
+    icon.src = TVMAZE_ICON;
+    icon.alt = 'TVmaze';
+    link.appendChild(icon);
+    item.appendChild(link);
+
+    const tvdb =
+      ids.querySelector(':scope > .meta__tvdb') ||
+      [...ids.children].find((child) => child.querySelector('a[href*="thetvdb.com"]'));
+    if (tvdb) tvdb.after(item);
+    else ids.appendChild(item);
+  }
+
+  function extractImdbIdFromMetaIds(ids) {
+    const link = ids?.querySelector('.meta__imdb a[href], a[href*="imdb.com/title/tt"]');
+    const match = String(link?.href || link?.textContent || '').match(/\btt\d{5,}\b/i);
+    return match ? match[0].toLowerCase() : '';
+  }
+
+  function getTvmazeId(imdbId) {
+    const cacheKey = `${TVMAZE_ID_CACHE_PREFIX}${imdbId}`;
+    const cachedId = normalizeTvmazeId(GM_getValue(cacheKey, 0));
+    if (cachedId) return Promise.resolve(cachedId);
+    if (tvmazeLookupPromises.has(imdbId)) return tvmazeLookupPromises.get(imdbId);
+
+    const lookup = fetchCrossOriginText(
+      `https://api.tvmaze.com/lookup/shows?imdb=${encodeURIComponent(imdbId)}`
+    )
+      .then((responseText) => normalizeTvmazeId(JSON.parse(responseText)?.id))
+      .then((tvmazeId) => {
+        if (tvmazeId) GM_setValue(cacheKey, tvmazeId);
+        return tvmazeId;
+      })
+      .catch((error) => {
+        if (error.message !== 'HTTP 404') {
+          console.warn('[UNIT3D Layout Change] TVmaze lookup failed', error);
+        }
+        return 0;
+      });
+    tvmazeLookupPromises.set(imdbId, lookup);
+    return lookup;
+  }
+
+  function normalizeTvmazeId(value) {
+    const id = Number(value);
+    return Number.isSafeInteger(id) && id > 0 ? id : 0;
+  }
+
   function getFirstDirectorName(meta) {
     const keyValueDirector = findDirectorInKeyValue(meta);
     if (keyValueDirector) return keyValueDirector;
@@ -2640,7 +2728,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
   function isIdIconImage(image) {
     const sourceName = image.src ? image.src.split('/').pop() || '' : '';
     const text = `${sourceName} ${image.alt || ''} ${image.title || ''} ${image.className || ''}`;
-    return /\b(imdb|tmdb|tvdb|mal)\b/i.test(text);
+    return /\b(imdb|tmdb|tvdb|tvmaze|mal)\b/i.test(text);
   }
 
   function markPosterPanelBody(body) {
