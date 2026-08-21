@@ -31,7 +31,7 @@ Run the commands below from the repository root in PowerShell.
 - A qui proxy URL connected to the qBittorrent client containing the media.
 - `ffmpeg` and `ffprobe` for screenshot capture.
 - API tokens for each UNIT3D site and each configured image host, except
-  Pixhost, which does not require a key.
+  Imgbox and Pixhost, which do not require keys.
 - Read access to the full `content_path` returned by qui.
 
 Install the Python dependencies:
@@ -206,6 +206,9 @@ remove hosts you do not use and disable special hosts as needed.
       "name": "pixhost"
     },
     {
+      "name": "imgbox"
+    },
+    {
       "name": "imgbb",
       "api_key": "YOUR_IMGBB_API_KEY"
     },
@@ -284,7 +287,7 @@ stops with exit code `2` if two paths refer to the same file.
 
 | Setting | Default | Description |
 | --- | ---: | --- |
-| `normal_hosts` | Required | Non-empty, duplicate-free list containing `pixhost`, `imgbb`, `onlyimage`, or `ptscreens`. All except Pixhost require `api_key`. |
+| `normal_hosts` | Required | Non-empty, duplicate-free list containing `pixhost`, `imgbox`, `imgbb`, `onlyimage`, or `ptscreens`. Imgbox and Pixhost are keyless; all others require `api_key`. |
 | `lostimg` | Disabled | Set `enabled` to `true` and provide `api_key` to upload for matching `lst.gg` torrents. |
 | `reelflix` | Disabled | Set `enabled` to `true` and provide `api_key` to upload for matching ReelFlix torrents. |
 | `screenshots` | `4` | Frames captured per file; allowed range is 1–20. |
@@ -325,6 +328,8 @@ Windows paths inside JSON must escape backslashes:
   lanes run concurrently using separate HTTP sessions.
 - Normal hosts rotate by release. If the assigned host fails, each remaining
   configured normal host is tried once in order.
+- Imgbox uses one anonymous session and upload token for the current screenshot
+  batch; no Imgbox API key is required.
 - Lostimg runs only when Lostimg is enabled and an `lst.gg` match exists.
 - ReelFlix image hosting runs only when it is enabled and a matching
   `reelflix.cc` or `reelflix.xyz` link exists.

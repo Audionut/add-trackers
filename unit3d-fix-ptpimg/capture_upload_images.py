@@ -7,6 +7,7 @@ this file, never from environment variables:
 {
   "normal_hosts": [
     {"name": "pixhost"},
+    {"name": "imgbox"},
     {"name": "imgbb", "api_key": "your ImgBB API key"},
     {"name": "onlyimage", "api_key": "your OnlyImage API key"},
     {"name": "ptscreens", "api_key": "your PTScreens API key"}
@@ -53,13 +54,13 @@ from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
-from typing import Any, Callable
+from typing import Any, Callable, TypeVar
 from urllib.parse import urlparse
 
 import requests
 
 
-NORMAL_HOSTS = {"imgbb", "onlyimage", "pixhost", "ptscreens"}
+NORMAL_HOSTS = {"imgbb", "imgbox", "onlyimage", "pixhost", "ptscreens"}
 VIDEO_EXTENSIONS = {
     ".avi",
     ".m2ts",
@@ -86,6 +87,7 @@ BLACK_FRAME_OFFSETS = (0, 2, 4, 8, 16, 32, 64, -2, -4, -8, -16, -32, -64)
 TV_RELEASE = re.compile(r"(?i)(?:^|[ ._-])S\d{1,3}(?:E\d{1,3})?(?:[ ._-]|$)")
 BLACK_FRAME = re.compile(rb"\bpblack:100(?:\.0+)?\b")
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+UploadValue = TypeVar("UploadValue")
 
 
 class ImagePipelineError(RuntimeError):
@@ -204,13 +206,13 @@ def parse_normal_host(item: Any, index: int) -> HostConfig:
     if name not in NORMAL_HOSTS:
         raise ImagePipelineError(
             f"normal_hosts entry {index} uses unsupported host {name!r}; "
-            "supported hosts are imgbb, onlyimage, pixhost, and ptscreens"
+            "supported hosts are imgbb, imgbox, onlyimage, pixhost, and ptscreens"
         )
     raw_key = item.get("api_key", "")
     if not isinstance(raw_key, str):
         raise ImagePipelineError(f"normal_hosts entry {index} api_key must be a string")
     api_key = raw_key.strip()
-    if name != "pixhost" and not api_key:
+    if name not in {"imgbox", "pixhost"} and not api_key:
         raise ImagePipelineError(f"normal_hosts entry {index} requires an api_key")
     return HostConfig(name=name, api_key=api_key)
 
@@ -644,8 +646,12 @@ def response_json(response: requests.Response, host: str, statuses: set[int]) ->
     return payload
 
 
-def retry_upload(operation: Callable[[], UploadResult], host: str, retries: int) -> UploadResult:
-    """Retry one image upload with a short linear backoff."""
+def retry_upload(
+    operation: Callable[[], UploadValue],
+    host: str,
+    retries: int,
+) -> UploadValue:
+    """Retry one image-host operation with a short linear backoff."""
 
     last_error: Exception | None = None
     for attempt in range(retries + 1):
@@ -656,6 +662,108 @@ def retry_upload(operation: Callable[[], UploadResult], host: str, retries: int)
             if attempt < retries:
                 time.sleep(1.1 * (attempt + 1))
     raise ImagePipelineError(f"{host} upload failed after {retries + 1} attempts") from last_error
+
+
+def upload_imgbox(
+    session: requests.Session,
+    host: HostConfig,
+    images: list[Path],
+    settings: Settings,
+) -> list[UploadResult]:
+    """Upload one screenshot batch through an anonymous Imgbox session."""
+
+    def operation() -> list[UploadResult]:
+        homepage = session.get(
+            "https://imgbox.com/",
+            headers={
+                "Accept": "text/html,application/xhtml+xml",
+                "Accept-Language": "en-US,en;q=0.5",
+            },
+            timeout=settings.request_timeout,
+        )
+        if homepage.status_code != 200:
+            raise ImagePipelineError(
+                f"imgbox anonymous upload session returned HTTP {homepage.status_code}"
+            )
+        content_type = homepage.headers.get("Content-Type", "").strip().casefold()
+        if content_type and not content_type.startswith("text/html"):
+            raise ImagePipelineError("imgbox anonymous upload session returned unexpected content")
+        document = homepage.text
+        normalized = document.casefold()
+        if any(
+            marker in normalized
+            for marker in ("cf-chl-", "attention required", "checking your browser")
+        ):
+            raise ImagePipelineError("imgbox anonymous upload session is temporarily challenged")
+        token_match = re.search(
+            r"name=(?:\"authenticity_token\"|'authenticity_token')[^>]*"
+            r"value=(?:\"([^\"]+)\"|'([^']+)')",
+            document,
+        )
+        if token_match is None:
+            raise ImagePipelineError("imgbox authenticity token not found")
+        csrf_token = (token_match.group(1) or token_match.group(2)).strip()
+        if not csrf_token:
+            raise ImagePipelineError("imgbox authenticity token not found")
+
+        upload_headers = {
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "Origin": "https://imgbox.com",
+            "Referer": "https://imgbox.com/",
+            "X-CSRF-Token": csrf_token,
+            "X-Requested-With": "XMLHttpRequest",
+        }
+        token_response = session.post(
+            "https://imgbox.com/ajax/token/generate",
+            headers=upload_headers,
+            timeout=settings.request_timeout,
+        )
+        token_payload = response_json(token_response, host.name, {200})
+        upload_token: dict[str, str] = {}
+        for key in ("token_id", "token_secret", "gallery_id", "gallery_secret"):
+            value = token_payload.get(key)
+            upload_token[key] = (
+                "null" if value is None or not str(value).strip() else str(value).strip()
+            )
+        if upload_token["token_id"] == "null" or upload_token["token_secret"] == "null":
+            raise ImagePipelineError("imgbox anonymous upload token response was incomplete")
+
+        results: list[UploadResult] = []
+        for image in images:
+            fields = {
+                **upload_token,
+                "content_type": "1",
+                "thumbnail_size": "350r",
+                "comments_enabled": "0",
+            }
+            with image.open("rb") as image_file:
+                response = session.post(
+                    "https://imgbox.com/upload/process",
+                    headers=upload_headers,
+                    data=fields,
+                    files={"files[]": (image.name, image_file, "image/png")},
+                    timeout=settings.request_timeout,
+                )
+            payload = response_json(response, host.name, {200})
+            files = payload.get("files")
+            if payload.get("ok") is not True and not files:
+                raise ImagePipelineError("imgbox upload was rejected")
+            if not isinstance(files, list) or not files or not isinstance(files[0], dict):
+                raise ImagePipelineError("imgbox upload returned no image")
+            image_data = files[0]
+            results.append(
+                UploadResult(
+                    safe_public_url(image_data.get("thumbnail_url"), "imgbox thumbnail"),
+                    safe_public_url(image_data.get("original_url"), "imgbox image"),
+                    safe_public_url(
+                        image_data.get("image_url") or image_data.get("gallery_url"),
+                        "imgbox viewer",
+                    ),
+                )
+            )
+        return results
+
+    return retry_upload(operation, host.name, settings.upload_retries)
 
 
 def upload_imgbb(
@@ -888,12 +996,16 @@ def upload_batch(
     images: list[Path],
     settings: Settings,
 ) -> list[UploadResult]:
-    """Upload all screenshots to one supported non-batch image host."""
+    """Upload all screenshots to one supported image host."""
 
-    if host.name == "pixhost" and any(image.stat().st_size > 10_000_000 for image in images):
-        raise ImagePipelineError("pixhost does not accept images larger than 10 MB")
+    if host.name in {"imgbox", "pixhost"} and any(
+        image.stat().st_size > 10_000_000 for image in images
+    ):
+        raise ImagePipelineError(f"{host.name} does not accept images larger than 10 MB")
     if host.name == "imgbb" and any(image.stat().st_size > 31_000_000 for image in images):
         raise ImagePipelineError("imgbb does not accept images larger than 31 MB")
+    if host.name == "imgbox":
+        return upload_imgbox(session, host, images, settings)
     uploader: Callable[[requests.Session, HostConfig, Path, Settings], UploadResult]
     if host.name == "imgbb":
         uploader = upload_imgbb

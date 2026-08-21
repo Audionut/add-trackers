@@ -60,9 +60,18 @@ def source(
 class FakeUploadResponse:
     """Return one configured JSON payload from an upload request."""
 
-    def __init__(self, payload: dict[str, Any], status_code: int = 200) -> None:
+    def __init__(
+        self,
+        payload: dict[str, Any],
+        status_code: int = 200,
+        *,
+        text: str = "",
+        headers: dict[str, str] | None = None,
+    ) -> None:
         self.payload = payload
         self.status_code = status_code
+        self.text = text
+        self.headers = headers or {}
 
     def json(self) -> dict[str, Any]:
         """Return the configured response body."""
@@ -94,6 +103,68 @@ class RecordingUploadSession:
         return FakeUploadResponse(self.payload)
 
 
+class RecordingImgboxSession:
+    """Emulate and record one anonymous Imgbox batch."""
+
+    def __init__(self, homepage_statuses: list[int] | None = None) -> None:
+        self.homepage_calls: list[dict[str, Any]] = []
+        self.token_calls: list[dict[str, Any]] = []
+        self.upload_calls: list[dict[str, Any]] = []
+        self.homepage_statuses = list(homepage_statuses or [200])
+
+    def get(self, url: str, **kwargs: Any) -> FakeUploadResponse:
+        """Return a synthetic Imgbox page with an authenticity token."""
+
+        self.homepage_calls.append({"url": url, **kwargs})
+        status_code = self.homepage_statuses.pop(0) if self.homepage_statuses else 200
+        return FakeUploadResponse(
+            {},
+            status_code,
+            text='<input name="authenticity_token" value="csrf-token">',
+            headers={"Content-Type": "text/html; charset=utf-8"},
+        )
+
+    def post(self, url: str, **kwargs: Any) -> FakeUploadResponse:
+        """Return a token or one image result while recording its form."""
+
+        if url.endswith("/ajax/token/generate"):
+            self.token_calls.append({"url": url, **kwargs})
+            return FakeUploadResponse(
+                {
+                    "token_id": "token-id",
+                    "token_secret": "token-secret",
+                    "gallery_id": "gallery-id",
+                    "gallery_secret": "gallery-secret",
+                }
+            )
+        field, part = next(iter(kwargs["files"].items()))
+        filename, file_object, content_type = part
+        index = len(self.upload_calls) + 1
+        self.upload_calls.append(
+            {
+                "url": url,
+                "headers": kwargs["headers"],
+                "data": kwargs["data"],
+                "field": field,
+                "filename": filename,
+                "content_type": content_type,
+                "content": file_object.read(),
+            }
+        )
+        return FakeUploadResponse(
+            {
+                "ok": True,
+                "files": [
+                    {
+                        "original_url": f"https://images2.imgbox.com/raw-{index}.png",
+                        "thumbnail_url": f"https://thumbs2.imgbox.com/thumb-{index}.png",
+                        "image_url": f"https://imgbox.com/image-{index}",
+                    }
+                ],
+            }
+        )
+
+
 class CaptureUploadImagesTest(unittest.TestCase):
     def test_loads_four_screenshot_default_and_round_robins_hosts(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -103,6 +174,7 @@ class CaptureUploadImagesTest(unittest.TestCase):
                     {
                         "normal_hosts": [
                             {"name": "pixhost"},
+                            {"name": "imgbox"},
                             {"name": "imgbb", "api_key": "key"},
                             {"name": "onlyimage", "api_key": "key"},
                             {"name": "ptscreens", "api_key": "key"},
@@ -118,11 +190,11 @@ class CaptureUploadImagesTest(unittest.TestCase):
         self.assertEqual(settings.process_limit, 4)
         self.assertEqual(
             [host.name for host in images.normal_host_order(settings.normal_hosts, 1)],
-            ["imgbb", "onlyimage", "ptscreens", "pixhost"],
+            ["imgbox", "imgbb", "onlyimage", "ptscreens", "pixhost"],
         )
         self.assertEqual(
-            [host.name for host in images.normal_host_order(settings.normal_hosts, 4)],
-            ["pixhost", "imgbb", "onlyimage", "ptscreens"],
+            [host.name for host in images.normal_host_order(settings.normal_hosts, 5)],
+            ["pixhost", "imgbox", "imgbb", "onlyimage", "ptscreens"],
         )
 
     def test_onlyimage_and_ptscreens_require_config_api_keys(self) -> None:
@@ -215,6 +287,102 @@ class CaptureUploadImagesTest(unittest.TestCase):
                 "content": b"synthetic image",
             },
         )
+
+    def test_uploads_imgbox_batch_with_one_anonymous_session(self) -> None:
+        """Reuse one Imgbox page and upload token for the full screenshot batch."""
+
+        session = RecordingImgboxSession()
+        with tempfile.TemporaryDirectory() as directory:
+            first = Path(directory) / "screen-01.png"
+            second = Path(directory) / "screen-02.png"
+            first.write_bytes(b"first image")
+            second.write_bytes(b"second image")
+
+            result = images.upload_batch(
+                session,
+                images.HostConfig("imgbox"),
+                [first, second],
+                settings_for_test(),
+            )
+
+        self.assertEqual(
+            result,
+            [
+                images.UploadResult(
+                    "https://thumbs2.imgbox.com/thumb-1.png",
+                    "https://images2.imgbox.com/raw-1.png",
+                    "https://imgbox.com/image-1",
+                ),
+                images.UploadResult(
+                    "https://thumbs2.imgbox.com/thumb-2.png",
+                    "https://images2.imgbox.com/raw-2.png",
+                    "https://imgbox.com/image-2",
+                ),
+            ],
+        )
+        self.assertEqual(len(session.homepage_calls), 1)
+        self.assertEqual(len(session.token_calls), 1)
+        self.assertEqual(len(session.upload_calls), 2)
+        self.assertEqual(
+            [call["content"] for call in session.upload_calls],
+            [b"first image", b"second image"],
+        )
+        for call in session.upload_calls:
+            self.assertEqual(call["url"], "https://imgbox.com/upload/process")
+            self.assertEqual(call["field"], "files[]")
+            self.assertEqual(call["content_type"], "image/png")
+            self.assertEqual(call["headers"]["X-CSRF-Token"], "csrf-token")
+            self.assertEqual(call["data"]["token_id"], "token-id")
+            self.assertEqual(call["data"]["thumbnail_size"], "350r")
+
+    def test_retries_imgbox_after_transient_session_failure(self) -> None:
+        """Retry Imgbox bootstrap before abandoning the assigned normal host."""
+
+        session = RecordingImgboxSession([503, 200])
+        with tempfile.TemporaryDirectory() as directory:
+            image = Path(directory) / "screen.png"
+            image.write_bytes(b"image")
+            with patch.object(images.time, "sleep"):
+                result = images.upload_batch(
+                    session,
+                    images.HostConfig("imgbox"),
+                    [image],
+                    settings_for_test(upload_retries=1),
+                )
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(len(session.homepage_calls), 2)
+        self.assertEqual(len(session.token_calls), 1)
+        self.assertEqual(len(session.upload_calls), 1)
+
+    def test_imgbox_failure_falls_through_to_next_normal_host(self) -> None:
+        """Try the next configured normal host after Imgbox is exhausted."""
+
+        fallback = images.UploadResult(
+            "https://example.test/thumb.png",
+            "https://example.test/raw.png",
+            "https://example.test/view",
+        )
+        settings = settings_for_test(
+            normal_hosts=(images.HostConfig("imgbox"), images.HostConfig("pixhost"))
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            image = Path(directory) / "screen.png"
+            image.write_bytes(b"image")
+            with (
+                patch.object(
+                    images,
+                    "upload_imgbox",
+                    side_effect=images.ImagePipelineError("unavailable"),
+                ),
+                patch.object(images, "upload_pixhost", return_value=fallback),
+            ):
+                host, result = images.upload_normal_round_robin(
+                    RecordingImgboxSession(), settings, [image], 0
+                )
+
+        self.assertEqual(host, "pixhost")
+        self.assertEqual(result, [fallback])
 
     def test_load_groups_requires_preserved_description_bbcode(self) -> None:
         payload = [
