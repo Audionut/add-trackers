@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.1.3
+// @version      0.1.4
 // @description  Add releases from other trackers to UNIT3D similar torrent pages.
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://aither.cc/torrents/similar/1*
@@ -1407,6 +1407,8 @@
     // UNIT3D similar pages encode media type in the route: similar/1 = movies, similar/2 = TV.
     const isMiniSeriesFromSpan = isUnit3dTvPage();
     const isMiniSeries = isMiniSeriesFromSpan;
+    const shouldExcludeEpisodeRelease = (value) =>
+      !isMiniSeriesFromSpan && /S\d{1,3}E\d{1,4}/i.test(String(value || ''));
     // Find the year of the content.
     const pageTitleElement = document.querySelector(
       '.meta__title, .torrent__name, h1:not(.page__title), .page__title'
@@ -2105,7 +2107,7 @@
               return; // Skip this torrent if title information is missing
             }
             let infoText = documentTitle;
-            if (/S\d{1,2}E\d{1,2}/.test(infoText) === false) {
+            if (!shouldExcludeEpisodeRelease(infoText)) {
               torrent_obj.datasetRelease = documentTitle;
               const isInternal =
                 infoText.includes('-hallowed') ||
@@ -4208,7 +4210,7 @@
               let groupText = '';
 
               // Custom processing logic for BHD
-              if (/S\d{1,2}E\d{1,2}/.test(infoText) === false) {
+              if (!shouldExcludeEpisodeRelease(infoText)) {
                 const groups = goodGroups(); // Array of good group names
                 const badGroupsList = badGroups(); // Array of bad group names
                 let matchedGroup = null;
@@ -4413,7 +4415,7 @@
 
               const originalInfoText = d.name;
               let infoText = originalInfoText;
-              if (/S\d{1,2}E\d{1,2}/.test(infoText) === false) {
+              if (!shouldExcludeEpisodeRelease(infoText)) {
                 let groupText = '';
                 const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
                 const badGroupsList = badGroups(); // Get the list of bad group names
@@ -4620,7 +4622,7 @@
 
                 const originalInfoText = d.rls_name;
                 let infoText = originalInfoText;
-                if (/S\d{1,2}E\d{1,2}/.test(infoText) === false) {
+                if (!shouldExcludeEpisodeRelease(infoText)) {
                   let groupText = '';
                   const groups = goodGroups(); // Assuming goodGroups() returns an array of good group names
                   const badGroupsList = badGroups(); // Get the list of bad group names
@@ -4819,7 +4821,7 @@
                 const originalInfoText = d.ReleaseName;
                 let infoText = originalInfoText;
                 if (
-                  /S\d{1,2}E\d{1,2}/.test(infoText) ||
+                  shouldExcludeEpisodeRelease(infoText) ||
                   (!isMiniSeriesFromSpan && /S\d{2}/.test(infoText))
                 ) {
                   return null;
@@ -5191,7 +5193,7 @@
                 const originalInfoText = d.name;
                 let infoText = originalInfoText;
                 if (
-                  /S\d{1,2}E\d{1,2}/.test(infoText) ||
+                  shouldExcludeEpisodeRelease(infoText) ||
                   (!isMiniSeriesFromSpan && /S\d{2}/.test(infoText))
                 ) {
                   return null;
@@ -5338,7 +5340,7 @@
               const api_size = Number.parseInt(d.size); // Original size
               let infoText = d.name;
               if (
-                /S\d{1,2}E\d{1,2}/.test(infoText) ||
+                shouldExcludeEpisodeRelease(infoText) ||
                 (!isMiniSeriesFromSpan && /S\d{2}/.test(infoText))
               ) {
                 return null;
@@ -5929,13 +5931,8 @@
             }
             let infoText = originalInfoText;
 
-            // Check if the info text contains "SxxExx" where "xx" is not known beforehand
-            if (/S\d{1,2}E\d{1,2}/.test(infoText)) {
-              // If the info text contains the pattern, skip further processing
-              return null; // Return null to filter out this torrent object
-            }
+            if (shouldExcludeEpisodeRelease(infoText)) return null;
 
-            // If the info text does not contain the pattern, proceed with further processing
             const files = element.attributes.files || []; // Ensure files is defined
             const container = get_api_files(files); // Call the function with files as argument
             const extension = container.extension;
@@ -6138,7 +6135,6 @@
               Featured: get_api_featured(torrentObj.featured)
             };
 
-            // Returning the final torrent object if it passes the "SxxExx" check
             return mappedObj;
           })
           .filter((obj) => obj !== null); // Filter out the null objects (skipped torrents)
@@ -6945,7 +6941,7 @@
         const id = `unit3d_external_${cssSafe(String(torrent.site || 'site'))}_${index}`;
         registerUnit3dExternalDetailTorrent(id, torrent);
         const header = buildUnit3dExternalHeaderRow(torrent, id);
-        const detail = buildUnit3dExternalDetailRow(torrent, id);
+        const detail = buildUnit3dExternalDetailRow(torrent, id, header.dataset.unit3dTvGroupKey);
         rows.push(header, detail);
         doms.push({
           discount: torrent.discount || 'None',
@@ -7915,7 +7911,7 @@ ${tcsHighlightCss}
       const releaseName = buildExternalReleaseName(torrent);
       const releaseDisplayName = formatExternalReleaseDisplayText(torrent, releaseName);
       const unit3dQuality = unit3dQualityId(torrent);
-      const context = getCurrentUnit3dRowContext();
+      const context = getUnit3dExternalRowContext(torrent, releaseName);
 
       row.className = `group_torrent group_torrent_header ${EXTERNAL_ROW_CLASS} ${id}`;
       row.id = `group_torrent_header_${id}`;
@@ -7936,6 +7932,7 @@ ${tcsHighlightCss}
       row.dataset.unit3dAddReleasesTracker = torrent.site || torrent.tracker || '';
       row.dataset.unit3dAddReleasesDiscount = torrent.discount || 'None';
       row.dataset.unit3dAddReleasesQuality = displayQuality(torrent);
+      row.hidden = context.scope !== 'movie';
 
       row.append(
         buildUnit3dExternalOverviewCell(torrent, id, releaseDisplayName),
@@ -8401,11 +8398,11 @@ ${tcsHighlightCss}
       return cell;
     }
 
-    function buildUnit3dExternalDetailRow(torrent, id) {
+    function buildUnit3dExternalDetailRow(torrent, id, tvGroupKey) {
       const row = document.createElement('tr');
       row.className = `torrent_info_row unit3d-ptp-detail-row ${EXTERNAL_ROW_CLASS}-detail`;
       row.dataset.unit3dTorrentId = id;
-      row.dataset.unit3dTvGroupKey = getCurrentUnit3dRowContext().groupKey;
+      row.dataset.unit3dTvGroupKey = tvGroupKey;
       row.hidden = true;
 
       const cell = document.createElement('td');
@@ -8518,6 +8515,46 @@ ${tcsHighlightCss}
       if (/\b1080p|1080i\b/i.test(text)) return '1080p';
       if (/\b720p\b/i.test(text)) return '720p';
       return 'SD';
+    }
+
+    function getUnit3dExternalRowContext(torrent, releaseName) {
+      const current = getCurrentUnit3dRowContext();
+      if (!isUnit3dTvPage()) return current;
+
+      const text = [releaseName, torrent.datasetRelease, torrent.info_text, torrent.title]
+        .filter(Boolean)
+        .join(' ');
+      const match =
+        /(?:^|[^A-Za-z0-9])S(\d{1,3})(?!\d)(?:[\s._-]*E(\d{1,4})(?!\d))?/i.exec(text) ||
+        /\bSeason[\s._-]*(\d{1,3})(?!\d)(?:[\s./_-]*(?:Episode|Ep)[\s._-]*(\d{1,4})(?!\d))?/i.exec(
+          text
+        );
+      if (!match) return current;
+
+      const season = Number.parseInt(match[1], 10);
+      const episode = match[2] === undefined ? null : Number.parseInt(match[2], 10);
+      const scope = episode === null ? 'season' : 'episode';
+      const groupKey = `s${String(season).padStart(3, '0')}:${
+        scope === 'season' ? 'season' : `e${String(episode).padStart(4, '0')}`
+      }`;
+      const matchingRow = [
+        ...document.querySelectorAll(
+          '#torrent-table tr.group_torrent.group_torrent_header:not(.unit3d-add-releases-external)'
+        )
+      ].find((row) => row.dataset.unit3dTvGroupKey === groupKey);
+
+      return {
+        episode:
+          matchingRow?.dataset.unit3dTvEpisodeSort ||
+          (episode === null ? 'Infinity' : String(episode)),
+        groupKey,
+        groupLabel:
+          matchingRow?.dataset.unit3dTvGroupLabel ||
+          `Season ${season} / ${scope === 'season' ? 'Season Packs' : `Episode ${episode}`}`,
+        scope: matchingRow?.dataset.unit3dTvScope || scope,
+        scopeSort: matchingRow?.dataset.unit3dTvScopeSort || (scope === 'season' ? '0' : '1'),
+        season: matchingRow?.dataset.unit3dTvSeasonSort || String(season)
+      };
     }
 
     function getCurrentUnit3dRowContext() {
@@ -9759,10 +9796,10 @@ ${tcsHighlightCss}
         }
 
         if (include_tracker && include_discount && include_quality && include_text) {
-          e.dom_path.style.display = 'table-row';
+          setFilteredRowVisibility(e.dom_path, true);
           setFilterDetailRowsDisplay(e, true);
         } else {
-          e.dom_path.style.display = 'none';
+          setFilteredRowVisibility(e.dom_path, false);
           setFilterDetailRowsDisplay(e, false);
         }
       });
@@ -9770,7 +9807,7 @@ ${tcsHighlightCss}
       if (!any_include) {
         doms.forEach((e) => {
           if (!any_exclude || e.dom_path.style.display !== 'none') {
-            e.dom_path.style.display = 'table-row';
+            setFilteredRowVisibility(e.dom_path, true);
             setFilterDetailRowsDisplay(e, true);
           }
         });
@@ -9788,16 +9825,17 @@ ${tcsHighlightCss}
       }
     };
 
+    function setFilteredRowVisibility(row, visible) {
+      if (visible) {
+        row.style.removeProperty('display');
+      } else {
+        row.style.display = 'none';
+      }
+    }
+
     function setFilterDetailRowsDisplay(entry, visible) {
       getFilterDetailRows(entry).forEach((detail) => {
-        if (!visible) {
-          detail.style.display = 'none';
-          return;
-        }
-        const expanded =
-          entry.dom_path.querySelector('a.torrent-info-link')?.getAttribute('aria-expanded') ===
-          'true';
-        if (expanded) detail.style.display = 'table-row';
+        setFilteredRowVisibility(detail, visible);
       });
     }
 
