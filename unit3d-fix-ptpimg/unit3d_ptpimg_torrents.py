@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 r"""Save UNIT3D torrents whose descriptions contain ptpimg.me image BBCode.
 
-Create an ignored ``config.unit3d.json`` file:
+Create the ignored shared ``config.unit3d.json`` file:
 
-[
-  {
-    "name": "Aither",
-    "url": "https://aither.cc",
-    "api_token": "your API token"
-  }
-]
+    {
+      "sites": [
+        {
+          "name": "Aither",
+          "url": "https://aither.cc",
+          "api_token": "your API token"
+        }
+      ]
+    }
 
 Then run from PowerShell:
 
@@ -111,11 +113,12 @@ def load_sites(path: Path) -> list[Site]:
     except json.JSONDecodeError as error:
         raise Unit3dError(f"Invalid JSON in {path}: {error}") from error
 
-    if not isinstance(raw, list) or not raw:
-        raise Unit3dError("Config must be a non-empty JSON array of sites")
+    raw_sites = raw.get("sites") if isinstance(raw, dict) else raw
+    if not isinstance(raw_sites, list) or not raw_sites:
+        raise Unit3dError("Config must contain a non-empty sites array")
 
     sites: list[Site] = []
-    for index, item in enumerate(raw, start=1):
+    for index, item in enumerate(raw_sites, start=1):
         if not isinstance(item, dict):
             raise Unit3dError(f"Config entry {index} must be an object")
 
@@ -354,7 +357,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Save UNIT3D torrents with ptpimg.me image BBCode to JSON."
     )
-    parser.add_argument("config", type=Path, help="JSON site config containing each site's API token")
+    parser.add_argument(
+        "config", type=Path, help="Shared JSON config containing the sites array"
+    )
     parser.add_argument("--uploader", required=True, help="Only search torrents uploaded by this username")
     parser.add_argument(
         "--output",

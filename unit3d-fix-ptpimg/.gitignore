@@ -1,0 +1,9 @@
+config*.json
+__pycache__/
+*.py[cod]
+unit3d_ptpimg_results.json
+results.json
+qui_torrent_matches.json
+matching_results.json
+matching_results.7z
+non_matching_results.json

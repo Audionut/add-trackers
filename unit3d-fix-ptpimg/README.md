@@ -7,10 +7,12 @@ qui, and capture replacement screenshots for the matched files.
 Use a recent version of qBitTorrent for the better torrent comment handling,
 so that matching torrents from other sites can have their urls pulled.
 
-Has resume handling, so that interrupted `capture_upload_images.py`
-processing can resume past existing processed content.
+Both the qui matcher and image-capture stage checkpoint results as they arrive,
+so interrupted processing can resume past completed content.
 
-Disc content handling is currently lacking/not working.
+Disc releases are supported through title/year fuzzy matching with source-tracker
+evidence. Capture uses the largest VOB in a DVD tree or the largest M2TS in a
+Blu-ray tree.
 
 ```text
 UNIT3D sites
@@ -47,32 +49,64 @@ ffmpeg -version
 ffprobe -version
 ```
 
-Configuration files are read directly by the scripts; API keys are not read
+## Configuration
+
+All three scripts read the same `config.unit3d.json` file. API keys are not read
 from environment variables. Files beginning with `config` are ignored by this
 repository, but you should still avoid sharing or committing them.
 
-## 1. Find UNIT3D torrents containing PTPImg BBCode
-
-Create `config.unit3d.json` in the repository root:
+Create `config.unit3d.json` in the repository root. Remove hosts you do not use
+and disable special hosts as needed:
 
 ```json
-[
-  {
-    "name": "Aither",
-    "url": "https://aither.cc",
-    "api_token": "YOUR_AITHER_API_TOKEN"
+{
+  "sites": [
+    {
+      "name": "Aither",
+      "url": "https://aither.cc",
+      "api_token": "YOUR_AITHER_API_TOKEN"
+    },
+    {
+      "name": "Another site",
+      "url": "https://tracker.example",
+      "api_token": "YOUR_OTHER_API_TOKEN",
+      "api_path": "/api/torrents/filter"
+    }
+  ],
+  "qui_proxy_url": "http://localhost:7476/proxy/YOUR_QUI_CLIENT_API_KEY",
+  "normal_hosts": [
+    {"name": "pixhost"},
+    {"name": "imgbox"},
+    {"name": "imgbb", "api_key": "YOUR_IMGBB_API_KEY"},
+    {"name": "onlyimage", "api_key": "YOUR_ONLYIMAGE_API_KEY"},
+    {"name": "ptscreens", "api_key": "YOUR_PTSCREENS_API_KEY"}
+  ],
+  "lostimg": {
+    "enabled": true,
+    "api_key": "YOUR_LOSTIMG_API_KEY"
   },
-  {
-    "name": "Another site",
-    "url": "https://tracker.example",
-    "api_token": "YOUR_OTHER_API_TOKEN",
-    "api_path": "/api/torrents/filter"
-  }
-]
+  "reelflix": {
+    "enabled": true,
+    "api_key": "YOUR_REELFLIX_IMAGE_HOST_API_KEY"
+  },
+  "screenshots": 4,
+  "process_limit": 4,
+  "thumbnail_size": 350,
+  "ffmpeg_compression": 6,
+  "tone_map_hdr": true,
+  "request_timeout": 60,
+  "upload_retries": 3,
+  "ffmpeg_path": "",
+  "ffprobe_path": ""
+}
 ```
 
 `api_path` is optional and defaults to `/api/torrents/filter`. Site URLs must
 be absolute HTTPS URLs without embedded credentials, queries, or fragments.
+You can keep the shared config elsewhere, for example `D:\config.unit3d.json`,
+as long as every command receives the same path.
+
+## 1. Find UNIT3D torrents containing PTPImg BBCode
 
 Run the search for one uploader:
 
@@ -126,39 +160,43 @@ preventing large file listings from being copied into the output.
 
 ## 2. Match the results to torrents in qui
 
-Create `config.qui.json`:
-
-```json
-{
-  "qui_proxy_url": "http://localhost:7476/proxy/YOUR_QUI_CLIENT_API_KEY"
-}
-```
-
 Run the matcher:
 
 ```powershell
 py .\unit3d-fix-ptpimg\qui_match_torrents.py `
   .\unit3d_ptpimg_results.json `
-  .\config.qui.json `
+  .\config.unit3d.json `
   --output .\qui_torrent_matches.json
 ```
 
-For each source release, the script:
+The matcher follows the same search handling as the LST-specific pipeline. For
+each normalized source group, it:
 
-1. Searches qui using the UNIT3D release name, torrent folder, and retained
-   single filename when available.
-2. Normalizes case, spaces, dots, brackets, dashes, and common video extensions
-   so differently formatted single-file names can match.
-3. Paginates through all qui search results in groups of 100.
-4. Includes other client torrents sharing the same content path.
-5. Reads torrent comments through the properties endpoint and extracts safe
-   tracker links while excluding announce URLs and credential-bearing links.
+1. Loads qui's complete paginated torrent inventory once.
+2. Searches with each UNIT3D release name, torrent folder, and retained single
+   filename, plus a compact title/year or title/season term. Brackets and Unicode
+   symbols are filtered in the same way as Upload Assistant.
+3. Enriches candidates through qui's properties, files, and trackers endpoints.
+4. Accepts an exact source details link in the qBittorrent comment, a normalized
+   torrent/content/filename match, or a compatible fuzzy release name backed by
+   a tracker belonging to one of the source sites.
+5. Rejects fuzzy candidates with conflicting years, seasons, resolutions, disc
+   sizes, sources, NTSC/PAL standards, or disc-image versus REMUX types.
+6. Includes every other client torrent sharing the matched absolute content path.
+7. Saves all qBittorrent filenames, safe comment links, tracker hostnames, match
+   reasons, and fuzzy scores without persisting announce URLs, URL queries,
+   fragments, or passkeys.
+
+For example, `Pakeezah 1972 NTSC DVD9 DD 5.1` also searches `pakeezah
+1972`, allowing it to find `Pakeezah.1972.Shemaroo.DVD9.Untouched` when the
+candidate has the appropriate source-site tracker.
 
 Example output:
 
 ```json
 [
   {
+    "match_schema_version": 3,
     "name": "Example Movie 2024 1080p BluRay REMUX AVC-GROUP",
     "source_torrents": [
       {
@@ -177,9 +215,19 @@ Example output:
         "hash": "0123456789abcdef0123456789abcdef01234567",
         "name": "Example.Movie.2024.1080p.BluRay.REMUX.AVC-GROUP.mkv",
         "content_path": "D:\\Movies\\Example.Movie.2024.1080p.BluRay.REMUX.AVC-GROUP.mkv",
+        "file_names": [
+          "Example.Movie.2024.1080p.BluRay.REMUX.AVC-GROUP.mkv"
+        ],
+        "tracker_hosts": [
+          "tracker.aither.cc"
+        ],
         "site_links": [
           "https://lst.gg/torrents/67890",
           "https://reelflix.cc/torrents/24680"
+        ],
+        "match_reasons": [
+          "exact_torrent_name",
+          "exact_filename"
         ]
       }
     ],
@@ -194,64 +242,23 @@ Example output:
 Groups with no qui match remain in the output with an empty `client_matches`
 array. `content_path` is the full path reported by the client.
 
+Each completed group or search error is checkpointed atomically as soon as it is
+received. Rerunning skips successful results only when the complete source group
+and matcher schema are unchanged; failed, changed, stale-schema, and legacy
+results are searched again. Groups no longer present in the collector input are
+pruned from the checkpoint.
+
 ## 3. Capture and upload replacement screenshots
-
-Create `config.images.json`. The example below enables every supported host;
-remove hosts you do not use and disable special hosts as needed.
-
-```json
-{
-  "normal_hosts": [
-    {
-      "name": "pixhost"
-    },
-    {
-      "name": "imgbox"
-    },
-    {
-      "name": "imgbb",
-      "api_key": "YOUR_IMGBB_API_KEY"
-    },
-    {
-      "name": "onlyimage",
-      "api_key": "YOUR_ONLYIMAGE_API_KEY"
-    },
-    {
-      "name": "ptscreens",
-      "api_key": "YOUR_PTSCREENS_API_KEY"
-    }
-  ],
-  "lostimg": {
-    "enabled": true,
-    "api_key": "YOUR_LOSTIMG_API_KEY"
-  },
-  "reelflix": {
-    "enabled": true,
-    "api_key": "YOUR_REELFLIX_IMAGE_HOST_API_KEY"
-  },
-  "screenshots": 4,
-  "process_limit": 4,
-  "thumbnail_size": 350,
-  "ffmpeg_compression": 6,
-  "tone_map_hdr": true,
-  "request_timeout": 60,
-  "upload_retries": 3,
-  "ffmpeg_path": "",
-  "ffprobe_path": ""
-}
-```
 
 Run the capture and upload stage:
 
 ```powershell
 py .\unit3d-fix-ptpimg\capture_upload_images.py `
   .\qui_torrent_matches.json `
-  .\config.images.json `
+  .\config.unit3d.json `
   --matching-output .\matching_results.json `
   --non-matching-output .\non_matching_results.json
 ```
-
-You can pass a config elsewhere, for example `D:\config.images.json`.
 
 ### Resume an interrupted run
 
@@ -295,7 +302,7 @@ stops with exit code `2` if two paths refer to the same file.
 | `thumbnail_size` | `350` | Value placed in `[img=...]`; allowed range is 1–1000. |
 | `ffmpeg_compression` | `6` | PNG compression level; allowed range is 0–9. |
 | `tone_map_hdr` | `true` | Tone-map detected PQ or HLG video to SDR before upload. |
-| `request_timeout` | `60` | Timeout in seconds for an image-host request; allowed range is 1–300. |
+| `request_timeout` | `60` | Timeout in seconds for qui and image-host requests; allowed range is 1–300. |
 | `upload_retries` | `3` | Retries after the first upload attempt; allowed range is 0–5. |
 | `ffmpeg_path` | `""` | Full executable path. Leave empty to search `PATH`. |
 | `ffprobe_path` | `""` | Full executable path. Leave empty to search `PATH`. |
@@ -438,6 +445,7 @@ check `processing_error` in `matching_results.json` instead.
 | `unit3d_ptpimg_torrents.py` | `1` | At least one site failed; partial results were still saved. |
 | `unit3d_ptpimg_torrents.py` | `2` | Configuration or output handling failed. |
 | `qui_match_torrents.py` | `0` | Search and output completed. Comment-property warnings may still be printed. |
+| `qui_match_torrents.py` | `1` | At least one group search failed; partial results and errors were checkpointed. |
 | `qui_match_torrents.py` | `2` | Input, config, qui response, or output handling failed. |
 | `capture_upload_images.py` | `0` | Every matching release and applicable image host succeeded. |
 | `capture_upload_images.py` | `1` | At least one capture or image-host operation failed; inspect the saved JSON. |
@@ -467,7 +475,7 @@ operating systems, their media paths must refer to the same accessible path.
 ### FFmpeg or ffprobe was not found
 
 Add the FFmpeg `bin` directory to `PATH`, or set the full escaped paths in
-`config.images.json` using `ffmpeg_path` and `ffprobe_path`.
+`config.unit3d.json` using `ffmpeg_path` and `ffprobe_path`.
 
 ### An image host returns HTTP 401 or 403
 

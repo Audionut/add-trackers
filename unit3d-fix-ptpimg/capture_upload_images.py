@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 r"""Capture replacement screenshots and upload them for matched UNIT3D torrents.
 
-Create an ignored ``config.images.json`` file. API keys are read directly from
-this file, never from environment variables:
+Use the ignored shared ``config.unit3d.json`` file. API keys are read directly
+from this file, never from environment variables. This stage uses these keys:
 
 {
   "normal_hosts": [
@@ -23,7 +23,7 @@ this file, never from environment variables:
 
 Then run from the ``unit3d-fix-ptpimg`` directory in PowerShell:
 
-  py .\capture_upload_images.py .\qui_torrent_matches.json .\config.images.json --matching-output .\matching_results.json --non-matching-output .\non_matching_results.json
+  py .\capture_upload_images.py .\qui_torrent_matches.json .\config.unit3d.json --matching-output .\matching_results.json --non-matching-output .\non_matching_results.json
 
 One accessible client match is selected per release. Four frames are captured
 concurrently by default and uploaded to one normal host, rotating the starting
@@ -1354,7 +1354,9 @@ def parse_args() -> argparse.Namespace:
         description="Capture and upload replacement screenshots for qui-matched torrents."
     )
     parser.add_argument("input", type=Path, help="JSON output from qui_match_torrents.py")
-    parser.add_argument("config", type=Path, help="JSON image-host and ffmpeg configuration")
+    parser.add_argument(
+        "config", type=Path, help="Shared JSON config containing image-host settings"
+    )
     parser.add_argument(
         "--matching-output",
         type=Path,
