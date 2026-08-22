@@ -1,0 +1,10 @@
+config*.json
+cookies*.txt
+__pycache__/
+*.py[cod]
+lst_ptpimg_results.json
+qui_torrent_matches.json
+replacement_results.json
+non_matching_results.json
+submission_results.json
+site_matches/
