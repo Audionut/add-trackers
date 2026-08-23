@@ -420,6 +420,92 @@ class CaptureUploadImagesTest(unittest.TestCase):
 
         self.assertEqual(selected, large)
 
+    def test_selects_video_ts_directory_for_dvd_folder(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            video_ts = Path(directory) / "VIDEO_TS"
+            video_ts.mkdir()
+            (video_ts / "VIDEO_TS.IFO").write_bytes(b"control")
+            (video_ts / "VTS_01_1.VOB").write_bytes(b"title")
+
+            selected = images.media_file_for_path(directory)
+
+        self.assertEqual(selected, video_ts)
+
+    def test_selects_longest_authored_dvd_title(self) -> None:
+        durations = [715.5, 11050.833, 2034.666]
+        responses = [
+            subprocess.CompletedProcess(
+                [],
+                0,
+                json.dumps(
+                    {
+                        "streams": [{"color_transfer": "BT470BG"}],
+                        "format": {"duration": duration},
+                    }
+                ),
+                "",
+            )
+            for duration in durations
+        ]
+        responses.append(
+            subprocess.CompletedProcess(
+                [],
+                1,
+                "{}",
+                "DVDOpenFilePath:findDVDFile /VIDEO_TS/VTS_03_0.IFO failed\n"
+                "DVDOpenFilePath:findDVDFile /VIDEO_TS/VTS_03_0.BUP failed",
+            )
+        )
+        commands: list[list[str]] = []
+
+        def run_ffprobe(
+            command: list[str], **_: Any
+        ) -> subprocess.CompletedProcess[str]:
+            commands.append(command)
+            return responses.pop(0)
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(images.subprocess, "run", side_effect=run_ffprobe),
+        ):
+            video_ts = Path(directory) / "VIDEO_TS"
+            video_ts.mkdir()
+            info = images.probe_video("ffprobe", video_ts)
+
+        self.assertEqual(info, images.VideoInfo(11050.833, "bt470bg", 2))
+        self.assertEqual(
+            [command[command.index("-title") + 1] for command in commands],
+            ["1", "2", "3", "4"],
+        )
+
+    def test_dvd_probe_failure_is_not_treated_as_end_of_titles(self) -> None:
+        responses = [
+            subprocess.CompletedProcess(
+                [],
+                0,
+                json.dumps(
+                    {
+                        "streams": [{"color_transfer": "BT470BG"}],
+                        "format": {"duration": 715.5},
+                    }
+                ),
+                "",
+            ),
+            subprocess.CompletedProcess([], 1, "{}", "disk I/O failure"),
+        ]
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(images.subprocess, "run", side_effect=responses),
+            self.assertRaisesRegex(
+                images.ImagePipelineError,
+                "failed while reading DVD title 2",
+            ),
+        ):
+            video_ts = Path(directory) / "VIDEO_TS"
+            video_ts.mkdir()
+            images.probe_video("ffprobe", video_ts)
+
     def test_uses_upbrr_timestamp_windows_and_hdr_filter(self) -> None:
         self.assertEqual(
             images.screenshot_timestamps("Movie 2024 1080p", 600, 4),
@@ -432,6 +518,77 @@ class CaptureUploadImagesTest(unittest.TestCase):
         self.assertIn(
             "tonemap=tonemap=mobius",
             images.ffmpeg_filter(images.VideoInfo(600, "smpte2084"), True),
+        )
+
+    def test_capture_decodes_preroll_before_requested_timestamp(self) -> None:
+        for duration, expected_seeks in (
+            (600, ["25.000", "5.000"]),
+            (60, ["0.000", "3.000"]),
+        ):
+            with self.subTest(duration=duration):
+                commands: list[list[str]] = []
+
+                def run_ffmpeg(
+                    command: list[str], **_: Any
+                ) -> subprocess.CompletedProcess[bytes]:
+                    commands.append(command)
+                    return subprocess.CompletedProcess(command, 0, b"", b"")
+
+                with (
+                    tempfile.TemporaryDirectory() as directory,
+                    patch.object(images.subprocess, "run", side_effect=run_ffmpeg),
+                    patch.object(images, "valid_png", return_value=True),
+                ):
+                    media_path = Path(directory) / "movie.mkv"
+                    images.capture_screenshots(
+                        "ffmpeg",
+                        media_path,
+                        "Example Movie 2026",
+                        images.VideoInfo(duration, ""),
+                        settings_for_test(screenshots=1, process_limit=1),
+                        Path(directory),
+                    )
+
+                command = commands[0]
+                seek_positions = [
+                    index for index, argument in enumerate(command) if argument == "-ss"
+                ]
+                self.assertEqual(
+                    [command[index + 1] for index in seek_positions],
+                    expected_seeks,
+                )
+                input_position = command.index("-i")
+                self.assertLess(seek_positions[0], input_position)
+                self.assertGreater(seek_positions[1], input_position)
+
+    def test_capture_uses_selected_dvd_title(self) -> None:
+        commands: list[list[str]] = []
+
+        def run_ffmpeg(
+            command: list[str], **_: Any
+        ) -> subprocess.CompletedProcess[bytes]:
+            commands.append(command)
+            return subprocess.CompletedProcess(command, 0, b"", b"")
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(images.subprocess, "run", side_effect=run_ffmpeg),
+            patch.object(images, "valid_png", return_value=True),
+        ):
+            images.capture_screenshots(
+                "ffmpeg",
+                Path(directory) / "VIDEO_TS",
+                "Example Movie 2026 DVD",
+                images.VideoInfo(600, "", 2),
+                settings_for_test(screenshots=1, process_limit=1),
+                Path(directory),
+            )
+
+        command = commands[0]
+        input_position = command.index("-i")
+        self.assertEqual(
+            command[input_position - 4 : input_position],
+            ["-f", "dvdvideo", "-title", "2"],
         )
 
     def test_captures_frames_concurrently_up_to_process_limit(self) -> None:
@@ -475,6 +632,86 @@ class CaptureUploadImagesTest(unittest.TestCase):
             [path.name for path in captured],
             ["screen-01.png", "screen-02.png", "screen-03.png", "screen-04.png"],
         )
+
+    def test_recognizes_allow_listed_ffmpeg_frame_corruption(self) -> None:
+        diagnostics = {
+            b"[h264] Error while decoding stream #0:0": "error while decoding",
+            b"Invalid data found when processing input": "invalid data found when processing input",
+            b"non-existing PPS 0 referenced": "non-existing pps",
+            b"Incomplete frame": "incomplete frame",
+            b"corrupt decoded frame in stream 0": "corrupt decoded frame",
+            b"corrupt input packet in stream 0": "corrupt input packet",
+        }
+        for stderr, expected in diagnostics.items():
+            with self.subTest(stderr=stderr):
+                self.assertEqual(
+                    images.ffmpeg_frame_corruption_indicator(stderr),
+                    expected,
+                )
+        self.assertIsNone(
+            images.ffmpeg_frame_corruption_indicator(b"concealing one decoding error")
+        )
+
+    def test_frame_corruption_hard_fails_without_retry_and_deletes_output(self) -> None:
+        """Reject a PNG when FFmpeg reports decoder corruption despite exit code zero."""
+
+        calls: list[str] = []
+        first_started = threading.Event()
+        corrupt_output_deleted = threading.Event()
+        original_unlink = Path.unlink
+
+        def run_ffmpeg(command: list[str], **_: Any) -> subprocess.CompletedProcess[bytes]:
+            output = Path(command[-1])
+            calls.append(output.name)
+            output.write_bytes(b"candidate")
+            if output.name == "screen-01.png":
+                first_started.set()
+                if not corrupt_output_deleted.wait(timeout=5):
+                    raise AssertionError("corrupt output was not deleted")
+                return subprocess.CompletedProcess(command, 0, b"", b"pblack:100")
+            if output.name == "screen-02.png":
+                if not first_started.wait(timeout=5):
+                    raise AssertionError("first capture did not start")
+                return subprocess.CompletedProcess(
+                    command,
+                    0,
+                    b"",
+                    b"[h264] Error while decoding stream #0:0",
+                )
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                b"",
+                b"",
+            )
+
+        def unlink(path: Path, missing_ok: bool = False) -> None:
+            original_unlink(path, missing_ok=missing_ok)
+            if path.name == "screen-02.png":
+                corrupt_output_deleted.set()
+
+        with tempfile.TemporaryDirectory() as directory:
+            output_dir = Path(directory)
+            with (
+                patch.object(images.subprocess, "run", side_effect=run_ffmpeg),
+                patch.object(images, "valid_png", return_value=True),
+                patch.object(Path, "unlink", new=unlink),
+                self.assertRaisesRegex(
+                    images.ImagePipelineError,
+                    "frame corruption.*error while decoding",
+                ),
+            ):
+                images.capture_screenshots(
+                    "ffmpeg",
+                    output_dir / "movie.mkv",
+                    "Example Movie 2026",
+                    images.VideoInfo(600, ""),
+                    settings_for_test(screenshots=3, process_limit=2),
+                    output_dir,
+                )
+
+            self.assertFalse((output_dir / "screen-02.png").exists())
+        self.assertCountEqual(calls, ["screen-01.png", "screen-02.png"])
 
     def test_interrupt_cancels_queued_ffmpeg_captures(self) -> None:
         """Do not start queued FFmpeg work after the main thread is interrupted."""

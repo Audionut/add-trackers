@@ -49,7 +49,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import CancelledError, ThreadPoolExecutor
 from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
@@ -84,8 +84,17 @@ REELFLIX_HOSTS = {
     "www.reelflix.xyz",
 }
 BLACK_FRAME_OFFSETS = (0, 2, 4, 8, 16, 32, 64, -2, -4, -8, -16, -32, -64)
+CAPTURE_PREROLL_SECONDS = 5.0
 TV_RELEASE = re.compile(r"(?i)(?:^|[ ._-])S\d{1,3}(?:E\d{1,3})?(?:[ ._-]|$)")
 BLACK_FRAME = re.compile(rb"\bpblack:100(?:\.0+)?\b")
+FFMPEG_FRAME_CORRUPTION_INDICATORS = (
+    "error while decoding",
+    "invalid data found when processing input",
+    "non-existing pps",
+    "incomplete frame",
+    "corrupt decoded frame",
+    "corrupt input packet",
+)
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 UploadValue = TypeVar("UploadValue")
 
@@ -122,10 +131,11 @@ class Settings:
 
 @dataclass(frozen=True)
 class VideoInfo:
-    """Duration and transfer characteristics returned by ffprobe."""
+    """Duration, transfer characteristics, and optional authored DVD title."""
 
     duration: float
     color_transfer: str
+    dvd_title: int | None = None
 
 
 @dataclass(frozen=True)
@@ -391,10 +401,10 @@ def collect_matching_sites(
 
 
 def media_file_for_path(content_path: str) -> Path:
-    """Resolve a client content path to one representative video file.
+    """Resolve a client content path to one FFmpeg input.
 
-    A direct video file is used as-is. For folders, the largest supported video
-    file is selected, which covers ordinary folders and Blu-ray ``STREAM`` trees.
+    A DVD resolves to its ``VIDEO_TS`` directory so FFmpeg can follow the authored
+    title. Other folders use their largest supported video file.
     """
 
     path = Path(content_path)
@@ -404,6 +414,27 @@ def media_file_for_path(content_path: str) -> Path:
         return path
     if not path.is_dir():
         raise ImagePipelineError(f"content path does not exist: {path}")
+
+    try:
+        video_ts = (
+            path
+            if path.name.casefold() == "video_ts"
+            else next(
+                (
+                    candidate
+                    for candidate in path.iterdir()
+                    if candidate.is_dir() and candidate.name.casefold() == "video_ts"
+                ),
+                None,
+            )
+        )
+        if video_ts is not None and any(
+            candidate.is_file() and candidate.name.casefold() == "video_ts.ifo"
+            for candidate in video_ts.iterdir()
+        ):
+            return video_ts
+    except OSError as error:
+        raise ImagePipelineError(f"cannot scan content path {path}: {error}") from error
 
     largest: tuple[int, Path] | None = None
     try:
@@ -455,55 +486,103 @@ def resolve_program(configured: str, name: str) -> str:
 
 
 def probe_video(ffprobe: str, path: Path) -> VideoInfo:
-    """Probe the first video stream and container duration."""
+    """Probe a video file or select the longest authored DVD title."""
 
-    command = [
-        ffprobe,
-        "-v",
-        "error",
-        "-select_streams",
-        "v:0",
-        "-show_entries",
-        "stream=duration,color_transfer:format=duration",
-        "-of",
-        "json",
-        str(path),
-    ]
-    try:
-        completed = subprocess.run(
-            command,
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=120,
+    dvd_source = path.is_dir()
+    best_info: VideoInfo | None = None
+    title_numbers = range(1, 100) if dvd_source else (None,)
+    for dvd_title in title_numbers:
+        dvd_options = (
+            ["-f", "dvdvideo", "-title", str(dvd_title)]
+            if dvd_title is not None
+            else []
         )
-    except (OSError, subprocess.TimeoutExpired) as error:
-        raise ImagePipelineError(f"ffprobe failed for {path}: {type(error).__name__}") from error
-    if completed.returncode != 0:
-        raise ImagePipelineError(f"ffprobe returned exit code {completed.returncode} for {path}")
-    try:
-        payload = json.loads(completed.stdout)
-    except json.JSONDecodeError as error:
-        raise ImagePipelineError(f"ffprobe returned invalid JSON for {path}") from error
-    streams = payload.get("streams", []) if isinstance(payload, dict) else []
-    stream = streams[0] if isinstance(streams, list) and streams and isinstance(streams[0], dict) else {}
-    format_data = payload.get("format", {}) if isinstance(payload, dict) else {}
-    raw_duration = format_data.get("duration") if isinstance(format_data, dict) else None
-    if raw_duration is None and isinstance(stream, dict):
-        raw_duration = stream.get("duration")
-    try:
-        duration = float(raw_duration)
-    except (TypeError, ValueError) as error:
-        raise ImagePipelineError(f"ffprobe returned no usable duration for {path}") from error
-    if duration <= 0:
+        command = [
+            ffprobe,
+            "-v",
+            "error",
+            *dvd_options,
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=duration,color_transfer:format=duration",
+            "-of",
+            "json",
+            str(path),
+        ]
+        try:
+            completed = subprocess.run(
+                command,
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=120,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise ImagePipelineError(
+                f"ffprobe failed for {path}: {type(error).__name__}"
+            ) from error
+        if completed.returncode != 0:
+            diagnostics = completed.stderr.casefold()
+            dvd_titles_exhausted = (
+                "dvdopenfilepath:finddvdfile" in diagnostics
+                and "_0.ifo failed" in diagnostics
+                and "_0.bup failed" in diagnostics
+            )
+            if dvd_source and best_info is not None and dvd_titles_exhausted:
+                break
+            if dvd_source:
+                raise ImagePipelineError(
+                    f"ffprobe failed while reading DVD title {dvd_title} from {path}; "
+                    "FFmpeg with dvdvideo support and a readable VIDEO_TS is required"
+                )
+            raise ImagePipelineError(
+                f"ffprobe returned exit code {completed.returncode} for {path}"
+            )
+        try:
+            payload = json.loads(completed.stdout)
+        except json.JSONDecodeError as error:
+            raise ImagePipelineError(f"ffprobe returned invalid JSON for {path}") from error
+        streams = payload.get("streams", []) if isinstance(payload, dict) else []
+        stream = (
+            streams[0]
+            if isinstance(streams, list) and streams and isinstance(streams[0], dict)
+            else {}
+        )
+        format_data = payload.get("format", {}) if isinstance(payload, dict) else {}
+        raw_duration = (
+            format_data.get("duration") if isinstance(format_data, dict) else None
+        )
+        if raw_duration is None and isinstance(stream, dict):
+            raw_duration = stream.get("duration")
+        try:
+            duration = float(raw_duration)
+        except (TypeError, ValueError) as error:
+            if dvd_source:
+                continue
+            raise ImagePipelineError(
+                f"ffprobe returned no usable duration for {path}"
+            ) from error
+        if duration <= 0:
+            if dvd_source:
+                continue
+            raise ImagePipelineError(f"ffprobe returned no usable duration for {path}")
+        color_transfer = stream.get("color_transfer", "")
+        info = VideoInfo(
+            duration=duration,
+            color_transfer=(
+                color_transfer.casefold() if isinstance(color_transfer, str) else ""
+            ),
+            dvd_title=dvd_title,
+        )
+        if best_info is None or info.duration > best_info.duration:
+            best_info = info
+
+    if best_info is None:
         raise ImagePipelineError(f"ffprobe returned no usable duration for {path}")
-    color_transfer = stream.get("color_transfer", "") if isinstance(stream, dict) else ""
-    return VideoInfo(
-        duration=duration,
-        color_transfer=color_transfer.casefold() if isinstance(color_transfer, str) else "",
-    )
+    return best_info
 
 
 def screenshot_timestamps(name: str, duration: float, count: int) -> list[float]:
@@ -544,6 +623,20 @@ def valid_png(path: Path) -> bool:
         return False
 
 
+def ffmpeg_frame_corruption_indicator(stderr: bytes) -> str | None:
+    """Return the allow-listed decoder diagnostic reported by FFmpeg, if any."""
+
+    diagnostics = stderr.decode("utf-8", errors="replace").lower()
+    return next(
+        (
+            indicator
+            for indicator in FFMPEG_FRAME_CORRUPTION_INDICATORS
+            if indicator in diagnostics
+        ),
+        None,
+    )
+
+
 def capture_screenshots(
     ffmpeg: str,
     media_path: Path,
@@ -555,6 +648,11 @@ def capture_screenshots(
     """Capture ordered PNG frames concurrently with per-frame timestamp retries."""
 
     video_filter = ffmpeg_filter(info, settings.tone_map_hdr) + ",blackframe=amount=100:threshold=20"
+    dvd_options = (
+        ["-f", "dvdvideo", "-title", str(info.dvd_title)]
+        if info.dvd_title is not None
+        else []
+    )
     stop_capture = Event()
 
     def capture_one(index: int, requested: float) -> Path:
@@ -564,12 +662,14 @@ def capture_screenshots(
         tried: set[float] = set()
         for offset in BLACK_FRAME_OFFSETS:
             if stop_capture.is_set():
-                raise ImagePipelineError(f"screenshot capture {index} was cancelled")
+                raise CancelledError(f"screenshot capture {index} was cancelled")
             timestamp = min(max(requested + offset, 0), max(info.duration - 0.1, 0))
             timestamp = round(timestamp, 3)
             if timestamp in tried:
                 continue
             tried.add(timestamp)
+            input_seek = max(timestamp - CAPTURE_PREROLL_SECONDS, 0)
+            decode_offset = timestamp - input_seek
             command = [
                 ffmpeg,
                 "-hide_banner",
@@ -577,9 +677,12 @@ def capture_screenshots(
                 "-loglevel",
                 "info",
                 "-ss",
-                f"{timestamp:.3f}",
+                f"{input_seek:.3f}",
+                *dvd_options,
                 "-i",
                 str(media_path),
+                "-ss",
+                f"{decode_offset:.3f}",
                 "-frames:v",
                 "1",
                 "-vf",
@@ -599,8 +702,19 @@ def capture_screenshots(
                 )
             except (OSError, subprocess.TimeoutExpired):
                 continue
+            corruption = ffmpeg_frame_corruption_indicator(completed.stderr)
+            if corruption is not None:
+                stop_capture.set()
+                try:
+                    output.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                raise ImagePipelineError(
+                    f"ffmpeg reported frame corruption while capturing screenshot "
+                    f"{index}: {corruption}"
+                )
             if stop_capture.is_set():
-                raise ImagePipelineError(f"screenshot capture {index} was cancelled")
+                raise CancelledError(f"screenshot capture {index} was cancelled")
             if (
                 completed.returncode == 0
                 and valid_png(output)
@@ -620,7 +734,12 @@ def capture_screenshots(
             executor.submit(capture_one, index, requested)
             for index, requested in enumerate(timestamps, 1)
         ]
-        outputs = [future.result() for future in futures]
+        outputs = []
+        for future in futures:
+            try:
+                outputs.append(future.result())
+            except CancelledError:
+                continue
     except BaseException:
         stop_capture.set()
         for future in futures:

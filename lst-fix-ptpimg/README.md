@@ -182,8 +182,14 @@ The one normal-host upload set for an LST torrent is reused for every other-site
 match to that LST ID. Original image-tag sizing and formatting are preserved
 while only PTPImg URLs change. A linked image uses the normal host's viewer URL
 outside and original-image URL inside; a bare image uses the original-image URL.
-For a DVD directory the largest VOB is used; for a Blu-ray directory the largest
-M2TS is used.
+For a DVD directory, FFprobe enumerates the authored titles and FFmpeg captures
+the longest one through its `dvdvideo` demuxer. For a Blu-ray directory the
+largest M2TS is used.
+
+Black or invalid frames retry at nearby timestamps. Each seek decodes a
+five-second pre-roll so HEVC Blu-ray frames have their reference pictures.
+FFmpeg decoder corruption diagnostics instead hard-fail the torrent without
+retrying another timestamp, before any upload can start.
 
 Each success or error is checkpointed to `replacement_results.json` immediately
 after that torrent finishes. Rerunning the same command preserves only records

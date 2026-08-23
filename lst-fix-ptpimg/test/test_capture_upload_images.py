@@ -79,7 +79,7 @@ class FakeSession:
 
 
 class CaptureUploadImagesTest(unittest.TestCase):
-    def test_selects_largest_vob_from_dvd_folder(self) -> None:
+    def test_selects_video_ts_directory_for_dvd_folder(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             video_ts = Path(directory) / "VIDEO_TS"
             video_ts.mkdir()
@@ -91,7 +91,79 @@ class CaptureUploadImagesTest(unittest.TestCase):
 
             selected = capture.media_file_for_path(directory)
 
-        self.assertEqual(selected, large)
+        self.assertEqual(selected, video_ts)
+
+    def test_selects_longest_authored_dvd_title(self) -> None:
+        durations = [715.5, 11050.833, 2034.666]
+        responses = [
+            SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "streams": [{"color_transfer": "BT470BG"}],
+                        "format": {"duration": duration},
+                    }
+                ),
+                stderr="",
+            )
+            for duration in durations
+        ]
+        responses.append(
+            SimpleNamespace(
+                returncode=1,
+                stdout="{}",
+                stderr=(
+                    "DVDOpenFilePath:findDVDFile /VIDEO_TS/VTS_03_0.IFO failed\n"
+                    "DVDOpenFilePath:findDVDFile /VIDEO_TS/VTS_03_0.BUP failed"
+                ),
+            )
+        )
+        commands: list[list[str]] = []
+
+        def run_ffprobe(command: list[str], **_: Any) -> SimpleNamespace:
+            commands.append(command)
+            return responses.pop(0)
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(capture.subprocess, "run", side_effect=run_ffprobe),
+        ):
+            video_ts = Path(directory) / "VIDEO_TS"
+            video_ts.mkdir()
+            info = capture.probe_video("ffprobe", video_ts)
+
+        self.assertEqual(info, capture.VideoInfo(11050.833, "bt470bg", 2))
+        self.assertEqual(
+            [command[command.index("-title") + 1] for command in commands],
+            ["1", "2", "3", "4"],
+        )
+
+    def test_dvd_probe_failure_is_not_treated_as_end_of_titles(self) -> None:
+        responses = [
+            SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "streams": [{"color_transfer": "BT470BG"}],
+                        "format": {"duration": 715.5},
+                    }
+                ),
+                stderr="",
+            ),
+            SimpleNamespace(returncode=1, stdout="{}", stderr="disk I/O failure"),
+        ]
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(capture.subprocess, "run", side_effect=responses),
+            self.assertRaisesRegex(
+                capture.LstError,
+                "failed while reading DVD title 2",
+            ),
+        ):
+            video_ts = Path(directory) / "VIDEO_TS"
+            video_ts.mkdir()
+            capture.probe_video("ffprobe", video_ts)
 
     def test_selects_largest_m2ts_from_bluray_folder(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -107,6 +179,75 @@ class CaptureUploadImagesTest(unittest.TestCase):
 
         self.assertEqual(selected, large)
 
+    def test_capture_decodes_preroll_before_requested_timestamp(self) -> None:
+        for duration, expected_seeks in (
+            (600, ["25.000", "5.000"]),
+            (60, ["0.000", "3.000"]),
+        ):
+            with self.subTest(duration=duration):
+                commands: list[list[str]] = []
+
+                def run_ffmpeg(command: list[str], **_: Any) -> SimpleNamespace:
+                    commands.append(command)
+                    return SimpleNamespace(returncode=0, stderr=b"")
+
+                with (
+                    tempfile.TemporaryDirectory() as directory,
+                    patch.object(capture.subprocess, "run", side_effect=run_ffmpeg),
+                    patch.object(capture, "valid_png", return_value=True),
+                ):
+                    media_path = Path(directory) / "movie.mkv"
+                    capture.capture_screenshots(
+                        "ffmpeg",
+                        media_path,
+                        "Example Movie 2026",
+                        capture.VideoInfo(duration, ""),
+                        1,
+                        replace(settings(), process_limit=1),
+                        Path(directory),
+                    )
+
+                command = commands[0]
+                seek_positions = [
+                    index for index, argument in enumerate(command) if argument == "-ss"
+                ]
+                self.assertEqual(
+                    [command[index + 1] for index in seek_positions],
+                    expected_seeks,
+                )
+                input_position = command.index("-i")
+                self.assertLess(seek_positions[0], input_position)
+                self.assertGreater(seek_positions[1], input_position)
+
+    def test_capture_uses_selected_dvd_title(self) -> None:
+        commands: list[list[str]] = []
+
+        def run_ffmpeg(command: list[str], **_: Any) -> SimpleNamespace:
+            commands.append(command)
+            return SimpleNamespace(returncode=0, stderr=b"")
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(capture.subprocess, "run", side_effect=run_ffmpeg),
+            patch.object(capture, "valid_png", return_value=True),
+        ):
+            capture.capture_screenshots(
+                "ffmpeg",
+                Path(directory) / "VIDEO_TS",
+                "Example Movie 2026 DVD",
+                capture.VideoInfo(600, "", 2),
+                1,
+                replace(settings(), process_limit=1),
+                Path(directory),
+            )
+
+        command = commands[0]
+        input_position = command.index("-i")
+        self.assertEqual(
+            command[input_position - 4 : input_position],
+            ["-f", "dvdvideo", "-title", "2"],
+        )
+
     def test_uploads_ordered_batch_with_lostimg_bearer_key(self) -> None:
         fake = FakeSession()
         with tempfile.TemporaryDirectory() as directory:
@@ -119,6 +260,83 @@ class CaptureUploadImagesTest(unittest.TestCase):
         self.assertEqual(fake.call["url"], "https://lostimg.cc/api/v1/images")
         self.assertEqual(fake.call["headers"], {"Authorization": "Bearer secret"})
         self.assertEqual([field for field, _part in fake.call["files"]], ["file[]", "file[]"])
+
+    def test_recognizes_allow_listed_ffmpeg_frame_corruption(self) -> None:
+        diagnostics = {
+            b"[h264] Error while decoding stream #0:0": "error while decoding",
+            b"Invalid data found when processing input": "invalid data found when processing input",
+            b"non-existing PPS 0 referenced": "non-existing pps",
+            b"Incomplete frame": "incomplete frame",
+            b"corrupt decoded frame in stream 0": "corrupt decoded frame",
+            b"corrupt input packet in stream 0": "corrupt input packet",
+        }
+        for stderr, expected in diagnostics.items():
+            with self.subTest(stderr=stderr):
+                self.assertEqual(
+                    capture.ffmpeg_frame_corruption_indicator(stderr),
+                    expected,
+                )
+        self.assertIsNone(
+            capture.ffmpeg_frame_corruption_indicator(b"concealing one decoding error")
+        )
+
+    def test_frame_corruption_hard_fails_without_retry_and_deletes_output(self) -> None:
+        """Reject a PNG when FFmpeg reports decoder corruption despite exit code zero."""
+
+        calls: list[str] = []
+        first_started = threading.Event()
+        corrupt_output_deleted = threading.Event()
+        original_unlink = Path.unlink
+
+        def run_ffmpeg(command: list[str], **_: Any) -> SimpleNamespace:
+            output = Path(command[-1])
+            calls.append(output.name)
+            output.write_bytes(b"candidate")
+            if output.name == "screen-01.png":
+                first_started.set()
+                if not corrupt_output_deleted.wait(timeout=5):
+                    raise AssertionError("corrupt output was not deleted")
+                return SimpleNamespace(returncode=0, stderr=b"pblack:100")
+            if output.name == "screen-02.png":
+                if not first_started.wait(timeout=5):
+                    raise AssertionError("first capture did not start")
+                return SimpleNamespace(
+                    returncode=0,
+                    stderr=b"[h264] Error while decoding stream #0:0",
+                )
+            return SimpleNamespace(
+                returncode=0,
+                stderr=b"",
+            )
+
+        def unlink(path: Path, missing_ok: bool = False) -> None:
+            original_unlink(path, missing_ok=missing_ok)
+            if path.name == "screen-02.png":
+                corrupt_output_deleted.set()
+
+        with tempfile.TemporaryDirectory() as directory:
+            output_dir = Path(directory)
+            with (
+                patch.object(capture.subprocess, "run", side_effect=run_ffmpeg),
+                patch.object(capture, "valid_png", return_value=True),
+                patch.object(Path, "unlink", new=unlink),
+                self.assertRaisesRegex(
+                    capture.LstError,
+                    "frame corruption.*error while decoding",
+                ),
+            ):
+                capture.capture_screenshots(
+                    "ffmpeg",
+                    output_dir / "movie.mkv",
+                    "Example Movie 2026",
+                    capture.VideoInfo(600, ""),
+                    3,
+                    replace(settings(), process_limit=2),
+                    output_dir,
+                )
+
+            self.assertFalse((output_dir / "screen-02.png").exists())
+        self.assertCountEqual(calls, ["screen-01.png", "screen-02.png"])
 
     def test_process_captures_exactly_one_frame_per_replaceable_block(self) -> None:
         item = {

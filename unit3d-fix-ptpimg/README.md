@@ -320,11 +320,16 @@ Windows paths inside JSON must escape backslashes:
 
 - One accessible client match is selected for each release. Other matched
   torrents remain listed as matching-site evidence but are not captured again.
-- A direct video file is used as-is. For a folder or disc structure, the largest
-  supported video file below that folder is selected.
+- A direct video file is used as-is. For a DVD folder, FFprobe enumerates the
+  authored titles and FFmpeg captures the longest one through its `dvdvideo`
+  demuxer. Other folders and Blu-ray structures use their largest supported
+  video file.
 - Frames are distributed through the video and generated concurrently, up to
   `process_limit` FFmpeg processes for the current file. Each frame retries
-  nearby timestamps sequentially when it is black or invalid.
+  nearby timestamps sequentially when it is black or invalid. Each seek decodes
+  a five-second pre-roll so HEVC Blu-ray frames have their reference pictures.
+  FFmpeg decoder corruption diagnostics instead hard-fail the release without
+  retrying another timestamp, before any upload can start.
 - Screenshots are stored only in a temporary directory. Local PNG files are
   deleted after the upload stage completes.
 - Ctrl+C cancels queued frame captures and prevents active workers from starting
