@@ -100,6 +100,29 @@ class SubmitDescriptionChangesTest(unittest.TestCase):
         with self.assertRaisesRegex(LstError, "changed after collection"):
             verify_current_description(item, item["source_torrent"]["description"] + " changed")
 
+    def test_notes_staff_when_comparison_content_is_retained(self) -> None:
+        item = replacement_result()
+        comparison = "[comparison][img]https://ptpimg.me/c.png[/img][/comparison]"
+        source = item["source_torrent"]
+        description = f"{source['description']}{comparison}"
+        proposed, replacements = replace_ptpimg_blocks(
+            description, ["https://lostimg.cc/new.png"]
+        )
+        source["description"] = description
+        source["description_sha256"] = description_sha256(description)
+        item["proposed_description"] = proposed
+        item["replacements"] = replacements
+        session = FakeSession(description)
+
+        submit_change(session, item, "Staff note", timeout=10)
+
+        self.assertIn(comparison, proposed)
+        self.assertEqual(
+            session.post_call["json"]["message"],
+            "Staff note\n\nNote: This description retains existing comparison "
+            "content verbatim; that content was not modified.",
+        )
+
     def test_rejects_tampered_proposed_description(self) -> None:
         item = replacement_result()
         item["proposed_description"] += " unrelated edit"

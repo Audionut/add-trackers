@@ -12,6 +12,7 @@ from typing import Any
 import requests
 
 from lst_common import (
+    COMPARISON_BLOCK,
     LstError,
     description_sha256,
     full_description,
@@ -32,6 +33,10 @@ from lst_common import (
 API_URL = "https://lst.gg/api"
 DEFAULT_STATE = Path(__file__).with_name("submission_results.json")
 DEFAULT_MESSAGE = "Replaced PTPImg screenshots with LostImg uploads."
+COMPARISON_NOTE = (
+    "Note: This description retains existing comparison content verbatim; "
+    "that content was not modified."
+)
 
 
 def successful_state_matches(state: dict[str, Any] | None, item: dict[str, Any]) -> bool:
@@ -191,6 +196,8 @@ def submit_change(
     """POST one full description to LST's review application endpoint."""
 
     torrent_id = item["source_torrent"]["torrent_id"]
+    if COMPARISON_BLOCK.search(item["proposed_description"]):
+        message = f"{message}\n\n{COMPARISON_NOTE}"
     try:
         response = session.post(
             f"{API_URL}/description-changes/torrents/{torrent_id}",

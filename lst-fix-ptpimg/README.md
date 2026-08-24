@@ -1,13 +1,13 @@
 # LST PTPImg replacement tools
 
-This LST-only pipeline reads the authenticated image-replacement queue, fetches
-each torrent's complete BBCode description, finds the matching local torrent
+This LST-only pipeline reads the authenticated seeded image-replacement API,
+fetches each torrent's metadata, finds the matching local torrent
 through qui/qBittorrent, captures new screenshots, uploads one copy to LostImg,
 uploads one shared normal-host copy for every matching non-LST torrent, and
 submits the complete LostImg description to LST for staff review.
 
 ```text
-LST image-replacements queue
+LST seeded image-replacement API
     -> lst_ptpimg_torrents.py
     -> lst_ptpimg_results.json
     -> qui_match_torrents.py
@@ -33,7 +33,6 @@ as permitted by LST's API.
 - A LostImg API key.
 - API keys for each configured normal host that requires one. Imgbox and Pixhost
   are keyless.
-- A Netscape-format cookie file exported only for `lst.gg`.
 
 From the repository root in PowerShell:
 
@@ -50,7 +49,6 @@ Create `lst-fix-ptpimg\config.lst.json`. Config files are ignored by Git.
 ```json
 {
   "lst_api_token": "YOUR_LST_API_TOKEN",
-  "lst_cookie_file": "cookies.lst.txt",
   "qui_proxy_url": "http://localhost:7476/proxy/YOUR_QUI_CLIENT_API_KEY",
   "lostimg_api_key": "YOUR_LOSTIMG_API_KEY",
   "normal_hosts": [
@@ -72,14 +70,8 @@ Create `lst-fix-ptpimg\config.lst.json`. Config files are ignored by Git.
 }
 ```
 
-Relative `lst_cookie_file` paths are resolved from the config directory.
-Export the logged-in LST cookies in Netscape `cookies.txt` format and save them
-as `lst-fix-ptpimg\cookies.lst.txt`. The collector ignores cookies for other
-domains and rejects expired or unauthenticated cookies. Never put the cookie
-value directly in the JSON config.
-
-Generated result, cookie, state, and config files in this folder are ignored by
-Git. They can contain private tracker descriptions, client paths, or credentials.
+Generated result, state, and config files in this folder are ignored by Git.
+They can contain private tracker descriptions, client paths, or credentials.
 
 ## 1. Collect the LST queue and full descriptions
 
@@ -89,30 +81,25 @@ py .\lst-fix-ptpimg\lst_ptpimg_torrents.py `
 ```
 
 For a bounded test run, add `--limit 1` to process only the first current queue
-row. Queue discovery still completes so valid saved results outside that prefix
-are retained and stale or pending IDs are pruned correctly.
+item. Queue discovery still completes so valid saved results outside that prefix
+are retained and stale IDs are pruned correctly.
 
-The collector requests every page of:
+The collector sends its Bearer token to:
 
 ```text
-https://lst.gg/image-replacements?pending=false&seeding=true
+GET https://lst.gg/api/description-changes/seeding
 ```
 
-Rows marked snoozed or pending review are skipped even if LST includes them in
-the filtered response, so an existing application is never collected again.
+LST returns only torrents the user is currently seeding whose screenshots still
+need replacement. Each item supplies its torrent ID and complete current BBCode
+description. For every item, the script calls `GET /api/torrents/{id}` for the
+release name, folder, and filenames needed for client matching. Items that no
+longer contain replaceable PTPImg BBCode are skipped.
 
-It requires each `ptpimg-torrent-{id}` row key to agree with that row's
-`/torrents/{id}` title link. The `pending=false` and `seeding=true` filters are
-sent again on every page even though LST's pagination links omit them.
-
-For every queue ID, the script calls `GET /api/torrents/{id}` and stores the
-complete `attributes.description`, not only the matching image blocks. It also
-keeps every API filename for later client matching. Queue entries that no longer
-contain replaceable PTPImg BBCode are skipped.
-
-Torrent API requests start no more than once every two seconds. The output is written
-atomically after every attempted row; rerunning reloads that checkpoint, skips
-already saved queue IDs, and retries IDs that previously failed.
+LST API requests start no more than once every two seconds. The output is written
+atomically after every attempted item; rerunning reloads that checkpoint, reuses
+results whose descriptions are unchanged, prunes stale IDs, and retries IDs that
+previously failed.
 
 Default output:
 
@@ -238,8 +225,9 @@ py .\lst-fix-ptpimg\submit_description_changes.py `
 Each `POST /api/description-changes/torrents/{id}` sends JSON containing the full
 proposed `description` plus a staff `message`. Accepted applications are saved
 to `submission_results.json` and skipped on later runs, preventing duplicate
-submissions of that exact source/proposal fingerprint. A failed, changed, or
-stale item is never posted and remains retryable.
+submissions of that exact source/proposal fingerprint. When comparison content
+is retained verbatim, the staff message notes that it was not modified. A failed,
+changed, or stale item is never posted and remains retryable.
 
 Submission validation GETs and description-change POSTs share the same global
 one-request-every-two-seconds LST API gate used by the collector.
