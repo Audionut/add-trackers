@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.1.4
+// @version      0.1.5
 // @description  Add releases from other trackers to UNIT3D similar torrent pages.
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://aither.cc/torrents/similar/1*
@@ -7940,7 +7940,8 @@ ${tcsHighlightCss}
         buildUnit3dExternalSizeCell(torrent, sizeBytes),
         buildUnit3dNumberCell(seeders, seeders === 0 ? 'no-seeders' : ''),
         buildUnit3dNumberCell(leechers),
-        buildUnit3dNumberCell(completed)
+        buildUnit3dNumberCell(completed),
+        buildUnit3dExternalAgeCell(torrent)
       );
 
       return row;
@@ -8398,6 +8399,40 @@ ${tcsHighlightCss}
       return cell;
     }
 
+    function buildUnit3dExternalAgeCell(torrent) {
+      const cell = document.createElement('td');
+      cell.className = 'torrent-search--grouped__age';
+      const timestamp = Number(torrent.time);
+      if (!Number.isFinite(timestamp) || timestamp <= 0) return cell;
+
+      const uploadedAt = new Date(timestamp * 1000);
+      const datetime = uploadedAt.toISOString();
+      const time = document.createElement('time');
+      time.setAttribute('datetime', datetime);
+      time.title = datetime;
+      time.textContent = formatUnit3dExternalAge(timestamp);
+      cell.appendChild(time);
+      return cell;
+    }
+
+    function formatUnit3dExternalAge(timestamp) {
+      const elapsedSeconds = Math.max(0, Math.floor(Date.now() / 1000 - timestamp));
+      if (elapsedSeconds < 5) return 'just now';
+
+      const units = [
+        ['year', 365 * 24 * 60 * 60],
+        ['month', 30 * 24 * 60 * 60],
+        ['week', 7 * 24 * 60 * 60],
+        ['day', 24 * 60 * 60],
+        ['hour', 60 * 60],
+        ['minute', 60],
+        ['second', 1]
+      ];
+      const [label, seconds] = units.find(([, unitSeconds]) => elapsedSeconds >= unitSeconds);
+      const count = Math.floor(elapsedSeconds / seconds);
+      return `${count} ${label}${count === 1 ? '' : 's'} ago`;
+    }
+
     function buildUnit3dExternalDetailRow(torrent, id, tvGroupKey) {
       const row = document.createElement('tr');
       row.className = `torrent_info_row unit3d-ptp-detail-row ${EXTERNAL_ROW_CLASS}-detail`;
@@ -8406,7 +8441,7 @@ ${tcsHighlightCss}
       row.hidden = true;
 
       const cell = document.createElement('td');
-      cell.colSpan = 6;
+      cell.colSpan = 7;
       const body = document.createElement('div');
       body.className = 'unit3d-ptp-detail-body';
       const title = document.createElement('p');
