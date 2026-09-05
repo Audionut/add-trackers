@@ -27,12 +27,12 @@ const factory = new Function(
   'setTimeout',
   `${source.slice(start, end)}
   return { imdbGraphqlRequest, dateValue, monthRange, episodeRange, shiftMonth, calendarMonths, normalizeTitle, collectReleases, nextCursor, fetchComingSoon, loadReleases,
-    sortReleases, searchUrl, releaseKind, cleanOldCaches, readReleaseCache, searchReleases, encodeStored, decodeStored, savedApiKey, cachedTorrents, mergeTorrentHistory, loadRecentTorrents,
-    readHiddenSeries, setSeriesHidden, filterEpisodes, HIDDEN_SERIES_KEY,
+    sortReleases, searchUrl, releaseKind, cleanOldCaches, readReleaseCache, searchReleases, encodeStored, decodeStored, savedApiKey, cachedTorrents, mergeTorrentHistory, loadRecentTorrents, torrentEpisodeKeys,
+    readHiddenSeries, setSeriesHidden, filterEpisodes, filterSonarrEpisodes, sonarrSeriesMembership, HIDDEN_SERIES_KEY,
     normalizeArrUrl, readArrServers, saveArrServer, removeArrServer, readArrCache, writeArrCache,
     loadArrOptions, loadArrLibrary, arrTarget, arrExisting, arrViewUrl, arrImmediate, addArrTitle,
     ARR_SETTINGS_KEY, ARR_CACHE_PREFIX, ARR_LIBRARY_TTL,
-    RELEASE_VIEWS, COMING_SOON_QUERY, RELEASE_DATES_QUERY, TITLES_QUERY, API_KEY_STORAGE, TORRENT_CACHE_KEY, TORRENT_REQUEST_KEY };
+    RELEASE_VIEWS, IMDB_LANGUAGES, COMING_SOON_QUERY, RELEASE_DATES_QUERY, TITLES_QUERY, API_KEY_STORAGE, TORRENT_CACHE_KEY, TORRENT_REQUEST_KEY };
 `
 );
 const make = (request, environment = {}) => {
@@ -336,6 +336,96 @@ test('Arr library snapshots expire at ten minutes, replace deleted entries, and 
   assert.ok(api.readArrCache(server).options, 'library writes preserve options');
 });
 
+test('episode Sonarr filters union enabled libraries and wait for every configured instance', () => {
+  const { api, server } = arrFixture('sonarr');
+  const second = {
+    ...server,
+    id: 'sonarr-4k',
+    revision: 'second',
+    name: 'Sonarr 4K'
+  };
+  const disabled = {
+    ...server,
+    id: 'sonarr-disabled',
+    revision: 'disabled',
+    enabled: false
+  };
+  api.saveArrServer(second);
+  api.saveArrServer(disabled);
+  api.writeArrCache(server, 'library', {
+    savedAt: 1,
+    records: [{ imdbId: 'tt100' }]
+  });
+  api.writeArrCache(second, 'library', {
+    savedAt: 1,
+    records: [{ imdbId: 'tt200' }]
+  });
+  const first = { imdbId: 'tt1', seriesImdbId: 'tt100', mode: 'episodes' };
+  const secondEpisode = { imdbId: 'tt2', seriesImdbId: 'tt200', mode: 'episodes' };
+  const absent = { imdbId: 'tt3', seriesImdbId: 'tt300', mode: 'episodes' };
+  const movie = { imdbId: 'tt4', mode: 'theatrical' };
+  const releases = [first, secondEpisode, absent, movie];
+  assert.deepEqual(Array.from(api.sonarrSeriesMembership().ids).sort(), ['100', '200']);
+  assert.deepEqual(api.filterSonarrEpisodes(releases, 'all'), releases);
+  assert.deepEqual(api.filterSonarrEpisodes(releases, 'in'), [first, secondEpisode, movie]);
+  assert.deepEqual(api.filterSonarrEpisodes(releases, 'out'), [absent, movie]);
+
+  const changed = { ...second, revision: 'changed' };
+  api.saveArrServer(changed);
+  assert.equal(api.sonarrSeriesMembership().complete, false);
+  assert.deepEqual(api.filterSonarrEpisodes(releases, 'out'), [movie]);
+  api.saveArrServer({ ...changed, enabled: false });
+  assert.equal(api.sonarrSeriesMembership().complete, true);
+  assert.deepEqual(api.filterSonarrEpisodes(releases, 'in'), [first, movie]);
+  assert.deepEqual(api.filterSonarrEpisodes(releases, 'out'), [secondEpisode, absent, movie]);
+});
+
+test('episode Sonarr filters reject add-only snapshots and empty IMDb IDs', async () => {
+  const { api, server, target } = arrFixture('sonarr');
+  await api.addArrTitle(server, target, server.defaults);
+  const matching = {
+    imdbId: 'tt1',
+    seriesImdbId: target.imdbId,
+    mode: 'episodes'
+  };
+  const absent = { imdbId: 'tt2', seriesImdbId: 'tt9999999', mode: 'episodes' };
+  const missing = { imdbId: 'tt3', mode: 'episodes' };
+  const movie = { imdbId: 'tt4', mode: 'theatrical' };
+  const releases = [matching, absent, missing, movie];
+  assert.equal(api.readArrCache(server).library.savedAt, 0);
+  assert.equal(api.sonarrSeriesMembership().complete, false);
+  assert.deepEqual(api.filterSonarrEpisodes(releases, 'in'), [movie]);
+  assert.deepEqual(api.filterSonarrEpisodes(releases, 'out'), [movie]);
+
+  await api.loadArrLibrary(server, true);
+  const library = api.readArrCache(server).library;
+  api.writeArrCache(server, 'library', {
+    ...library,
+    records: [...library.records, { imdbId: '' }]
+  });
+  const membership = api.sonarrSeriesMembership();
+  assert.equal(membership.complete, true);
+  assert.equal(membership.ids.has(''), false);
+  assert.deepEqual(api.filterSonarrEpisodes(releases, 'in'), [matching, movie]);
+  assert.deepEqual(api.filterSonarrEpisodes(releases, 'out'), [absent, movie]);
+});
+
+test('Arr library errors treat add-only snapshots as failed checks', () => {
+  const from = source.indexOf('    function hasLibraryError(');
+  const until = source.indexOf('\n\n    function renderSettings', from);
+  assert.ok(from > 0 && until > from);
+  let library = { savedAt: 0, records: [{ imdbId: 'tt0123456' }] };
+  const context = {
+    readArrServers: () => [{ id: 'sonarr', revision: 'first', type: 'sonarr', enabled: true }],
+    errors: new Set(['sonarr:first']),
+    readArrCache: () => ({ library })
+  };
+  runInNewContext(source.slice(from, until), context);
+  assert.equal(context.hasLibraryError('sonarr'), true);
+  library = { savedAt: 1, records: [] };
+  assert.equal(context.hasLibraryError('sonarr'), false);
+});
+
 test('a changed Arr connection cannot receive an older in-flight library response', async () => {
   const { api, server, state, storage } = arrFixture();
   let respond;
@@ -385,12 +475,17 @@ test('each Arr server can require the add dialog and restore direct adds with it
     state.profiles.unshift({ id: 5, name: '4K' });
     state.roots.unshift({ path: '/other' });
     let dialogs = 0;
+    let libraryChanges = 0;
     const context = {
       ...api,
       arrName: () => type,
       targetKey: (target) => `${target.type}:${target.imdbId}`,
       messages: new Map(),
       draw() {},
+      onLibraryChange: (changedType) => {
+        assert.equal(changedType, type);
+        libraryChanges++;
+      },
       openAddDialog: (selectedTarget, servers) => {
         assert.equal(selectedTarget, target);
         assert.equal(servers[0].id, server.id);
@@ -404,6 +499,7 @@ test('each Arr server can require the add dialog and restore direct adds with it
     await context.startAdd(target);
     assert.equal(context.messages.size, 0);
     assert.equal(dialogs, 1);
+    assert.equal(libraryChanges, 0);
     assert.equal(calls.filter((request) => request.method === 'POST').length, 0);
     assert.equal(api.readArrServers().find((item) => item.id === other.id).showAddDialog, false);
     api.saveArrServer({ ...server, showAddDialog: false });
@@ -418,6 +514,7 @@ test('each Arr server can require the add dialog and restore direct adds with it
     assert.equal(dialogs, 2);
     const posts = calls.filter((request) => request.method === 'POST');
     assert.equal(posts.length, 1);
+    assert.equal(libraryChanges, 1);
     const body = JSON.parse(posts[0].data);
     assert.equal(body.qualityProfileId, server.defaults.qualityProfileId);
     assert.equal(body.rootFolderPath, server.defaults.rootFolderPath);
@@ -628,7 +725,7 @@ test('IMDb uses the caching endpoint, named APQ GET, then registration POST only
       )
     });
   });
-  const data = await api.imdbGraphqlRequest(query, { id: 'tt1234567' }, 'AU');
+  const data = await api.imdbGraphqlRequest(query, { id: 'tt1234567' }, 'AU', 'fr-FR');
   assert.equal(data.title.id, 'tt1234567');
   assert.equal(calls.length, 2);
   const url = new URL(calls[0].url);
@@ -652,6 +749,7 @@ test('IMDb uses the caching endpoint, named APQ GET, then registration POST only
   });
   for (const call of calls) {
     assert.equal(call.headers['X-Imdb-User-Country'], 'AU');
+    assert.equal(call.headers['X-Imdb-User-Language'], 'fr-FR');
     assert.equal(call.headers['X-Imdb-Client-Name'], 'imdb-web-next-localized');
     assert.equal(call.headers.Origin, 'https://www.imdb.com');
   }
@@ -659,6 +757,7 @@ test('IMDb uses the caching endpoint, named APQ GET, then registration POST only
   let hits = 0;
   const cachedApi = make((options) => {
     hits++;
+    assert.equal(options.headers['X-Imdb-User-Language'], 'en-US');
     options.onload({ status: 200, responseText: '{"data":{"title":{"id":"tt1234567"}}}' });
   });
   await cachedApi.imdbGraphqlRequest(query);
@@ -696,6 +795,121 @@ const torrent = (id, imdbId, categoryId) => ({
     name: 'Release',
     download_link: 'https://tracker.test/download?rsskey=must-not-be-cached'
   }
+});
+
+test('torrent episode evidence handles multiple episodes and only identified pack video files', () => {
+  const api = make(() => assert.fail('unexpected request'));
+  for (const [name, expected] of [
+    ['Show.S01E02.1080p', ['1:2']],
+    ['Show.S01E02-1080p', ['1:2']],
+    ['Show_s01e02e04_1080p', ['1:2', '1:4']],
+    ['Show.S01E02-E04.1080p', ['1:2', '1:3', '1:4']],
+    ['Show.S01E02-04.1080p', ['1:2', '1:3', '1:4']],
+    ['Show.S00E01.1080p', ['0:1']],
+    ['Show.S02.Complete', []],
+    ['Show.Complete.Series', []],
+    ['Show.2026.1080p', []]
+  ])
+    assert.deepEqual(api.torrentEpisodeKeys({ name }), expected, name);
+  assert.deepEqual(
+    api.torrentEpisodeKeys({
+      name: 'Show.S01E01-E10',
+      files: [
+        { name: 'Show.S01/Show.S01E02.mkv' },
+        { name: 'Show.S01/Show.S01E04.mp4' },
+        { name: 'Show.S01/Show.S01E03.srt' },
+        { name: 'Show.S01/Show.S02E01.nfo' }
+      ]
+    }),
+    ['1:2', '1:4']
+  );
+});
+
+test('torrent episode evidence survives history merging and cached reads without merging different episodes', async () => {
+  const storage = new Map();
+  let now = Date.now();
+  let calls = 0;
+  const api = make(() => assert.fail('unexpected IMDb request'), {
+    storage,
+    Date: class extends Date {
+      static now() {
+        return now;
+      }
+    },
+    fetch: async () => ({
+      ok: true,
+      json: async () => ({
+        data: [
+          {
+            ...torrent(++calls, 123, 2),
+            attributes: { ...torrent(1, 123, 2).attributes, name: `Show.S01E0${calls}` }
+          }
+        ]
+      })
+    })
+  });
+  storage.set(api.API_KEY_STORAGE, api.encodeStored('key'));
+  await api.loadRecentTorrents('tv', 'key');
+  now += 120_001;
+  const updated = await api.loadRecentTorrents('tv', 'key');
+  assert.deepEqual(updated.records, [
+    { imdbId: '123', categoryId: 2, episodeKeys: ['1:1'] },
+    { imdbId: '123', categoryId: 2, episodeKeys: ['1:2'] }
+  ]);
+  assert.deepEqual((await api.loadRecentTorrents('tv', 'key')).records, updated.records);
+  assert.equal(calls, 2);
+});
+
+test('availability markers distinguish seasons and episodes and reject legacy series-only evidence', () => {
+  const from = source.indexOf('    function markRecentTorrents(');
+  const until = source.indexOf('\n\n    async function refreshTorrentMatches', from);
+  assert.ok(from > 0 && until > from);
+  const card = (imdbId, episodeKey) => {
+    const link = {
+      children: [],
+      replaceChildren() {
+        this.children = [];
+      },
+      append(value) {
+        this.children.push(value);
+      },
+      setAttribute() {}
+    };
+    return {
+      dataset: { imdbId, ...(episodeKey !== undefined ? { episodeKey } : {}) },
+      link,
+      querySelector: (selector) =>
+        selector === '.torrent-card__title' ? { textContent: 'Show' } : link
+    };
+  };
+  const cards = [
+    card('123', '1:2'),
+    card('123', '1:3'),
+    card('123', '2:2'),
+    card('123', ''),
+    card('456', '1:2'),
+    card('123'),
+    card('789', '1:2')
+  ];
+  const context = {
+    torrentMatches: [],
+    results: { querySelectorAll: () => cards },
+    element: () => ({ setAttribute() {} })
+  };
+  runInNewContext(source.slice(from, until), context);
+  context.markRecentTorrents([
+    { imdbId: '123', categoryId: 2, episodeKeys: ['1:2'] },
+    { imdbId: '456', categoryId: 2 },
+    { imdbId: '789', categoryId: 1, episodeKeys: ['1:2'] }
+  ]);
+  assert.deepEqual(
+    cards.map((item) => item.dataset.recent),
+    ['true', 'false', 'false', 'false', 'false', 'true', 'false']
+  );
+  assert.equal(cards[0].link.children.at(-1), 'View torrents');
+  assert.equal(cards[1].link.children.at(-1), 'Search torrents');
+  context.markRecentTorrents([]);
+  assert.ok(cards.every((item) => item.dataset.recent === 'false'));
 });
 
 test('the torrent API uses one newest-first page of 100 with a Bearer token and obfuscated storage', async () => {
@@ -1179,11 +1393,12 @@ test('obsolete calendar caches are removed without deleting current data, migrat
     'unit3d-upcoming-cache',
     'unit3d-upcoming-cache-v1',
     'unit3d-upcoming-cache-v2',
-    'unit3d-upcoming-cache-v3'
+    'unit3d-upcoming-cache-v3',
+    'unit3d-upcoming-cache-v4'
   ];
   const retained = [
-    'unit3d-upcoming-cache-v4',
     'unit3d-upcoming-cache-v5',
+    'unit3d-upcoming-cache-v6',
     'unit3d-upcoming-torrents-v1:https://aither.cc',
     'unit3d-upcoming-torrents-v1:https://other.test',
     'unit3d-upcoming-settings',
@@ -1390,6 +1605,8 @@ test('episode metadata keeps its own ID and title alongside the parent series an
   assert.equal(episode.imdbId, 'tt36595781');
   assert.equal(episode.seriesImdbId, 'tt27790101');
   assert.equal(episode.seriesTitle, "Conan O'Brien Must Go");
+  assert.equal(episode.season, 3);
+  assert.equal(episode.episode, 3);
   assert.equal(episode.title, "Conan O'Brien Must Go — S3E3 — Morocco");
   assert.equal(episode.image, 'https://example.com/series.jpg');
   assert.equal(api.normalizeTitle(title()).title, 'A film');
@@ -1498,12 +1715,12 @@ test('episode caches span month boundaries and roll forward without keeping obso
       { from: '2026-10-01', to: '2026-10-30' }
     ]
   );
-  const cache = storage.get('unit3d-upcoming-cache-v4');
+  const cache = storage.get('unit3d-upcoming-cache-v5');
   assert.equal(cache.length, 1);
-  assert.equal(cache[0].key, 'episodes:US:rolling');
+  assert.equal(cache[0].key, 'episodes:US:rolling:en-US');
   assert.equal(cache[0].from, '2026-10-01');
   await episodeApi.loadReleases({ ...selected, country: 'GB' }, () => {});
-  assert.equal(storage.get('unit3d-upcoming-cache-v4').length, 2);
+  assert.equal(storage.get('unit3d-upcoming-cache-v5').length, 2);
 });
 
 test('hiding a parent series persists its name and hides all of its episodes until restored', () => {
@@ -1531,7 +1748,7 @@ test('hiding a parent series persists its name and hides all of its episodes unt
   episodeApi.setSeriesHidden(series, true);
   episodeApi.setSeriesHidden({ ...series, title: 'Renamed show' }, true);
   episodeApi.cleanOldCaches();
-  storage.delete('unit3d-upcoming-cache-v4');
+  storage.delete('unit3d-upcoming-cache-v5');
   const reloaded = make(() => assert.fail('unexpected API request'), { storage });
   assert.deepEqual(reloaded.readHiddenSeries(), [{ imdbId: 'tt100', title: 'Renamed show' }]);
   assert.deepEqual(reloaded.filterEpisodes([first, second, another, past, later, film], today), [
@@ -1611,6 +1828,8 @@ test('both calendar and per-title release connections paginate, including duplic
   };
   const pageApi = make((request) => {
     const url = new URL(request.url);
+    assert.equal(request.headers['X-Imdb-User-Language'], 'de-DE');
+    assert.equal(request.headers['X-Imdb-User-Country'], 'US');
     const operation = url.searchParams.get('operationName');
     const variables = JSON.parse(url.searchParams.get('variables'));
     requests.push({ operation, variables });
@@ -1626,7 +1845,7 @@ test('both calendar and per-title release connections paginate, including duplic
     }
     request.onload({ status: 200, responseText: JSON.stringify({ data }) });
   });
-  const movies = await pageApi.fetchComingSoon(options, () => {});
+  const movies = await pageApi.fetchComingSoon({ ...options, language: 'de-DE' }, () => {});
   assert.deepEqual(
     movies.releases.map((movie) => movie.date),
     ['2026-09-08', '2026-09-12']
@@ -1665,7 +1884,7 @@ function digitalLoader(read, parse, query = async () => ({ titles: [] })) {
   )(read, parse, query, api.normalizeTitle, 'https://www.dvdsreleasedates.com', api.TITLES_QUERY);
 }
 
-test('digital schedule metadata enrichment preserves its date even when IMDb has an older release', async () => {
+test('digital enrichment uses the selected language and localized title while preserving the US schedule date', async () => {
   const calendar = [
     {
       imdbId: 'tt1234567',
@@ -1679,23 +1898,31 @@ test('digital schedule metadata enrichment preserves its date even when IMDb has
   const fetchDigital = digitalLoader(
     async () => '<html>',
     () => calendar,
-    async () => ({
-      titles: [
-        {
-          ...title(),
-          principalCredits: [
-            {
-              category: { id: 'cast' },
-              credits: [{ name: { id: 'nm123', nameText: { text: 'Actor One' } } }]
-            }
-          ]
-        }
-      ]
-    })
+    async (_query, _variables, country, language) => {
+      assert.equal(country, 'US');
+      assert.equal(language, 'fr-FR');
+      return {
+        titles: [
+          {
+            ...title(),
+            titleText: { text: 'Un film' },
+            plot: { plotText: { plainText: 'Un récit en français.' } },
+            principalCredits: [
+              {
+                category: { id: 'cast' },
+                credits: [{ name: { id: 'nm123', nameText: { text: 'Actor One' } } }]
+              }
+            ]
+          }
+        ]
+      };
+    }
   );
-  const data = await fetchDigital(options, () => {});
+  const data = await fetchDigital({ ...options, language: 'fr-FR' }, () => {});
   assert.equal(data.releases[0].date, '2026-09-08');
   assert.equal(data.releases[0].mode, 'digital');
+  assert.equal(data.releases[0].title, 'Un film');
+  assert.equal(data.releases[0].plot, 'Un récit en français.');
   assert.deepEqual(data.releases[0].cast, [{ id: 'nm123', name: 'Actor One' }]);
   assert.deepEqual(data.notices, []);
 });
@@ -1874,13 +2101,71 @@ function mixedLoader(imdb, digital, storage = new Map()) {
     api.RELEASE_VIEWS,
     (key, fallback) => structuredClone(storage.has(key) ? storage.get(key) : fallback),
     (key, value) => storage.set(key, structuredClone(value)),
-    'unit3d-upcoming-cache-v4',
+    'unit3d-upcoming-cache-v5',
     6 * 60 * 60 * 1000,
     api.dateValue,
     new Map(),
     api.episodeRange
   );
 }
+
+test('concurrent languages keep independent requests and caches, including cached searches', async () => {
+  const storage = new Map();
+  const finish = new Map();
+  const requests = [];
+  const load = mixedLoader(
+    (request) => {
+      requests.push(request);
+      return new Promise((resolve) =>
+        finish.set(request.language, () =>
+          resolve({
+            releases: [
+              {
+                imdbId: 'tt123',
+                title: request.language,
+                date: '2026-09-08',
+                country: request.country,
+                mode: 'theatrical'
+              }
+            ],
+            notices: []
+          })
+        )
+      );
+    },
+    () => assert.fail('unexpected digital request'),
+    storage
+  );
+  const selected = { ...options, mode: 'theatrical', country: 'CA' };
+  const english = load({ ...selected, language: 'en-US' }, () => {});
+  const french = load({ ...selected, language: 'fr-CA' }, () => {});
+  assert.equal(requests.length, 2, 'different languages must not share an in-flight request');
+  finish.get('fr-CA')();
+  await french;
+  finish.get('en-US')();
+  await english;
+  for (const language of ['fr-CA', 'en-US']) {
+    const cached = await load({ ...selected, language }, () => {});
+    assert.equal(cached.cached, true);
+    assert.deepEqual(
+      cached.releases.map((release) => release.title),
+      [language]
+    );
+  }
+  assert.equal(requests.length, 2);
+  const cacheApi = make(() => assert.fail('unexpected request'), { storage });
+  assert.deepEqual(
+    cacheApi
+      .readReleaseCache('fr-CA')
+      .flatMap((entry) => entry.releases.map((release) => release.title)),
+    ['fr-CA']
+  );
+  const entries = storage.get('unit3d-upcoming-cache-v5');
+  entries.push({ key: 'legacy', savedAt: Date.now(), releases: [{ title: 'Old English' }] });
+  storage.set('unit3d-upcoming-cache-v5', entries);
+  assert.equal(cacheApi.readReleaseCache('fr-CA').length, 1);
+  assert.equal(cacheApi.readReleaseCache('en-US').length, 2);
+});
 
 test('background and foreground month requests merge their caches regardless of completion order', async () => {
   const storage = new Map();
@@ -1904,10 +2189,10 @@ test('background and foreground month requests merge their caches regardless of 
   await september;
   assert.deepEqual(
     storage
-      .get('unit3d-upcoming-cache-v4')
+      .get('unit3d-upcoming-cache-v5')
       .map((entry) => entry.key)
       .sort(),
-    ['movies:US:2026-09', 'movies:US:2026-10']
+    ['movies:US:2026-09:en-US', 'movies:US:2026-10:en-US']
   );
 });
 
@@ -2048,6 +2333,160 @@ test('cast/director and genre filters independently support Any, All and excludi
   );
 });
 
+test('the Settings language selector restores supported locales and defaults to English', () => {
+  const from = source.indexOf("    const languageLabel = element('label'");
+  const until = source.indexOf('    const settingsForm =', from);
+  assert.ok(from > 0 && until > from);
+  for (const [savedLanguage, expected] of [
+    [undefined, 'en-US'],
+    ['fr-CA', 'fr-CA'],
+    ['invalid', 'en-US']
+  ]) {
+    const nodes = [];
+    const context = {
+      ROOT_ID: 'test',
+      IMDB_LANGUAGES: api.IMDB_LANGUAGES,
+      saved: { language: savedLanguage },
+      settings: { append() {} },
+      Option: class {
+        constructor(text, value) {
+          this.text = text;
+          this.value = value;
+        }
+      },
+      element: (tag) => {
+        const node = {
+          tag,
+          children: [],
+          append(...items) {
+            this.children.push(...items);
+          },
+          setAttribute() {}
+        };
+        nodes.push(node);
+        return node;
+      }
+    };
+    runInNewContext(source.slice(from, until), context);
+    const select = nodes.find((node) => node.tag === 'select');
+    assert.equal(select.value, expected);
+    assert.deepEqual(
+      select.children.map((option) => option.value),
+      ['en-US', 'fr-CA', 'fr-FR', 'de-DE', 'hi-IN', 'it-IT', 'pt-BR', 'es-MX', 'es-ES']
+    );
+  }
+});
+
+test('the main episode Sonarr filter and language are saved with the other page settings', () => {
+  const from = source.indexOf('    function saveSettings()');
+  const until = source.indexOf('    fullWidth.addEventListener', from);
+  assert.ok(from > 0 && until > from);
+  let saved;
+  const context = {
+    SETTINGS_KEY: 'settings',
+    mode: { value: 'episodes' },
+    country: { value: 'US' },
+    language: { value: 'fr-CA' },
+    fullWidth: { checked: false },
+    episodeSonarrFilter: { value: 'out' },
+    GM_setValue: (key, value) => {
+      assert.equal(key, 'settings');
+      saved = value;
+    }
+  };
+  runInNewContext(source.slice(from, until), context);
+  context.saveSettings();
+  assert.deepEqual(
+    { ...saved },
+    {
+      mode: 'episodes',
+      country: 'US',
+      language: 'fr-CA',
+      fullWidth: false,
+      episodeSonarrFilter: 'out'
+    }
+  );
+});
+
+test('Sonarr changes reapply episode filters to cached search results after a calendar failure', () => {
+  const from = source.indexOf('    const arr = mountArrIntegration(settings, results,');
+  const until = source.indexOf('\n\n    function renderHiddenSeries', from);
+  assert.ok(from > 0 && until > from);
+  let onLibraryChange;
+  let renders = 0;
+  const context = {
+    settings: {},
+    results: {},
+    calendar: undefined,
+    searching: true,
+    mode: { value: 'episodes' },
+    episodeSonarrFilter: { value: 'out' },
+    mountArrIntegration: (_settings, _results, callback) => {
+      onLibraryChange = callback;
+      return {};
+    },
+    updateVisibleReleases: (keepCount) => {
+      assert.equal(keepCount, true);
+      renders++;
+    }
+  };
+  runInNewContext(source.slice(from, until), context);
+  onLibraryChange('sonarr');
+  assert.equal(renders, 1);
+});
+
+test('the main episode Sonarr control reapplies its filter and Refresh forces Sonarr libraries', () => {
+  const from = source.indexOf("    previous.addEventListener('click'");
+  const boundary = source.indexOf('\n  function init()', from);
+  const until =
+    source.lastIndexOf('    void refreshPage();', boundary) + '    void refreshPage();'.length;
+  assert.ok(from > 0 && until > from);
+  const control = () => ({
+    handlers: {},
+    addEventListener(event, callback) {
+      this.handlers[event] = callback;
+    }
+  });
+  const updates = [];
+  const refreshes = [];
+  const pageRefreshes = [];
+  let saves = 0;
+  let renders = 0;
+  const context = {
+    previous: control(),
+    next: control(),
+    current: control(),
+    monthSelect: { ...control(), value: '2026-09' },
+    mode: { ...control(), value: 'episodes' },
+    country: control(),
+    language: control(),
+    episodeSonarrFilter: control(),
+    refresh: control(),
+    month: '2026-09',
+    shiftMonth: () => '2026-09',
+    monthRange: () => ({ from: '2026-09-01' }),
+    selectMonth() {},
+    saveSettings: () => saves++,
+    updateVisibleReleases: () => renders++,
+    refreshPage: (force) => pageRefreshes.push(force),
+    arr: {
+      update: (...args) => updates.push(args),
+      refresh: (type) => refreshes.push(type)
+    }
+  };
+  runInNewContext(source.slice(from, until), context);
+  pageRefreshes.length = 0;
+  context.episodeSonarrFilter.handlers.change();
+  assert.equal(saves, 1);
+  assert.equal(renders, 1);
+  assert.deepEqual(updates, [[false, 'sonarr']]);
+  context.refresh.handlers.click();
+  assert.deepEqual(refreshes, ['sonarr']);
+  assert.deepEqual(pageRefreshes, [true]);
+  context.language.handlers.change();
+  assert.deepEqual(pageRefreshes, [true, undefined]);
+});
+
 test('failed Refresh restores an active cached search even when background months are already cached', async () => {
   const month = api.monthRange(new Date()).from.slice(0, 7);
   const releases = Array.from({ length: 30 }, (_, index) => ({
@@ -2076,6 +2515,7 @@ test('failed Refresh restores an active cached search even when background month
     ),
     mode: { value: 'tv' },
     country: { value: 'US' },
+    language: { value: 'fr-FR' },
     monthSelect: node(),
     previous: {},
     current: {},
@@ -2101,22 +2541,31 @@ test('failed Refresh restores an active cached search even when background month
     RELEASE_VIEWS: api.RELEASE_VIEWS,
     monthRange: api.monthRange,
     calendarMonths: api.calendarMonths,
-    readReleaseCache: () => [{ releases }],
+    readReleaseCache: (language) => {
+      assert.equal(language, 'fr-FR');
+      return [{ releases }];
+    },
     searchFilters: () => ({ title: 'moon' }),
     searchOptions: {},
     filterEpisodes: api.filterEpisodes,
+    filterSonarrEpisodes: api.filterSonarrEpisodes,
+    sonarrSeriesMembership: api.sonarrSeriesMembership,
     episodeWindow: {},
+    episodeSonarrFilter: { value: 'all' },
+    episodeSonarrLabel: {},
     searchReleases: api.searchReleases,
     renderReleases: (target, batch) => target.children.push(...batch),
     markRecentTorrents() {},
-    arr: { update() {} },
+    arr: { update() {}, hasLibraryError: () => false },
     saveSettings() {},
     initialStyle: null,
+    initialLoading: null,
     requestAnimationFrame: (callback) => callback(),
     clearTimeout() {},
     setTimeout: (callback) => scheduled.push(callback),
     Option: class {},
     loadReleases: async (options, _onProgress, force) => {
+      assert.equal(options.language, 'fr-FR');
       calls.push(options);
       if (force) throw new Error('offline');
       return { cached: true, notices: [] };
@@ -2216,11 +2665,11 @@ test('empty months are cached, Refresh bypasses the selected sources, and expire
   assert.equal(calls, 1);
   await load(selected, () => {}, true);
   assert.equal(calls, 2);
-  const entries = storage.get('unit3d-upcoming-cache-v4');
+  const entries = storage.get('unit3d-upcoming-cache-v5');
   entries[0].savedAt = Date.now() - 6 * 60 * 60 * 1000 - 1;
   await load(selected, () => {});
   assert.equal(calls, 3);
-  assert.equal(storage.get('unit3d-upcoming-cache-v4').length, 1);
+  assert.equal(storage.get('unit3d-upcoming-cache-v5').length, 1);
 });
 
 test('a failed month extension keeps known results and retries missing days without caching failure', async () => {

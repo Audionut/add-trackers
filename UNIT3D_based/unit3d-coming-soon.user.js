@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Coming Soon
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.0
+// @version      1.0.1
 // @description  Date-grouped theatrical, digital, TV and episode releases in native UNIT3D cards, under Other > Upcoming.
 // @author       Audionut
 // @match        https://aither.cc/*
@@ -25,13 +25,37 @@
     location.pathname === '/torrents' &&
     new URLSearchParams(location.search).get('upcoming') === '1';
   const initialStyle = isUpcomingPage ? document.createElement('style') : null;
+  const initialLoading = isUpcomingPage ? document.createElement('div') : null;
   if (initialStyle) {
-    initialStyle.textContent = 'main { visibility: hidden !important; }';
+    initialStyle.textContent = `
+      main { visibility: hidden !important; }
+      #unit3d-upcoming-loading {
+        position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        z-index: 1000; display: flex; align-items: center; gap: 12px;
+        box-sizing: border-box; max-width: calc(100vw - 32px); padding: 18px 24px;
+        border-radius: 8px; background: var(--panel-bg, #222); color: var(--panel-fg, #eee);
+        font: 14px/1.5 system-ui, sans-serif;
+      }
+      #unit3d-upcoming-loading::before {
+        content: ''; width: 20px; height: 20px; flex-shrink: 0;
+        border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+        animation: unit3d-upcoming-loading-spin 0.8s linear infinite;
+      }
+      @keyframes unit3d-upcoming-loading-spin { to { transform: rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) {
+        #unit3d-upcoming-loading::before { animation: none; }
+      }
+    `;
     (document.head || document.documentElement).append(initialStyle);
+    initialLoading.id = 'unit3d-upcoming-loading';
+    initialLoading.setAttribute('role', 'status');
+    initialLoading.setAttribute('aria-live', 'polite');
+    initialLoading.textContent = 'Loading upcoming releases…';
+    document.documentElement.append(initialLoading);
   }
 
   const ROOT_ID = 'unit3d-upcoming';
-  const CACHE_KEY = 'unit3d-upcoming-cache-v4';
+  const CACHE_KEY = 'unit3d-upcoming-cache-v5';
   const SETTINGS_KEY = 'unit3d-upcoming-settings';
   const HIDDEN_SERIES_KEY = 'unit3d-upcoming-hidden-series';
   const CACHE_TTL = 6 * 60 * 60 * 1000;
@@ -79,6 +103,17 @@
     'KZ KW LV LB LR LY LT LU MO MY MV MH MX ME MM NP NL NZ NI NG NO PK PY PE PH PL PT ' +
     'PR QA RO RU SA RS SG SK SI ZA KR ES LK SE CH TW TH TR UA AE GB US UY VE VN'
   ).split(' ');
+  const IMDB_LANGUAGES = {
+    'en-US': 'English',
+    'fr-CA': 'Français (Canada)',
+    'fr-FR': 'Français (France)',
+    'de-DE': 'Deutsch',
+    'hi-IN': 'हिन्दी',
+    'it-IT': 'Italiano',
+    'pt-BR': 'Português (Brasil)',
+    'es-MX': 'Español (México)',
+    'es-ES': 'Español (España)'
+  };
 
   const TITLE_FIELDS = `
     id
@@ -174,7 +209,7 @@
   }
 
   // Use the same persisted-query GET / registration POST as unit3d-imdb-combined.
-  async function imdbGraphqlRequest(query, variables = {}, country = 'US') {
+  async function imdbGraphqlRequest(query, variables = {}, country = 'US', language = 'en-US') {
     const endpoint = 'https://caching.graphql.imdb.com/';
     const operationName = query.match(/\bquery\s+([_A-Za-z][_0-9A-Za-z]*)\s*(?:\(|\{)/)?.[1];
     if (!operationName) throw new Error('IMDb GraphQL query requires a named operation');
@@ -186,7 +221,7 @@
       Origin: 'https://www.imdb.com',
       'X-Imdb-Client-Name': 'imdb-web-next-localized',
       'X-Imdb-User-Country': country,
-      'X-Imdb-User-Language': 'en-US'
+      'X-Imdb-User-Language': language
     };
     const params = new URLSearchParams({
       extensions: JSON.stringify(extensions),
@@ -292,6 +327,8 @@
         .join(' — '),
       seriesImdbId: /^tt\d+$/.test(series?.id || '') ? series.id : undefined,
       seriesTitle: series?.titleText?.text || series?.id,
+      season: /^\d+$/.test(String(season ?? '')) ? Number(season) : undefined,
+      episode: /^\d+$/.test(String(episode ?? '')) ? Number(episode) : undefined,
       image: node.primaryImage?.url || series?.primaryImage?.url || '',
       plot: node.plot?.plotText?.plainText || '',
       genres: (node.genres?.genres || []).map((genre) => genre.text),
@@ -349,7 +386,8 @@
           from: options.from,
           to: options.to
         },
-        options.country
+        options.country,
+        options.language
       );
       const connection = data.comingSoon;
       after = nextCursor(connection, cursors);
@@ -371,7 +409,8 @@
                 after: dateCursor,
                 countries: [options.country]
               },
-              options.country
+              options.country,
+              options.language
             );
             dates = result.title?.releaseDates;
           }
@@ -445,9 +484,12 @@
     try {
       for (let offset = 0; offset < ids.length; offset += 20) {
         onProgress(`Loading digital release details… ${offset}/${ids.length}.`);
-        const data = await imdbGraphqlRequest(TITLES_QUERY, {
-          ids: ids.slice(offset, offset + 20)
-        });
+        const data = await imdbGraphqlRequest(
+          TITLES_QUERY,
+          { ids: ids.slice(offset, offset + 20) },
+          'US',
+          options.language
+        );
         if (!Array.isArray(data.titles)) throw new Error('IMDb returned no title details.');
         data.titles.filter(Boolean).forEach((node) => titles.set(node.id, normalizeTitle(node)));
       }
@@ -458,7 +500,12 @@
       // Enrich metadata only: the title's theatrical releaseDate must never replace the digital date.
       releases: releases.map((release) => {
         const title = titles.get(release.imdbId);
-        return { ...title, ...release, image: title?.image || release.image };
+        return {
+          ...title,
+          ...release,
+          title: title?.title || release.title,
+          image: title?.image || release.image
+        };
       }),
       notices
     };
@@ -489,13 +536,15 @@
     }
   }
 
-  function readReleaseCache() {
+  function readReleaseCache(language) {
     const stored = GM_getValue(CACHE_KEY, []);
     return (Array.isArray(stored) ? stored : []).filter(
       (entry) =>
         Date.now() >= entry.savedAt &&
         Date.now() - entry.savedAt < CACHE_TTL &&
-        Array.isArray(entry.releases)
+        Array.isArray(entry.releases) &&
+        // Entries saved before language selection contain English metadata.
+        (!language || (entry.language || 'en-US') === language)
     );
   }
 
@@ -550,7 +599,8 @@
   }
 
   async function loadReleaseSource(sourceMode, fetchSource, options, onProgress, force) {
-    const key = `${sourceMode}:${options.country}:${sourceMode === 'episodes' ? 'rolling' : options.from.slice(0, 7)}`;
+    const language = options.language || 'en-US';
+    const key = `${sourceMode}:${options.country}:${sourceMode === 'episodes' ? 'rolling' : options.from.slice(0, 7)}:${language}`;
     // A foreground view can share a background request, then fetch only any missing days.
     while (releaseRequests.has(key)) await releaseRequests.get(key).catch(() => {});
     const pending = (async () => {
@@ -582,6 +632,7 @@
           ...readReleaseCache().filter((item) => item.key !== key),
           {
             key,
+            language,
             from: options.from,
             to: options.to,
             savedAt: entry ? entry.savedAt : Date.now(),
@@ -726,6 +777,32 @@
   function readArrCache(server) {
     const cache = decodeStored(GM_getValue(ARR_CACHE_PREFIX + server.id, ''), null);
     return cache?.revision === server.revision ? cache : {};
+  }
+
+  function sonarrSeriesMembership() {
+    const libraries = readArrServers()
+      .filter((server) => server.enabled && server.type === 'sonarr')
+      .map((server) => readArrCache(server).library);
+    return {
+      complete: libraries.every(
+        (library) => library?.savedAt > 0 && Array.isArray(library.records)
+      ),
+      ids: new Set(
+        libraries.flatMap((library) =>
+          (library?.records || []).map((record) => imdbIdKey(record.imdbId)).filter(Boolean)
+        )
+      )
+    };
+  }
+
+  function filterSonarrEpisodes(releases, filter, membership = sonarrSeriesMembership()) {
+    if (!['in', 'out'].includes(filter)) return releases;
+    const included = filter === 'in';
+    return releases.filter((release) => {
+      if (release.mode !== 'episodes') return true;
+      const seriesId = imdbIdKey(release.seriesImdbId);
+      return Boolean(seriesId && membership.complete && membership.ids.has(seriesId) === included);
+    });
   }
 
   function writeArrCache(server, section, value) {
@@ -1053,6 +1130,31 @@
     };
   }
 
+  function torrentEpisodeKeys(attributes) {
+    const parse = (name) => {
+      const keys = [];
+      const pattern =
+        /(?:^|[^a-z0-9])S(\d{1,3})[ ._-]*E(\d{1,4})((?:E\d{1,4}|-E?\d{1,4})*)(?![a-z0-9])/gi;
+      for (const match of String(name || '').matchAll(pattern)) {
+        const season = Number(match[1]);
+        let episode = Number(match[2]);
+        keys.push(`${season}:${episode}`);
+        for (const extra of match[3].matchAll(/(E|-E?)(\d{1,4})/gi)) {
+          const end = Number(extra[2]);
+          if (extra[1].startsWith('-')) {
+            for (let next = episode + 1; next <= end; next++) keys.push(`${season}:${next}`);
+          } else keys.push(`${season}:${end}`);
+          episode = end;
+        }
+      }
+      return keys;
+    };
+    const files = (attributes.files || [])
+      .filter((file) => /\.(mkv|mp4|avi|m4v|ts|m2ts|mpg|mpeg|webm)$/i.test(file.name || ''))
+      .flatMap((file) => parse(file.name.split(/[\\/]/).pop()));
+    return [...new Set(files.length ? files : parse(attributes.name))].sort();
+  }
+
   function mergeTorrentHistory(history, records, now = Date.now()) {
     const matches = new Map();
     for (const record of [...history, ...records.map((record) => ({ ...record, lastSeen: now }))]) {
@@ -1062,7 +1164,7 @@
         now - record.lastSeen >= TORRENT_HISTORY_TTL
       )
         continue;
-      const key = `${record.categoryId}:${record.imdbId}`;
+      const key = `${record.categoryId}:${record.imdbId}:${(record.episodeKeys || []).join(',')}`;
       if (!matches.has(key) || record.lastSeen > matches.get(key).lastSeen)
         matches.set(key, record);
     }
@@ -1093,7 +1195,11 @@
       const matchingRecords = () =>
         history
           .filter((record) => TORRENT_CATEGORIES[scope].includes(record.categoryId))
-          .map(({ imdbId, categoryId }) => ({ imdbId, categoryId }));
+          .map(({ imdbId, categoryId, episodeKeys }) => ({
+            imdbId,
+            categoryId,
+            ...(episodeKeys?.length ? { episodeKeys } : {})
+          }));
       // Preserve existing v1 results during migration and prune expired history even on cache hits.
       if (stored?.credential === credential)
         GM_setValue(TORRENT_CACHE_KEY, encodeStored({ credential, entries, history }));
@@ -1139,9 +1245,9 @@
           const pageRecords = data.data.flatMap((torrent) => {
             const imdbId = imdbIdKey(torrent.attributes?.imdb_id);
             const categoryId = Number(torrent.attributes?.category_id);
-            return imdbId && TORRENT_CATEGORIES[scope].includes(categoryId)
-              ? [{ imdbId, categoryId }]
-              : [];
+            if (!imdbId || !TORRENT_CATEGORIES[scope].includes(categoryId)) return [];
+            const episodeKeys = categoryId === 2 ? torrentEpisodeKeys(torrent.attributes) : [];
+            return [{ imdbId, categoryId, ...(episodeKeys.length ? { episodeKeys } : {}) }];
           });
           const pageIds = data.data.map((torrent) => String(torrent.id || ''));
           const knownPage = pageIds.length > 0 && pageIds.every((id) => knownIds.has(id));
@@ -1301,7 +1407,7 @@
     };
   }
 
-  function mountArrIntegration(settings, results) {
+  function mountArrIntegration(settings, results, onLibraryChange = () => {}) {
     const container = element('div', 'unit3d-upcoming__arr-settings');
     settings.append(container);
     const attempts = new Map();
@@ -1382,17 +1488,32 @@
         errors.set(key, error.message);
       }
       draw();
+      onLibraryChange(server.type);
     }
 
-    function update(force = false) {
+    function update(force = false, requiredType) {
       draw();
       const types = new Set(
         [...results.querySelectorAll('.unit3d-upcoming__arr-actions')].map(
           (row) => row.dataset.arrType
         )
       );
+      if (requiredType) types.add(requiredType);
       for (const server of readArrServers().filter((item) => item.enabled && types.has(item.type)))
         void sync(server, force);
+    }
+
+    function hasLibraryError(type) {
+      return readArrServers().some((server) => {
+        if (
+          !server.enabled ||
+          server.type !== type ||
+          !errors.has(`${server.id}:${server.revision}`)
+        )
+          return false;
+        const library = readArrCache(server).library;
+        return !(library?.savedAt > 0 && Array.isArray(library.records));
+      });
     }
 
     function renderSettings() {
@@ -1496,7 +1617,8 @@
         editor.remove();
         attempts.clear();
         messages.clear();
-        update();
+        update(false, server.type);
+        onLibraryChange(server.type);
       });
       const refreshLibrary = element(
         'button',
@@ -1559,7 +1681,8 @@
             editor.replaceWith(replacement);
             replacement.querySelector('[role="status"]').textContent =
               'Server saved. API key hidden.';
-            update();
+            update(false, draft.type);
+            onLibraryChange(draft.type);
           } else
             status.textContent = `Connected to ${arrName(server.type)}. Choose defaults, then save.`;
         } catch (error) {
@@ -1591,6 +1714,7 @@
           messages.set(key, { busy: true, text: `Adding to ${servers[0].name}…` });
           draw();
           await addArrTitle(servers[0], target, servers[0].defaults);
+          onLibraryChange(target.type);
         } else openAddDialog(target, servers);
         messages.delete(key);
       } catch (error) {
@@ -1671,6 +1795,7 @@
             externalLink(`View in ${selected.name}`, arrViewUrl(selected, record))
           );
           draw();
+          onLibraryChange(target.type);
         } catch (error) {
           status.textContent = error.message;
           submit.disabled = false;
@@ -1693,7 +1818,7 @@
     }
 
     renderSettings();
-    return { update, refresh: () => update(true) };
+    return { update, refresh: (type) => update(true, type), hasLibraryError };
   }
 
   function createCredits(className, people = []) {
@@ -1765,6 +1890,11 @@
     const card = element('article', 'torrent-card');
     const torrentImdbId = release.seriesImdbId || release.imdbId;
     card.dataset.imdbId = imdbIdKey(torrentImdbId);
+    if (release.mode === 'episodes')
+      card.dataset.episodeKey =
+        Number.isInteger(release.season) && Number.isInteger(release.episode)
+          ? `${release.season}:${release.episode}`
+          : '';
     const imdbUrl = `https://www.imdb.com/title/${release.imdbId}/`;
     const header = element('header', 'torrent-card__header');
     const type = element('div', 'torrent-card__left-header');
@@ -1894,6 +2024,7 @@
     const main = document.querySelector('main');
     if (!main || document.getElementById(ROOT_ID)) {
       initialStyle?.remove();
+      initialLoading?.remove();
       return;
     }
     const style = element('style');
@@ -2000,6 +2131,18 @@
     monthSelect.setAttribute('aria-label', 'Month');
     const episodeWindow = element('span');
     episodeWindow.hidden = true;
+    const episodeSonarrFilter = element('select', 'form__select');
+    episodeSonarrFilter.append(
+      new Option('All series', 'all'),
+      new Option('In Sonarr', 'in'),
+      new Option('Not in Sonarr', 'out')
+    );
+    episodeSonarrFilter.value = ['all', 'in', 'out'].includes(saved?.episodeSonarrFilter)
+      ? saved.episodeSonarrFilter
+      : 'all';
+    const episodeSonarrLabel = element('label', null, 'Sonarr');
+    episodeSonarrLabel.append(episodeSonarrFilter);
+    episodeSonarrLabel.hidden = true;
     let month = monthRange(new Date()).from.slice(0, 7);
     let fromToday = true;
     controls.append(
@@ -2010,6 +2153,7 @@
       next,
       current,
       episodeWindow,
+      episodeSonarrLabel,
       refresh
     );
     const settings = element('details', 'panel__body unit3d-upcoming__settings');
@@ -2020,6 +2164,21 @@
     fullWidth.checked = saved?.fullWidth !== false;
     widthLabel.append(fullWidth, 'Full page width');
     settings.append(widthLabel);
+    const languageLabel = element('label', null, 'IMDb language');
+    const language = element('select', 'form__select');
+    Object.entries(IMDB_LANGUAGES).forEach(([code, name]) =>
+      language.append(new Option(name, code))
+    );
+    language.value = Object.hasOwn(IMDB_LANGUAGES, saved?.language) ? saved.language : 'en-US';
+    languageLabel.append(language);
+    const languageHint = element(
+      'p',
+      null,
+      'IMDb titles and details use this language where available, with English fallback. Release dates still follow the selected country.'
+    );
+    languageHint.id = `${ROOT_ID}-language-hint`;
+    language.setAttribute('aria-describedby', languageHint.id);
+    settings.append(languageLabel, languageHint);
     const settingsForm = element('form');
     const apiLabel = element('label', null, 'API KEY');
     const apiInput = element('input', 'form__text');
@@ -2127,7 +2286,15 @@
     let renderedCount = 0;
     let backgroundGeneration = 0;
     let backgroundTimer;
-    const arr = mountArrIntegration(settings, results);
+    const arr = mountArrIntegration(settings, results, (type) => {
+      if (
+        type === 'sonarr' &&
+        (calendar || searching) &&
+        mode.value === 'episodes' &&
+        episodeSonarrFilter.value !== 'all'
+      )
+        updateVisibleReleases(true);
+    });
 
     function renderHiddenSeries() {
       const entries = readHiddenSeries().sort((a, b) => a.title.localeCompare(b.title));
@@ -2185,11 +2352,11 @@
     function updateVisibleReleases(keepCount = false) {
       const previousCount = renderedCount;
       const region = RELEASE_VIEWS[mode.value].modes.includes('digital') ? 'US' : country.value;
-      visibleReleases = filterEpisodes(
+      const releases = filterEpisodes(
         searching
           ? searchReleases(
               [
-                ...readReleaseCache().flatMap((entry) => entry.releases),
+                ...readReleaseCache(language.value).flatMap((entry) => entry.releases),
                 ...(calendar?.releases || [])
               ].filter((release) => release.country === region),
               searchFilters(),
@@ -2202,17 +2369,28 @@
             )
           : calendar?.releases || []
       );
+      const sonarrFilter = mode.value === 'episodes' ? episodeSonarrFilter.value : 'all';
+      const membership = sonarrFilter === 'all' ? null : sonarrSeriesMembership();
+      visibleReleases = filterSonarrEpisodes(releases, sonarrFilter, membership || undefined);
       panel.dataset.combined = String(searching || RELEASE_VIEWS[mode.value].modes.length > 1);
       results.replaceChildren();
       renderedCount = 0;
       appendReleases(keepCount ? Math.max(CARD_PAGE_SIZE, previousCount) : CARD_PAGE_SIZE);
-      searchStatus.textContent = `${searching ? `${visibleReleases.length} matching releases. ` : ''}Search all cached months and release types for the selected country. Results update as background months load.`;
-      if (calendar)
-        message.textContent =
-          calendar.notices.join('\n') ||
-          (!searching && !visibleReleases.length
-            ? `No releases found for ${mode.value === 'episodes' ? 'the next 30 days' : 'this month'}.`
-            : '');
+      searchStatus.textContent = `${searching ? `${visibleReleases.length} matching releases. ` : ''}Search all cached months and release types for the selected country and language. Results update as background months load.`;
+      if (calendar) {
+        const notices = [...calendar.notices];
+        if (membership && !membership.complete)
+          notices.push(
+            arr.hasLibraryError('sonarr')
+              ? 'Sonarr libraries could not be checked. Check the servers in Settings, then use Refresh to retry.'
+              : 'Checking Sonarr libraries…'
+          );
+        if (!notices.length && !searching && !visibleReleases.length)
+          notices.push(
+            `No releases found for ${mode.value === 'episodes' ? 'the next 30 days' : 'this month'}.`
+          );
+        message.textContent = notices.join('\n');
+      }
     }
 
     function updateSearch() {
@@ -2250,6 +2428,7 @@
     scrollObserver.observe(moreRow);
 
     async function prefetchMonths(region, token) {
+      const selectedLanguage = language.value;
       if (mode.value === 'episodes') {
         backgroundStatus.textContent = 'Episodes are limited to the current 30-day window.';
         return;
@@ -2266,7 +2445,8 @@
               {
                 ...monthRange(new Date(`${value}-01T12:00:00`)),
                 mode: releaseMode,
-                country: region
+                country: region,
+                language: selectedLanguage
               },
               () => {}
             );
@@ -2286,7 +2466,9 @@
       GM_setValue(SETTINGS_KEY, {
         mode: mode.value,
         country: country.value,
-        fullWidth: fullWidth.checked
+        language: language.value,
+        fullWidth: fullWidth.checked,
+        episodeSonarrFilter: episodeSonarrFilter.value
       });
     }
 
@@ -2298,8 +2480,16 @@
     function markRecentTorrents(records = []) {
       torrentMatches = records;
       const matches = new Set(records.map((record) => record.imdbId));
+      const episodes = new Set(
+        records
+          .filter((record) => record.categoryId === 2)
+          .flatMap((record) => (record.episodeKeys || []).map((key) => `${record.imdbId}:${key}`))
+      );
       for (const card of results.querySelectorAll('.torrent-card')) {
-        const found = matches.has(card.dataset.imdbId);
+        const isEpisode = card.dataset.episodeKey !== undefined;
+        const found = isEpisode
+          ? episodes.has(`${card.dataset.imdbId}:${card.dataset.episodeKey}`)
+          : matches.has(card.dataset.imdbId);
         card.dataset.recent = String(found);
         const link = card.querySelector('.torrent-card__right-footer');
         const title = card.querySelector('.torrent-card__title').textContent;
@@ -2311,7 +2501,7 @@
         }
         link.append(found ? 'View torrents' : 'Search torrents');
         link.title = found
-          ? 'Matching IMDb ID in torrent results saved during the past 14 days.'
+          ? `Matching ${isEpisode ? 'series, season and episode' : 'IMDb ID'} in torrent results saved during the past 14 days.`
           : '';
         link.setAttribute(
           'aria-label',
@@ -2452,7 +2642,8 @@
       const options = {
         ...(episodes ? episodeRange(today) : monthRange(new Date(`${month}-01T12:00:00`))),
         mode: mode.value,
-        country: includesDigital ? 'US' : country.value
+        country: includesDigital ? 'US' : country.value,
+        language: language.value
       };
       if (!episodes && fromToday && month === monthRange(today).from.slice(0, 7)) {
         options.from = dateValue({
@@ -2466,6 +2657,7 @@
         control.hidden = episodes;
       });
       episodeWindow.hidden = !episodes;
+      episodeSonarrLabel.hidden = !episodes;
       episodeWindow.textContent = episodes
         ? `Next 30 days · ${[options.from, options.to].map((value) => new Date(`${value}T12:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })).join(' – ')}`
         : '';
@@ -2477,13 +2669,24 @@
       moreRow.hidden = true;
       results.setAttribute('aria-busy', 'true');
       // Serialize UI requests; a generation check also protects against delayed callbacks.
-      [mode, country, monthSelect, previous, current, next, refresh].forEach((control) => {
+      [
+        mode,
+        country,
+        language,
+        episodeSonarrFilter,
+        monthSelect,
+        previous,
+        current,
+        next,
+        refresh
+      ].forEach((control) => {
         control.disabled = true;
       });
       const onProgress = (text) => {
         if (requestGeneration === generation) {
           status.textContent = text;
           message.textContent = text;
+          if (initialLoading) initialLoading.textContent = text;
         }
       };
       try {
@@ -2492,6 +2695,7 @@
         if (requestGeneration !== generation) return;
         calendar = data;
         renderCalendar();
+        if (episodes) arr.update(false, 'sonarr');
         void refreshTorrentMatches(force);
       } catch (error) {
         if (requestGeneration === generation) {
@@ -2502,10 +2706,23 @@
       } finally {
         if (requestGeneration === generation) {
           results.setAttribute('aria-busy', 'false');
-          [mode, country, monthSelect, previous, current, next, refresh].forEach((control) => {
+          [
+            mode,
+            country,
+            language,
+            episodeSonarrFilter,
+            monthSelect,
+            previous,
+            current,
+            next,
+            refresh
+          ].forEach((control) => {
             control.disabled = false;
           });
-          requestAnimationFrame(() => initialStyle?.remove());
+          requestAnimationFrame(() => {
+            initialStyle?.remove();
+            initialLoading?.remove();
+          });
           backgroundTimer = setTimeout(
             () => void prefetchMonths(options.country, backgroundToken),
             100
@@ -2527,11 +2744,19 @@
     mode.addEventListener('change', () => {
       void refreshPage();
     });
+    episodeSonarrFilter.addEventListener('change', () => {
+      saveSettings();
+      updateVisibleReleases();
+      arr.update(false, 'sonarr');
+    });
     country.addEventListener('change', () => {
       void refreshPage();
     });
+    language.addEventListener('change', () => {
+      void refreshPage();
+    });
     refresh.addEventListener('click', () => {
-      arr.refresh();
+      arr.refresh(mode.value === 'episodes' ? 'sonarr' : undefined);
       void refreshPage(true);
     });
     void refreshPage();
