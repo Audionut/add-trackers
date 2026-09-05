@@ -32,7 +32,7 @@ const factory = new Function(
     normalizeArrUrl, readArrServers, saveArrServer, removeArrServer, readArrCache, writeArrCache,
     loadArrOptions, loadArrLibrary, arrTarget, arrExisting, arrViewUrl, arrImmediate, addArrTitle,
     ARR_SETTINGS_KEY, ARR_CACHE_PREFIX, ARR_LIBRARY_TTL,
-    RELEASE_VIEWS, IMDB_LANGUAGES, COMING_SOON_QUERY, RELEASE_DATES_QUERY, TITLES_QUERY, API_KEY_STORAGE, TORRENT_CACHE_KEY, TORRENT_REQUEST_KEY };
+    RELEASE_VIEWS, IMDB_LANGUAGES, COUNTRIES, COMING_SOON_QUERY, RELEASE_DATES_QUERY, TITLES_QUERY, API_KEY_STORAGE, TORRENT_CACHE_KEY, TORRENT_REQUEST_KEY };
 `
 );
 const make = (request, environment = {}) => {
@@ -1717,7 +1717,7 @@ test('episode caches span month boundaries and roll forward without keeping obso
   );
   const cache = storage.get('unit3d-upcoming-cache-v5');
   assert.equal(cache.length, 1);
-  assert.equal(cache[0].key, 'episodes:US:rolling:en-US');
+  assert.equal(cache[0].key, 'episodes:US:rolling:en-US:auto');
   assert.equal(cache[0].from, '2026-10-01');
   await episodeApi.loadReleases({ ...selected, country: 'GB' }, () => {});
   assert.equal(storage.get('unit3d-upcoming-cache-v5').length, 2);
@@ -1829,7 +1829,7 @@ test('both calendar and per-title release connections paginate, including duplic
   const pageApi = make((request) => {
     const url = new URL(request.url);
     assert.equal(request.headers['X-Imdb-User-Language'], 'de-DE');
-    assert.equal(request.headers['X-Imdb-User-Country'], 'US');
+    assert.equal(request.headers['X-Imdb-User-Country'], 'PL');
     const operation = url.searchParams.get('operationName');
     const variables = JSON.parse(url.searchParams.get('variables'));
     requests.push({ operation, variables });
@@ -1845,7 +1845,10 @@ test('both calendar and per-title release connections paginate, including duplic
     }
     request.onload({ status: 200, responseText: JSON.stringify({ data }) });
   });
-  const movies = await pageApi.fetchComingSoon({ ...options, language: 'de-DE' }, () => {});
+  const movies = await pageApi.fetchComingSoon(
+    { ...options, language: 'de-DE', titleCountry: 'PL' },
+    () => {}
+  );
   assert.deepEqual(
     movies.releases.map((movie) => movie.date),
     ['2026-09-08', '2026-09-12']
@@ -1853,6 +1856,8 @@ test('both calendar and per-title release connections paginate, including duplic
   assert.equal(requests.length, 3);
   assert.equal(requests[0].variables.type, 'MOVIE');
   assert.deepEqual(requests[0].variables.countries, ['US']);
+  assert.equal(requests[0].variables.region, 'US');
+  assert.deepEqual(requests[1].variables.countries, ['US']);
   assert.equal(requests[0].variables.to, '2026-09-30');
 });
 
@@ -1884,7 +1889,7 @@ function digitalLoader(read, parse, query = async () => ({ titles: [] })) {
   )(read, parse, query, api.normalizeTitle, 'https://www.dvdsreleasedates.com', api.TITLES_QUERY);
 }
 
-test('digital enrichment uses the selected language and localized title while preserving the US schedule date', async () => {
+test('digital enrichment uses the title country and metadata language while preserving the US schedule date', async () => {
   const calendar = [
     {
       imdbId: 'tt1234567',
@@ -1899,7 +1904,7 @@ test('digital enrichment uses the selected language and localized title while pr
     async () => '<html>',
     () => calendar,
     async (_query, _variables, country, language) => {
-      assert.equal(country, 'US');
+      assert.equal(country, 'PL');
       assert.equal(language, 'fr-FR');
       return {
         titles: [
@@ -1918,9 +1923,10 @@ test('digital enrichment uses the selected language and localized title while pr
       };
     }
   );
-  const data = await fetchDigital({ ...options, language: 'fr-FR' }, () => {});
+  const data = await fetchDigital({ ...options, language: 'fr-FR', titleCountry: 'PL' }, () => {});
   assert.equal(data.releases[0].date, '2026-09-08');
   assert.equal(data.releases[0].mode, 'digital');
+  assert.equal(data.releases[0].country, 'US');
   assert.equal(data.releases[0].title, 'Un film');
   assert.equal(data.releases[0].plot, 'Un récit en français.');
   assert.deepEqual(data.releases[0].cast, [{ id: 'nm123', name: 'Actor One' }]);
@@ -2167,6 +2173,69 @@ test('concurrent languages keep independent requests and caches, including cache
   assert.equal(cacheApi.readReleaseCache('en-US').length, 2);
 });
 
+test('regional title preferences isolate concurrent requests, cached results and legacy searches', async () => {
+  const storage = new Map();
+  const finish = new Map();
+  let requests = 0;
+  const load = mixedLoader(
+    (request) => {
+      requests++;
+      return new Promise((resolve) =>
+        finish.set(request.titleCountry || '', () =>
+          resolve({
+            releases: [
+              {
+                imdbId: 'tt123',
+                title: request.titleCountry || 'default',
+                date: '2026-09-08',
+                country: request.country,
+                mode: 'theatrical'
+              }
+            ],
+            notices: []
+          })
+        )
+      );
+    },
+    () => assert.fail('unexpected digital request'),
+    storage
+  );
+  const selected = { ...options, mode: 'theatrical', country: 'CA', language: 'fr-FR' };
+  const automatic = load(selected, () => {});
+  const polish = load({ ...selected, titleCountry: 'PL' }, () => {});
+  assert.equal(requests, 2);
+  finish.get('PL')();
+  await polish;
+  finish.get('')();
+  await automatic;
+  for (const titleCountry of ['', 'PL']) {
+    const cached = await load({ ...selected, titleCountry }, () => {});
+    assert.equal(cached.cached, true);
+    assert.deepEqual(
+      cached.releases.map((release) => release.title),
+      [titleCountry || 'default']
+    );
+    assert.equal(cached.releases[0].country, 'CA');
+  }
+  assert.equal(requests, 2);
+  const cacheApi = make(() => assert.fail('unexpected request'), { storage });
+  const entries = storage.get('unit3d-upcoming-cache-v5');
+  entries.push({
+    key: 'legacy',
+    language: 'fr-FR',
+    savedAt: Date.now(),
+    releases: [{ title: 'Old regional default' }]
+  });
+  storage.set('unit3d-upcoming-cache-v5', entries);
+  assert.deepEqual(
+    cacheApi
+      .readReleaseCache('fr-FR', 'PL')
+      .flatMap((entry) => entry.releases.map((release) => release.title)),
+    ['PL']
+  );
+  assert.equal(cacheApi.readReleaseCache('fr-FR').length, 2);
+});
+
 test('background and foreground month requests merge their caches regardless of completion order', async () => {
   const storage = new Map();
   const finish = new Map();
@@ -2192,7 +2261,7 @@ test('background and foreground month requests merge their caches regardless of 
       .get('unit3d-upcoming-cache-v5')
       .map((entry) => entry.key)
       .sort(),
-    ['movies:US:2026-09:en-US', 'movies:US:2026-10:en-US']
+    ['movies:US:2026-09:en-US:auto', 'movies:US:2026-10:en-US:auto']
   );
 });
 
@@ -2333,20 +2402,22 @@ test('cast/director and genre filters independently support Any, All and excludi
   );
 });
 
-test('the Settings language selector restores supported locales and defaults to English', () => {
+test('Settings restore language and title-country choices with independent defaults', () => {
   const from = source.indexOf("    const languageLabel = element('label'");
   const until = source.indexOf('    const settingsForm =', from);
   assert.ok(from > 0 && until > from);
-  for (const [savedLanguage, expected] of [
-    [undefined, 'en-US'],
-    ['fr-CA', 'fr-CA'],
-    ['invalid', 'en-US']
+  for (const [savedLanguage, expected, savedTitleCountry, expectedTitleCountry] of [
+    [undefined, 'en-US', undefined, ''],
+    ['fr-CA', 'fr-CA', 'PL', 'PL'],
+    ['invalid', 'en-US', 'invalid', '']
   ]) {
     const nodes = [];
     const context = {
       ROOT_ID: 'test',
       IMDB_LANGUAGES: api.IMDB_LANGUAGES,
-      saved: { language: savedLanguage },
+      COUNTRIES: api.COUNTRIES,
+      country: { options: api.COUNTRIES.map((code) => ({ text: code, value: code })) },
+      saved: { language: savedLanguage, titleCountry: savedTitleCountry },
       settings: { append() {} },
       Option: class {
         constructor(text, value) {
@@ -2374,6 +2445,13 @@ test('the Settings language selector restores supported locales and defaults to 
       select.children.map((option) => option.value),
       ['en-US', 'fr-CA', 'fr-FR', 'de-DE', 'hi-IN', 'it-IT', 'pt-BR', 'es-MX', 'es-ES']
     );
+    const countrySelect = nodes.filter((node) => node.tag === 'select')[1];
+    assert.equal(countrySelect.value, expectedTitleCountry);
+    assert.deepEqual(
+      countrySelect.children.map((option) => option.value),
+      ['', ...api.COUNTRIES]
+    );
+    assert.ok(countrySelect.children.length > select.children.length);
   }
 });
 
@@ -2387,6 +2465,7 @@ test('the main episode Sonarr filter and language are saved with the other page 
     mode: { value: 'episodes' },
     country: { value: 'US' },
     language: { value: 'fr-CA' },
+    titleCountry: { value: 'PL' },
     fullWidth: { checked: false },
     episodeSonarrFilter: { value: 'out' },
     GM_setValue: (key, value) => {
@@ -2402,6 +2481,7 @@ test('the main episode Sonarr filter and language are saved with the other page 
       mode: 'episodes',
       country: 'US',
       language: 'fr-CA',
+      titleCountry: 'PL',
       fullWidth: false,
       episodeSonarrFilter: 'out'
     }
@@ -2460,6 +2540,7 @@ test('the main episode Sonarr control reapplies its filter and Refresh forces So
     mode: { ...control(), value: 'episodes' },
     country: control(),
     language: control(),
+    titleCountry: control(),
     episodeSonarrFilter: control(),
     refresh: control(),
     month: '2026-09',
@@ -2485,6 +2566,8 @@ test('the main episode Sonarr control reapplies its filter and Refresh forces So
   assert.deepEqual(pageRefreshes, [true]);
   context.language.handlers.change();
   assert.deepEqual(pageRefreshes, [true, undefined]);
+  context.titleCountry.handlers.change();
+  assert.deepEqual(pageRefreshes, [true, undefined, undefined]);
 });
 
 test('failed Refresh restores an active cached search even when background months are already cached', async () => {
@@ -2516,6 +2599,7 @@ test('failed Refresh restores an active cached search even when background month
     mode: { value: 'tv' },
     country: { value: 'US' },
     language: { value: 'fr-FR' },
+    titleCountry: { value: 'PL' },
     monthSelect: node(),
     previous: {},
     current: {},
@@ -2541,8 +2625,9 @@ test('failed Refresh restores an active cached search even when background month
     RELEASE_VIEWS: api.RELEASE_VIEWS,
     monthRange: api.monthRange,
     calendarMonths: api.calendarMonths,
-    readReleaseCache: (language) => {
+    readReleaseCache: (language, titleCountry) => {
       assert.equal(language, 'fr-FR');
+      assert.equal(titleCountry, 'PL');
       return [{ releases }];
     },
     searchFilters: () => ({ title: 'moon' }),
@@ -2566,6 +2651,7 @@ test('failed Refresh restores an active cached search even when background month
     Option: class {},
     loadReleases: async (options, _onProgress, force) => {
       assert.equal(options.language, 'fr-FR');
+      assert.equal(options.titleCountry, 'PL');
       calls.push(options);
       if (force) throw new Error('offline');
       return { cached: true, notices: [] };

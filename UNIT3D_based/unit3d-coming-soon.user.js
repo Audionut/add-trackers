@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Coming Soon
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.1
+// @version      1.0.2
 // @description  Date-grouped theatrical, digital, TV and episode releases in native UNIT3D cards, under Other > Upcoming.
 // @author       Audionut
 // @match        https://aither.cc/*
@@ -220,6 +220,7 @@
       'Content-Type': 'application/json',
       Origin: 'https://www.imdb.com',
       'X-Imdb-Client-Name': 'imdb-web-next-localized',
+      // Resolves regional AKA titles; GraphQL region/country filters control release dates.
       'X-Imdb-User-Country': country,
       'X-Imdb-User-Language': language
     };
@@ -386,7 +387,7 @@
           from: options.from,
           to: options.to
         },
-        options.country,
+        options.titleCountry || options.country,
         options.language
       );
       const connection = data.comingSoon;
@@ -409,7 +410,7 @@
                 after: dateCursor,
                 countries: [options.country]
               },
-              options.country,
+              options.titleCountry || options.country,
               options.language
             );
             dates = result.title?.releaseDates;
@@ -487,7 +488,7 @@
         const data = await imdbGraphqlRequest(
           TITLES_QUERY,
           { ids: ids.slice(offset, offset + 20) },
-          'US',
+          options.titleCountry || 'US',
           options.language
         );
         if (!Array.isArray(data.titles)) throw new Error('IMDb returned no title details.');
@@ -536,7 +537,7 @@
     }
   }
 
-  function readReleaseCache(language) {
+  function readReleaseCache(language, titleCountry = '') {
     const stored = GM_getValue(CACHE_KEY, []);
     return (Array.isArray(stored) ? stored : []).filter(
       (entry) =>
@@ -544,7 +545,8 @@
         Date.now() - entry.savedAt < CACHE_TTL &&
         Array.isArray(entry.releases) &&
         // Entries saved before language selection contain English metadata.
-        (!language || (entry.language || 'en-US') === language)
+        (!language ||
+          ((entry.language || 'en-US') === language && (entry.titleCountry || '') === titleCountry))
     );
   }
 
@@ -600,7 +602,8 @@
 
   async function loadReleaseSource(sourceMode, fetchSource, options, onProgress, force) {
     const language = options.language || 'en-US';
-    const key = `${sourceMode}:${options.country}:${sourceMode === 'episodes' ? 'rolling' : options.from.slice(0, 7)}:${language}`;
+    const titleCountry = options.titleCountry || '';
+    const key = `${sourceMode}:${options.country}:${sourceMode === 'episodes' ? 'rolling' : options.from.slice(0, 7)}:${language}:${titleCountry || 'auto'}`;
     // A foreground view can share a background request, then fetch only any missing days.
     while (releaseRequests.has(key)) await releaseRequests.get(key).catch(() => {});
     const pending = (async () => {
@@ -633,6 +636,7 @@
           {
             key,
             language,
+            titleCountry,
             from: options.from,
             to: options.to,
             savedAt: entry ? entry.savedAt : Date.now(),
@@ -2174,11 +2178,26 @@
     const languageHint = element(
       'p',
       null,
-      'IMDb titles and details use this language where available, with English fallback. Release dates still follow the selected country.'
+      'IMDb plots, genres and other details use this language where available, with English fallback.'
     );
     languageHint.id = `${ROOT_ID}-language-hint`;
     language.setAttribute('aria-describedby', languageHint.id);
     settings.append(languageLabel, languageHint);
+    const titleCountryLabel = element('label', null, 'Title country / region (AKA)');
+    const titleCountry = element('select', 'form__select');
+    titleCountry.append(new Option('Use release country', ''));
+    for (const option of country.options)
+      titleCountry.append(new Option(option.text, option.value));
+    titleCountry.value = COUNTRIES.includes(saved?.titleCountry) ? saved.titleCountry : '';
+    titleCountryLabel.append(titleCountry);
+    const titleCountryHint = element(
+      'p',
+      null,
+      'Regional titles (AKAs) are available for more countries than translated plots and details. This title preference does not change the release-country filter or IMDb language setting. IMDb uses your language preference where possible and falls back when no matching regional title exists.'
+    );
+    titleCountryHint.id = `${ROOT_ID}-title-country-hint`;
+    titleCountry.setAttribute('aria-describedby', titleCountryHint.id);
+    settings.append(titleCountryLabel, titleCountryHint);
     const settingsForm = element('form');
     const apiLabel = element('label', null, 'API KEY');
     const apiInput = element('input', 'form__text');
@@ -2356,7 +2375,9 @@
         searching
           ? searchReleases(
               [
-                ...readReleaseCache(language.value).flatMap((entry) => entry.releases),
+                ...readReleaseCache(language.value, titleCountry.value).flatMap(
+                  (entry) => entry.releases
+                ),
                 ...(calendar?.releases || [])
               ].filter((release) => release.country === region),
               searchFilters(),
@@ -2429,6 +2450,7 @@
 
     async function prefetchMonths(region, token) {
       const selectedLanguage = language.value;
+      const selectedTitleCountry = titleCountry.value;
       if (mode.value === 'episodes') {
         backgroundStatus.textContent = 'Episodes are limited to the current 30-day window.';
         return;
@@ -2446,7 +2468,8 @@
                 ...monthRange(new Date(`${value}-01T12:00:00`)),
                 mode: releaseMode,
                 country: region,
-                language: selectedLanguage
+                language: selectedLanguage,
+                titleCountry: selectedTitleCountry
               },
               () => {}
             );
@@ -2467,6 +2490,7 @@
         mode: mode.value,
         country: country.value,
         language: language.value,
+        titleCountry: titleCountry.value,
         fullWidth: fullWidth.checked,
         episodeSonarrFilter: episodeSonarrFilter.value
       });
@@ -2643,7 +2667,8 @@
         ...(episodes ? episodeRange(today) : monthRange(new Date(`${month}-01T12:00:00`))),
         mode: mode.value,
         country: includesDigital ? 'US' : country.value,
-        language: language.value
+        language: language.value,
+        titleCountry: titleCountry.value
       };
       if (!episodes && fromToday && month === monthRange(today).from.slice(0, 7)) {
         options.from = dateValue({
@@ -2673,6 +2698,7 @@
         mode,
         country,
         language,
+        titleCountry,
         episodeSonarrFilter,
         monthSelect,
         previous,
@@ -2710,6 +2736,7 @@
             mode,
             country,
             language,
+            titleCountry,
             episodeSonarrFilter,
             monthSelect,
             previous,
@@ -2753,6 +2780,9 @@
       void refreshPage();
     });
     language.addEventListener('change', () => {
+      void refreshPage();
+    });
+    titleCountry.addEventListener('change', () => {
       void refreshPage();
     });
     refresh.addEventListener('click', () => {
