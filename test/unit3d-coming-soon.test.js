@@ -897,6 +897,7 @@ test('API resolution strings survive shared cache and history without merging di
               ...torrent(id + 1, 123, 2).attributes,
               name: 'Show.S01E02',
               resolution,
+              internal: [true, 1, '1', false, '0'][id],
               resolution_id: 3
             }
           }))
@@ -909,6 +910,10 @@ test('API resolution strings survive shared cache and history without merging di
   const cached = await api.loadRecentTorrents('tv', 'key');
   assert.equal(calls, 1);
   assert.deepEqual(cached.records, first.records);
+  assert.deepEqual(
+    cached.records.map((record) => record.internal),
+    [true, true, true, undefined]
+  );
   assert.deepEqual(
     [
       ...api
@@ -1282,6 +1287,39 @@ test('resolution links reject invalid IDs and keep a linked match when legacy ma
   );
 });
 
+test('internal matches survive mixed history and color the linked resolution in either order', async () => {
+  const api = make(() => assert.fail('unexpected request'));
+  const fixture = homeFixture();
+  await new Promise(setImmediate);
+  const ordinary = fixture.state.records[0];
+  const internal = { ...ordinary, internal: true, torrentId: '789' };
+  const now = Date.now();
+  const records = api.mergeTorrentHistory([{ ...internal, lastSeen: now - 1000 }], [ordinary], now);
+  assert.equal(records.length, 2);
+  const list = fixture.nodes.find((node) => node.tag === 'ul');
+  for (const ordered of [records, [...records].reverse()]) {
+    fixture.context.renderHomeSeries(list, fixture.state.releases, ordered, true);
+    const badge = list.children[0].children[1].children[1];
+    assert.equal(badge.dataset.internal, 'true');
+    assert.equal(badge.href, 'https://aither.cc/torrents/789');
+    assert.match(badge.title, /internal/);
+  }
+  fixture.context.renderHomeSeries(list, fixture.state.releases, [ordinary], true);
+  assert.equal(list.children[0].children[1].children[1].dataset.internal, 'false');
+  fixture.context.renderHomeSeries(list, fixture.state.releases, [], true);
+  assert.ok(
+    list.children[0].children[1].children.every((badge) => badge.dataset.internal === 'false')
+  );
+  assert.match(
+    source,
+    /resolution\[data-internal="true"\].*var\(--torrent-row-internal-fg, #baaf92\)/
+  );
+  assert.match(
+    source,
+    /torrent-card\[data-internal="true"\].*outline-color: var\(--torrent-row-internal-fg, #baaf92\)/
+  );
+});
+
 test('homepage reports missing credentials and errors, retains saved matches, and pauses when hidden', async () => {
   const noKey = homeFixture({ key: '' });
   await new Promise(setImmediate);
@@ -1550,7 +1588,7 @@ test('availability markers distinguish seasons and episodes and reject legacy se
   };
   runInNewContext(source.slice(from, until), context);
   context.markRecentTorrents([
-    { imdbId: '123', categoryId: 2, episodeKeys: ['1:2'] },
+    { imdbId: '123', categoryId: 2, episodeKeys: ['1:2'], internal: true },
     { imdbId: '456', categoryId: 2 },
     { imdbId: '789', categoryId: 1, episodeKeys: ['1:2'] }
   ]);
@@ -1560,8 +1598,13 @@ test('availability markers distinguish seasons and episodes and reject legacy se
   );
   assert.equal(cards[0].link.children.at(-1), 'View torrents');
   assert.equal(cards[1].link.children.at(-1), 'Search torrents');
+  assert.deepEqual(
+    cards.map((item) => item.dataset.internal),
+    ['true', 'false', 'false', 'false', 'false', 'true', 'false']
+  );
   context.markRecentTorrents([]);
   assert.ok(cards.every((item) => item.dataset.recent === 'false'));
+  assert.ok(cards.every((item) => item.dataset.internal === 'false'));
 });
 
 test('the torrent API uses one newest-first page of 100 with a Bearer token and obfuscated storage', async () => {

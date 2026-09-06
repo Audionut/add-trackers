@@ -608,9 +608,15 @@
       )
         continue;
       const torrentId = /^[1-9]\d*$/.test(record.torrentId || '') ? record.torrentId : null;
-      // A legacy match must not replace a known torrent link for the same resolution.
-      if (!resolutions.has(record.resolution) || torrentId)
-        resolutions.set(record.resolution, torrentId);
+      const previous = resolutions.get(record.resolution);
+      const internal = record.internal === true;
+      // Prefer an internal torrent, then a valid link within the same status.
+      if (
+        !previous ||
+        (internal && !previous.internal) ||
+        (internal === previous.internal && torrentId)
+      )
+        resolutions.set(record.resolution, { torrentId, internal });
     }
     return resolutions;
   }
@@ -1210,7 +1216,7 @@
         now - record.lastSeen >= TORRENT_HISTORY_TTL
       )
         continue;
-      const key = `${record.categoryId}:${record.imdbId}:${(record.episodeKeys || []).join(',')}:${record.resolution || ''}`;
+      const key = `${record.categoryId}:${record.imdbId}:${(record.episodeKeys || []).join(',')}:${record.resolution || ''}:${record.internal === true}`;
       const previous = matches.get(key);
       if (
         !previous ||
@@ -1246,9 +1252,10 @@
       const matchingRecords = () =>
         history
           .filter((record) => TORRENT_CATEGORIES[scope].includes(record.categoryId))
-          .map(({ imdbId, categoryId, episodeKeys, resolution, torrentId }) => ({
+          .map(({ imdbId, categoryId, episodeKeys, resolution, torrentId, internal }) => ({
             imdbId,
             categoryId,
+            ...(internal === true ? { internal: true } : {}),
             ...(resolution ? { resolution } : {}),
             ...(torrentId ? { torrentId } : {}),
             ...(episodeKeys?.length ? { episodeKeys } : {})
@@ -1308,6 +1315,7 @@
               {
                 imdbId,
                 categoryId,
+                ...([true, 1, '1'].includes(torrent.attributes.internal) ? { internal: true } : {}),
                 ...(HOME_RESOLUTIONS.includes(resolution) ? { resolution } : {}),
                 ...(HOME_RESOLUTIONS.includes(resolution) && /^[1-9]\d*$/.test(torrentId)
                   ? { torrentId }
@@ -2107,7 +2115,8 @@
       title.href = searchUrl(release.seriesImdbId || release.imdbId);
       const available = seriesResolutions(release, records);
       HOME_RESOLUTIONS.forEach((resolution, resolutionIndex) => {
-        const torrentId = available.get(resolution);
+        const match = available.get(resolution);
+        const torrentId = match?.torrentId;
         const tag = torrentId ? 'a' : 'span';
         const previous = resolutions.children[resolutionIndex];
         const icon =
@@ -2119,8 +2128,9 @@
         if (torrentId) icon.href = `${location.origin}/torrents/${torrentId}`;
         const found = available.has(resolution);
         icon.dataset.available = String(found);
+        icon.dataset.internal = String(match?.internal === true);
         const status = found
-          ? 'Available on site for this series (saved match)'
+          ? `Available on site for this series (saved${match.internal ? ' internal' : ''} match)`
           : checked
             ? 'Not found in recent site results'
             : 'Availability not checked';
@@ -2162,6 +2172,7 @@
       #${HOME_PANEL_ID} .unit3d-upcoming__resolutions { display: flex; flex-shrink: 0; gap: 5px; }
       #${HOME_PANEL_ID} .unit3d-upcoming__resolution { display: inline-block; border: 1px solid currentColor; border-radius: 3px; padding: 1px 4px; font-size: 10px; font-weight: 700; line-height: 1.4; opacity: 0.5; }
       #${HOME_PANEL_ID} .unit3d-upcoming__resolution[data-available="true"] { color: #fff; background: #21743b; border-color: #21743b; opacity: 1; }
+      #${HOME_PANEL_ID} .unit3d-upcoming__resolution[data-internal="true"] { color: #222; background: var(--torrent-row-internal-fg, #baaf92); border-color: var(--torrent-row-internal-fg, #baaf92); }
       #${HOME_PANEL_ID} .unit3d-upcoming__today-status { margin: 6px 0 0; font-size: 12px; }
       #${HOME_PANEL_ID} .unit3d-upcoming__today-status:empty { display: none; }
       #${HOME_PANEL_ID} .unit3d-upcoming__today-progress { width: 100%; height: 4px; }
@@ -2372,6 +2383,8 @@
       #${ROOT_ID} .unit3d-upcoming__width { margin-top: 8px; width: fit-content; }
       #${ROOT_ID} .unit3d-upcoming__recent { color: #49b78c; margin-right: 5px; }
       #${ROOT_ID} .torrent-card[data-recent="true"] { outline: 1px solid #49b78c; }
+      #${ROOT_ID} .torrent-card[data-internal="true"] { outline-color: var(--torrent-row-internal-fg, #baaf92); }
+      #${ROOT_ID} .torrent-card[data-internal="true"] .unit3d-upcoming__recent { color: var(--torrent-row-internal-fg, #baaf92); }
       #${ROOT_ID} .unit3d-upcoming__date { grid-column: 1 / -1; margin: 0; font-size: 1.4em; }
       #${ROOT_ID} .torrent-card { min-width: 0; grid-template-columns: 147px minmax(0, 1fr); }
       #${ROOT_ID} .torrent-card__header { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; }
@@ -2831,18 +2844,18 @@
 
     function markRecentTorrents(records = []) {
       torrentMatches = records;
-      const matches = new Set(records.map((record) => record.imdbId));
-      const episodes = new Set(
-        records
-          .filter((record) => record.categoryId === 2)
-          .flatMap((record) => (record.episodeKeys || []).map((key) => `${record.imdbId}:${key}`))
-      );
       for (const card of results.querySelectorAll('.torrent-card')) {
         const isEpisode = card.dataset.episodeKey !== undefined;
-        const found = isEpisode
-          ? episodes.has(`${card.dataset.imdbId}:${card.dataset.episodeKey}`)
-          : matches.has(card.dataset.imdbId);
+        const matches = records.filter(
+          (record) =>
+            record.imdbId === card.dataset.imdbId &&
+            (!isEpisode ||
+              (record.categoryId === 2 && record.episodeKeys?.includes(card.dataset.episodeKey)))
+        );
+        const found = matches.length > 0;
+        const internal = matches.some((record) => record.internal === true);
         card.dataset.recent = String(found);
+        card.dataset.internal = String(internal);
         const link = card.querySelector('.torrent-card__right-footer');
         const title = card.querySelector('.torrent-card__title').textContent;
         link.replaceChildren();
@@ -2853,11 +2866,11 @@
         }
         link.append(found ? 'View torrents' : 'Search torrents');
         link.title = found
-          ? `Matching ${isEpisode ? 'series, season and episode' : 'IMDb ID'} in torrent results saved during the past 14 days.`
+          ? `Matching ${isEpisode ? 'series, season and episode' : 'IMDb ID'} in ${internal ? 'internal ' : ''}torrent results saved during the past 14 days.`
           : '';
         link.setAttribute(
           'aria-label',
-          `${found ? 'View' : 'Search'} torrents for ${title}${found ? ' (saved match)' : ''}`
+          `${found ? 'View' : 'Search'} torrents for ${title}${found ? ` (saved${internal ? ' internal' : ''} match)` : ''}`
         );
       }
     }
