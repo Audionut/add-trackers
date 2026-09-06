@@ -520,6 +520,59 @@ class CaptureUploadImagesTest(unittest.TestCase):
             images.ffmpeg_filter(images.VideoInfo(600, "smpte2084"), True),
         )
 
+
+    @unittest.skipUnless(
+        shutil.which("ffmpeg") and shutil.which("ffprobe"),
+        "FFmpeg tools are not installed",
+    )
+    def test_capture_corrects_anamorphic_pixels(self) -> None:
+        ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
+        ffprobe = shutil.which("ffprobe") or "ffprobe"
+        cases = (
+            ("pal_wide", "720x576", "64/45", "", True, (1024, 576)),
+            ("pal_standard", "720x576", "16/15", "", True, (768, 576)),
+            ("ntsc_wide", "720x480", "32/27", "", True, (854, 480)),
+            ("ntsc_standard", "720x480", "8/9", "", True, (720, 540)),
+            ("square", "641x361", "1", "", True, (641, 361)),
+            ("unknown", "641x361", "0", "", True, (641, 361)),
+            ("hdr", "720x576", "64/45", "smpte2084", True, (1024, 576)),
+            ("hdr_disabled", "720x576", "64/45", "smpte2084", False, (1024, 576)),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name, size, sar, transfer, tone_map, dimensions in cases:
+                with self.subTest(name=name):
+                    media = root / f"{name}.mkv"
+                    output = root / name
+                    output.mkdir()
+                    subprocess.run(
+                        [
+                            ffmpeg, "-hide_banner", "-loglevel", "error",
+                            "-f", "lavfi", "-i",
+                            f"testsrc=size={size}:rate=4:duration=1,setsar={sar}",
+                            "-c:v", "ffv1", "-pix_fmt", "yuv444p10le",
+                            "-color_primaries", "bt2020", "-colorspace", "bt2020nc",
+                            "-color_trc", transfer or "bt709", str(media),
+                        ],
+                        check=True, capture_output=True, timeout=30,
+                    )
+                    info = images.probe_video(ffprobe, media)
+                    captured = images.capture_screenshots(
+                        ffmpeg, media, "Synthetic Movie", info,
+                        settings_for_test(screenshots=1, tone_map_hdr=tone_map), output,
+                    )
+                    self.assertEqual(len(captured), 1)
+                    png_info = subprocess.run(
+                        [
+                            ffprobe, "-v", "error", "-select_streams", "v:0",
+                            "-show_entries", "stream=width,height,sample_aspect_ratio",
+                            "-of", "json", str(captured[0]),
+                        ],
+                        check=True, capture_output=True, text=True, timeout=30,
+                    )
+                    stream = json.loads(png_info.stdout)["streams"][0]
+                    self.assertEqual((stream["width"], stream["height"]), dimensions)
+                    self.assertEqual(stream["sample_aspect_ratio"], "1:1")
     def test_capture_decodes_preroll_before_requested_timestamp(self) -> None:
         for duration, expected_seeks in (
             (600, ["25.000", "5.000"]),
