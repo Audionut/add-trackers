@@ -28,7 +28,7 @@ const factory = new Function(
   `${source.slice(start, end)}
   return { imdbGraphqlRequest, dateValue, monthRange, episodeRange, shiftMonth, calendarMonths, normalizeTitle, collectReleases, nextCursor, fetchComingSoon, loadReleases,
     sortReleases, searchUrl, releaseKind, cleanOldCaches, readReleaseCache, searchReleases, encodeStored, decodeStored, savedApiKey, cachedTorrents, mergeTorrentHistory, loadRecentTorrents, torrentEpisodeKeys,
-    readHiddenSeries, setSeriesHidden, filterEpisodes, filterSonarrEpisodes, sonarrSeriesMembership, HIDDEN_SERIES_KEY,
+    readHiddenSeries, setSeriesHidden, filterEpisodes, todaysEpisodes, episodeResolutions, filterSonarrEpisodes, sonarrSeriesMembership, HIDDEN_SERIES_KEY,
     normalizeArrUrl, readArrServers, saveArrServer, removeArrServer, readArrCache, writeArrCache,
     loadArrOptions, loadArrLibrary, arrTarget, arrExisting, arrViewUrl, arrImmediate, addArrTitle,
     ARR_SETTINGS_KEY, ARR_CACHE_PREFIX, ARR_LIBRARY_TTL,
@@ -795,6 +795,424 @@ const torrent = (id, imdbId, categoryId) => ({
     name: 'Release',
     download_link: 'https://tracker.test/download?rsskey=must-not-be-cached'
   }
+});
+
+test('homepage episodes use the local current day and honor hidden series', () => {
+  const api = make(() => assert.fail('unexpected request'));
+  const today = new Date(2026, 8, 6, 0, 1);
+  const release = {
+    imdbId: 'tt1',
+    seriesImdbId: 'tt100',
+    title: 'Today',
+    mode: 'episodes',
+    date: '2026-09-06',
+    country: 'US'
+  };
+  const releases = [
+    release,
+    { ...release, imdbId: 'tt2', date: '2026-09-05' },
+    { ...release, imdbId: 'tt3', date: '2026-09-07' },
+    { ...release, imdbId: 'tt4', mode: 'tv' },
+    { ...release, imdbId: 'tt5', mode: 'digital' }
+  ];
+  assert.deepEqual(api.todaysEpisodes(releases, today), [release]);
+  api.setSeriesHidden({ imdbId: 'tt100', title: 'Hidden' }, true);
+  assert.deepEqual(api.todaysEpisodes(releases, today), []);
+});
+
+test('resolution matches require exact series, season, episode, category and supported resolution', () => {
+  const api = make(() => {});
+  const release = { seriesImdbId: 'tt00123', season: 1, episode: 2 };
+  const record = { imdbId: '123', categoryId: 2, episodeKeys: ['1:2'], resolution: '1080p' };
+  const records = [
+    record,
+    { ...record, resolution: '720p', episodeKeys: ['1:1', '1:2'] },
+    { ...record, resolution: '2160p', episodeKeys: ['2:2'] },
+    { ...record, resolution: '2160p', imdbId: '999' },
+    { ...record, resolution: '2160p', categoryId: 1 },
+    { ...record, resolution: '2160p', episodeKeys: [] },
+    { ...record, resolution: '1080i' },
+    { ...record, resolution: '1440p' },
+    { ...record, resolution: undefined }
+  ];
+  assert.deepEqual([...api.episodeResolutions(release, records).keys()], ['1080p', '720p']);
+  for (const incomplete of [
+    {},
+    { ...release, season: undefined },
+    { ...release, episode: undefined }
+  ])
+    assert.equal(api.episodeResolutions(incomplete, records).size, 0);
+});
+
+test('API resolution strings survive shared cache and history without merging different resolutions', async () => {
+  const storage = new Map();
+  let calls = 0;
+  const api = make(() => assert.fail('unexpected IMDb request'), {
+    storage,
+    fetch: async () => {
+      calls++;
+      return {
+        ok: true,
+        json: async () => ({
+          data: ['720p', '1080p', '2160p', '1080i', '1440p'].map((resolution, id) => ({
+            ...torrent(id + 1, 123, 2),
+            attributes: {
+              ...torrent(id + 1, 123, 2).attributes,
+              name: 'Show.S01E02',
+              resolution,
+              resolution_id: 3
+            }
+          }))
+        })
+      };
+    }
+  });
+  storage.set(api.API_KEY_STORAGE, api.encodeStored('key'));
+  const first = await api.loadRecentTorrents('tv', 'key');
+  const cached = await api.loadRecentTorrents('tv', 'key');
+  assert.equal(calls, 1);
+  assert.deepEqual(cached.records, first.records);
+  assert.deepEqual(
+    [
+      ...api
+        .episodeResolutions({ seriesImdbId: 'tt123', season: 1, episode: 2 }, cached.records)
+        .keys()
+    ],
+    ['720p', '1080p', '2160p']
+  );
+  assert.equal(cached.records.length, 4);
+  assert.deepEqual(
+    cached.records.map((record) => record.torrentId),
+    ['1', '2', '3', undefined]
+  );
+  const legacy = { imdbId: '123', categoryId: 2, episodeKeys: ['1:2'], lastSeen: Date.now() };
+  assert.equal(api.mergeTorrentHistory([legacy], cached.records).length, 4);
+  const saved = api.decodeStored(storage.get(api.TORRENT_CACHE_KEY));
+  assert.ok(!JSON.stringify(saved).includes('must-not-be-cached'));
+  assert.deepEqual(
+    saved.history.filter((record) => record.resolution).map((record) => record.resolution),
+    ['720p', '1080p', '2160p']
+  );
+  const fixture = homeFixture();
+  await new Promise(setImmediate);
+  const list = fixture.nodes.find((node) => node.tag === 'ul');
+  fixture.context.renderHomeEpisodes(list, fixture.state.releases, cached.records, true);
+  assert.deepEqual(
+    Array.from(list.children[0].children[1].children, (icon) => icon.href),
+    ['https://aither.cc/torrents/1', 'https://aither.cc/torrents/2', 'https://aither.cc/torrents/3']
+  );
+});
+
+test('legacy resolution history gains a torrent ID on refresh even with equal timestamps', async () => {
+  const now = Date.now();
+  const storage = new Map();
+  const api = make(() => assert.fail('unexpected IMDb request'), {
+    storage,
+    Date: class extends Date {
+      static now() {
+        return now;
+      }
+    },
+    fetch: async () => ({
+      ok: true,
+      json: async () => ({
+        data: [
+          {
+            ...torrent(456, 123, 2),
+            attributes: {
+              ...torrent(456, 123, 2).attributes,
+              name: 'Show.S01E02',
+              resolution: '1080p'
+            }
+          }
+        ]
+      })
+    })
+  });
+  const record = { imdbId: '123', categoryId: 2, episodeKeys: ['1:2'], resolution: '1080p' };
+  storage.set(api.API_KEY_STORAGE, api.encodeStored('key'));
+  storage.set(
+    api.TORRENT_CACHE_KEY,
+    api.encodeStored({
+      credential: createHash('sha256').update('key').digest('hex'),
+      entries: [{ scope: 'tv', savedAt: now - 120001, records: [record], torrentIds: ['456'] }],
+      history: [{ ...record, lastSeen: now }]
+    })
+  );
+  const loaded = await api.loadRecentTorrents('tv', 'key');
+  assert.deepEqual(loaded.records, [{ ...record, torrentId: '456' }]);
+  assert.deepEqual((await api.loadRecentTorrents('tv', 'key')).records, loaded.records);
+});
+
+function homeFixture({
+  saved = { homePanel: true },
+  pathname = '/',
+  hostname = 'aither.cc',
+  main = true,
+  key = 'key',
+  clock = Date
+} = {}) {
+  const nodes = [];
+  const handlers = {};
+  const timers = [];
+  const requests = [];
+  const api = make(() => {}, { Date: clock });
+  const today = api.episodeRange().from;
+  const state = {
+    releases: [
+      {
+        imdbId: 'tt1',
+        seriesImdbId: 'tt123',
+        season: 1,
+        episode: 2,
+        title: '<img src=x> — S1E2',
+        seriesTitle: '<img src=x>',
+        mode: 'episodes',
+        date: today
+      }
+    ],
+    records: [
+      { imdbId: '123', categoryId: 2, episodeKeys: ['1:2'], resolution: '1080p', torrentId: '456' }
+    ]
+  };
+  function element(tag, className, text) {
+    const node = {
+      tag,
+      className,
+      textContent: text || '',
+      dataset: {},
+      attributes: {},
+      children: [],
+      handlers: {},
+      append(...items) {
+        this.children.push(...items);
+      },
+      replaceChildren(...items) {
+        this.children = items;
+      },
+      setAttribute(name, value) {
+        this.attributes[name] = value;
+      },
+      addEventListener(name, callback) {
+        this.handlers[name] = callback;
+      }
+    };
+    nodes.push(node);
+    return node;
+  }
+  const document = {
+    hidden: false,
+    head: element('head'),
+    getElementById: (id) => nodes.find((node) => node.id === id),
+    querySelector: (selector) => {
+      assert.equal(selector, 'main.page__home > article');
+      return main
+        ? {
+            parentElement: {
+              classList: {
+                add: (name) => {
+                  state.layoutClass = name;
+                }
+              },
+              prepend: (sidebar) => {
+                state.sidebar = sidebar;
+                state.inserted = sidebar.children[0];
+              }
+            }
+          }
+        : null;
+    },
+    addEventListener: (name, callback) => {
+      handlers[name] = callback;
+    }
+  };
+  const context = {
+    element,
+    document,
+    location: { hostname, pathname, origin: `https://${hostname}` },
+    HOME_PANEL_ID: 'today',
+    HOME_RESOLUTIONS: ['720p', '1080p', '2160p'],
+    SETTINGS_KEY: 'settings',
+    TORRENT_CACHE_TTL: 120000,
+    COUNTRIES: api.COUNTRIES,
+    IMDB_LANGUAGES: api.IMDB_LANGUAGES,
+    GM_getValue: () => saved,
+    savedApiKey: () => key,
+    todaysEpisodes: api.todaysEpisodes,
+    episodeResolutions: api.episodeResolutions,
+    searchUrl: api.searchUrl,
+    loadReleases: async (options, _progress, force) => {
+      requests.push({ type: 'calendar', options, force });
+      if (state.calendarError) throw new Error('offline');
+      return { releases: state.releases, notices: [] };
+    },
+    loadRecentTorrents: async (scope, apiKey, force) => {
+      requests.push({ type: 'torrents', scope, apiKey, force });
+      if (state.torrentError) throw Object.assign(new Error('offline'), { records: state.records });
+      return { records: state.records, savedAt: clock.now(), retryAfter: state.retryAfter };
+    },
+    setTimeout: (callback, delay) => {
+      timers.push({ callback, delay });
+      return timers.length;
+    },
+    clearTimeout: () => {},
+    Date: clock
+  };
+  const from = source.indexOf('  function renderHomeEpisodes(');
+  const to = source.indexOf('  function mountPage()', from);
+  runInNewContext(source.slice(from, to), context);
+  context.mountHomePanel();
+  return { context, nodes, state, requests, timers, document, handlers };
+}
+
+test('homepage panel is opt-in, Aither-root-only, and requires the homepage article', () => {
+  for (const options of [
+    { saved: {} },
+    { saved: { homePanel: false } },
+    { pathname: '/torrents' },
+    { hostname: 'other.test' },
+    { main: false }
+  ]) {
+    const fixture = homeFixture(options);
+    assert.equal(fixture.state.inserted, undefined);
+    assert.deepEqual(fixture.requests, []);
+  }
+});
+
+test('homepage mounts a left sidebar with only title text and three resolution badges per episode', async () => {
+  const fixture = homeFixture({
+    saved: { homePanel: true, country: 'AU', language: 'fr-CA', titleCountry: 'GB' }
+  });
+  await new Promise(setImmediate);
+  const { context, nodes, state, requests, timers } = fixture;
+  assert.equal(state.layoutClass, 'unit3d-upcoming__home-layout');
+  assert.equal(state.sidebar.tag, 'aside');
+  assert.equal(state.sidebar.className, 'unit3d-upcoming__home-sidebar');
+  assert.equal(state.sidebar.attributes['aria-label'], 'Today’s episodes');
+  assert.equal(state.inserted.className, 'panelV2');
+  assert.equal(state.inserted.children[0].className, 'panel__header');
+  assert.equal(state.inserted.children[1].className, 'panel__body');
+  assert.equal(state.inserted.children[0].children[0].textContent, 'Today’s episodes');
+  const list = nodes.find((node) => node.tag === 'ul');
+  assert.equal(list.children.length, 1);
+  const [title, icons] = list.children[0].children;
+  assert.equal(title.textContent, '<img src=x>');
+  assert.equal(title.href, 'https://aither.cc/torrents?imdbId=123');
+  assert.deepEqual(
+    Array.from(icons.children, (icon) => icon.textContent),
+    ['720p', '1080p', '2160p']
+  );
+  assert.deepEqual(
+    Array.from(icons.children, (icon) => icon.dataset.available),
+    ['false', 'true', 'false']
+  );
+  assert.match(icons.children[1].attributes['aria-label'], /Available on site/);
+  assert.equal(icons.children[1].tag, 'a');
+  assert.equal(icons.children[1].href, 'https://aither.cc/torrents/456');
+  assert.equal(icons.children[0].tag, 'span');
+  assert.equal(icons.children[0].href, undefined);
+  assert.match(icons.children[0].title, /Not found in recent/);
+  assert.ok(!nodes.some((node) => node.tag === 'img'));
+  assert.equal(list.children[0].children.length, 2);
+  assert.deepEqual(
+    { ...requests[0].options },
+    { mode: 'episodes', country: 'AU', language: 'fr-CA', titleCountry: 'GB' }
+  );
+  assert.equal(requests[1].scope, 'tv');
+  assert.ok(timers[0].delay > 0 && timers[0].delay <= 120000);
+  context.mountHomePanel();
+  assert.equal(requests.length, 2);
+  nodes.find((node) => node.tag === 'button').handlers.click();
+  await new Promise(setImmediate);
+  assert.ok(requests.slice(2).every((request) => request.force));
+});
+
+test('resolution links reject invalid IDs and keep a linked match when legacy matches coexist', async () => {
+  const fixture = homeFixture();
+  await new Promise(setImmediate);
+  const record = fixture.state.records[0];
+  const records = [
+    { ...record, resolution: '720p', torrentId: undefined },
+    { ...record, torrentId: '../download/456' },
+    { ...record, resolution: '2160p', torrentId: '789' },
+    { ...record, resolution: '2160p', torrentId: undefined },
+    { ...record, resolution: '2160p', torrentId: '999', episodeKeys: ['2:2'] }
+  ];
+  const list = fixture.nodes.find((node) => node.tag === 'ul');
+  fixture.context.renderHomeEpisodes(list, fixture.state.releases, records, true);
+  const icons = list.children[0].children[1].children;
+  assert.deepEqual(
+    Array.from(icons, (icon) => icon.tag),
+    ['span', 'span', 'a']
+  );
+  assert.deepEqual(
+    Array.from(icons, (icon) => icon.href),
+    [undefined, undefined, 'https://aither.cc/torrents/789']
+  );
+});
+
+test('homepage reports missing credentials and errors, retains saved matches, and pauses when hidden', async () => {
+  const noKey = homeFixture({ key: '' });
+  await new Promise(setImmediate);
+  assert.equal(noKey.requests.length, 1);
+  assert.match(noKey.nodes.find((node) => node.tag === 'p').textContent, /API key/);
+  assert.ok(
+    noKey.nodes
+      .find((node) => node.tag === 'ul')
+      .children[0].children[1].children.every((icon) => icon.dataset.available === 'false')
+  );
+  const fixture = homeFixture();
+  await new Promise(setImmediate);
+  fixture.state.calendarError = true;
+  fixture.state.torrentError = true;
+  fixture.timers.at(-1).callback();
+  await new Promise(setImmediate);
+  assert.match(
+    fixture.nodes.find((node) => node.tag === 'p').textContent,
+    /Could not load.*Site check failed/
+  );
+  const icons = fixture.nodes.find((node) => node.tag === 'ul').children[0].children[1].children;
+  assert.equal(icons[1].dataset.available, 'true');
+  assert.match(icons[0].title, /not checked/);
+  const calls = fixture.requests.length;
+  fixture.document.hidden = true;
+  fixture.handlers.visibilitychange();
+  fixture.timers.at(-1).callback();
+  assert.equal(fixture.requests.length, calls);
+  fixture.document.hidden = false;
+  fixture.handlers.visibilitychange();
+  await new Promise(setImmediate);
+  assert.equal(fixture.requests.length, calls + 2);
+});
+
+test('homepage removes yesterday at local midnight and preserves forced checks through API cooldown', async () => {
+  let now = new Date(2026, 8, 6, 23, 59, 59).getTime();
+  class HomeDate extends Date {
+    constructor(...args) {
+      super(...(args.length ? args : [now]));
+    }
+    static now() {
+      return now;
+    }
+  }
+  const fixture = homeFixture({ clock: HomeDate });
+  await new Promise(setImmediate);
+  const list = fixture.nodes.find((node) => node.tag === 'ul');
+  assert.equal(list.children.length, 1);
+  assert.equal(fixture.timers.at(-1).delay, 1000);
+  now += 1000;
+  fixture.timers.at(-1).callback();
+  assert.equal(list.children.length, 0);
+  await new Promise(setImmediate);
+  assert.match(fixture.nodes.find((node) => node.tag === 'p').textContent, /No episodes scheduled/);
+  fixture.state.retryAfter = 2000;
+  fixture.nodes.find((node) => node.tag === 'button').handlers.click();
+  await new Promise(setImmediate);
+  assert.equal(fixture.timers.at(-1).delay, 2000);
+  fixture.state.retryAfter = undefined;
+  fixture.timers.at(-1).callback();
+  await new Promise(setImmediate);
+  assert.equal(fixture.requests.at(-1).force, true);
 });
 
 test('torrent episode evidence handles multiple episodes and only identified pack video files', () => {
@@ -2467,6 +2885,7 @@ test('the main episode Sonarr filter and language are saved with the other page 
     language: { value: 'fr-CA' },
     titleCountry: { value: 'PL' },
     fullWidth: { checked: false },
+    homePanel: { checked: true },
     episodeSonarrFilter: { value: 'out' },
     GM_setValue: (key, value) => {
       assert.equal(key, 'settings');
@@ -2483,6 +2902,7 @@ test('the main episode Sonarr filter and language are saved with the other page 
       language: 'fr-CA',
       titleCountry: 'PL',
       fullWidth: false,
+      homePanel: true,
       episodeSonarrFilter: 'out'
     }
   );

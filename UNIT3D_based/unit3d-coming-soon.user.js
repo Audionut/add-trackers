@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         UNIT3D - Coming Soon
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.2
-// @description  Date-grouped theatrical, digital, TV and episode releases in native UNIT3D cards, under Other > Upcoming.
+// @version      1.0.3
+// @description  Upcoming movie and TV releases in native UNIT3D cards, with an optional homepage sidebar for today's episodes.
 // @author       Audionut
 // @match        https://aither.cc/*
 // @downloadURL  https://github.com/Audionut/add-trackers/raw/main/UNIT3D_based/unit3d-coming-soon.user.js
@@ -88,6 +88,8 @@
   };
   // UNIT3D's standard category IDs (also used by Aither).
   const TORRENT_CATEGORIES = { movies: [1], tv: [2], all: [1, 2] };
+  const HOME_PANEL_ID = 'unit3d-upcoming-today';
+  const HOME_RESOLUTIONS = ['720p', '1080p', '2160p'];
   const DVD_ORIGIN = 'https://www.dvdsreleasedates.com';
   const RELEASE_VIEWS = {
     theatrical: { label: 'Theatrical', modes: ['theatrical'] },
@@ -571,6 +573,34 @@
         release.mode !== 'episodes' ||
         (release.date >= from && release.date <= to && !hidden.has(release.seriesImdbId))
     );
+  }
+
+  function todaysEpisodes(releases, today = new Date()) {
+    const { from } = episodeRange(today);
+    return sortReleases(filterEpisodes(releases, today)).filter(
+      (release) => release.mode === 'episodes' && release.date === from
+    );
+  }
+
+  function episodeResolutions(release, records) {
+    const imdbId = imdbIdKey(release.seriesImdbId);
+    const resolutions = new Map();
+    if (!imdbId || !Number.isInteger(release.season) || !Number.isInteger(release.episode))
+      return resolutions;
+    for (const record of records) {
+      if (
+        record.categoryId !== 2 ||
+        record.imdbId !== imdbId ||
+        !record.episodeKeys?.includes(`${release.season}:${release.episode}`) ||
+        !HOME_RESOLUTIONS.includes(record.resolution)
+      )
+        continue;
+      const torrentId = /^[1-9]\d*$/.test(record.torrentId || '') ? record.torrentId : null;
+      // A legacy match must not replace a known torrent link for the same resolution.
+      if (!resolutions.has(record.resolution) || torrentId)
+        resolutions.set(record.resolution, torrentId);
+    }
+    return resolutions;
   }
 
   function searchReleases(releases, filters, options = {}) {
@@ -1168,8 +1198,13 @@
         now - record.lastSeen >= TORRENT_HISTORY_TTL
       )
         continue;
-      const key = `${record.categoryId}:${record.imdbId}:${(record.episodeKeys || []).join(',')}`;
-      if (!matches.has(key) || record.lastSeen > matches.get(key).lastSeen)
+      const key = `${record.categoryId}:${record.imdbId}:${(record.episodeKeys || []).join(',')}:${record.resolution || ''}`;
+      const previous = matches.get(key);
+      if (
+        !previous ||
+        record.lastSeen > previous.lastSeen ||
+        (record.lastSeen === previous.lastSeen && !previous.torrentId && record.torrentId)
+      )
         matches.set(key, record);
     }
     return [...matches.values()];
@@ -1199,9 +1234,11 @@
       const matchingRecords = () =>
         history
           .filter((record) => TORRENT_CATEGORIES[scope].includes(record.categoryId))
-          .map(({ imdbId, categoryId, episodeKeys }) => ({
+          .map(({ imdbId, categoryId, episodeKeys, resolution, torrentId }) => ({
             imdbId,
             categoryId,
+            ...(resolution ? { resolution } : {}),
+            ...(torrentId ? { torrentId } : {}),
             ...(episodeKeys?.length ? { episodeKeys } : {})
           }));
       // Preserve existing v1 results during migration and prune expired history even on cache hits.
@@ -1251,7 +1288,20 @@
             const categoryId = Number(torrent.attributes?.category_id);
             if (!imdbId || !TORRENT_CATEGORIES[scope].includes(categoryId)) return [];
             const episodeKeys = categoryId === 2 ? torrentEpisodeKeys(torrent.attributes) : [];
-            return [{ imdbId, categoryId, ...(episodeKeys.length ? { episodeKeys } : {}) }];
+            // UNIT3D returns the resolution name as well as its site-specific ID.
+            const resolution = torrent.attributes.resolution;
+            const torrentId = String(torrent.id || '');
+            return [
+              {
+                imdbId,
+                categoryId,
+                ...(HOME_RESOLUTIONS.includes(resolution) ? { resolution } : {}),
+                ...(HOME_RESOLUTIONS.includes(resolution) && /^[1-9]\d*$/.test(torrentId)
+                  ? { torrentId }
+                  : {}),
+                ...(episodeKeys.length ? { episodeKeys } : {})
+              }
+            ];
           });
           const pageIds = data.data.map((torrent) => String(torrent.id || ''));
           const knownPage = pageIds.length > 0 && pageIds.every((id) => knownIds.has(id));
@@ -2024,6 +2074,163 @@
     menu.append(item);
   }
 
+  function renderHomeEpisodes(container, releases, records, checked = false) {
+    container.replaceChildren();
+    for (const release of todaysEpisodes(releases)) {
+      const row = element('li', 'unit3d-upcoming__today-row');
+      const title = element(
+        'a',
+        'unit3d-upcoming__today-title',
+        release.seriesTitle || 'Unknown series'
+      );
+      title.href = searchUrl(release.seriesImdbId || release.imdbId);
+      const resolutions = element('span', 'unit3d-upcoming__resolutions');
+      const available = episodeResolutions(release, records);
+      for (const resolution of HOME_RESOLUTIONS) {
+        const torrentId = available.get(resolution);
+        const icon = element(torrentId ? 'a' : 'span', 'unit3d-upcoming__resolution', resolution);
+        if (torrentId) icon.href = `${location.origin}/torrents/${torrentId}`;
+        const found = available.has(resolution);
+        icon.dataset.available = String(found);
+        const status = found
+          ? 'Available on site (saved match)'
+          : checked
+            ? 'Not found in recent site results'
+            : 'Availability not checked';
+        icon.title = `${resolution}: ${status}`;
+        icon.setAttribute('aria-label', icon.title);
+        resolutions.append(icon);
+      }
+      row.append(title, resolutions);
+      container.append(row);
+    }
+  }
+
+  function mountHomePanel() {
+    const saved = GM_getValue(SETTINGS_KEY, {});
+    if (
+      location.hostname !== 'aither.cc' ||
+      location.pathname !== '/' ||
+      saved?.homePanel !== true ||
+      document.getElementById(HOME_PANEL_ID)
+    )
+      return;
+    const content = document.querySelector('main.page__home > article');
+    if (!content) return;
+    const page = content.parentElement;
+    const style = element('style');
+    style.textContent = `
+      main.page__home.unit3d-upcoming__home-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
+      main.page__home.unit3d-upcoming__home-layout > article { min-width: 0; }
+      .unit3d-upcoming__home-sidebar { min-width: 0; }
+      @media (min-width: 1100px) {
+        main.page__home.unit3d-upcoming__home-layout { grid-template-columns: 320px minmax(0, 1fr); }
+      }
+      #${HOME_PANEL_ID} .panel__header { flex-wrap: nowrap; align-items: center; }
+      #${HOME_PANEL_ID} .panel__actions { margin-inline-start: auto; flex-shrink: 0; }
+      #${HOME_PANEL_ID} .unit3d-upcoming__today-list { list-style: none; margin: 0; padding: 0; }
+      #${HOME_PANEL_ID} .unit3d-upcoming__today-row { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; padding: 6px 0; }
+      #${HOME_PANEL_ID} .unit3d-upcoming__today-title { min-width: 0; overflow-wrap: anywhere; }
+      #${HOME_PANEL_ID} .unit3d-upcoming__resolutions { display: flex; flex-shrink: 0; gap: 5px; }
+      #${HOME_PANEL_ID} .unit3d-upcoming__resolution { display: inline-block; border: 1px solid currentColor; border-radius: 3px; padding: 1px 4px; font-size: 10px; font-weight: 700; line-height: 1.4; opacity: 0.5; }
+      #${HOME_PANEL_ID} .unit3d-upcoming__resolution[data-available="true"] { color: #fff; background: #21743b; border-color: #21743b; opacity: 1; }
+      #${HOME_PANEL_ID} .unit3d-upcoming__today-status { margin: 6px 0 0; }
+      #${HOME_PANEL_ID} .unit3d-upcoming__today-status:empty { display: none; }
+    `;
+    document.head.append(style);
+    const panel = element('section', 'panelV2');
+    panel.id = HOME_PANEL_ID;
+    const header = element('header', 'panel__header');
+    header.append(element('h2', 'panel__heading', 'Today’s episodes'));
+    const actions = element('div', 'panel__actions');
+    const refreshButton = element('button', 'panel__action', 'Refresh');
+    refreshButton.type = 'button';
+    actions.append(refreshButton);
+    header.append(actions);
+    const body = element('div', 'panel__body');
+    const list = element('ul', 'unit3d-upcoming__today-list');
+    const status = element('p', 'unit3d-upcoming__today-status');
+    status.setAttribute('role', 'status');
+    body.append(list, status);
+    panel.append(header, body);
+    const sidebar = element('aside', 'unit3d-upcoming__home-sidebar');
+    sidebar.setAttribute('aria-label', 'Today’s episodes');
+    sidebar.append(panel);
+    page.classList.add('unit3d-upcoming__home-layout');
+    page.prepend(sidebar);
+    let releases = [];
+    let records = [];
+    let checked = false;
+    let busy = false;
+    let timer;
+
+    async function refresh(force = false) {
+      if (busy) return;
+      clearTimeout(timer);
+      if (document.hidden) return;
+      busy = true;
+      refreshButton.disabled = true;
+      const apiKey = savedApiKey();
+      if (!apiKey) {
+        records = [];
+        checked = false;
+      }
+      renderHomeEpisodes(list, releases, records, checked);
+      status.textContent = 'Loading today’s episodes…';
+      let retryAfter;
+      try {
+        const [calendar, torrents] = await Promise.allSettled([
+          loadReleases(
+            {
+              mode: 'episodes',
+              country: COUNTRIES.includes(saved.country) ? saved.country : 'US',
+              language: Object.hasOwn(IMDB_LANGUAGES, saved.language) ? saved.language : 'en-US',
+              titleCountry: COUNTRIES.includes(saved.titleCountry) ? saved.titleCountry : ''
+            },
+            () => {},
+            force
+          ),
+          apiKey ? loadRecentTorrents('tv', apiKey, force) : Promise.resolve(null)
+        ]);
+        const notices = [];
+        if (calendar.status === 'fulfilled') {
+          releases = calendar.value.releases;
+          notices.push(...calendar.value.notices);
+          if (!todaysEpisodes(releases).length) notices.push('No episodes scheduled for today.');
+        } else notices.push('Could not load today’s episodes. Use Refresh to retry.');
+        if (apiKey && savedApiKey() === apiKey) {
+          if (torrents.status === 'fulfilled' && !torrents.value.cancelled) {
+            records = torrents.value.records || [];
+            checked = Boolean(torrents.value.savedAt);
+            retryAfter = torrents.value.retryAfter;
+          } else if (torrents.status === 'rejected') {
+            records = torrents.reason.records || [];
+            checked = false;
+            notices.push('Site check failed. Saved matches are still shown; use Refresh to retry.');
+          }
+        } else {
+          records = [];
+          checked = false;
+          notices.push('Save your Aither API key in Upcoming → Settings to check availability.');
+        }
+        renderHomeEpisodes(list, releases, records, checked);
+        status.textContent = notices.join(' ');
+      } finally {
+        busy = false;
+        refreshButton.disabled = false;
+        const now = new Date();
+        const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+        timer = setTimeout(
+          () => void refresh(Boolean(retryAfter) && force),
+          Math.min(retryAfter || TORRENT_CACHE_TTL, midnight - now)
+        );
+      }
+    }
+    refreshButton.addEventListener('click', () => void refresh(true));
+    document.addEventListener('visibilitychange', () => void refresh());
+    void refresh();
+  }
+
   function mountPage() {
     const main = document.querySelector('main');
     if (!main || document.getElementById(ROOT_ID)) {
@@ -2168,6 +2375,13 @@
     fullWidth.checked = saved?.fullWidth !== false;
     widthLabel.append(fullWidth, 'Full page width');
     settings.append(widthLabel);
+    const homeLabel = element('label');
+    const homePanel = element('input');
+    homePanel.type = 'checkbox';
+    homePanel.checked = saved?.homePanel === true;
+    homeLabel.append(homePanel, 'Show today’s episodes in the left homepage sidebar');
+    settings.append(homeLabel);
+    homePanel.addEventListener('change', () => saveSettings());
     const languageLabel = element('label', null, 'IMDb language');
     const language = element('select', 'form__select');
     Object.entries(IMDB_LANGUAGES).forEach(([code, name]) =>
@@ -2492,6 +2706,7 @@
         language: language.value,
         titleCountry: titleCountry.value,
         fullWidth: fullWidth.checked,
+        homePanel: homePanel.checked,
         episodeSonarrFilter: episodeSonarrFilter.value
       });
     }
@@ -2796,6 +3011,7 @@
     cleanOldCaches();
     addNavigation();
     if (isUpcomingPage) mountPage();
+    else mountHomePanel();
   }
 
   if (document.readyState === 'loading')
