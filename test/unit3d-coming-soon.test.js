@@ -797,8 +797,9 @@ const torrent = (id, imdbId, categoryId) => ({
   }
 });
 
-test('homepage episodes use the local current day and honor hidden series', () => {
-  const api = make(() => assert.fail('unexpected request'));
+test('homepage hidden-series setting defaults to include and leaves Upcoming filtering independent', () => {
+  const storage = new Map();
+  const api = make(() => assert.fail('unexpected request'), { storage });
   const today = new Date(2026, 8, 6, 0, 1);
   const release = {
     imdbId: 'tt1',
@@ -817,7 +818,13 @@ test('homepage episodes use the local current day and honor hidden series', () =
   ];
   assert.deepEqual(api.todaysEpisodes(releases, today), [release]);
   api.setSeriesHidden({ imdbId: 'tt100', title: 'Hidden' }, true);
+  assert.deepEqual(api.todaysEpisodes(releases, today), [release]);
+  assert.deepEqual(api.filterEpisodes([release], today), []);
+  storage.set('unit3d-upcoming-settings', { homeIncludeHidden: false });
   assert.deepEqual(api.todaysEpisodes(releases, today), []);
+  storage.set('unit3d-upcoming-settings', { homeIncludeHidden: true });
+  assert.deepEqual(api.todaysEpisodes(releases, today), [release]);
+  assert.deepEqual(api.filterEpisodes([release], today), []);
 });
 
 test('resolution matches require exact series, season, episode, category and supported resolution', () => {
@@ -956,7 +963,10 @@ function homeFixture({
   const handlers = {};
   const timers = [];
   const requests = [];
-  const api = make(() => {}, { Date: clock });
+  const api = make(() => {}, {
+    Date: clock,
+    storage: new Map([['unit3d-upcoming-settings', saved]])
+  });
   const today = api.episodeRange().from;
   const state = {
     releases: [
@@ -2886,6 +2896,7 @@ test('the main episode Sonarr filter and language are saved with the other page 
     titleCountry: { value: 'PL' },
     fullWidth: { checked: false },
     homePanel: { checked: true },
+    homeIncludeHidden: { checked: false },
     episodeSonarrFilter: { value: 'out' },
     GM_setValue: (key, value) => {
       assert.equal(key, 'settings');
@@ -2903,6 +2914,7 @@ test('the main episode Sonarr filter and language are saved with the other page 
       titleCountry: 'PL',
       fullWidth: false,
       homePanel: true,
+      homeIncludeHidden: false,
       episodeSonarrFilter: 'out'
     }
   );

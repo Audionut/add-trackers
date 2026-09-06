@@ -577,7 +577,8 @@
 
   function todaysEpisodes(releases, today = new Date()) {
     const { from } = episodeRange(today);
-    return sortReleases(filterEpisodes(releases, today)).filter(
+    const includeHidden = GM_getValue(SETTINGS_KEY, {})?.homeIncludeHidden !== false;
+    return sortReleases(includeHidden ? releases : filterEpisodes(releases, today)).filter(
       (release) => release.mode === 'episodes' && release.date === from
     );
   }
@@ -2382,6 +2383,13 @@
     homeLabel.append(homePanel, 'Show today’s episodes in the left homepage sidebar');
     settings.append(homeLabel);
     homePanel.addEventListener('change', () => saveSettings());
+    const homeHiddenLabel = element('label');
+    const homeIncludeHidden = element('input');
+    homeIncludeHidden.type = 'checkbox';
+    homeIncludeHidden.checked = saved?.homeIncludeHidden !== false;
+    homeHiddenLabel.append(homeIncludeHidden, 'Include hidden series in the homepage sidebar');
+    settings.append(homeHiddenLabel);
+    homeIncludeHidden.addEventListener('change', () => saveSettings());
     const languageLabel = element('label', null, 'IMDb language');
     const language = element('select', 'form__select');
     Object.entries(IMDB_LANGUAGES).forEach(([code, name]) =>
@@ -2707,6 +2715,7 @@
         titleCountry: titleCountry.value,
         fullWidth: fullWidth.checked,
         homePanel: homePanel.checked,
+        homeIncludeHidden: homeIncludeHidden.checked,
         episodeSonarrFilter: episodeSonarrFilter.value
       });
     }
