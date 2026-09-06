@@ -27,7 +27,7 @@ const factory = new Function(
   'setTimeout',
   `${source.slice(start, end)}
   return { imdbGraphqlRequest, dateValue, monthRange, episodeRange, shiftMonth, calendarMonths, normalizeTitle, collectReleases, nextCursor, fetchComingSoon, loadReleases,
-    sortReleases, searchUrl, releaseKind, cleanOldCaches, readReleaseCache, searchReleases, encodeStored, decodeStored, savedApiKey, cachedTorrents, mergeTorrentHistory, loadRecentTorrents, torrentEpisodeKeys,
+    sortReleases, searchUrl, releaseKind, cleanOldCaches, readReleaseCache, searchReleases, encodeStored, decodeStored, savedApiKey, cachedTorrents, mergeTorrentHistory, loadRecentTorrents, torrentEpisodeKeys, torrentPackSeasons,
     readHiddenSeries, setSeriesHidden, filterEpisodes, todaysSeries, seriesResolutions, filterSonarrEpisodes, sonarrSeriesMembership, HIDDEN_SERIES_KEY,
     normalizeArrUrl, readArrServers, saveArrServer, removeArrServer, readArrCache, writeArrCache,
     loadArrOptions, loadArrLibrary, arrTarget, arrExisting, arrViewUrl, arrImmediate, addArrTitle,
@@ -817,14 +817,14 @@ test('homepage hidden-series setting defaults to include and leaves Upcoming fil
     { ...release, imdbId: 'tt5', mode: 'digital' },
     { ...release, imdbId: 'tt6', title: 'Today second episode' }
   ];
-  assert.deepEqual(api.todaysSeries(releases, today), [release]);
+  assert.deepEqual(api.todaysSeries(releases, today), [{ ...release, episodeKeys: [] }]);
   api.setSeriesHidden({ imdbId: 'tt100', title: 'Hidden' }, true);
-  assert.deepEqual(api.todaysSeries(releases, today), [release]);
+  assert.deepEqual(api.todaysSeries(releases, today), [{ ...release, episodeKeys: [] }]);
   assert.deepEqual(api.filterEpisodes([release], today), []);
   storage.set('unit3d-upcoming-settings', { homeIncludeHidden: false });
   assert.deepEqual(api.todaysSeries(releases, today), []);
   storage.set('unit3d-upcoming-settings', { homeIncludeHidden: true });
-  assert.deepEqual(api.todaysSeries(releases, today), [release]);
+  assert.deepEqual(api.todaysSeries(releases, today), [{ ...release, episodeKeys: [] }]);
   assert.deepEqual(api.filterEpisodes([release], today), []);
 });
 
@@ -856,9 +856,9 @@ test('homepage deduplicates by series ID without merging unrelated series or uni
   assert.equal(api.filterEpisodes(releases, today).length, 6);
 });
 
-test('homepage resolution matches accept any episode or pack in the same TV series', () => {
+test('homepage resolutions require episode evidence overlapping the displayed group', () => {
   const api = make(() => {});
-  const release = { seriesImdbId: 'tt00123', season: 1, episode: 2 };
+  const release = { seriesImdbId: 'tt00123', episodeKeys: ['1:2'] };
   const record = { imdbId: '123', categoryId: 2, episodeKeys: ['1:2'], resolution: '1080p' };
   const records = [
     record,
@@ -871,11 +871,8 @@ test('homepage resolution matches accept any episode or pack in the same TV seri
     { ...record, resolution: '1440p' },
     { ...record, resolution: undefined }
   ];
-  assert.deepEqual([...api.seriesResolutions(release, records).keys()], ['1080p', '720p', '2160p']);
-  assert.deepEqual(
-    [...api.seriesResolutions({ seriesImdbId: 'tt123' }, records).keys()],
-    ['1080p', '720p', '2160p']
-  );
+  assert.deepEqual([...api.seriesResolutions(release, records).keys()], ['1080p', '720p']);
+  assert.deepEqual([...api.seriesResolutions({ seriesImdbId: 'tt123' }, records).keys()], []);
   assert.equal(api.seriesResolutions({}, records).size, 0);
   assert.equal(api.seriesResolutions({ seriesImdbId: 'tt456' }, records).size, 0);
   assert.equal(api.seriesResolutions(release, [{ ...record, categoryId: 1 }]).size, 0);
@@ -917,7 +914,7 @@ test('API resolution strings survive shared cache and history without merging di
   assert.deepEqual(
     [
       ...api
-        .seriesResolutions({ seriesImdbId: 'tt123', season: 1, episode: 2 }, cached.records)
+        .seriesResolutions({ seriesImdbId: 'tt123', episodeKeys: ['1:2'] }, cached.records)
         .keys()
     ],
     ['720p', '1080p', '2160p']
@@ -1234,7 +1231,7 @@ test('homepage mounts a left sidebar with only title text and three resolution b
   );
 });
 
-test('homepage renders one row per series and links resolutions from any of its cached episodes', async () => {
+test('homepage links only resolutions overlapping its grouped episodes', async () => {
   const fixture = homeFixture();
   await new Promise(setImmediate);
   const release = fixture.state.releases[0];
@@ -1244,7 +1241,7 @@ test('homepage renders one row per series and links resolutions from any of its 
   );
   const record = fixture.state.records[0];
   fixture.state.records.push(
-    { ...record, resolution: '720p', torrentId: '123', episodeKeys: ['3:99'] },
+    { ...record, resolution: '720p', torrentId: '123', episodeKeys: ['2:3'] },
     { ...record, resolution: '2160p', torrentId: '789', episodeKeys: undefined }
   );
   const list = fixture.nodes.find((node) => node.tag === 'ul');
@@ -1254,13 +1251,136 @@ test('homepage renders one row per series and links resolutions from any of its 
   const second = list.children[1].children[1].children;
   assert.deepEqual(
     Array.from(first, (icon) => icon.href),
-    [
-      'https://aither.cc/torrents/123',
-      'https://aither.cc/torrents/456',
-      'https://aither.cc/torrents/789'
-    ]
+    ['https://aither.cc/torrents/123', 'https://aither.cc/torrents/456', undefined]
   );
   assert.ok(second.every((icon) => icon.dataset.available === 'false' && !icon.href));
+});
+
+test('homepage deduplication keeps episodes 3 through 5 as the exact site-match boundary', async () => {
+  const fixture = homeFixture();
+  const api = make(() => assert.fail('unexpected request'));
+  await new Promise(setImmediate);
+  const release = fixture.state.releases[0];
+  const releases = [3, 4, 5].map((episode) => ({ ...release, imdbId: `tt${episode}`, episode }));
+  releases.push(
+    { ...releases[1], seriesImdbId: 'tt00123' },
+    { ...release, episode: 2, date: '2000-01-01' },
+    { ...release, episode: 6, date: '2099-01-01' }
+  );
+  const groups = api.todaysSeries(releases);
+  assert.equal(groups.length, 1);
+  assert.deepEqual(groups[0].episodeKeys, ['1:3', '1:4', '1:5']);
+  assert.equal(release.episodeKeys, undefined);
+  const record = fixture.state.records[0];
+  const records = [
+    { ...record, torrentId: '555', episodeKeys: ['1:5'] },
+    { ...record, torrentId: '999', internal: true, episodeKeys: ['1:2'] },
+    {
+      ...record,
+      resolution: '720p',
+      torrentId: '333',
+      internal: true,
+      episodeKeys: api.torrentEpisodeKeys({ files: [{ name: 'Show.S01E03-E04.mkv' }] })
+    },
+    ...[['1:6'], ['2:3', '2:4', '2:5'], [], undefined].map((episodeKeys) => ({
+      ...record,
+      resolution: '2160p',
+      internal: true,
+      episodeKeys
+    }))
+  ];
+  const list = fixture.nodes.find((node) => node.tag === 'ul');
+  fixture.context.renderHomeSeries(list, releases, records, true);
+  assert.equal(list.children.length, 1);
+  const badges = list.children[0].children[1].children;
+  assert.deepEqual(
+    Array.from(badges, (badge) => badge.href),
+    ['https://aither.cc/torrents/333', 'https://aither.cc/torrents/555', undefined]
+  );
+  assert.deepEqual(
+    Array.from(badges, (badge) => badge.dataset.internal),
+    ['true', 'false', 'false']
+  );
+  assert.equal(badges[2].dataset.available, 'false');
+  assert.match(badges[0].title, /today's episodes or a matching season pack/);
+});
+
+test('season pack parsing distinguishes packs, season ranges and individual episodes', () => {
+  const api = make(() => assert.fail('unexpected request'));
+  for (const [name, seasons] of [
+    ['Show.S01.1080p', [1]],
+    ['Show.Season 2.COMPLETE', [2]],
+    ['Show.Season1.1080p', [1]],
+    ['Show.Season1Ep03.1080p', []],
+    ['Show.S01-S03.1080p', [1, 2, 3]],
+    ['Show.S01.S03.1080p', [1, 3]],
+    ['Show.S01E03.1080p', []],
+    ['Show.S01 E03.1080p', []],
+    ['Show.Season 1 Episode 3.1080p', []],
+    ['Show.Season 1 Ep 3.1080p', []],
+    ['Show.S01.Ep03.1080p', []],
+    ['Show.S01.Eps03-05.1080p', []],
+    ['Show.Season 1 Episodes 3-5.1080p', []],
+    ['Show.S01-E03.1080p', []],
+    ['Show.S01E03-E05.1080p', []],
+    ['Show.S01-S03E05.1080p', []],
+    ['Show.COMPLETE.1080p', []],
+    ['Show.S03-S01', []]
+  ])
+    assert.deepEqual(api.torrentPackSeasons(name), seasons, name);
+});
+
+test('API season packs survive cache and history and match only a represented season', async () => {
+  const storage = new Map();
+  let calls = 0;
+  const api = make(() => assert.fail('unexpected request'), {
+    storage,
+    fetch: async () => {
+      calls++;
+      return {
+        ok: true,
+        json: async () => ({
+          data: [1, 2, 3].map((season) => ({
+            ...torrent(season, 123, 2),
+            attributes: {
+              ...torrent(season, 123, 2).attributes,
+              name:
+                season === 3 ? 'Show.Season 1 Episodes 1-2.2160p' : `Show.Season${season}.1080p`,
+              files: [],
+              resolution: season === 3 ? '2160p' : '1080p',
+              internal: season !== 1
+            }
+          }))
+        })
+      };
+    }
+  });
+  storage.set(api.API_KEY_STORAGE, api.encodeStored('key'));
+  const fresh = await api.loadRecentTorrents('tv', 'key');
+  const cached = await api.loadRecentTorrents('tv', 'key');
+  assert.equal(calls, 1);
+  assert.deepEqual(cached.records, fresh.records);
+  assert.deepEqual(
+    cached.records.map((record) => record.packSeasons),
+    [[1], [2], undefined]
+  );
+  const history = api.decodeStored(storage.get(api.TORRENT_CACHE_KEY)).history;
+  assert.deepEqual(
+    history.map((record) => record.packSeasons),
+    [[1], [2], undefined]
+  );
+  const fixture = homeFixture();
+  await new Promise(setImmediate);
+  const release = fixture.state.releases[0];
+  const releases = [3, 4, 5].map((episode) => ({ ...release, imdbId: `tt${episode}`, episode }));
+  const list = fixture.nodes.find((node) => node.tag === 'ul');
+  fixture.context.renderHomeSeries(list, releases, cached.records, true);
+  const badge = list.children[0].children[1].children[1];
+  assert.equal(badge.href, 'https://aither.cc/torrents/1');
+  assert.equal(badge.dataset.internal, 'false');
+  assert.equal(list.children[0].children[1].children[2].dataset.available, 'false');
+  fixture.context.renderHomeSeries(list, releases, [cached.records[1]], true);
+  assert.equal(list.children[0].children[1].children[1].dataset.available, 'false');
 });
 
 test('resolution links reject invalid IDs and keep a linked match when legacy matches coexist', async () => {

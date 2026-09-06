@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Coming Soon
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.4
+// @version      1.0.5
 // @description  Upcoming movie and TV releases in native UNIT3D cards, with an optional homepage sidebar for today's episodes.
 // @author       Audionut
 // @match        https://aither.cc/*
@@ -591,7 +591,12 @@
     )) {
       if (release.mode !== 'episodes' || release.date !== from) continue;
       const key = imdbIdKey(release.seriesImdbId) || release.imdbId;
-      if (!series.has(key)) series.set(key, release);
+      if (!series.has(key)) series.set(key, { ...release, episodeKeys: [] });
+      if (Number.isInteger(release.season) && Number.isInteger(release.episode)) {
+        const episodeKey = `${release.season}:${release.episode}`;
+        const episodeKeys = series.get(key).episodeKeys;
+        if (!episodeKeys.includes(episodeKey)) episodeKeys.push(episodeKey);
+      }
     }
     return [...series.values()];
   }
@@ -604,6 +609,10 @@
       if (
         record.categoryId !== 2 ||
         record.imdbId !== imdbId ||
+        (!record.episodeKeys?.some((key) => release.episodeKeys?.includes(key)) &&
+          !record.packSeasons?.some((season) =>
+            release.episodeKeys?.some((key) => key.startsWith(`${season}:`))
+          )) ||
         !HOME_RESOLUTIONS.includes(record.resolution)
       )
         continue;
@@ -1207,6 +1216,20 @@
     return [...new Set(files.length ? files : parse(attributes.name))].sort();
   }
 
+  function torrentPackSeasons(name) {
+    const seasons = new Set();
+    const pattern = /(?:^|[^a-z0-9])(?:S|Season[ ._-]*)(\d{1,3})(?:[ ._]*-[ ._]*S?(\d{1,3}))?/gi;
+    for (const match of String(name || '').matchAll(pattern)) {
+      // Episode releases such as S01E03 or S01 E03 are not season packs.
+      const suffix = name.slice(match.index + match[0].length);
+      if (/^[a-z0-9]|^[ ._-]*(?:E|Eps?|Episodes?)[ ._-]*\d/i.test(suffix)) continue;
+      const first = Number(match[1]);
+      const last = Number(match[2] || match[1]);
+      for (let season = first; season <= last; season++) seasons.add(season);
+    }
+    return [...seasons].sort((a, b) => a - b);
+  }
+
   function mergeTorrentHistory(history, records, now = Date.now()) {
     const matches = new Map();
     for (const record of [...history, ...records.map((record) => ({ ...record, lastSeen: now }))]) {
@@ -1216,7 +1239,7 @@
         now - record.lastSeen >= TORRENT_HISTORY_TTL
       )
         continue;
-      const key = `${record.categoryId}:${record.imdbId}:${(record.episodeKeys || []).join(',')}:${record.resolution || ''}:${record.internal === true}`;
+      const key = `${record.categoryId}:${record.imdbId}:${(record.episodeKeys || []).join(',')}:${(record.packSeasons || []).join(',')}:${record.resolution || ''}:${record.internal === true}`;
       const previous = matches.get(key);
       if (
         !previous ||
@@ -1252,14 +1275,25 @@
       const matchingRecords = () =>
         history
           .filter((record) => TORRENT_CATEGORIES[scope].includes(record.categoryId))
-          .map(({ imdbId, categoryId, episodeKeys, resolution, torrentId, internal }) => ({
-            imdbId,
-            categoryId,
-            ...(internal === true ? { internal: true } : {}),
-            ...(resolution ? { resolution } : {}),
-            ...(torrentId ? { torrentId } : {}),
-            ...(episodeKeys?.length ? { episodeKeys } : {})
-          }));
+          .map(
+            ({
+              imdbId,
+              categoryId,
+              episodeKeys,
+              packSeasons,
+              resolution,
+              torrentId,
+              internal
+            }) => ({
+              imdbId,
+              categoryId,
+              ...(internal === true ? { internal: true } : {}),
+              ...(resolution ? { resolution } : {}),
+              ...(torrentId ? { torrentId } : {}),
+              ...(packSeasons?.length ? { packSeasons } : {}),
+              ...(episodeKeys?.length ? { episodeKeys } : {})
+            })
+          );
       // Preserve existing v1 results during migration and prune expired history even on cache hits.
       if (stored?.credential === credential)
         GM_setValue(TORRENT_CACHE_KEY, encodeStored({ credential, entries, history }));
@@ -1308,6 +1342,7 @@
             const categoryId = Number(torrent.attributes?.category_id);
             if (!imdbId || !TORRENT_CATEGORIES[scope].includes(categoryId)) return [];
             const episodeKeys = categoryId === 2 ? torrentEpisodeKeys(torrent.attributes) : [];
+            const packSeasons = categoryId === 2 ? torrentPackSeasons(torrent.attributes.name) : [];
             // UNIT3D returns the resolution name as well as its site-specific ID.
             const resolution = torrent.attributes.resolution;
             const torrentId = String(torrent.id || '');
@@ -1320,7 +1355,8 @@
                 ...(HOME_RESOLUTIONS.includes(resolution) && /^[1-9]\d*$/.test(torrentId)
                   ? { torrentId }
                   : {}),
-                ...(episodeKeys.length ? { episodeKeys } : {})
+                ...(episodeKeys.length ? { episodeKeys } : {}),
+                ...(packSeasons.length ? { packSeasons } : {})
               }
             ];
           });
@@ -2113,6 +2149,8 @@
       const seriesTitle = release.seriesTitle || 'Unknown series';
       if (title.textContent !== seriesTitle) title.textContent = seriesTitle;
       title.href = searchUrl(release.seriesImdbId || release.imdbId);
+      title.target = '_blank';
+      title.rel = 'noopener noreferrer';
       const available = seriesResolutions(release, records);
       HOME_RESOLUTIONS.forEach((resolution, resolutionIndex) => {
         const match = available.get(resolution);
@@ -2125,12 +2163,16 @@
             : element(tag, 'unit3d-upcoming__resolution', resolution);
         if (previous && icon !== previous) previous.replaceWith(icon);
         else if (!previous) resolutions.append(icon);
-        if (torrentId) icon.href = `${location.origin}/torrents/${torrentId}`;
+        if (torrentId) {
+          icon.href = `${location.origin}/torrents/${torrentId}`;
+          icon.target = '_blank';
+          icon.rel = 'noopener noreferrer';
+        }
         const found = available.has(resolution);
         icon.dataset.available = String(found);
         icon.dataset.internal = String(match?.internal === true);
         const status = found
-          ? `Available on site for this series (saved${match.internal ? ' internal' : ''} match)`
+          ? `Available on site for at least one of today's episodes or a matching season pack (saved${match.internal ? ' internal' : ''} match)`
           : checked
             ? 'Not found in recent site results'
             : 'Availability not checked';
