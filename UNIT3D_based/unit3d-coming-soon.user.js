@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Coming Soon
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.5
+// @version      1.0.6
 // @description  Upcoming movie and TV releases in native UNIT3D cards, with an optional homepage sidebar for today's episodes.
 // @author       Audionut
 // @match        https://aither.cc/*
@@ -582,15 +582,42 @@
     );
   }
 
-  function todaysSeries(releases, today = new Date()) {
-    const { from } = episodeRange(today);
-    const includeHidden = GM_getValue(SETTINGS_KEY, {})?.homeIncludeHidden !== false;
+  function homeDates(today = new Date()) {
+    const saved = GM_getValue(SETTINGS_KEY, {});
+    return [-1, 0, 1]
+      .filter((offset) =>
+        offset === -1
+          ? saved.homeYesterday === true
+          : offset === 1
+            ? saved.homeTomorrow === true
+            : saved.homeToday !== false
+      )
+      .map(
+        (offset) =>
+          episodeRange(new Date(today.getFullYear(), today.getMonth(), today.getDate() + offset))
+            .from
+      );
+  }
+
+  function homeReleases(releases, today = new Date()) {
+    const dates = new Set(homeDates(today));
+    const saved = GM_getValue(SETTINGS_KEY, {});
+    const hidden = new Set(
+      saved.homeIncludeHidden === false ? readHiddenSeries().map((entry) => entry.imdbId) : []
+    );
+    const movies = new Map();
     const series = new Map();
     for (const release of sortReleases(
-      includeHidden ? releases : filterEpisodes(releases, today)
+      filterSonarrEpisodes(releases, saved.homeSonarrOnly === true ? 'in' : 'all')
     )) {
-      if (release.mode !== 'episodes' || release.date !== from) continue;
-      const key = imdbIdKey(release.seriesImdbId) || release.imdbId;
+      if (!dates.has(release.date)) continue;
+      if (release.mode === 'digital' && saved.homeDigital === true) {
+        const key = `${release.date}:${release.imdbId}`;
+        if (!movies.has(key)) movies.set(key, release);
+        continue;
+      }
+      if (release.mode !== 'episodes' || hidden.has(release.seriesImdbId)) continue;
+      const key = `${release.date}:${imdbIdKey(release.seriesImdbId) || release.imdbId}`;
       if (!series.has(key)) series.set(key, { ...release, episodeKeys: [] });
       if (Number.isInteger(release.season) && Number.isInteger(release.episode)) {
         const episodeKey = `${release.season}:${release.episode}`;
@@ -598,18 +625,20 @@
         if (!episodeKeys.includes(episodeKey)) episodeKeys.push(episodeKey);
       }
     }
-    return [...series.values()];
+    return [...movies.values(), ...series.values()];
   }
 
-  function seriesResolutions(release, records) {
-    const imdbId = imdbIdKey(release.seriesImdbId);
+  function homeResolutions(release, records) {
+    const movie = release.mode === 'digital';
+    const imdbId = imdbIdKey(movie ? release.imdbId : release.seriesImdbId);
     const resolutions = new Map();
     if (!imdbId) return resolutions;
     for (const record of records) {
       if (
-        record.categoryId !== 2 ||
+        record.categoryId !== (movie ? 1 : 2) ||
         record.imdbId !== imdbId ||
-        (!record.episodeKeys?.some((key) => release.episodeKeys?.includes(key)) &&
+        (!movie &&
+          !record.episodeKeys?.some((key) => release.episodeKeys?.includes(key)) &&
           !record.packSeasons?.some((season) =>
             release.episodeKeys?.some((key) => key.startsWith(`${season}:`))
           )) ||
@@ -712,7 +741,14 @@
   }
 
   async function loadReleases(options, onProgress, force = false) {
-    if (options.mode === 'episodes') options = { ...options, ...episodeRange() };
+    if (options.mode === 'episodes') {
+      options = { ...options, ...episodeRange() };
+      if (options.includeYesterday) {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        options.from = episodeRange(yesterday).from;
+      }
+    }
     const modes = RELEASE_VIEWS[options.mode].modes;
     const sources = [];
     if (modes.includes('theatrical') || modes.includes('digital')) {
@@ -2131,11 +2167,49 @@
     menu.append(item);
   }
 
-  function renderHomeSeries(container, releases, records, checked = false) {
-    const rows = new Map([...container.children].map((row) => [row.dataset.seriesId, row]));
+  function renderHomeReleases(container, releases, records, checked = false) {
+    const rows = new Map(
+      [...container.children].map((row) => [row.dataset.seriesId || row.dataset.headingId, row])
+    );
     let index = 0;
-    for (const release of todaysSeries(releases)) {
-      const seriesId = release.seriesImdbId || release.imdbId;
+    function place(row, key) {
+      if (container.children[index] !== row)
+        container.insertBefore(row, container.children[index] || null);
+      rows.delete(key);
+      index++;
+    }
+    function heading(key, text, level) {
+      let row = rows.get(key);
+      if (!row) {
+        row = element('li', 'unit3d-upcoming__heading');
+        row.dataset.headingId = key;
+        row.append(element(level, null, text));
+      } else if (row.children[0].tagName.toLowerCase() !== level) {
+        row.replaceChildren(element(level, null, text));
+      } else row.children[0].textContent = text;
+      place(row, key);
+    }
+    const visible = homeReleases(releases);
+    const showSections = visible.some((release) => release.mode === 'digital');
+    const today = episodeRange().from;
+    let previousMode;
+    let previousDate;
+    for (const release of visible) {
+      const movie = release.mode === 'digital';
+      if (release.mode !== previousMode) {
+        if (showSections) heading(`media:${release.mode}`, movie ? 'Movies' : 'TV', 'h3');
+        previousMode = release.mode;
+        previousDate = undefined;
+      }
+      if (release.date !== previousDate) {
+        heading(
+          `day:${release.mode}:${release.date}`,
+          release.date < today ? 'Yesterday' : release.date > today ? 'Tomorrow' : 'Today',
+          showSections ? 'h4' : 'h3'
+        );
+        previousDate = release.date;
+      }
+      const seriesId = `${release.date}:${movie ? `movie:${release.imdbId}` : release.seriesImdbId || release.imdbId}`;
       let row = rows.get(seriesId);
       if (!row) {
         row = element('li', 'unit3d-upcoming__today-row');
@@ -2146,12 +2220,14 @@
         );
       }
       const [title, resolutions] = row.children;
-      const seriesTitle = release.seriesTitle || 'Unknown series';
+      row.dataset.mode = release.mode;
+      const seriesTitle = movie ? release.title : release.seriesTitle || 'Unknown series';
       if (title.textContent !== seriesTitle) title.textContent = seriesTitle;
+      title.title = movie ? `Digital movie release · ${release.date}` : 'Episode releases';
       title.href = searchUrl(release.seriesImdbId || release.imdbId);
       title.target = '_blank';
       title.rel = 'noopener noreferrer';
-      const available = seriesResolutions(release, records);
+      const available = homeResolutions(release, records);
       HOME_RESOLUTIONS.forEach((resolution, resolutionIndex) => {
         const match = available.get(resolution);
         const torrentId = match?.torrentId;
@@ -2172,23 +2248,20 @@
         icon.dataset.available = String(found);
         icon.dataset.internal = String(match?.internal === true);
         const status = found
-          ? `Available on site for at least one of today's episodes or a matching season pack (saved${match.internal ? ' internal' : ''} match)`
+          ? `Available on site for ${movie ? 'this movie' : 'at least one selected episode or a matching season pack'} (saved${match.internal ? ' internal' : ''} match)`
           : checked
             ? 'Not found in recent site results'
             : 'Availability not checked';
         icon.title = `${resolution}: ${status}`;
         icon.setAttribute('aria-label', icon.title);
       });
-      if (container.children[index] !== row)
-        container.insertBefore(row, container.children[index] || null);
-      rows.delete(seriesId);
-      index++;
+      place(row, seriesId);
     }
     for (const row of rows.values()) row.remove();
   }
 
   function mountHomePanel() {
-    const saved = GM_getValue(SETTINGS_KEY, {});
+    let saved = GM_getValue(SETTINGS_KEY, {});
     if (
       location.hostname !== 'aither.cc' ||
       location.pathname !== '/' ||
@@ -2209,6 +2282,11 @@
       }
       #${HOME_PANEL_ID} .panel__header { flex-wrap: nowrap; align-items: center; }
       #${HOME_PANEL_ID} .unit3d-upcoming__today-list { list-style: none; margin: 0; padding: 0; }
+      #${HOME_PANEL_ID} .unit3d-upcoming__heading { margin: 12px 0 4px; padding: 0; }
+      #${HOME_PANEL_ID} .unit3d-upcoming__heading:first-child { margin-top: 0; }
+      #${HOME_PANEL_ID} .unit3d-upcoming__heading h3 { margin: 0; font-size: 12px; line-height: 1.4; }
+      #${HOME_PANEL_ID} .unit3d-upcoming__heading h4 { margin: 0; font-size: 12px; line-height: 1.4; opacity: 0.75; }
+      #${HOME_PANEL_ID} .unit3d-upcoming__heading[data-heading-id^="media:"] h3 { font-size: 13px; }
       #${HOME_PANEL_ID} .unit3d-upcoming__today-row { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; padding: 6px 0; }
       #${HOME_PANEL_ID} .unit3d-upcoming__today-title { min-width: 0; overflow-wrap: anywhere; }
       #${HOME_PANEL_ID} .unit3d-upcoming__resolutions { display: flex; flex-shrink: 0; gap: 5px; }
@@ -2223,18 +2301,18 @@
     const panel = element('section', 'panelV2');
     panel.id = HOME_PANEL_ID;
     const header = element('header', 'panel__header');
-    header.append(element('h2', 'panel__heading', 'Today’s episodes'));
+    header.append(element('h2', 'panel__heading', 'Release calendar'));
     const body = element('div', 'panel__body');
     const list = element('ul', 'unit3d-upcoming__today-list');
     const progress = element('progress', 'unit3d-upcoming__today-progress');
-    progress.setAttribute('aria-label', 'Loading today’s episode schedule');
+    progress.setAttribute('aria-label', 'Loading release schedules');
     progress.hidden = true;
     const status = element('p', 'unit3d-upcoming__today-status');
     status.setAttribute('role', 'status');
     body.append(list, progress, status);
     panel.append(header, body);
     const sidebar = element('aside', 'unit3d-upcoming__home-sidebar');
-    sidebar.setAttribute('aria-label', 'Today’s episodes');
+    sidebar.setAttribute('aria-label', 'Release calendar');
     sidebar.append(panel);
     page.classList.add('unit3d-upcoming__home-layout');
     page.prepend(sidebar);
@@ -2242,24 +2320,62 @@
       mode: 'episodes',
       country: COUNTRIES.includes(saved.country) ? saved.country : 'US',
       language: Object.hasOwn(IMDB_LANGUAGES, saved.language) ? saved.language : 'en-US',
-      titleCountry: COUNTRIES.includes(saved.titleCountry) ? saved.titleCountry : ''
+      titleCountry: COUNTRIES.includes(saved.titleCountry) ? saved.titleCountry : '',
+      ...(saved.homeYesterday === true ? { includeYesterday: true } : {})
     };
     function cachedCalendar(includeStale = false) {
-      const today = episodeRange().from;
+      const dates = homeDates();
       return readReleaseCache(options.language, options.titleCountry, includeStale).find(
         (entry) =>
           entry.key?.startsWith(`episodes:${options.country}:rolling:`) &&
-          entry.from <= today &&
-          entry.to >= today
+          (includeStale || (entry.from <= dates[0] && entry.to >= dates.at(-1)))
       );
+    }
+    function movieOptions() {
+      return [...new Set(homeDates().map((date) => date.slice(0, 7)))].map((month) => ({
+        ...options,
+        mode: 'digital',
+        country: 'US',
+        ...monthRange(new Date(`${month}-01T12:00:00`))
+      }));
+    }
+    function cachedMovies(includeStale = false) {
+      const requests = movieOptions();
+      const cache = readReleaseCache(options.language, options.titleCountry, includeStale);
+      const entries = requests
+        .flatMap((request) =>
+          ['movies', 'digital'].map((mode) =>
+            cache.find(
+              (entry) =>
+                entry.key ===
+                  `${mode}:${request.country}:${request.from.slice(0, 7)}:${options.language}:${options.titleCountry || 'auto'}` &&
+                (includeStale || (entry.from <= request.from && entry.to >= request.to))
+            )
+          )
+        )
+        .filter(Boolean);
+      return {
+        releases: entries.flatMap((entry) => entry.releases),
+        complete: entries.length === requests.length * 2,
+        savedAt: entries.length ? Math.min(...entries.map((entry) => entry.savedAt)) : Date.now()
+      };
     }
     const initialCalendar = cachedCalendar(true);
     let releases = initialCalendar?.releases || [];
     let calendarKnown = Boolean(initialCalendar);
+    let movies = saved.homeDigital === true ? cachedMovies(true).releases : [];
+    let movieKnown = movies.length > 0;
+    let movieLoading = false;
+    let movieNotice = '';
+    let movieDay = '';
+    let nextMovieCheck = 0;
+    let sonarrNotice = '';
+    let nextSonarrCheck = 0;
     let records = [];
     let recordKey = '';
     let checked = false;
     let busy = false;
+    let refreshQueued = false;
     let timer;
     let nextCalendarCheck = 0;
     let calendarDay = '';
@@ -2268,12 +2384,20 @@
     let torrentNotice = '';
 
     function draw() {
-      renderHomeSeries(list, releases, records, checked);
-      progress.hidden = calendarKnown || !calendarLoading;
+      renderHomeReleases(list, [...movies, ...releases], records, checked);
+      progress.hidden = !((!calendarKnown && calendarLoading) || (!movieKnown && movieLoading));
       const message = [
         calendarNotice,
-        calendarKnown && !calendarLoading && !calendarNotice && !todaysSeries(releases).length
-          ? 'No episodes scheduled for today.'
+        movieNotice,
+        sonarrNotice,
+        calendarKnown &&
+        !calendarLoading &&
+        !movieLoading &&
+        !calendarNotice &&
+        !movieNotice &&
+        !sonarrNotice &&
+        !homeReleases([...movies, ...releases]).length
+          ? 'No matching releases for the selected days.'
           : '',
         torrentNotice
       ]
@@ -2283,10 +2407,29 @@
     }
 
     async function refresh() {
-      if (busy) return;
+      if (busy) {
+        refreshQueued = true;
+        return;
+      }
       clearTimeout(timer);
       if (document.hidden) return;
       busy = true;
+      refreshQueued = false;
+      const current = GM_getValue(SETTINGS_KEY, {});
+      if (
+        ['homeYesterday', 'homeToday', 'homeTomorrow', 'homeDigital'].some(
+          (key) => current[key] !== saved[key]
+        )
+      ) {
+        nextCalendarCheck = 0;
+        nextMovieCheck = 0;
+      }
+      if (current.homeSonarrOnly !== saved.homeSonarrOnly) nextSonarrCheck = 0;
+      saved = current;
+      if (saved.homeYesterday === true) options.includeYesterday = true;
+      else delete options.includeYesterday;
+      if (saved.homeSonarrOnly !== true) sonarrNotice = '';
+      if (saved.homeDigital !== true) movieNotice = '';
       const apiKey = savedApiKey();
       if (apiKey !== recordKey) {
         records = [];
@@ -2310,13 +2453,82 @@
       const tasks = [];
       let retryAfter;
       try {
+        if (saved.homeSonarrOnly === true) {
+          const servers = readArrServers().filter(
+            (server) => server.enabled && server.type === 'sonarr'
+          );
+          if (!servers.length) {
+            sonarrNotice =
+              'Configure an enabled Sonarr server in Upcoming → Settings to show its episodes.';
+          } else if (Date.now() >= nextSonarrCheck) {
+            nextSonarrCheck = Date.now() + ARR_LIBRARY_TTL;
+            sonarrNotice = sonarrSeriesMembership().complete ? '' : 'Loading Sonarr libraries…';
+            tasks.push(
+              Promise.allSettled(servers.map((server) => loadArrLibrary(server)))
+                .then((results) => {
+                  sonarrNotice = results.some((result) => result.status === 'rejected')
+                    ? 'Could not update Sonarr. Saved library data is used when available; retrying automatically.'
+                    : '';
+                })
+                .finally(draw)
+            );
+          }
+        }
+        if (saved.homeDigital === true) {
+          const snapshot = cachedMovies(true);
+          const freshMovies = cachedMovies();
+          movies = sortReleases(
+            freshMovies.complete ? freshMovies.releases : [...movies, ...snapshot.releases]
+          );
+          movieKnown = movieKnown || snapshot.complete || movies.length > 0;
+          if (freshMovies.complete) {
+            nextMovieCheck = freshMovies.savedAt + CACHE_TTL;
+            movieDay = today;
+            movieNotice = '';
+          } else if (movieDay !== today || Date.now() >= nextMovieCheck) {
+            movieDay = today;
+            nextMovieCheck = Date.now() + CACHE_TTL;
+            movieLoading = true;
+            movieNotice = movieKnown ? 'Updating digital releases…' : 'Loading digital releases…';
+            const requests = movieOptions();
+            tasks.push(
+              Promise.allSettled(requests.map((request) => loadReleases(request, () => {})))
+                .then((results) => {
+                  const loaded = results
+                    .filter((result) => result.status === 'fulfilled')
+                    .map((result) => result.value);
+                  results.forEach((result, index) => {
+                    if (result.status === 'fulfilled' && !result.value.notices.length) {
+                      const request = requests[index];
+                      movies = movies.filter(
+                        (release) => release.date < request.from || release.date > request.to
+                      );
+                    }
+                  });
+                  movies = sortReleases([...movies, ...loaded.flatMap((data) => data.releases)]);
+                  movieKnown = movieKnown || loaded.length > 0;
+                  const failed =
+                    results.some((result) => result.status === 'rejected') ||
+                    loaded.some((data) => data.notices.length);
+                  movieNotice = failed
+                    ? 'Some digital releases could not be updated. Retrying automatically.'
+                    : '';
+                  if (failed) nextMovieCheck = Date.now() + 15 * 60 * 1000;
+                })
+                .finally(() => {
+                  movieLoading = false;
+                  draw();
+                })
+            );
+          }
+        }
         if (!fresh && (calendarDay !== today || Date.now() >= nextCalendarCheck)) {
           calendarDay = today;
           nextCalendarCheck = Date.now() + EPISODE_CACHE_TTL;
           calendarLoading = true;
           calendarNotice = calendarKnown
             ? 'Updating episode schedule…'
-            : 'Loading today’s episodes…';
+            : 'Loading episode releases…';
           tasks.push(
             loadReleases(options, (message) => {
               if (!calendarKnown) {
@@ -2349,7 +2561,9 @@
             draw();
           };
           tasks.push(
-            loadRecentTorrents('tv', apiKey, false, (data) => updateMatches(data, true))
+            loadRecentTorrents(saved.homeDigital === true ? 'all' : 'tv', apiKey, false, (data) =>
+              updateMatches(data, true)
+            )
               .then((data) => updateMatches(data))
               .catch((error) => {
                 if (savedApiKey() !== apiKey) return;
@@ -2377,8 +2591,12 @@
         timer = setTimeout(
           () => void refresh(),
           Math.min(
+            refreshQueued ? 1 : Infinity,
+            episodeRange(now).from !== today ? 1 : Infinity,
             retryAfter || (apiKey ? TORRENT_CACHE_TTL : EPISODE_CACHE_TTL),
             Math.max(1, nextCalendarCheck - now),
+            saved.homeDigital === true ? Math.max(1, nextMovieCheck - now) : Infinity,
+            saved.homeSonarrOnly === true ? ARR_LIBRARY_TTL : Infinity,
             midnight - now
           )
         );
@@ -2539,7 +2757,7 @@
     const homePanel = element('input');
     homePanel.type = 'checkbox';
     homePanel.checked = saved?.homePanel === true;
-    homeLabel.append(homePanel, 'Show today’s episodes in the left homepage sidebar');
+    homeLabel.append(homePanel, 'Show the release calendar in the left homepage sidebar');
     settings.append(homeLabel);
     homePanel.addEventListener('change', () => saveSettings());
     const homeHiddenLabel = element('label');
@@ -2549,6 +2767,23 @@
     homeHiddenLabel.append(homeIncludeHidden, 'Include hidden series in the homepage sidebar');
     settings.append(homeHiddenLabel);
     homeIncludeHidden.addEventListener('change', () => saveSettings());
+    const homeOptions = {};
+    for (const [key, label, defaultOn] of [
+      ['homeSonarrOnly', 'Homepage: only show episodes from my Sonarr library', false],
+      ['homeYesterday', 'Homepage: show yesterday’s releases', false],
+      ['homeToday', 'Homepage: show today’s releases', true],
+      ['homeTomorrow', 'Homepage: show tomorrow’s releases', false],
+      ['homeDigital', 'Homepage: show digital movies (US) above episodes', false]
+    ]) {
+      const labelElement = element('label');
+      const input = element('input');
+      input.type = 'checkbox';
+      input.checked = defaultOn ? saved?.[key] !== false : saved?.[key] === true;
+      input.addEventListener('change', () => saveSettings());
+      labelElement.append(input, label);
+      settings.append(labelElement);
+      homeOptions[key] = input;
+    }
     const languageLabel = element('label', null, 'IMDb language');
     const language = element('select', 'form__select');
     Object.entries(IMDB_LANGUAGES).forEach(([code, name]) =>
@@ -2875,6 +3110,9 @@
         fullWidth: fullWidth.checked,
         homePanel: homePanel.checked,
         homeIncludeHidden: homeIncludeHidden.checked,
+        ...Object.fromEntries(
+          Object.entries(homeOptions).map(([key, input]) => [key, input.checked])
+        ),
         episodeSonarrFilter: episodeSonarrFilter.value
       });
     }
