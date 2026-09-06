@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Coming Soon
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.3
+// @version      1.0.4
 // @description  Upcoming movie and TV releases in native UNIT3D cards, with an optional homepage sidebar for today's episodes.
 // @author       Audionut
 // @match        https://aither.cc/*
@@ -58,7 +58,9 @@
   const CACHE_KEY = 'unit3d-upcoming-cache-v5';
   const SETTINGS_KEY = 'unit3d-upcoming-settings';
   const HIDDEN_SERIES_KEY = 'unit3d-upcoming-hidden-series';
-  const CACHE_TTL = 6 * 60 * 60 * 1000;
+  const CACHE_TTL = 24 * 60 * 60 * 1000;
+  const EPISODE_CACHE_TTL = 12 * 60 * 60 * 1000;
+  const RELEASE_CACHE_RETENTION = 30 * 24 * 60 * 60 * 1000;
   const releaseRequests = new Map();
   const CARD_PAGE_SIZE = 24;
   const API_KEY_STORAGE = `unit3d-upcoming-api-key:${location.origin}`;
@@ -539,12 +541,17 @@
     }
   }
 
-  function readReleaseCache(language, titleCountry = '') {
+  function readReleaseCache(language, titleCountry = '', includeStale = false) {
     const stored = GM_getValue(CACHE_KEY, []);
     return (Array.isArray(stored) ? stored : []).filter(
       (entry) =>
         Date.now() >= entry.savedAt &&
-        Date.now() - entry.savedAt < CACHE_TTL &&
+        Date.now() - entry.savedAt <
+          (includeStale
+            ? RELEASE_CACHE_RETENTION
+            : entry.key?.startsWith('episodes:')
+              ? EPISODE_CACHE_TTL
+              : CACHE_TTL) &&
         Array.isArray(entry.releases) &&
         // Entries saved before language selection contain English metadata.
         (!language ||
@@ -575,24 +582,28 @@
     );
   }
 
-  function todaysEpisodes(releases, today = new Date()) {
+  function todaysSeries(releases, today = new Date()) {
     const { from } = episodeRange(today);
     const includeHidden = GM_getValue(SETTINGS_KEY, {})?.homeIncludeHidden !== false;
-    return sortReleases(includeHidden ? releases : filterEpisodes(releases, today)).filter(
-      (release) => release.mode === 'episodes' && release.date === from
-    );
+    const series = new Map();
+    for (const release of sortReleases(
+      includeHidden ? releases : filterEpisodes(releases, today)
+    )) {
+      if (release.mode !== 'episodes' || release.date !== from) continue;
+      const key = imdbIdKey(release.seriesImdbId) || release.imdbId;
+      if (!series.has(key)) series.set(key, release);
+    }
+    return [...series.values()];
   }
 
-  function episodeResolutions(release, records) {
+  function seriesResolutions(release, records) {
     const imdbId = imdbIdKey(release.seriesImdbId);
     const resolutions = new Map();
-    if (!imdbId || !Number.isInteger(release.season) || !Number.isInteger(release.episode))
-      return resolutions;
+    if (!imdbId) return resolutions;
     for (const record of records) {
       if (
         record.categoryId !== 2 ||
         record.imdbId !== imdbId ||
-        !record.episodeKeys?.includes(`${release.season}:${release.episode}`) ||
         !HOME_RESOLUTIONS.includes(record.resolution)
       )
         continue;
@@ -663,7 +674,7 @@
       if (!data.notices.length) {
         // Read again at commit time so another month's completed request cannot be overwritten.
         GM_setValue(CACHE_KEY, [
-          ...readReleaseCache().filter((item) => item.key !== key),
+          ...readReleaseCache(undefined, '', true).filter((item) => item.key !== key),
           {
             key,
             language,
@@ -1250,6 +1261,7 @@
       const lastRequest = GM_getValue(TORRENT_REQUEST_KEY, 0);
       const retryAfter = TORRENT_REQUEST_INTERVAL - (now - lastRequest);
       if (retryAfter > 0) return { ...cached, retryAfter, records: matchingRecords() };
+      onProgress({ records: matchingRecords(), pages: 0 });
       if (savedApiKey() !== apiKey) return { cancelled: true };
       const url = new URL('/api/torrents/filter', location.origin);
       url.searchParams.set('perPage', '100');
@@ -2075,36 +2087,52 @@
     menu.append(item);
   }
 
-  function renderHomeEpisodes(container, releases, records, checked = false) {
-    container.replaceChildren();
-    for (const release of todaysEpisodes(releases)) {
-      const row = element('li', 'unit3d-upcoming__today-row');
-      const title = element(
-        'a',
-        'unit3d-upcoming__today-title',
-        release.seriesTitle || 'Unknown series'
-      );
+  function renderHomeSeries(container, releases, records, checked = false) {
+    const rows = new Map([...container.children].map((row) => [row.dataset.seriesId, row]));
+    let index = 0;
+    for (const release of todaysSeries(releases)) {
+      const seriesId = release.seriesImdbId || release.imdbId;
+      let row = rows.get(seriesId);
+      if (!row) {
+        row = element('li', 'unit3d-upcoming__today-row');
+        row.dataset.seriesId = seriesId;
+        row.append(
+          element('a', 'unit3d-upcoming__today-title'),
+          element('span', 'unit3d-upcoming__resolutions')
+        );
+      }
+      const [title, resolutions] = row.children;
+      const seriesTitle = release.seriesTitle || 'Unknown series';
+      if (title.textContent !== seriesTitle) title.textContent = seriesTitle;
       title.href = searchUrl(release.seriesImdbId || release.imdbId);
-      const resolutions = element('span', 'unit3d-upcoming__resolutions');
-      const available = episodeResolutions(release, records);
-      for (const resolution of HOME_RESOLUTIONS) {
+      const available = seriesResolutions(release, records);
+      HOME_RESOLUTIONS.forEach((resolution, resolutionIndex) => {
         const torrentId = available.get(resolution);
-        const icon = element(torrentId ? 'a' : 'span', 'unit3d-upcoming__resolution', resolution);
+        const tag = torrentId ? 'a' : 'span';
+        const previous = resolutions.children[resolutionIndex];
+        const icon =
+          previous?.tagName.toLowerCase() === tag
+            ? previous
+            : element(tag, 'unit3d-upcoming__resolution', resolution);
+        if (previous && icon !== previous) previous.replaceWith(icon);
+        else if (!previous) resolutions.append(icon);
         if (torrentId) icon.href = `${location.origin}/torrents/${torrentId}`;
         const found = available.has(resolution);
         icon.dataset.available = String(found);
         const status = found
-          ? 'Available on site (saved match)'
+          ? 'Available on site for this series (saved match)'
           : checked
             ? 'Not found in recent site results'
             : 'Availability not checked';
         icon.title = `${resolution}: ${status}`;
         icon.setAttribute('aria-label', icon.title);
-        resolutions.append(icon);
-      }
-      row.append(title, resolutions);
-      container.append(row);
+      });
+      if (container.children[index] !== row)
+        container.insertBefore(row, container.children[index] || null);
+      rows.delete(seriesId);
+      index++;
     }
+    for (const row of rows.values()) row.remove();
   }
 
   function mountHomePanel() {
@@ -2128,107 +2156,183 @@
         main.page__home.unit3d-upcoming__home-layout { grid-template-columns: 320px minmax(0, 1fr); }
       }
       #${HOME_PANEL_ID} .panel__header { flex-wrap: nowrap; align-items: center; }
-      #${HOME_PANEL_ID} .panel__actions { margin-inline-start: auto; flex-shrink: 0; }
       #${HOME_PANEL_ID} .unit3d-upcoming__today-list { list-style: none; margin: 0; padding: 0; }
       #${HOME_PANEL_ID} .unit3d-upcoming__today-row { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; padding: 6px 0; }
       #${HOME_PANEL_ID} .unit3d-upcoming__today-title { min-width: 0; overflow-wrap: anywhere; }
       #${HOME_PANEL_ID} .unit3d-upcoming__resolutions { display: flex; flex-shrink: 0; gap: 5px; }
       #${HOME_PANEL_ID} .unit3d-upcoming__resolution { display: inline-block; border: 1px solid currentColor; border-radius: 3px; padding: 1px 4px; font-size: 10px; font-weight: 700; line-height: 1.4; opacity: 0.5; }
       #${HOME_PANEL_ID} .unit3d-upcoming__resolution[data-available="true"] { color: #fff; background: #21743b; border-color: #21743b; opacity: 1; }
-      #${HOME_PANEL_ID} .unit3d-upcoming__today-status { margin: 6px 0 0; }
+      #${HOME_PANEL_ID} .unit3d-upcoming__today-status { margin: 6px 0 0; font-size: 12px; }
       #${HOME_PANEL_ID} .unit3d-upcoming__today-status:empty { display: none; }
+      #${HOME_PANEL_ID} .unit3d-upcoming__today-progress { width: 100%; height: 4px; }
     `;
     document.head.append(style);
     const panel = element('section', 'panelV2');
     panel.id = HOME_PANEL_ID;
     const header = element('header', 'panel__header');
     header.append(element('h2', 'panel__heading', 'Today’s episodes'));
-    const actions = element('div', 'panel__actions');
-    const refreshButton = element('button', 'panel__action', 'Refresh');
-    refreshButton.type = 'button';
-    actions.append(refreshButton);
-    header.append(actions);
     const body = element('div', 'panel__body');
     const list = element('ul', 'unit3d-upcoming__today-list');
+    const progress = element('progress', 'unit3d-upcoming__today-progress');
+    progress.setAttribute('aria-label', 'Loading today’s episode schedule');
+    progress.hidden = true;
     const status = element('p', 'unit3d-upcoming__today-status');
     status.setAttribute('role', 'status');
-    body.append(list, status);
+    body.append(list, progress, status);
     panel.append(header, body);
     const sidebar = element('aside', 'unit3d-upcoming__home-sidebar');
     sidebar.setAttribute('aria-label', 'Today’s episodes');
     sidebar.append(panel);
     page.classList.add('unit3d-upcoming__home-layout');
     page.prepend(sidebar);
-    let releases = [];
+    const options = {
+      mode: 'episodes',
+      country: COUNTRIES.includes(saved.country) ? saved.country : 'US',
+      language: Object.hasOwn(IMDB_LANGUAGES, saved.language) ? saved.language : 'en-US',
+      titleCountry: COUNTRIES.includes(saved.titleCountry) ? saved.titleCountry : ''
+    };
+    function cachedCalendar(includeStale = false) {
+      const today = episodeRange().from;
+      return readReleaseCache(options.language, options.titleCountry, includeStale).find(
+        (entry) =>
+          entry.key?.startsWith(`episodes:${options.country}:rolling:`) &&
+          entry.from <= today &&
+          entry.to >= today
+      );
+    }
+    const initialCalendar = cachedCalendar(true);
+    let releases = initialCalendar?.releases || [];
+    let calendarKnown = Boolean(initialCalendar);
     let records = [];
+    let recordKey = '';
     let checked = false;
     let busy = false;
     let timer;
+    let nextCalendarCheck = 0;
+    let calendarDay = '';
+    let calendarLoading = false;
+    let calendarNotice = '';
+    let torrentNotice = '';
 
-    async function refresh(force = false) {
+    function draw() {
+      renderHomeSeries(list, releases, records, checked);
+      progress.hidden = calendarKnown || !calendarLoading;
+      const message = [
+        calendarNotice,
+        calendarKnown && !calendarLoading && !calendarNotice && !todaysSeries(releases).length
+          ? 'No episodes scheduled for today.'
+          : '',
+        torrentNotice
+      ]
+        .filter(Boolean)
+        .join(' ');
+      if (status.textContent !== message) status.textContent = message;
+    }
+
+    async function refresh() {
       if (busy) return;
       clearTimeout(timer);
       if (document.hidden) return;
       busy = true;
-      refreshButton.disabled = true;
       const apiKey = savedApiKey();
-      if (!apiKey) {
+      if (apiKey !== recordKey) {
         records = [];
         checked = false;
+        recordKey = apiKey;
       }
-      renderHomeEpisodes(list, releases, records, checked);
-      status.textContent = 'Loading today’s episodes…';
+      const today = episodeRange().from;
+      const cached = cachedCalendar(true);
+      if (cached) {
+        releases = cached.releases;
+        calendarKnown = true;
+      } else if (today !== calendarDay) {
+        calendarKnown = false;
+      }
+      const fresh = cachedCalendar();
+      if (fresh) {
+        nextCalendarCheck = fresh.savedAt + EPISODE_CACHE_TTL;
+        calendarDay = today;
+        calendarNotice = '';
+      }
+      const tasks = [];
       let retryAfter;
       try {
-        const [calendar, torrents] = await Promise.allSettled([
-          loadReleases(
-            {
-              mode: 'episodes',
-              country: COUNTRIES.includes(saved.country) ? saved.country : 'US',
-              language: Object.hasOwn(IMDB_LANGUAGES, saved.language) ? saved.language : 'en-US',
-              titleCountry: COUNTRIES.includes(saved.titleCountry) ? saved.titleCountry : ''
-            },
-            () => {},
-            force
-          ),
-          apiKey ? loadRecentTorrents('tv', apiKey, force) : Promise.resolve(null)
-        ]);
-        const notices = [];
-        if (calendar.status === 'fulfilled') {
-          releases = calendar.value.releases;
-          notices.push(...calendar.value.notices);
-          if (!todaysEpisodes(releases).length) notices.push('No episodes scheduled for today.');
-        } else notices.push('Could not load today’s episodes. Use Refresh to retry.');
-        if (apiKey && savedApiKey() === apiKey) {
-          if (torrents.status === 'fulfilled' && !torrents.value.cancelled) {
-            records = torrents.value.records || [];
-            checked = Boolean(torrents.value.savedAt);
-            retryAfter = torrents.value.retryAfter;
-          } else if (torrents.status === 'rejected') {
-            records = torrents.reason.records || [];
-            checked = false;
-            notices.push('Site check failed. Saved matches are still shown; use Refresh to retry.');
-          }
+        if (!fresh && (calendarDay !== today || Date.now() >= nextCalendarCheck)) {
+          calendarDay = today;
+          nextCalendarCheck = Date.now() + EPISODE_CACHE_TTL;
+          calendarLoading = true;
+          calendarNotice = calendarKnown
+            ? 'Updating episode schedule…'
+            : 'Loading today’s episodes…';
+          tasks.push(
+            loadReleases(options, (message) => {
+              if (!calendarKnown) {
+                calendarNotice = message;
+                draw();
+              }
+            })
+              .then((data) => {
+                releases = data.releases;
+                calendarKnown = true;
+                calendarNotice = data.notices.join(' ');
+              })
+              .catch(() => {
+                calendarNotice = 'Could not update the episode schedule. Retrying automatically.';
+                nextCalendarCheck = Date.now() + 15 * 60 * 1000;
+              })
+              .finally(() => {
+                calendarLoading = false;
+                draw();
+              })
+          );
+        }
+        if (apiKey) {
+          const updateMatches = (data, updating = false) => {
+            if (savedApiKey() !== apiKey || data.cancelled) return;
+            records = data.records || [];
+            checked = Boolean(data.savedAt);
+            retryAfter = data.retryAfter;
+            torrentNotice = updating ? 'Checking site availability…' : '';
+            draw();
+          };
+          tasks.push(
+            loadRecentTorrents('tv', apiKey, false, (data) => updateMatches(data, true))
+              .then((data) => updateMatches(data))
+              .catch((error) => {
+                if (savedApiKey() !== apiKey) return;
+                records = error.records || [];
+                checked = false;
+                torrentNotice =
+                  'Site check failed. Saved matches are still shown; retrying automatically.';
+                draw();
+              })
+          );
         } else {
+          torrentNotice = 'Save your Aither API key in Upcoming → Settings to check availability.';
+        }
+        draw();
+        await Promise.allSettled(tasks);
+        if (savedApiKey() !== apiKey) {
           records = [];
           checked = false;
-          notices.push('Save your Aither API key in Upcoming → Settings to check availability.');
+          draw();
         }
-        renderHomeEpisodes(list, releases, records, checked);
-        status.textContent = notices.join(' ');
       } finally {
         busy = false;
-        refreshButton.disabled = false;
         const now = new Date();
         const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
         timer = setTimeout(
-          () => void refresh(Boolean(retryAfter) && force),
-          Math.min(retryAfter || TORRENT_CACHE_TTL, midnight - now)
+          () => void refresh(),
+          Math.min(
+            retryAfter || (apiKey ? TORRENT_CACHE_TTL : EPISODE_CACHE_TTL),
+            Math.max(1, nextCalendarCheck - now),
+            midnight - now
+          )
         );
       }
     }
-    refreshButton.addEventListener('click', () => void refresh(true));
     document.addEventListener('visibilitychange', () => void refresh());
+    draw();
     void refresh();
   }
 
@@ -2825,7 +2929,7 @@
     function renderCalendar() {
       const visible = calendar.releases;
       updateVisibleReleases();
-      status.textContent = `${visible.length ? `${visible.length} releases` : 'No releases found'} for ${mode.value === 'episodes' ? 'the next 30 days' : `this month${fromToday ? ' from today' : ''}`}.${calendar.cached ? ' Cached for up to 6 hours; Refresh checks for updates.' : ''}${calendar.notices.length ? `\n${calendar.notices.join('\n')}` : ''}`;
+      status.textContent = `${visible.length ? `${visible.length} releases` : 'No releases found'} for ${mode.value === 'episodes' ? 'the next 30 days' : `this month${fromToday ? ' from today' : ''}`}.${calendar.cached ? ` Cached for up to ${mode.value === 'episodes' ? 12 : 24} hours; Refresh checks for updates.` : ''}${calendar.notices.length ? `\n${calendar.notices.join('\n')}` : ''}`;
 
       const selectedModes = RELEASE_VIEWS[mode.value].modes;
       const includesDigital = selectedModes.includes('digital');
