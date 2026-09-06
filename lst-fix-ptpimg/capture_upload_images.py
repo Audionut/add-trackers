@@ -399,15 +399,21 @@ def screenshot_timestamps(name: str, duration: float, count: int) -> list[float]
 
 
 def ffmpeg_filter(info: VideoInfo, tone_map_hdr: bool) -> str:
-    """Return an SDR or software HDR-to-SDR filter chain."""
+    """Correct anamorphic pixels before SDR or software HDR conversion."""
 
+    # Expand the affected axis, as Upload-Assistant does, then use square pixels.
+    # FFmpeg supplies sar=1 when the input aspect ratio is unknown.
+    aspect_filter = (
+        "scale=w='if(gt(sar,1),round(iw*sar/2)*2,iw)':"
+        "h='if(lt(sar,1),round(ih/sar/2)*2,ih)',setsar=1,"
+    )
     if tone_map_hdr and info.color_transfer in HDR_TRANSFERS:
-        return (
+        return aspect_filter + (
             "zscale=transfer=linear,"
             "tonemap=tonemap=mobius:desat=10.00,"
             "zscale=transfer=bt709,format=rgb24"
         )
-    return "format=rgb24"
+    return aspect_filter + "format=rgb24"
 
 
 def valid_png(path: Path) -> bool:
