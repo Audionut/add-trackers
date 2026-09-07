@@ -28,7 +28,7 @@ const factory = new Function(
   `${source.slice(start, end)}
   return { imdbGraphqlRequest, dateValue, monthRange, episodeRange, shiftMonth, calendarMonths, normalizeTitle, collectReleases, nextCursor, fetchComingSoon, loadReleases,
     sortReleases, searchUrl, releaseKind, cleanOldCaches, readReleaseCache, searchReleases, encodeStored, decodeStored, savedApiKey, cachedTorrents, mergeTorrentHistory, loadRecentTorrents, torrentEpisodeKeys, torrentPackSeasons,
-    readHiddenSeries, setSeriesHidden, filterEpisodes, homeDates, homeReleases, homeResolutions, filterSonarrEpisodes, sonarrSeriesMembership, HIDDEN_SERIES_KEY,
+    readHiddenSeries, setSeriesHidden, filterEpisodes, releaseCountry, timeZone, zonedDate, loadSonarrCalendar, sonarrEpisodeDates, homeDates, homeReleases, homeResolutions, filterSonarrEpisodes, sonarrSeriesMembership, HIDDEN_SERIES_KEY,
     normalizeArrUrl, readArrServers, saveArrServer, removeArrServer, readArrCache, writeArrCache,
     loadArrOptions, loadArrLibrary, arrTarget, arrExisting, arrViewUrl, arrImmediate, addArrTitle,
     ARR_SETTINGS_KEY, ARR_CACHE_PREFIX, ARR_LIBRARY_TTL,
@@ -1046,6 +1046,11 @@ function homeFixture({
   const storage = new Map([['unit3d-upcoming-settings', saved]]);
   const api = make(
     (request) => {
+      if (request.url.includes('/calendar?')) {
+        state.sonarrCalendarCalls = (state.sonarrCalendarCalls || 0) + 1;
+        request.onload({ status: 200, responseText: JSON.stringify(state.airtimes || []) });
+        return;
+      }
       assert.match(request.url, /\/api\/v3\/series$/);
       requests.push({ type: 'sonarr' });
       const finish = () =>
@@ -1095,9 +1100,9 @@ function homeFixture({
         records: [{ imdbId: 'tt123' }]
       });
   }
-  function saveCalendar(age = 0, request = { includeYesterday: saved.homeYesterday === true }) {
+  function saveCalendar(age = 0) {
     const yesterday = new clock();
-    yesterday.setDate(yesterday.getDate() - 1);
+    yesterday.setDate(yesterday.getDate() - 2);
     storage.set('unit3d-upcoming-cache-v5', [
       ...(storage.get('unit3d-upcoming-cache-v5') || []).filter(
         (entry) => !entry.key.startsWith('episodes:')
@@ -1107,7 +1112,7 @@ function homeFixture({
         language: saved.language || 'en-US',
         titleCountry: saved.titleCountry || '',
         ...api.episodeRange(),
-        ...(request.includeYesterday ? { from: api.episodeRange(yesterday).from } : {}),
+        from: api.episodeRange(yesterday).from,
         savedAt: clock.now() - age,
         releases: state.releases
       }
@@ -1235,6 +1240,10 @@ function homeFixture({
     savedApiKey: () => key,
     readReleaseCache: api.readReleaseCache,
     episodeRange: api.episodeRange,
+    releaseCountry: api.releaseCountry,
+    timeZone: api.timeZone,
+    zonedDate: api.zonedDate,
+    loadSonarrCalendar: api.loadSonarrCalendar,
     homeDates: api.homeDates,
     monthRange: api.monthRange,
     sortReleases: api.sortReleases,
@@ -1285,7 +1294,7 @@ function homeFixture({
     clearTimeout: () => {},
     Date: clock
   };
-  const from = source.indexOf('  function renderHomeReleases(');
+  const from = source.indexOf('  function appendEpisodeTime(');
   const to = source.indexOf('  function mountPage()', from);
   runInNewContext(source.slice(from, to), context);
   context.mountHomePanel();
@@ -1479,7 +1488,7 @@ test('a successful empty movie refresh removes an obsolete cached release', asyn
 test('returning to the homepage applies changed source and day settings', async () => {
   const fixture = homeFixture({ cacheAge: 0, sonarrConfigured: true });
   await new Promise(setImmediate);
-  assert.ok(!fixture.requests.some((request) => ['movies', 'sonarr'].includes(request.type)));
+  assert.ok(!fixture.requests.some((request) => request.type === 'movies'));
   fixture.storage.set('unit3d-upcoming-settings', {
     homePanel: true,
     homeYesterday: true,
@@ -1490,17 +1499,14 @@ test('returning to the homepage applies changed source and day settings', async 
   await new Promise(setImmediate);
   assert.ok(fixture.requests.some((request) => request.type === 'movies'));
   assert.ok(fixture.requests.some((request) => request.type === 'sonarr'));
-  assert.equal(
-    fixture.requests.find((request) => request.type === 'calendar').options.includeYesterday,
-    true
-  );
+  assert.equal(fixture.requests.filter((request) => request.type === 'calendar').length, 0);
 });
 
 test('homepage queues option changes made during a pending request without a site API key', async () => {
   const fixture = homeFixture({ key: '', sonarrConfigured: true, holdCalendar: true });
   assert.deepEqual(
     fixture.requests.map((request) => request.type),
-    ['calendar']
+    ['sonarr', 'calendar']
   );
   fixture.storage.set('unit3d-upcoming-settings', {
     homePanel: true,
@@ -1517,14 +1523,12 @@ test('homepage queues option changes made during a pending request without a sit
   assert.ok(fixture.requests.some((request) => request.type === 'sonarr'));
   assert.ok(fixture.requests.some((request) => request.type === 'movies'));
   const calendars = fixture.requests.filter((request) => request.type === 'calendar');
-  assert.equal(calendars.length, 2);
-  assert.equal(calendars[0].options.includeYesterday, undefined);
-  assert.equal(calendars[1].options.includeYesterday, true);
+  assert.equal(calendars.length, 1);
   fixture.state.finishCalendar();
   await new Promise(setImmediate);
 });
 
-test('homepage loads adjacent months for selected days and includes yesterday in its episode request', async () => {
+test('homepage loads adjacent months for selected days and shares the padded episode request', async () => {
   const now = new Date(2027, 0, 1, 12).getTime();
   class BoundaryDate extends Date {
     constructor(...args) {
@@ -1553,10 +1557,7 @@ test('homepage loads adjacent months for selected days and includes yesterday in
       .map((request) => request.options.from),
     ['2026-12-01', '2027-01-01']
   );
-  assert.equal(
-    fixture.requests.find((request) => request.type === 'calendar').options.includeYesterday,
-    true
-  );
+  assert.equal(fixture.requests.filter((request) => request.type === 'calendar').length, 1);
   const list = fixture.nodes.find((node) => node.tag === 'ul');
   assert.deepEqual(
     Array.from(homeRows(list), (row) => row.dataset.mode),
@@ -3010,7 +3011,7 @@ test('episodes use TV_EPISODE pagination and keep separate episodes of one serie
     () => {}
   );
   assert.deepEqual(
-    data.releases.map(({ imdbId, seriesImdbId, date, mode }) => ({
+    episodeApi.filterEpisodes(data.releases).map(({ imdbId, seriesImdbId, date, mode }) => ({
       imdbId,
       seriesImdbId,
       date,
@@ -3025,8 +3026,8 @@ test('episodes use TV_EPISODE pagination and keep separate episodes of one serie
   for (const request of requests) {
     assert.equal(request.type, 'TV_EPISODE');
     assert.equal(request.includeSeries, true);
-    assert.equal(request.from, '2026-09-04');
-    assert.equal(request.to, '2026-10-03');
+    assert.equal(request.from, '2026-09-02');
+    assert.equal(request.to, '2026-10-04');
   }
   assert.equal(
     (await episodeApi.loadReleases({ mode: 'episodes', country: 'US' }, () => {})).cached,
@@ -3067,14 +3068,14 @@ test('episode caches span month boundaries and roll forward without keeping obso
   assert.deepEqual(
     requests.map(({ from, to }) => ({ from, to })),
     [
-      { from: '2026-09-30', to: '2026-10-29' },
-      { from: '2026-10-01', to: '2026-10-30' }
+      { from: '2026-09-28', to: '2026-10-30' },
+      { from: '2026-09-29', to: '2026-10-31' }
     ]
   );
   const cache = storage.get('unit3d-upcoming-cache-v5');
   assert.equal(cache.length, 1);
   assert.equal(cache[0].key, 'episodes:US:rolling:en-US:auto');
-  assert.equal(cache[0].from, '2026-10-01');
+  assert.equal(cache[0].from, '2026-09-29');
   await episodeApi.loadReleases({ ...selected, country: 'GB' }, () => {});
   assert.equal(storage.get('unit3d-upcoming-cache-v5').length, 2);
 });
@@ -3457,6 +3458,7 @@ function mixedLoader(imdb, digital, storage = new Map()) {
     'dateValue',
     'releaseRequests',
     'episodeRange',
+    'SETTINGS_KEY',
     `${source.slice(source.indexOf('  function readReleaseCache('), source.indexOf('\n  function searchUrl('))}; return loadReleases;`
   )(
     imdb,
@@ -3471,41 +3473,26 @@ function mixedLoader(imdb, digital, storage = new Map()) {
     30 * 24 * 60 * 60 * 1000,
     api.dateValue,
     new Map(),
-    api.episodeRange
+    api.episodeRange,
+    'unit3d-upcoming-settings'
   );
 }
 
-test('homepage yesterday requests extend the shared episode cache without changing the main window', async () => {
-  const storage = new Map();
+test('episode fetching retains adjacent IMDb days in the shared cache', async () => {
   const requests = [];
   const load = mixedLoader(
     async (request) => {
       requests.push(request);
-      return {
-        releases: [
-          { imdbId: `tt${requests.length}`, title: 'Show', mode: 'episodes', date: request.from }
-        ],
-        notices: []
-      };
+      return { releases: [], notices: [] };
     },
-    () => assert.fail('unexpected digital request'),
-    storage
+    () => assert.fail('unexpected digital request')
   );
-  const normal = await load({ ...options, mode: 'episodes' }, () => {});
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const previous = api.episodeRange(yesterday).from;
-  const expanded = await load({ ...options, mode: 'episodes', includeYesterday: true }, () => {});
-  assert.equal(requests.length, 2);
-  assert.equal(requests[1].from, previous);
-  assert.equal(requests[1].to, previous);
-  assert.deepEqual(
-    expanded.releases.map((release) => release.date),
-    [previous, normal.releases[0].date]
-  );
-  const main = await load({ ...options, mode: 'episodes' }, () => {});
-  assert.deepEqual(main.releases, normal.releases);
-  assert.equal(requests.length, 2);
+  await load({ ...options, mode: 'episodes' }, () => {});
+  const range = api.episodeRange();
+  assert.equal(Date.parse(range.from) - Date.parse(requests[0].from), 2 * 86400000);
+  assert.equal(Date.parse(requests[0].to) - Date.parse(range.to), 86400000);
+  await load({ ...options, mode: 'episodes' }, () => {});
+  assert.equal(requests.length, 1);
 });
 
 test('episodes refresh after 12 hours, movie and TV data after 24, and stale data stays readable', async () => {
@@ -3906,7 +3893,7 @@ test('Settings restore language and title-country choices with independent defau
 
 test('homepage settings restore their saved values and default to today with optional sources disabled', () => {
   const from = source.indexOf('    const homeOptions = {};');
-  const to = source.indexOf('    const languageLabel =', from);
+  const to = source.indexOf('    const timeZoneLabel =', from);
   for (const saved of [
     {},
     {
@@ -3919,6 +3906,7 @@ test('homepage settings restore their saved values and default to today with opt
   ]) {
     const context = {
       saved,
+      homeSettings: { append() {} },
       settings: { append() {} },
       saveSettings() {},
       element: () => ({ append() {}, addEventListener() {} })
@@ -3933,7 +3921,8 @@ test('homepage settings restore their saved values and default to today with opt
         homeYesterday: saved.homeYesterday === true,
         homeToday: saved.homeToday !== false,
         homeTomorrow: saved.homeTomorrow === true,
-        homeDigital: saved.homeDigital === true
+        homeDigital: saved.homeDigital === true,
+        showEpisodeTime: saved.showEpisodeTime === true
       }
     );
   }
@@ -3951,6 +3940,7 @@ test('the main episode Sonarr filter and language are saved with the other page 
     language: { value: 'fr-CA' },
     titleCountry: { value: 'PL' },
     fullWidth: { checked: false },
+    zoneSelect: { value: 'Australia/Brisbane' },
     homePanel: { checked: true },
     homeIncludeHidden: { checked: false },
     homeOptions: {
@@ -3977,6 +3967,7 @@ test('the main episode Sonarr filter and language are saved with the other page 
       titleCountry: 'PL',
       fullWidth: false,
       homePanel: true,
+      timeZone: 'Australia/Brisbane',
       homeIncludeHidden: false,
       homeSonarrOnly: true,
       homeYesterday: true,
@@ -4133,6 +4124,8 @@ test('failed Refresh restores an active cached search even when background month
     searchFilters: () => ({ title: 'moon' }),
     searchOptions: {},
     filterEpisodes: api.filterEpisodes,
+    releaseCountry: api.releaseCountry,
+    sortReleases: api.sortReleases,
     filterSonarrEpisodes: api.filterSonarrEpisodes,
     sonarrSeriesMembership: api.sonarrSeriesMembership,
     episodeWindow: {},
@@ -4167,8 +4160,16 @@ test('failed Refresh restores an active cached search even when background month
     assert.ok(start > 0 && end > start);
     runInNewContext(source.slice(start, end), context);
   }
+  context.calendar.cached = true;
+  context.calendar.notices = ['Selected calendar warning'];
   context.updateVisibleReleases();
   assert.equal(context.results.children.length, 24);
+  assert.match(context.status.textContent, /^30 releases for the current search/);
+  assert.doesNotMatch(
+    context.status.textContent,
+    /for this month|for the next 30 days|Cached|Selected calendar warning/
+  );
+  assert.doesNotMatch(context.message.textContent, /Selected calendar warning/);
   await context.refreshPage(true);
   assert.equal(context.results.children.length, 24, 'cached matches survive a failed Refresh');
   assert.equal(context.visibleReleases.length, 30);
@@ -4393,4 +4394,265 @@ test('other poster hosts remain unchanged and missing or unsafe sources use the 
       'https://aither.cc/img/poster-placeholder.svg'
     );
   }
+});
+
+test('the shared country uses browser region by default and respects explicit selections', () => {
+  const storage = new Map();
+  const api = make(() => {}, { storage, navigator: { language: 'en-AU' } });
+  assert.equal(api.releaseCountry(), 'AU');
+  storage.set('unit3d-upcoming-settings', { country: 'GB' });
+  assert.equal(api.releaseCountry(), 'GB');
+  assert.equal(
+    api.releaseCountry(''),
+    'AU',
+    'selecting Browser ignores the previously saved country'
+  );
+  assert.equal(api.releaseCountry('NZ'), 'NZ');
+});
+
+test('Sonarr timestamps override IMDb dates on both pages using exact series, season and episode matches', async () => {
+  class CalendarDate extends Date {
+    constructor(...args) {
+      super(...(args.length ? args : ['2026-09-07T01:30:00Z']));
+    }
+    static now() {
+      return Date.parse('2026-09-07T01:30:00Z');
+    }
+  }
+  const fixture = arrFixture('sonarr', { Date: CalendarDate });
+  const { api, server, state, storage } = fixture;
+  storage.set('unit3d-upcoming-settings', { timeZone: 'Australia/Brisbane' });
+  const episode = {
+    series: { imdbId: 'tt0123456' },
+    seasonNumber: 1,
+    episodeNumber: 4,
+    airDateUtc: '2026-09-07T01:00:00Z'
+  };
+  let calendarCalls = 0;
+  state.handle = (request, url) => {
+    if (!url.pathname.endsWith('/calendar')) return false;
+    calendarCalls++;
+    assert.equal(url.searchParams.get('includeSeries'), 'true');
+    assert.equal(url.searchParams.get('unmonitored'), 'true');
+    assert.ok(Date.parse(url.searchParams.get('start')) < CalendarDate.now() - 86400000);
+    request.onload({
+      status: 200,
+      responseText: JSON.stringify([
+        episode,
+        { ...episode, episodeNumber: 5, airDateUtc: '2026-09-07T00:00:00Z' },
+        { ...episode, episodeNumber: 6, airDateUtc: null },
+        { ...episode, episodeNumber: 7, airDateUtc: 'invalid' },
+        { ...episode, seasonNumber: null },
+        { ...episode, series: {} }
+      ])
+    });
+    return true;
+  };
+  const [calendar] = await Promise.all([
+    api.loadSonarrCalendar(server),
+    api.loadSonarrCalendar(server)
+  ]);
+  assert.equal(calendar.records.length, 2);
+  await api.loadSonarrCalendar(server);
+  assert.equal(calendarCalls, 1);
+  const releases = [4, 5, 6].map((episode) => ({
+    imdbId: `tt${episode}`,
+    seriesImdbId: 'tt0123456',
+    seriesTitle: 'Lanterns',
+    title: `Episode ${episode}`,
+    mode: 'episodes',
+    season: 1,
+    episode,
+    date: '2026-09-06'
+  }));
+  assert.deepEqual(
+    api.filterEpisodes(releases).map((item) => item.episode),
+    [4, 5]
+  );
+  const [group] = api.homeReleases(releases);
+  assert.equal(group.date, '2026-09-07');
+  assert.equal(group.airDateUtc, '2026-09-07T00:00:00.000Z');
+  assert.deepEqual(group.episodeKeys, ['1:4', '1:5']);
+  assert.ok(
+    releases.every((item) => item.date === '2026-09-06'),
+    'raw IMDb cache stays unchanged'
+  );
+  assert.equal(api.sonarrEpisodeDates([{ ...releases[0], season: 2 }])[0].date, '2026-09-06');
+  assert.equal(
+    api.sonarrEpisodeDates([{ ...releases[0], seriesImdbId: 'tt999' }])[0].date,
+    '2026-09-06'
+  );
+  storage.set('unit3d-upcoming-settings', { timeZone: 'America/Los_Angeles' });
+  assert.equal(api.zonedDate(), '2026-09-06');
+  assert.equal(api.episodeRange().from, '2026-09-06');
+  assert.equal(api.sonarrEpisodeDates(releases)[0].date, '2026-09-06');
+  assert.equal(api.zonedDate(new Date('2026-03-08T09:30:00Z')), '2026-03-08');
+  assert.equal(api.zonedDate(new Date('2026-03-08T10:30:00Z')), '2026-03-08');
+  state.handle = (request) => {
+    request.onerror();
+    return true;
+  };
+  await assert.rejects(api.loadSonarrCalendar(server, true));
+  assert.equal(api.readArrCache(server).calendar.records.length, 2);
+  api.saveArrServer({ ...server, enabled: false });
+  assert.equal(api.sonarrEpisodeDates(releases)[0].airDateUtc, undefined);
+});
+
+test('optional Sonarr time labels follow daylight saving and omit unknown episode times', () => {
+  const storage = new Map([
+    ['unit3d-upcoming-settings', { timeZone: 'America/Los_Angeles', showEpisodeTime: true }]
+  ]);
+  const api = make(() => {}, { storage });
+  const context = {
+    SETTINGS_KEY: 'unit3d-upcoming-settings',
+    GM_getValue: (key) => storage.get(key),
+    timeZone: api.timeZone,
+    element: (tag, _className, textContent) => ({ tag, textContent })
+  };
+  const from = source.indexOf('  function appendEpisodeTime(');
+  const to = source.indexOf('  function renderHomeReleases(', from);
+  runInNewContext(source.slice(from, to), context);
+  const nodes = [];
+  const title = { append: (node) => nodes.push(node) };
+  context.appendEpisodeTime(title, { airDateUtc: '2026-03-08T09:30:00Z' });
+  context.appendEpisodeTime(title, { airDateUtc: '2026-03-08T10:30:00Z' });
+  assert.equal(nodes[0].tag, 'small');
+  assert.match(nodes[0].textContent, /01:30/);
+  assert.match(nodes[1].textContent, /03:30/);
+  assert.match(nodes[0].textContent, /^ \(.*\)$/);
+  context.appendEpisodeTime(title, {});
+  storage.set('unit3d-upcoming-settings', { showEpisodeTime: false });
+  context.appendEpisodeTime(title, { airDateUtc: '2026-03-08T09:30:00Z' });
+  assert.equal(nodes.length, 2);
+});
+
+test('main-page Sonarr synchronization loads timestamps even with a fresh library and redraws all-series results', async () => {
+  const { api, server } = arrFixture('sonarr');
+  api.writeArrCache(server, 'library', { savedAt: Date.now(), records: [] });
+  let calendars = 0;
+  let redraws = 0;
+  const context = {
+    readArrCache: api.readArrCache,
+    arrFresh: (entry) => Boolean(entry?.savedAt),
+    ARR_LIBRARY_TTL: api.ARR_LIBRARY_TTL,
+    attempts: new Map(),
+    errors: new Map(),
+    loadArrLibrary: async () => {},
+    loadSonarrCalendar: async () => {
+      calendars++;
+    },
+    draw() {},
+    onLibraryChange: (type) => {
+      assert.equal(type, 'sonarr');
+      redraws++;
+    }
+  };
+  const from = source.indexOf('    async function sync(server');
+  const to = source.indexOf('    function update(', from);
+  runInNewContext(source.slice(from, to), context);
+  await context.sync(server);
+  assert.equal(calendars, 1);
+  assert.equal(redraws, 1);
+  await context.sync(server);
+  assert.equal(calendars, 1, 'retries remain bounded');
+  await context.sync(server, true);
+  assert.equal(calendars, 2);
+});
+
+test('homepage advances the selected timezone day and refreshes Sonarr without a site key or library-only filter', async () => {
+  let now = Date.parse('2026-09-07T09:59:00Z');
+  class CalendarDate extends Date {
+    constructor(...args) {
+      super(...(args.length ? args : [now]));
+    }
+    static now() {
+      return now;
+    }
+  }
+  const fixture = homeFixture({
+    clock: CalendarDate,
+    key: '',
+    cacheAge: 0,
+    sonarrConfigured: true,
+    sonarrCacheAge: 0,
+    saved: { homePanel: true, timeZone: 'Pacific/Honolulu' }
+  });
+  await new Promise(setImmediate);
+  const list = fixture.nodes.find((node) => node.tag === 'ul');
+  assert.equal(homeRows(list).length, 1);
+  assert.equal(fixture.state.sonarrCalendarCalls, 1);
+  assert.ok(fixture.timers.at(-1).delay <= 60000);
+  now += 2 * 60000;
+  fixture.timers.at(-1).callback();
+  await new Promise(setImmediate);
+  assert.equal(homeRows(list).length, 0, 'yesterday leaves the selected today group');
+  assert.equal(
+    fixture.requests.filter((request) => request.type === 'calendar').length,
+    0,
+    'minute redraws reuse a fresh IMDb snapshot'
+  );
+  now += 8 * 60000;
+  fixture.timers.at(-1).callback();
+  await new Promise(setImmediate);
+  assert.equal(fixture.state.sonarrCalendarCalls, 2, 'Sonarr remains on its ten-minute cadence');
+});
+
+test('main episode status counts visible dates and changes after a Sonarr timestamp redraw', () => {
+  const { api, server, storage } = arrFixture('sonarr');
+  storage.set('unit3d-upcoming-settings', { timeZone: 'UTC' });
+  const { from, to } = api.episodeRange();
+  const yesterday = new Date(Date.parse(from) - 86400000).toISOString().slice(0, 10);
+  const outside = new Date(Date.parse(to) + 86400000).toISOString().slice(0, 10);
+  const releases = [yesterday, from, outside].map((date, index) => ({
+    imdbId: `tt${index + 1}`,
+    seriesImdbId: 'tt0123456',
+    season: 1,
+    episode: index + 1,
+    title: `Episode ${index + 1}`,
+    country: 'US',
+    mode: 'episodes',
+    date
+  }));
+  const context = {
+    renderedCount: 0,
+    visibleReleases: [],
+    searching: false,
+    fromToday: true,
+    mode: { value: 'episodes' },
+    country: { value: 'US' },
+    episodeSonarrFilter: { value: 'all' },
+    RELEASE_VIEWS: api.RELEASE_VIEWS,
+    releaseCountry: api.releaseCountry,
+    filterEpisodes: api.filterEpisodes,
+    sortReleases: api.sortReleases,
+    filterSonarrEpisodes: api.filterSonarrEpisodes,
+    sonarrSeriesMembership: api.sonarrSeriesMembership,
+    calendar: { releases, notices: [] },
+    panel: { dataset: {} },
+    results: { replaceChildren() {} },
+    appendReleases() {},
+    CARD_PAGE_SIZE: 24,
+    searchStatus: {},
+    status: {},
+    message: {},
+    arr: {}
+  };
+  const start = source.indexOf('    function updateVisibleReleases(');
+  const end = source.indexOf('    function updateSearch(', start);
+  runInNewContext(source.slice(start, end), context);
+  context.updateVisibleReleases();
+  assert.match(context.status.textContent, /^1 releases for the next 30 days/);
+  api.writeArrCache(server, 'calendar', {
+    savedAt: Date.now(),
+    records: [
+      {
+        seriesImdbId: '123456',
+        season: 1,
+        episode: 1,
+        airDateUtc: `${from}T01:00:00Z`
+      }
+    ]
+  });
+  context.updateVisibleReleases(true);
+  assert.match(context.status.textContent, /^2 releases for the next 30 days/);
 });

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Coming Soon
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.6
+// @version      1.0.7
 // @description  Upcoming movie and TV releases in native UNIT3D cards, with an optional homepage sidebar for today's episodes.
 // @author       Audionut
 // @match        https://aither.cc/*
@@ -279,6 +279,7 @@
   }
 
   function episodeRange(today = new Date()) {
+    today = new Date(`${zonedDate(today)}T12:00:00`);
     const last = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 29);
     return {
       from: dateValue({
@@ -575,15 +576,39 @@
   function filterEpisodes(releases, today = new Date()) {
     const { from, to } = episodeRange(today);
     const hidden = new Set(readHiddenSeries().map((entry) => entry.imdbId));
-    return releases.filter(
+    return sonarrEpisodeDates(releases).filter(
       (release) =>
         release.mode !== 'episodes' ||
         (release.date >= from && release.date <= to && !hidden.has(release.seriesImdbId))
     );
   }
 
+  function releaseCountry(country = GM_getValue(SETTINGS_KEY, {}).country) {
+    if (COUNTRIES.includes(country)) return country;
+    const region = new Intl.Locale(navigator.language || 'en-US').maximize().region;
+    return COUNTRIES.includes(region) ? region : 'US';
+  }
+
+  function timeZone() {
+    return (
+      GM_getValue(SETTINGS_KEY, {}).timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone
+    );
+  }
+
+  function zonedDate(today = new Date()) {
+    const parts = new Intl.DateTimeFormat('en', {
+      timeZone: timeZone(),
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).formatToParts(today);
+    const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+    return `${values.year}-${values.month}-${values.day}`;
+  }
+
   function homeDates(today = new Date()) {
     const saved = GM_getValue(SETTINGS_KEY, {});
+    const day = new Date(`${zonedDate(today)}T12:00:00Z`);
     return [-1, 0, 1]
       .filter((offset) =>
         offset === -1
@@ -592,11 +617,27 @@
             ? saved.homeTomorrow === true
             : saved.homeToday !== false
       )
-      .map(
-        (offset) =>
-          episodeRange(new Date(today.getFullYear(), today.getMonth(), today.getDate() + offset))
-            .from
-      );
+      .map((offset) => new Date(day.getTime() + offset * 86400000).toISOString().slice(0, 10));
+  }
+
+  function sonarrEpisodeDates(releases) {
+    const airtimes = new Map();
+    for (const server of readArrServers().filter(
+      (item) => item.enabled && item.type === 'sonarr'
+    )) {
+      for (const episode of readArrCache(server).calendar?.records || []) {
+        const key = `${episode.seriesImdbId}:${episode.season}:${episode.episode}`;
+        if (!airtimes.has(key)) airtimes.set(key, episode.airDateUtc);
+      }
+    }
+    return releases.map((release) => {
+      const airDateUtc =
+        release.mode === 'episodes' &&
+        airtimes.get(`${imdbIdKey(release.seriesImdbId)}:${release.season}:${release.episode}`);
+      return airDateUtc
+        ? { ...release, airDateUtc, date: zonedDate(new Date(airDateUtc)) }
+        : release;
+    });
   }
 
   function homeReleases(releases, today = new Date()) {
@@ -608,7 +649,10 @@
     const movies = new Map();
     const series = new Map();
     for (const release of sortReleases(
-      filterSonarrEpisodes(releases, saved.homeSonarrOnly === true ? 'in' : 'all')
+      filterSonarrEpisodes(
+        sonarrEpisodeDates(releases),
+        saved.homeSonarrOnly === true ? 'in' : 'all'
+      )
     )) {
       if (!dates.has(release.date)) continue;
       if (release.mode === 'digital' && saved.homeDigital === true) {
@@ -619,6 +663,9 @@
       if (release.mode !== 'episodes' || hidden.has(release.seriesImdbId)) continue;
       const key = `${release.date}:${imdbIdKey(release.seriesImdbId) || release.imdbId}`;
       if (!series.has(key)) series.set(key, { ...release, episodeKeys: [] });
+      const group = series.get(key);
+      if (release.airDateUtc && (!group.airDateUtc || release.airDateUtc < group.airDateUtc))
+        group.airDateUtc = release.airDateUtc;
       if (Number.isInteger(release.season) && Number.isInteger(release.episode)) {
         const episodeKey = `${release.season}:${release.episode}`;
         const episodeKeys = series.get(key).episodeKeys;
@@ -742,12 +789,17 @@
 
   async function loadReleases(options, onProgress, force = false) {
     if (options.mode === 'episodes') {
-      options = { ...options, ...episodeRange() };
-      if (options.includeYesterday) {
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        options.from = episodeRange(yesterday).from;
-      }
+      const range = episodeRange();
+      // Preserve adjacent IMDb dates until Sonarr timestamps determine the display day.
+      const first = new Date(`${range.from}T12:00:00Z`);
+      first.setUTCDate(first.getUTCDate() - 2);
+      const last = new Date(`${range.to}T12:00:00Z`);
+      last.setUTCDate(last.getUTCDate() + 1);
+      options = {
+        ...options,
+        from: first.toISOString().slice(0, 10),
+        to: last.toISOString().slice(0, 10)
+      };
     }
     const modes = RELEASE_VIEWS[options.mode].modes;
     const sources = [];
@@ -1042,6 +1094,55 @@
       writeArrCache(server, 'library', library);
       return library;
     });
+    arrRequests.set(key, request);
+    try {
+      return await request;
+    } finally {
+      arrRequests.delete(key);
+    }
+  }
+
+  async function loadSonarrCalendar(server, force = false) {
+    const day = new Date().toISOString().slice(0, 10);
+    const cached = readArrCache(server).calendar;
+    if (!force && cached?.day === day && arrFresh(cached, ARR_LIBRARY_TTL)) return cached;
+    const key = `${server.id}:${server.revision}:calendar:${day}`;
+    if (arrRequests.has(key)) return arrRequests.get(key);
+    const request = (async () => {
+      const midnight = Date.parse(`${day}T00:00:00Z`);
+      const params = new URLSearchParams({
+        start: new Date(midnight - 2 * 86400000).toISOString(),
+        end: new Date(midnight + 31 * 86400000).toISOString(),
+        unmonitored: 'true',
+        includeSeries: 'true'
+      });
+      const response = await arrRequest(server, `calendar?${params}`);
+      if (!Array.isArray(response)) throw new Error(`${server.name}: Invalid calendar response.`);
+      const calendar = {
+        savedAt: Date.now(),
+        day,
+        records: response
+          .filter(
+            (episode) =>
+              imdbIdKey(episode?.series?.imdbId) &&
+              Number.isInteger(episode.seasonNumber) &&
+              episode.seasonNumber >= 0 &&
+              Number.isInteger(episode.episodeNumber) &&
+              episode.episodeNumber >= 0 &&
+              typeof episode.airDateUtc === 'string' &&
+              /Z$/.test(episode.airDateUtc) &&
+              Number.isFinite(Date.parse(episode.airDateUtc))
+          )
+          .map((episode) => ({
+            seriesImdbId: imdbIdKey(episode.series.imdbId),
+            season: episode.seasonNumber,
+            episode: episode.episodeNumber,
+            airDateUtc: new Date(episode.airDateUtc).toISOString()
+          }))
+      };
+      writeArrCache(server, 'calendar', calendar);
+      return calendar;
+    })();
     arrRequests.set(key, request);
     try {
       return await request;
@@ -1625,12 +1726,25 @@
 
     async function sync(server, force = false) {
       const key = `${server.id}:${server.revision}`;
-      if (!force && arrFresh(readArrCache(server).library, ARR_LIBRARY_TTL)) return;
+      const cached = readArrCache(server);
+      if (
+        !force &&
+        arrFresh(cached.library, ARR_LIBRARY_TTL) &&
+        (server.type !== 'sonarr' ||
+          (cached.calendar?.day === new Date().toISOString().slice(0, 10) &&
+            arrFresh(cached.calendar, ARR_LIBRARY_TTL)))
+      )
+        return;
       if (!force && Date.now() - (attempts.get(key) || 0) < ARR_LIBRARY_TTL) return;
       attempts.set(key, Date.now());
       errors.delete(key);
       try {
-        await loadArrLibrary(server, force);
+        const results = await Promise.allSettled([
+          loadArrLibrary(server, force),
+          ...(server.type === 'sonarr' ? [loadSonarrCalendar(server, force)] : [])
+        ]);
+        const failure = results.find((result) => result.status === 'rejected');
+        if (failure) throw failure.reason;
       } catch (error) {
         errors.set(key, error.message);
       }
@@ -2085,6 +2199,7 @@
     const body = element('div', 'torrent-card__body');
     const heading = element('h3', 'torrent-card__title');
     heading.append(externalLink(release.title, imdbUrl, 'torrent-card__link'));
+    appendEpisodeTime(heading, release);
     const meta = element('div', 'torrent-card__rating-and-genres');
     const genres = element('ul', 'torrent-card__genres');
     (release.genres || []).forEach((genre) => {
@@ -2167,6 +2282,21 @@
     menu.append(item);
   }
 
+  function appendEpisodeTime(title, release) {
+    if (!release.airDateUtc || GM_getValue(SETTINGS_KEY, {}).showEpisodeTime !== true) return;
+    const time = element(
+      'small',
+      null,
+      ` (${new Intl.DateTimeFormat(undefined, {
+        timeZone: timeZone(),
+        hour: '2-digit',
+        minute: '2-digit'
+      }).format(new Date(release.airDateUtc))})`
+    );
+    time.title = `Episode airtime from Sonarr · ${timeZone()}`;
+    title.append(time);
+  }
+
   function renderHomeReleases(container, releases, records, checked = false) {
     const rows = new Map(
       [...container.children].map((row) => [row.dataset.seriesId || row.dataset.headingId, row])
@@ -2191,7 +2321,7 @@
     }
     const visible = homeReleases(releases);
     const showSections = visible.some((release) => release.mode === 'digital');
-    const today = episodeRange().from;
+    const today = zonedDate();
     let previousMode;
     let previousDate;
     for (const release of visible) {
@@ -2222,7 +2352,9 @@
       const [title, resolutions] = row.children;
       row.dataset.mode = release.mode;
       const seriesTitle = movie ? release.title : release.seriesTitle || 'Unknown series';
-      if (title.textContent !== seriesTitle) title.textContent = seriesTitle;
+      if (title.textContent !== seriesTitle || title.children.length)
+        title.textContent = seriesTitle;
+      if (!movie) appendEpisodeTime(title, release);
       title.title = movie ? `Digital movie release · ${release.date}` : 'Episode releases';
       title.href = searchUrl(release.seriesImdbId || release.imdbId);
       title.target = '_blank';
@@ -2318,17 +2450,19 @@
     page.prepend(sidebar);
     const options = {
       mode: 'episodes',
-      country: COUNTRIES.includes(saved.country) ? saved.country : 'US',
+      country: releaseCountry(),
       language: Object.hasOwn(IMDB_LANGUAGES, saved.language) ? saved.language : 'en-US',
-      titleCountry: COUNTRIES.includes(saved.titleCountry) ? saved.titleCountry : '',
-      ...(saved.homeYesterday === true ? { includeYesterday: true } : {})
+      titleCountry: COUNTRIES.includes(saved.titleCountry) ? saved.titleCountry : ''
     };
     function cachedCalendar(includeStale = false) {
       const dates = homeDates();
+      const earliest = new Date(`${zonedDate()}T12:00:00Z`);
+      earliest.setUTCDate(earliest.getUTCDate() - 2);
       return readReleaseCache(options.language, options.titleCountry, includeStale).find(
         (entry) =>
           entry.key?.startsWith(`episodes:${options.country}:rolling:`) &&
-          (includeStale || (entry.from <= dates[0] && entry.to >= dates.at(-1)))
+          (includeStale ||
+            (entry.from <= earliest.toISOString().slice(0, 10) && entry.to >= dates.at(-1)))
       );
     }
     function movieOptions() {
@@ -2417,7 +2551,7 @@
       refreshQueued = false;
       const current = GM_getValue(SETTINGS_KEY, {});
       if (
-        ['homeYesterday', 'homeToday', 'homeTomorrow', 'homeDigital'].some(
+        ['homeYesterday', 'homeToday', 'homeTomorrow', 'homeDigital', 'timeZone', 'country'].some(
           (key) => current[key] !== saved[key]
         )
       ) {
@@ -2426,8 +2560,12 @@
       }
       if (current.homeSonarrOnly !== saved.homeSonarrOnly) nextSonarrCheck = 0;
       saved = current;
-      if (saved.homeYesterday === true) options.includeYesterday = true;
-      else delete options.includeYesterday;
+      if (options.country !== releaseCountry()) {
+        options.country = releaseCountry();
+        releases = [];
+        calendarKnown = false;
+      }
+
       if (saved.homeSonarrOnly !== true) sonarrNotice = '';
       if (saved.homeDigital !== true) movieNotice = '';
       const apiKey = savedApiKey();
@@ -2436,7 +2574,7 @@
         checked = false;
         recordKey = apiKey;
       }
-      const today = episodeRange().from;
+      const today = zonedDate();
       const cached = cachedCalendar(true);
       if (cached) {
         releases = cached.releases;
@@ -2453,18 +2591,20 @@
       const tasks = [];
       let retryAfter;
       try {
-        if (saved.homeSonarrOnly === true) {
+        {
           const servers = readArrServers().filter(
             (server) => server.enabled && server.type === 'sonarr'
           );
-          if (!servers.length) {
+          if (!servers.length && saved.homeSonarrOnly === true) {
             sonarrNotice =
               'Configure an enabled Sonarr server in Upcoming → Settings to show its episodes.';
           } else if (Date.now() >= nextSonarrCheck) {
             nextSonarrCheck = Date.now() + ARR_LIBRARY_TTL;
             sonarrNotice = sonarrSeriesMembership().complete ? '' : 'Loading Sonarr libraries…';
             tasks.push(
-              Promise.allSettled(servers.map((server) => loadArrLibrary(server)))
+              Promise.allSettled(
+                servers.flatMap((server) => [loadArrLibrary(server), loadSonarrCalendar(server)])
+              )
                 .then((results) => {
                   sonarrNotice = results.some((result) => result.status === 'rejected')
                     ? 'Could not update Sonarr. Saved library data is used when available; retrying automatically.'
@@ -2587,17 +2727,15 @@
       } finally {
         busy = false;
         const now = new Date();
-        const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
         timer = setTimeout(
           () => void refresh(),
           Math.min(
             refreshQueued ? 1 : Infinity,
-            episodeRange(now).from !== today ? 1 : Infinity,
+            zonedDate(now) !== today ? 1 : Infinity,
             retryAfter || (apiKey ? TORRENT_CACHE_TTL : EPISODE_CACHE_TTL),
             Math.max(1, nextCalendarCheck - now),
             saved.homeDigital === true ? Math.max(1, nextMovieCheck - now) : Infinity,
-            saved.homeSonarrOnly === true ? ARR_LIBRARY_TTL : Infinity,
-            midnight - now
+            60000 - (now.getTime() % 60000)
           )
         );
       }
@@ -2707,7 +2845,8 @@
     COUNTRIES.map((code) => [code, countryNames.of(code)])
       .sort((a, b) => a[1].localeCompare(b[1]))
       .forEach(([code, name]) => country.append(new Option(name, code)));
-    country.value = COUNTRIES.includes(saved?.country) ? saved.country : 'US';
+    country.append(new Option(`Browser (${countryNames.of(releaseCountry(''))})`, ''));
+    country.value = COUNTRIES.includes(saved?.country) ? saved.country : '';
     const countryLabel = element('label', null, 'Country');
     const modeLabel = element('label', null, 'Releases');
     countryLabel.append(country);
@@ -2753,37 +2892,67 @@
     fullWidth.checked = saved?.fullWidth !== false;
     widthLabel.append(fullWidth, 'Full page width');
     settings.append(widthLabel);
+    const homeSettings = element('details');
+    homeSettings.append(element('summary', null, 'Frontpage'));
+    settings.append(homeSettings);
     const homeLabel = element('label');
     const homePanel = element('input');
     homePanel.type = 'checkbox';
     homePanel.checked = saved?.homePanel === true;
     homeLabel.append(homePanel, 'Show the release calendar in the left homepage sidebar');
-    settings.append(homeLabel);
+    homeSettings.append(homeLabel);
     homePanel.addEventListener('change', () => saveSettings());
     const homeHiddenLabel = element('label');
     const homeIncludeHidden = element('input');
     homeIncludeHidden.type = 'checkbox';
     homeIncludeHidden.checked = saved?.homeIncludeHidden !== false;
     homeHiddenLabel.append(homeIncludeHidden, 'Include hidden series in the homepage sidebar');
-    settings.append(homeHiddenLabel);
+    homeSettings.append(homeHiddenLabel);
     homeIncludeHidden.addEventListener('change', () => saveSettings());
     const homeOptions = {};
     for (const [key, label, defaultOn] of [
-      ['homeSonarrOnly', 'Homepage: only show episodes from my Sonarr library', false],
-      ['homeYesterday', 'Homepage: show yesterday’s releases', false],
-      ['homeToday', 'Homepage: show today’s releases', true],
-      ['homeTomorrow', 'Homepage: show tomorrow’s releases', false],
-      ['homeDigital', 'Homepage: show digital movies (US) above episodes', false]
+      ['homeSonarrOnly', 'Only show episodes from my Sonarr library', false],
+      ['homeYesterday', 'Show yesterday’s releases', false],
+      ['homeToday', 'Show today’s releases', true],
+      ['homeTomorrow', 'Show tomorrow’s releases', false],
+      ['homeDigital', 'Show digital movies (US) above episodes', false],
+      ['showEpisodeTime', 'Show Sonarr airtime in brackets', false]
     ]) {
       const labelElement = element('label');
       const input = element('input');
       input.type = 'checkbox';
       input.checked = defaultOn ? saved?.[key] !== false : saved?.[key] === true;
-      input.addEventListener('change', () => saveSettings());
+      input.addEventListener('change', () => {
+        saveSettings();
+        if (key === 'showEpisodeTime') updateVisibleReleases(true);
+      });
       labelElement.append(input, label);
-      settings.append(labelElement);
+      (key === 'showEpisodeTime' ? settings : homeSettings).append(labelElement);
       homeOptions[key] = input;
     }
+    const timeZoneLabel = element('label', null, 'Timezone');
+    const zoneSelect = element('select', 'form__select');
+    zoneSelect.append(
+      new Option(`Browser (${Intl.DateTimeFormat().resolvedOptions().timeZone})`, '')
+    );
+    for (const zone of ['UTC', ...Intl.supportedValuesOf('timeZone')])
+      zoneSelect.append(new Option(zone, zone));
+    zoneSelect.value = [...zoneSelect.options].some((option) => option.value === saved?.timeZone)
+      ? saved.timeZone
+      : '';
+    zoneSelect.addEventListener('change', () => {
+      saveSettings();
+      void refreshPage();
+    });
+    timeZoneLabel.append(zoneSelect);
+    settings.append(
+      timeZoneLabel,
+      element(
+        'p',
+        null,
+        'Country defaults to your browser language region. IMDb provides regional dates; Sonarr provides exact episode times in the selected timezone.'
+      )
+    );
     const languageLabel = element('label', null, 'IMDb language');
     const language = element('select', 'form__select');
     Object.entries(IMDB_LANGUAGES).forEach(([code, name]) =>
@@ -2803,7 +2972,7 @@
     const titleCountry = element('select', 'form__select');
     titleCountry.append(new Option('Use release country', ''));
     for (const option of country.options)
-      titleCountry.append(new Option(option.text, option.value));
+      if (option.value) titleCountry.append(new Option(option.text, option.value));
     titleCountry.value = COUNTRIES.includes(saved?.titleCountry) ? saved.titleCountry : '';
     titleCountryLabel.append(titleCountry);
     const titleCountryHint = element(
@@ -2922,12 +3091,7 @@
     let backgroundGeneration = 0;
     let backgroundTimer;
     const arr = mountArrIntegration(settings, results, (type) => {
-      if (
-        type === 'sonarr' &&
-        (calendar || searching) &&
-        mode.value === 'episodes' &&
-        episodeSonarrFilter.value !== 'all'
-      )
+      if (type === 'sonarr' && (calendar || searching) && (mode.value === 'episodes' || searching))
         updateVisibleReleases(true);
     });
 
@@ -2986,7 +3150,9 @@
 
     function updateVisibleReleases(keepCount = false) {
       const previousCount = renderedCount;
-      const region = RELEASE_VIEWS[mode.value].modes.includes('digital') ? 'US' : country.value;
+      const region = RELEASE_VIEWS[mode.value].modes.includes('digital')
+        ? 'US'
+        : releaseCountry(country.value);
       const releases = filterEpisodes(
         searching
           ? searchReleases(
@@ -3008,14 +3174,17 @@
       );
       const sonarrFilter = mode.value === 'episodes' ? episodeSonarrFilter.value : 'all';
       const membership = sonarrFilter === 'all' ? null : sonarrSeriesMembership();
-      visibleReleases = filterSonarrEpisodes(releases, sonarrFilter, membership || undefined);
+      visibleReleases = sortReleases(
+        filterSonarrEpisodes(releases, sonarrFilter, membership || undefined)
+      );
       panel.dataset.combined = String(searching || RELEASE_VIEWS[mode.value].modes.length > 1);
       results.replaceChildren();
       renderedCount = 0;
       appendReleases(keepCount ? Math.max(CARD_PAGE_SIZE, previousCount) : CARD_PAGE_SIZE);
       searchStatus.textContent = `${searching ? `${visibleReleases.length} matching releases. ` : ''}Search all cached months and release types for the selected country and language. Results update as background months load.`;
       if (calendar) {
-        const notices = [...calendar.notices];
+        status.textContent = `${visibleReleases.length ? `${visibleReleases.length} releases` : 'No releases found'} for ${searching ? 'the current search' : mode.value === 'episodes' ? 'the next 30 days' : `this month${fromToday ? ' from today' : ''}`}.${!searching && calendar.cached ? ` Cached for up to ${mode.value === 'episodes' ? 12 : 24} hours; Refresh checks for updates.` : ''}${!searching && calendar.notices.length ? `\n${calendar.notices.join('\n')}` : ''}`;
+        const notices = searching ? [] : [...calendar.notices];
         if (membership && !membership.complete)
           notices.push(
             arr.hasLibraryError('sonarr')
@@ -3109,6 +3278,7 @@
         titleCountry: titleCountry.value,
         fullWidth: fullWidth.checked,
         homePanel: homePanel.checked,
+        timeZone: zoneSelect.value,
         homeIncludeHidden: homeIncludeHidden.checked,
         ...Object.fromEntries(
           Object.entries(homeOptions).map(([key, input]) => [key, input.checked])
@@ -3220,13 +3390,11 @@
     });
 
     function renderCalendar() {
-      const visible = calendar.releases;
       updateVisibleReleases();
-      status.textContent = `${visible.length ? `${visible.length} releases` : 'No releases found'} for ${mode.value === 'episodes' ? 'the next 30 days' : `this month${fromToday ? ' from today' : ''}`}.${calendar.cached ? ` Cached for up to ${mode.value === 'episodes' ? 12 : 24} hours; Refresh checks for updates.` : ''}${calendar.notices.length ? `\n${calendar.notices.join('\n')}` : ''}`;
 
       const selectedModes = RELEASE_VIEWS[mode.value].modes;
       const includesDigital = selectedModes.includes('digital');
-      const region = includesDigital ? 'US' : country.value;
+      const region = includesDigital ? 'US' : releaseCountry(country.value);
       source.replaceChildren();
       if (selectedModes.includes('theatrical') || includesDigital) {
         source.append(
@@ -3287,7 +3455,7 @@
       const options = {
         ...(episodes ? episodeRange(today) : monthRange(new Date(`${month}-01T12:00:00`))),
         mode: mode.value,
-        country: includesDigital ? 'US' : country.value,
+        country: includesDigital ? 'US' : releaseCountry(country.value),
         language: language.value,
         titleCountry: titleCountry.value
       };
