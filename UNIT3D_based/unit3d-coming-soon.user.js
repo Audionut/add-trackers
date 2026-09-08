@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Coming Soon
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.7
+// @version      1.0.8
 // @description  Upcoming movie and TV releases in native UNIT3D cards, with an optional homepage sidebar for today's episodes.
 // @author       Audionut
 // @match        https://aither.cc/*
@@ -67,6 +67,10 @@
   const TORRENT_CACHE_KEY = `unit3d-upcoming-torrents-v1:${location.origin}`;
   const TORRENT_REQUEST_KEY = `unit3d-upcoming-last-api-request:${location.origin}`;
   const TORRENT_CACHE_TTL = 2 * 60 * 1000;
+  const TORRENT_CHECK_LIMIT = 5;
+  const TORRENT_STOPPED_NOTICE =
+    'Site updates have stopped after 5 checks. Use Refresh to check again.';
+  let torrentChecks = 0;
   const TORRENT_HISTORY_TTL = 14 * 24 * 60 * 60 * 1000;
   const TORRENT_REQUEST_INTERVAL = 2 * 1000;
   const ARR_SETTINGS_KEY = 'unit3d-upcoming-arr-servers-v1';
@@ -1392,6 +1396,7 @@
     // Web Locks make the persisted cooldown atomic across tabs on the same site.
     return navigator.locks.request('unit3d-upcoming-torrent-api', async () => {
       if (savedApiKey() !== apiKey) return { cancelled: true };
+      if (force) torrentChecks = 0;
       const credential = await sha256(apiKey);
       const stored = decodeStored(GM_getValue(TORRENT_CACHE_KEY, ''), null);
       const now = Date.now();
@@ -1435,6 +1440,12 @@
       if (stored?.credential === credential)
         GM_setValue(TORRENT_CACHE_KEY, encodeStored({ credential, entries, history }));
       const cached = cachedTorrents(entries, scope, now);
+      if (torrentChecks >= TORRENT_CHECK_LIMIT)
+        return {
+          savedAt: entries.find((entry) => entry.scope === scope || entry.scope === 'all')?.savedAt,
+          records: matchingRecords(),
+          stopped: true
+        };
       if (cached && !force) return { ...cached, records: matchingRecords() };
       const lastRequest = GM_getValue(TORRENT_REQUEST_KEY, 0);
       const retryAfter = TORRENT_REQUEST_INTERVAL - (now - lastRequest);
@@ -1453,6 +1464,7 @@
       const records = [];
       const visited = new Set();
       let pages = 0;
+      torrentChecks++;
       try {
         for (let page = 1; page <= 3; page++) {
           const delay =
@@ -1532,11 +1544,17 @@
             history
           })
         );
-        return { ...entry, records: matchingRecords(), cached: false };
+        return {
+          ...entry,
+          records: matchingRecords(),
+          cached: false,
+          stopped: torrentChecks >= TORRENT_CHECK_LIMIT
+        };
       } catch (error) {
         if (savedApiKey() !== apiKey) return { cancelled: true };
         history = mergeTorrentHistory(history, [], Date.now());
         error.records = matchingRecords();
+        error.stopped = torrentChecks >= TORRENT_CHECK_LIMIT;
         throw error;
       }
     });
@@ -2413,6 +2431,7 @@
         main.page__home.unit3d-upcoming__home-layout { grid-template-columns: 320px minmax(0, 1fr); }
       }
       #${HOME_PANEL_ID} .panel__header { flex-wrap: nowrap; align-items: center; }
+      #${HOME_PANEL_ID} .panel__header [hidden] { display: none; }
       #${HOME_PANEL_ID} .unit3d-upcoming__today-list { list-style: none; margin: 0; padding: 0; }
       #${HOME_PANEL_ID} .unit3d-upcoming__heading { margin: 12px 0 4px; padding: 0; }
       #${HOME_PANEL_ID} .unit3d-upcoming__heading:first-child { margin-top: 0; }
@@ -2434,6 +2453,11 @@
     panel.id = HOME_PANEL_ID;
     const header = element('header', 'panel__header');
     header.append(element('h2', 'panel__heading', 'Release calendar'));
+    const refreshButton = element('button', 'form__button form__button--outlined', 'Refresh');
+    refreshButton.type = 'button';
+    refreshButton.hidden = true;
+    refreshButton.addEventListener('click', () => void refresh(true));
+    header.append(refreshButton);
     const body = element('div', 'panel__body');
     const list = element('ul', 'unit3d-upcoming__today-list');
     const progress = element('progress', 'unit3d-upcoming__today-progress');
@@ -2516,8 +2540,12 @@
     let calendarLoading = false;
     let calendarNotice = '';
     let torrentNotice = '';
+    let siteStopped = false;
+    let forceSiteCheck = false;
 
     function draw() {
+      refreshButton.hidden = !siteStopped;
+      refreshButton.disabled = busy;
       renderHomeReleases(list, [...movies, ...releases], records, checked);
       progress.hidden = !((!calendarKnown && calendarLoading) || (!movieKnown && movieLoading));
       const message = [
@@ -2533,14 +2561,14 @@
         !homeReleases([...movies, ...releases]).length
           ? 'No matching releases for the selected days.'
           : '',
-        torrentNotice
+        siteStopped ? TORRENT_STOPPED_NOTICE : torrentNotice
       ]
         .filter(Boolean)
         .join(' ');
       if (status.textContent !== message) status.textContent = message;
     }
 
-    async function refresh() {
+    async function refresh(force = false) {
       if (busy) {
         refreshQueued = true;
         return;
@@ -2548,6 +2576,10 @@
       clearTimeout(timer);
       if (document.hidden) return;
       busy = true;
+      if (force) {
+        siteStopped = false;
+        forceSiteCheck = true;
+      }
       refreshQueued = false;
       const current = GM_getValue(SETTINGS_KEY, {});
       if (
@@ -2691,22 +2723,29 @@
               })
           );
         }
-        if (apiKey) {
+        if (apiKey && (!siteStopped || force)) {
           const updateMatches = (data, updating = false) => {
             if (savedApiKey() !== apiKey || data.cancelled) return;
             records = data.records || [];
             checked = Boolean(data.savedAt);
             retryAfter = data.retryAfter;
+            if (!updating && !retryAfter) forceSiteCheck = false;
+            siteStopped = data.stopped === true;
             torrentNotice = updating ? 'Checking site availability…' : '';
             draw();
           };
           tasks.push(
-            loadRecentTorrents(saved.homeDigital === true ? 'all' : 'tv', apiKey, false, (data) =>
-              updateMatches(data, true)
+            loadRecentTorrents(
+              saved.homeDigital === true ? 'all' : 'tv',
+              apiKey,
+              forceSiteCheck,
+              (data) => updateMatches(data, true)
             )
               .then((data) => updateMatches(data))
               .catch((error) => {
                 if (savedApiKey() !== apiKey) return;
+                forceSiteCheck = false;
+                siteStopped = error.stopped === true;
                 records = error.records || [];
                 checked = false;
                 torrentNotice =
@@ -2714,7 +2753,7 @@
                 draw();
               })
           );
-        } else {
+        } else if (!apiKey) {
           torrentNotice = 'Save your Aither API key in Upcoming → Settings to check availability.';
         }
         draw();
@@ -2726,6 +2765,7 @@
         }
       } finally {
         busy = false;
+        draw();
         const now = new Date();
         timer = setTimeout(
           () => void refresh(),
@@ -3083,6 +3123,7 @@
     let calendar;
     let torrentGeneration = 0;
     let torrentRetry;
+    let forceTorrentCheck = false;
     let torrentMatches = [];
     let searching = false;
     let searchTimer;
@@ -3326,10 +3367,12 @@
     }
 
     async function refreshTorrentMatches(force = false) {
+      forceTorrentCheck ||= force;
       const requestGeneration = ++torrentGeneration;
       clearTimeout(torrentRetry);
       const apiKey = savedApiKey();
       if (!apiKey) {
+        forceTorrentCheck = false;
         apiStatus.textContent = '';
         markRecentTorrents();
         return;
@@ -3341,18 +3384,24 @@
             ? 'tv'
             : 'movies';
       apiStatus.textContent = 'Checking recent torrents…';
+      const forceCheck = forceTorrentCheck;
+      forceTorrentCheck = false;
       try {
-        const data = await loadRecentTorrents(scope, apiKey, force, (progress) => {
+        const data = await loadRecentTorrents(scope, apiKey, forceCheck, (progress) => {
           if (requestGeneration !== torrentGeneration || savedApiKey() !== apiKey) return;
           markRecentTorrents(progress.records);
           apiStatus.textContent = `Checking recent torrents… ${progress.pages} of up to 3 pages checked.`;
         });
+        if (forceCheck && data.retryAfter) forceTorrentCheck = true;
         if (requestGeneration !== torrentGeneration || savedApiKey() !== apiKey || data.cancelled)
           return;
+        if (forceTorrentCheck && !data.retryAfter) return refreshTorrentMatches();
         markRecentTorrents(data.records);
-        if (data.retryAfter) {
+        if (data.stopped) {
+          apiStatus.textContent = TORRENT_STOPPED_NOTICE;
+        } else if (data.retryAfter) {
           apiStatus.textContent = `Checking recent torrents in ${Math.ceil(data.retryAfter / 1000)} seconds…`;
-          torrentRetry = setTimeout(() => void refreshTorrentMatches(force), data.retryAfter);
+          torrentRetry = setTimeout(() => void refreshTorrentMatches(), data.retryAfter);
         } else {
           const marker = element('span', 'unit3d-upcoming__recent', '●');
           marker.setAttribute('aria-hidden', 'true');
@@ -3364,7 +3413,9 @@
       } catch (error) {
         if (requestGeneration !== torrentGeneration) return;
         markRecentTorrents(error.records);
-        apiStatus.textContent = `Recent torrents could not be checked.${error.records?.length ? ' Matches saved during the past 14 days are still shown.' : ''} Check the API key in Settings, then use Refresh to retry.`;
+        apiStatus.textContent = error.stopped
+          ? TORRENT_STOPPED_NOTICE
+          : `Recent torrents could not be checked.${error.records?.length ? ' Matches saved during the past 14 days are still shown.' : ''} Check the API key in Settings, then use Refresh to retry.`;
       }
     }
 
@@ -3435,6 +3486,7 @@
       ++torrentGeneration;
       clearTimeout(torrentRetry);
       apiStatus.textContent = '';
+      if (force) void refreshTorrentMatches(true);
       const today = new Date();
       monthSelect.replaceChildren(
         ...calendarMonths(month, today).map(
@@ -3511,7 +3563,7 @@
         calendar = data;
         renderCalendar();
         if (episodes) arr.update(false, 'sonarr');
-        void refreshTorrentMatches(force);
+        if (!force) void refreshTorrentMatches();
       } catch (error) {
         if (requestGeneration === generation) {
           status.textContent = `Could not load releases: ${error.message} Use Refresh to retry.`;

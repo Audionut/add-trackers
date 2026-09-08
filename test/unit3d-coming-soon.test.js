@@ -1231,6 +1231,7 @@ function homeFixture({
     HOME_RESOLUTIONS: ['720p', '1080p', '2160p'],
     SETTINGS_KEY: 'settings',
     TORRENT_CACHE_TTL: 120000,
+    TORRENT_STOPPED_NOTICE: 'Site updates have stopped after 5 checks. Use Refresh to check again.',
     EPISODE_CACHE_TTL: 12 * 60 * 60 * 1000,
     CACHE_TTL: 24 * 60 * 60 * 1000,
     ARR_LIBRARY_TTL: 10 * 60 * 1000,
@@ -1284,8 +1285,18 @@ function homeFixture({
         await new Promise((resolve) => {
           state.finishTorrents = resolve;
         });
-      if (state.torrentError) throw Object.assign(new Error('offline'), { records: state.records });
-      return { records: state.records, savedAt: clock.now(), retryAfter: state.retryAfter };
+      if (state.torrentError)
+        throw Object.assign(new Error('offline'), {
+          records: state.records,
+          stopped: state.siteStopped
+        });
+      if (force) state.siteStopped = false;
+      return {
+        records: state.records,
+        savedAt: clock.now(),
+        retryAfter: state.retryAfter,
+        stopped: state.siteStopped
+      };
     },
     setTimeout: (callback, delay) => {
       timers.push({ callback, delay });
@@ -1764,7 +1775,7 @@ test('homepage mounts a left sidebar with only title text and three resolution b
   assert.ok(timers[0].delay > 0 && timers[0].delay <= 120000);
   context.mountHomePanel();
   assert.equal(requests.length, 2);
-  assert.ok(!nodes.some((node) => node.tag === 'button'));
+  assert.ok(nodes.filter((node) => node.tag === 'button').every((node) => node.hidden));
   timers.at(-1).callback();
   await new Promise(setImmediate);
   assert.deepEqual(
@@ -4170,7 +4181,10 @@ test('failed Refresh restores an active cached search even when background month
     /for this month|for the next 30 days|Cached|Selected calendar warning/
   );
   assert.doesNotMatch(context.message.textContent, /Selected calendar warning/);
+  const siteRefreshes = [];
+  context.refreshTorrentMatches = (force) => siteRefreshes.push(force);
   await context.refreshPage(true);
+  assert.deepEqual(siteRefreshes, [true], 'calendar failure must still restart site checks');
   assert.equal(context.results.children.length, 24, 'cached matches survive a failed Refresh');
   assert.equal(context.visibleReleases.length, 30);
   assert.match(context.searchStatus.textContent, /^30 matching releases/);
@@ -4655,4 +4669,290 @@ test('main episode status counts visible dates and changes after a Sonarr timest
   });
   context.updateVisibleReleases(true);
   assert.match(context.status.textContent, /^2 releases for the next 30 days/);
+});
+
+test('site check cap counts network batches and failures, but excludes cache hits and cooldowns', async () => {
+  for (const fail of [false, true]) {
+    const storage = new Map();
+    let now = Date.now();
+    let calls = 0;
+    const api = make(() => assert.fail('unexpected IMDb request'), {
+      storage,
+      Date: class extends Date {
+        static now() {
+          return now;
+        }
+      },
+      fetch: async () => {
+        calls++;
+        return fail
+          ? { ok: false, status: 503 }
+          : {
+              ok: true,
+              json: async () => ({ data: [torrent(1, 111, 1)] })
+            };
+      }
+    });
+    storage.set(api.API_KEY_STORAGE, api.encodeStored('key'));
+    for (let check = 1; check <= 5; check++) {
+      if (fail) {
+        await assert.rejects(api.loadRecentTorrents('all', 'key'), (error) => {
+          assert.equal(error.stopped, check === 5);
+          return true;
+        });
+      } else {
+        const result = await api.loadRecentTorrents('all', 'key');
+        assert.equal(result.stopped, check === 5);
+      }
+      for (let cached = 0; cached < 6; cached++) await api.loadRecentTorrents('all', 'key');
+      assert.equal(calls, check);
+      now += 120001;
+    }
+    const stopped = await api.loadRecentTorrents('all', 'key');
+    assert.equal(stopped.stopped, true);
+    assert.equal(calls, 5);
+    assert.equal(stopped.records.length, fail ? 0 : 1);
+    if (fail) await assert.rejects(api.loadRecentTorrents('all', 'key', true));
+    else assert.equal((await api.loadRecentTorrents('all', 'key', true)).stopped, false);
+    assert.equal(calls, 6);
+    now += 120001;
+    if (fail) await assert.rejects(api.loadRecentTorrents('all', 'key'));
+    else assert.equal((await api.loadRecentTorrents('all', 'key')).stopped, false);
+    assert.equal(calls, 7);
+  }
+});
+
+test('homepage stopped notice preserves rows and exposes header Refresh to restart site checks', async () => {
+  const fixture = homeFixture();
+  await new Promise(setImmediate);
+  const button = fixture.nodes.find((node) => node.tag === 'button');
+  const status = fixture.nodes.find((node) => node.tag === 'p');
+  const list = fixture.nodes.find((node) => node.tag === 'ul');
+  const row = homeRows(list)[0];
+  assert.equal(button.hidden, true);
+  fixture.state.siteStopped = true;
+  fixture.timers.at(-1).callback();
+  await new Promise(setImmediate);
+  assert.match(status.textContent, /Site updates have stopped/);
+  assert.equal(button.hidden, false);
+  assert.equal(button.disabled, false);
+  assert.equal(homeRows(list)[0], row);
+  const calls = fixture.requests.length;
+  fixture.timers.at(-1).callback();
+  fixture.handlers.visibilitychange();
+  await new Promise(setImmediate);
+  assert.equal(fixture.requests.length, calls);
+  button.handlers.click();
+  await new Promise(setImmediate);
+  assert.equal(fixture.requests.at(-1).type, 'torrents');
+  assert.equal(fixture.requests.at(-1).force, true);
+  assert.equal(button.hidden, true);
+  assert.doesNotMatch(status.textContent, /stopped/);
+});
+
+test('Upcoming displays the site cap for success and failure and preserves forced cooldown retries', async () => {
+  const from = source.indexOf('    async function refreshTorrentMatches(');
+  const to = source.indexOf("    settingsForm.addEventListener('submit'", from);
+  for (const fail of [false, true]) {
+    let marked;
+    const scheduled = [];
+    const forces = [];
+    let result = { stopped: true, records: [{ imdbId: '111' }] };
+    const context = {
+      torrentGeneration: 0,
+      forceTorrentCheck: false,
+      torrentRetry: undefined,
+      savedApiKey: () => 'key',
+      searching: false,
+      mode: { value: 'episodes' },
+      apiStatus: {},
+      TORRENT_STOPPED_NOTICE: 'Site updates have stopped.',
+      clearTimeout() {},
+      setTimeout: (callback) => scheduled.push(callback),
+      markRecentTorrents: (records) => {
+        marked = records;
+      },
+      loadRecentTorrents: async (_scope, _key, force) => {
+        forces.push(force);
+        if (fail && result.stopped) throw Object.assign(new Error('offline'), result);
+        return result;
+      }
+    };
+    runInNewContext(source.slice(from, to), context);
+    await context.refreshTorrentMatches();
+    assert.match(context.apiStatus.textContent, /Site updates have stopped/);
+    assert.equal(marked, result.records);
+    assert.equal(scheduled.length, 0);
+    result = { retryAfter: 2000, records: [] };
+    await context.refreshTorrentMatches(true);
+    result = { stopped: true, records: [] };
+    await scheduled[0]();
+    await new Promise(setImmediate);
+    assert.deepEqual(forces, [false, true, true]);
+  }
+});
+
+test('manual site refresh survives a cooldown with fresh cached results on both pages', async () => {
+  for (const home of [false, true]) {
+    let now = Date.now();
+    class Clock extends Date {
+      constructor(...args) {
+        super(...(args.length ? args : [now]));
+      }
+      static now() {
+        return now;
+      }
+    }
+    const storage = new Map();
+    let calls = 0;
+    const api = make(() => assert.fail('unexpected IMDb request'), {
+      storage,
+      Date: Clock,
+      fetch: async () => {
+        calls++;
+        return { ok: true, json: async () => ({ data: [] }) };
+      }
+    });
+    storage.set(api.API_KEY_STORAGE, api.encodeStored('key'));
+    for (let i = 0; i < 5; i++) {
+      now += 120001;
+      await api.loadRecentTorrents('all', 'key');
+    }
+    assert.equal(calls, 5);
+    let pending;
+    const load = (...args) => (pending = api.loadRecentTorrents(...args));
+    if (home) {
+      const fixture = homeFixture({ clock: Clock });
+      await pending;
+      await new Promise(setImmediate);
+      fixture.context.loadRecentTorrents = load;
+      fixture.timers.at(-1).callback();
+      await pending;
+      await new Promise(setImmediate);
+      const button = fixture.nodes.find((node) => node.tag === 'button');
+      assert.equal(button.hidden, false);
+      button.handlers.click();
+      await pending;
+      await new Promise(setImmediate);
+      assert.equal(calls, 5);
+      // A visibility event must not discard the pending forced retry either.
+      fixture.handlers.visibilitychange();
+      await pending;
+      await new Promise(setImmediate);
+      now += 2000;
+      fixture.timers.at(-1).callback();
+      await pending;
+      await new Promise(setImmediate);
+      assert.equal(button.hidden, true);
+    } else {
+      const scheduled = [];
+      const context = {
+        torrentGeneration: 0,
+        forceTorrentCheck: false,
+        torrentRetry: undefined,
+        savedApiKey: () => 'key',
+        searching: false,
+        mode: { value: 'episodes' },
+        apiStatus: { replaceChildren() {} },
+        TORRENT_STOPPED_NOTICE: 'Stopped',
+        clearTimeout() {},
+        setTimeout: (callback) => scheduled.push(callback),
+        markRecentTorrents() {},
+        loadRecentTorrents: load,
+        element: () => ({ setAttribute() {} })
+      };
+      const from = source.indexOf('    async function refreshTorrentMatches(');
+      const to = source.indexOf("    settingsForm.addEventListener('submit'", from);
+      runInNewContext(source.slice(from, to), context);
+      context.searching = true;
+      const manual = context.refreshTorrentMatches(true);
+      context.searching = false;
+      await Promise.all([manual, context.refreshTorrentMatches()]);
+      assert.equal(calls, 5);
+      context.searching = true;
+      await context.refreshTorrentMatches();
+      assert.equal(calls, 5);
+      context.searching = false;
+      await context.refreshTorrentMatches();
+      now += 2000;
+      scheduled.at(-1)();
+      await pending;
+      await new Promise(setImmediate);
+    }
+    assert.equal(calls, 6);
+    for (let i = 0; i < 4; i++) {
+      now += 120001;
+      await api.loadRecentTorrents('tv', 'key');
+    }
+    assert.equal(calls, 10);
+    now += 120001;
+    assert.equal((await api.loadRecentTorrents('tv', 'key')).stopped, true);
+    assert.equal(calls, 10);
+  }
+});
+
+test('overlapping Upcoming callers consume a manual allowance reset only once', async () => {
+  let now = Date.now();
+  let finish;
+  let calls = 0;
+  let queue = Promise.resolve();
+  const storage = new Map();
+  const api = make(() => assert.fail('unexpected IMDb request'), {
+    storage,
+    Date: class extends Date {
+      static now() {
+        return now;
+      }
+    },
+    navigator: {
+      locks: {
+        request: (_name, callback) => {
+          const result = queue.then(callback);
+          queue = result.catch(() => {});
+          return result;
+        }
+      }
+    },
+    fetch: async () => {
+      calls++;
+      if (calls === 1)
+        await new Promise((resolve) => {
+          finish = resolve;
+        });
+      return { ok: true, json: async () => ({ data: [] }) };
+    }
+  });
+  storage.set(api.API_KEY_STORAGE, api.encodeStored('key'));
+  const context = {
+    torrentGeneration: 0,
+    torrentRetry: undefined,
+    forceTorrentCheck: false,
+    savedApiKey: () => 'key',
+    searching: true,
+    mode: { value: 'episodes' },
+    apiStatus: { replaceChildren() {} },
+    TORRENT_STOPPED_NOTICE: 'Stopped',
+    clearTimeout() {},
+    setTimeout: () => assert.fail('fresh all-scope cache needs no retry'),
+    markRecentTorrents() {},
+    loadRecentTorrents: api.loadRecentTorrents,
+    element: () => ({ setAttribute() {} })
+  };
+  const from = source.indexOf('    async function refreshTorrentMatches(');
+  const to = source.indexOf("    settingsForm.addEventListener('submit'", from);
+  runInNewContext(source.slice(from, to), context);
+  const manual = context.refreshTorrentMatches(true);
+  while (!finish) await new Promise(setImmediate);
+  context.searching = false;
+  const automatic = context.refreshTorrentMatches();
+  finish();
+  await Promise.all([manual, automatic]);
+  assert.equal(calls, 1);
+  for (let check = 0; check < 4; check++) {
+    now += 120001;
+    await api.loadRecentTorrents('all', 'key');
+  }
+  now += 120001;
+  assert.equal((await api.loadRecentTorrents('all', 'key')).stopped, true);
+  assert.equal(calls, 5);
 });
