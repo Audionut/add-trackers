@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name         ANT - Adoption cross-seed finder
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.1.1
-// @description  Search other trackers for ANT adoption torrents by IMDb id and strict filelist match.
-// @author       Audionut
+// @version      0.2.0
+// @description  Scan and filter ANT adoption torrents, then find filename and file-list matches on other trackers.
+// @author       Audionut with additions from Surferosa
 // @match        https://anthelion.me/torrents.php?type=adoption*
+// @match        https://anthelion.me/torrents.php?id=*
 // @icon         https://anthelion.me/favicon.ico
 // @downloadURL  https://github.com/Audionut/add-trackers/raw/main/ant-adoption-finder.user.js
 // @updateURL    https://github.com/Audionut/add-trackers/raw/main/ant-adoption-finder.user.js
@@ -14,6 +15,8 @@
 // @grant        GM_deleteValue
 // @grant        GM_listValues
 // @grant        GM_registerMenuCommand
+// @grant        GM_openInTab
+// @grant        unsafeWindow
 // @connect      anthelion.me
 // @connect      passthepopcorn.me
 // @connect      beyond-hd.me
@@ -57,13 +60,44 @@
 // @require      https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js
 // ==/UserScript==
 
+/* global unsafeWindow */
+
 (function () {
   'use strict';
 
   const SCRIPT_PREFIX = 'ant-adoption-filename-cross-seed';
   const CACHE_STORAGE_PREFIX = `${SCRIPT_PREFIX}:c:`;
   const CACHE_COMPRESSION_PREFIX = 'lz-json-v3:';
+  const ACTION_STORAGE_PREFIX = `${SCRIPT_PREFIX}:action:`;
+  const ROW_PROCESSING_MIGRATION_VERSION = 1;
+  const ROW_PROCESSING_MIGRATION_STORAGE_KEY = `${SCRIPT_PREFIX}:row-processing-migration-v${ROW_PROCESSING_MIGRATION_VERSION}`;
+  const ACTION_RECOVERY_SUPPRESS_STORAGE_KEY = `${SCRIPT_PREFIX}:suppress-completed-action-recovery`;
+  const FILTERED_SCAN_VERSION = 2;
+  const FILTERED_SCAN_STORAGE_KEY = `${SCRIPT_PREFIX}:filtered-scan-v2`;
+  const FILTERED_SCAN_STORAGE_PREFIX = `${SCRIPT_PREFIX}:filtered-scan`;
+  const LEGACY_FILTERED_SCAN_STORAGE_KEYS = [`${SCRIPT_PREFIX}:filtered-scan-v1`];
+  const FILTERED_VIEW_PARAM = 'ant_adoption_filtered';
+  const ADOPTION_READY_PARAM = 'ant_adoption_ready';
+  const ADOPTION_READY_TOKEN_PARAM = 'ant_adoption_token';
+  const ADOPTION_READY_DISPATCHED_PARAM = 'ant_adoption_dispatched';
+  const ADOPTION_READY_TOKEN_STORAGE_PREFIX = `${SCRIPT_PREFIX}:adoption-ready-token:`;
+  const ADOPTION_READY_TOKEN_TTL_MS = 15 * 60 * 1000;
+  const ADOPTION_READY_FLOW_STORAGE_KEY = `${SCRIPT_PREFIX}:adoption-ready-flow-v1`;
+  const ADOPTION_READY_FLOW_LOCK_NAME = `${SCRIPT_PREFIX}:adoption-ready-flow-lock-v1`;
+  const BOUNTY_GIB_COLUMN_CLASS = 'ant-adoption-bounty-gib';
+  const ACTION_COLUMN_CLASS = 'ant-adoption-action';
+  const FILTERABLE_ROW_SELECTOR = 'tr.torrent.torrent_row';
+  const GRABBED_HIGHLIGHT_COLOR = 'rgba(46, 160, 67, 0.35)';
+  const IGNORED_HIGHLIGHT_COLOR = 'rgba(140, 140, 140, 0.35)';
+  const MAX_SCAN_PAGES = 30;
   const ROW_DELAY_MIN_SECONDS = 30;
+  const ADOPTION_READY_QUI_POLL_INTERVAL_MS = 10000;
+  const ADOPTION_READY_QUI_POLL_DURATION_MS = 60000;
+  const ADOPTION_READY_HANDLING_TIMEOUT_MS = 2 * 60 * 1000;
+  const ADOPTION_READY_FLOW_LEASE_MS = 5 * 60 * 1000;
+  const ADOPTION_READY_FLOW_HEARTBEAT_MS = 60000;
+  const ADOPTION_READY_FLOW_RETRY_MS = 10000;
+  const qui_SEEDING_STATES = new Set(['uploading', 'stalledup', 'forcedup', 'seeding', 'seed']);
   const VIDEO_EXTENSIONS = new Set([
     'mkv',
     'mp4',
@@ -76,7 +110,241 @@
     'iso'
   ]);
 
+  const EXCLUSION_OPTIONS = {
+    Source: ['BluRay', 'WEB', 'DVD', 'HDDVD', 'LaserDisc', 'HDTV', 'TV', 'VHS', 'Unknown', 'Other'],
+    Codec: ['H264', 'H265', 'VC1', 'MPEG2', 'MPEG1', 'AV1', 'Xvid', 'Other'],
+    Audio: [
+      'EAC3',
+      'AC3',
+      'DTSMA',
+      'DTS',
+      'TrueHD',
+      'FLAC',
+      'PCM',
+      'Opus',
+      'AAC',
+      'MP3',
+      'MP2',
+      'MP1',
+      'NoAudio',
+      'Other'
+    ],
+    Subtitles: ['Subs'],
+    Resolution: ['SD', '720p', '1080i', '1080p', '2160p'],
+    Language: [
+      'Abkhazian',
+      'Afrikaans',
+      'Akan',
+      'Albanian',
+      'Amharic',
+      'Arabic',
+      'Aramaic',
+      'Armenian',
+      'Basque',
+      'Belarusian',
+      'Bengali',
+      'Bosnian',
+      'Bulgarian',
+      'Cantonese',
+      'Catalan',
+      'Chinese',
+      'Croatian',
+      'Czech',
+      'Danish',
+      'Dutch',
+      'Dzongkha',
+      'Estonian',
+      'Filipino',
+      'Finnish',
+      'French',
+      'Georgian',
+      'German',
+      'Greek',
+      'Gujarati',
+      'Hebrew',
+      'Hindi',
+      'Hungarian',
+      'Icelandic',
+      'Indonesian',
+      'Irish',
+      'Italian',
+      'Japanese',
+      'Kannada',
+      'Kazakh',
+      'Kongo',
+      'Korean',
+      'Kurdish',
+      'Lao',
+      'Latin',
+      'Latvian',
+      'Lithuanian',
+      'Malay',
+      'Malayalam',
+      'Mandarin',
+      'Marathi',
+      'Macedonian',
+      'Mongolian',
+      'Multiple languages',
+      'Nepali',
+      'Norwegian',
+      'Norwegian Bokmal',
+      'Panjabi',
+      'Persian',
+      'Polish',
+      'Portuguese',
+      'Romanian',
+      'Russian',
+      'Sami',
+      'Serbian',
+      'Sinhala',
+      'Slovak',
+      'Slovenian',
+      'Somali',
+      'Spanish',
+      'Swahili',
+      'Swedish',
+      'Tagalog',
+      'Tamil',
+      'Telugu',
+      'Thai',
+      'Turkish',
+      'Ukrainian',
+      'Urdu',
+      'Vietnamese',
+      'Welsh',
+      'Wolof',
+      'Yoruba',
+      'Yiddish',
+      'Zulu',
+      'Zxx',
+      'NoAudio',
+      'Other'
+    ]
+  };
+  const EXCLUSION_CONTROL_CSS = `
+    .ant-exclusion-group { margin: 12px 0; padding: 10px; border: 1px solid #666; }
+    .ant-exclusion-group > button { margin-top: 8px; }
+    .ant-media-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+    .ant-exclusion-select { position: relative; min-width: 180px; }
+    .ant-exclusion-select summary { cursor: pointer; padding: 6px; border: 1px solid #777; border-radius: 4px; }
+    .ant-exclusion-options { background: #333; color: #eee; border: 1px solid #777; padding: 8px; max-height: 280px; overflow-y: auto; }
+    .ant-exclusion-options label { display: flex !important; align-items: center; gap: 6px; padding: 3px; }
+    #ant-adoption-filter-toolbar .ant-exclusion-options { position: absolute; z-index: 10; min-width: 220px; }
+  `;
+
   const fields = {
+    scan_page_count: {
+      label: 'Adoption pages to scan',
+      type: 'unsigned int',
+      default: 10,
+      max: MAX_SCAN_PAGES
+    },
+    scan_delay_seconds: {
+      label: 'Delay between scanned pages',
+      type: 'unsigned int',
+      default: 3
+    },
+    minimum_bounty_per_gib: {
+      label: 'Minimum bounty per GiB',
+      type: 'unsigned int',
+      default: 200000
+    },
+    minimum_bounty: {
+      label: 'Minimum bounty',
+      type: 'unsigned int',
+      default: 0,
+      tooltip: 'Use 0 for no minimum bounty.'
+    },
+    maximum_size_gib: {
+      label: 'Maximum size in GiB',
+      type: 'unsigned float',
+      default: 0,
+      tooltip: 'Enter GiB, not bytes. Use 0 for no maximum size.'
+    },
+    excluded_formats: {
+      label: 'Media filters',
+      type: 'exclusions',
+      default: {},
+      tooltip:
+        'Choose Ignore selected or Only show selected for each category. Empty categories do not filter rows.'
+    },
+    exclusion_groups: {
+      label: 'Exclusion groups',
+      type: 'exclusionGroups',
+      default: [],
+      tooltip:
+        'Exclude when any group matches all its selected categories. Empty groups are inactive. Apply media filters must be enabled.'
+    },
+    hide_below_bounty_threshold: {
+      label: 'Hide rows below the bounty/GiB minimum',
+      type: 'checkbox',
+      default: true
+    },
+    hide_below_minimum_bounty: {
+      label: 'Hide rows below the minimum bounty',
+      type: 'checkbox',
+      default: true
+    },
+    hide_above_maximum_size: {
+      label: 'Hide rows above the maximum size',
+      type: 'checkbox',
+      default: true
+    },
+    hide_excluded_formats: {
+      label: 'Apply media filters',
+      type: 'checkbox',
+      default: false
+    },
+    combine_media_filters: {
+      label: 'Combine media filters',
+      type: 'checkbox',
+      default: false,
+      tooltip:
+        'Exclude only when all active Ignore categories match. All Only show categories must still match. Empty categories are inactive.'
+    },
+    hide_ignored_rows: {
+      label: 'Hide Ignored rows',
+      type: 'checkbox',
+      default: false
+    },
+    hide_grabbed_rows: {
+      label: 'Hide Grabbed rows',
+      type: 'checkbox',
+      default: false
+    },
+    show_only_grabbed_rows: {
+      label: 'Show only Grabbed rows',
+      type: 'checkbox',
+      default: false
+    },
+    default_sort_field: {
+      label: 'Default sort field',
+      type: 'select',
+      default: 'Bounty / GiB',
+      options: ['Bounty / GiB', 'Bounty', 'Size', 'Torrent', 'Listing Time', 'Scan order']
+    },
+    default_sort_direction: {
+      label: 'Default sort direction',
+      type: 'select',
+      default: 'Descending',
+      options: ['Descending', 'Ascending']
+    },
+    seeding_filter: {
+      label: 'Seeding filter',
+      type: 'select',
+      default: 'All rows',
+      options: ['All rows', 'Seeding only', 'Not seeding only']
+    },
+    clear_adoption_actions: {
+      label: 'Clear Grabbed/Ignored/Broken actions',
+      type: 'button',
+      click: clearAdoptionActions
+    },
+    clear_filtered_scan: {
+      label: 'Clear saved filtered scan',
+      type: 'button',
+      click: clearFilteredScan
+    },
     skip_trumpable: {
       label: 'Skip Trumpable rows',
       type: 'checkbox',
@@ -103,7 +371,8 @@
       label: 'Load cache status on page load',
       type: 'checkbox',
       default: false,
-      tooltip: 'Render cached row status and cached tracker links as soon as the page opens.'
+      tooltip:
+        'Render cached row status, qui results, and tracker links as soon as the page opens. Grabbed, Ignored, and Broken rows are always restored.'
     },
     clean_site_lookup_cache: {
       label: 'Clean site lookup cache',
@@ -119,7 +388,8 @@
       label: 'Debug logging',
       type: 'checkbox',
       default: false,
-      tooltip: 'Log row parsing, cache, qui, ANT, and tracker lookup details to console.log.'
+      tooltip:
+        'Log capped row, cache, qui, ANT, and tracker lookup details. Lifecycle timings are always logged separately.'
     },
     tracker_scope: {
       label: 'Tracker processing scope',
@@ -230,7 +500,7 @@
       type: 'unsigned int',
       default: 60,
       tooltip:
-        'After a site torrent completes in qui, wait this long before checking whether qui cross-seeded the ANT torrent.'
+        'In automatic-adoption mode, wait this long before checking whether qui cross-seeded the ANT torrent.'
     },
     qui_auto_add_site_torrent: {
       label: 'Auto add best site torrent to qui',
@@ -244,6 +514,20 @@
       type: 'unsigned int',
       default: 1,
       tooltip: 'Only auto-add a site torrent when its seeder count is at least this value.'
+    },
+    qui_auto_ignore_ungrabbed: {
+      label: 'Auto-ignore rows with no eligible auto-qui match',
+      type: 'checkbox',
+      default: false,
+      tooltip:
+        'When auto-add is enabled and every tracker lookup succeeds, mark rows Ignored if there is no match or no match meets the auto-add requirements.'
+    },
+    qui_auto_trigger_adoption: {
+      label: 'Automatically trigger ANT adoption',
+      type: 'checkbox',
+      default: false,
+      tooltip:
+        "When enabled, wait the positive qui cross-seed follow-up delay plus 10 seconds, or 5 seconds when it is zero, serialize ready pages, poll qui for up to 60 seconds, and release each page's queue slot after at most two minutes. When disabled, open completed torrents immediately for manual handling without further qui polling."
     },
     ptp: { label: 'PassThePopcorn', type: 'checkbox', default: false },
     ptp_api_user: { label: 'PassThePopcorn API USER', type: 'text', default: '' },
@@ -329,6 +613,7 @@
   const SENSITIVE_CONFIG_FIELDS = new Set(
     Object.keys(fields).filter((field) => /(^|_)(api|key|token|pass|rss|user)(_|$)/i.test(field))
   );
+  SENSITIVE_CONFIG_FIELDS.add('qui_base_url');
   const TRACKER_CONFIG_FIELDS = new Set([
     'ptp',
     'ptp_api_user',
@@ -411,7 +696,75 @@
     'yus_api'
   ]);
   const ANT_qui_CONFIG_FIELDS = new Set(['qui_ant_categories', 'qui_ant_tags', 'qui_skip_recheck']);
+  const ADOPTION_FILTER_CONFIG_FIELDS = new Set([
+    'scan_page_count',
+    'scan_delay_seconds',
+    'minimum_bounty_per_gib',
+    'minimum_bounty',
+    'maximum_size_gib',
+    'excluded_formats',
+    'exclusion_groups',
+    'hide_below_bounty_threshold',
+    'hide_below_minimum_bounty',
+    'hide_above_maximum_size',
+    'hide_excluded_formats',
+    'combine_media_filters',
+    'hide_ignored_rows',
+    'hide_grabbed_rows',
+    'show_only_grabbed_rows',
+    'default_sort_field',
+    'default_sort_direction',
+    'skip_trumpable',
+    'seeding_filter',
+    'clear_adoption_actions',
+    'clear_filtered_scan'
+  ]);
+  const ADOPTION_FILTER_STATE_FIELDS = {
+    minimumBountyPerGib: 'minimum_bounty_per_gib',
+    minimumBounty: 'minimum_bounty',
+    maximumSizeGib: 'maximum_size_gib',
+    excludedFormats: 'excluded_formats',
+    exclusionGroups: 'exclusion_groups',
+    hideBelowBountyThreshold: 'hide_below_bounty_threshold',
+    hideBelowMinimumBounty: 'hide_below_minimum_bounty',
+    hideAboveMaximumSize: 'hide_above_maximum_size',
+    hideExcludedFormats: 'hide_excluded_formats',
+    combineMediaFilters: 'combine_media_filters',
+    hideIgnoredRows: 'hide_ignored_rows',
+    hideGrabbedRows: 'hide_grabbed_rows',
+    showOnlyGrabbedRows: 'show_only_grabbed_rows',
+    sortField: 'default_sort_field',
+    sortDirection: 'default_sort_direction',
+    skipTrumpable: 'skip_trumpable',
+    seedingFilter: 'seeding_filter'
+  };
   const CONFIG_HELP_TEXT = {
+    scan_page_count: `Fetch this many ANT adoption pages, starting at page 1. The hard limit is ${MAX_SCAN_PAGES}.`,
+    scan_delay_seconds: 'Pause between adoption-page requests to reduce load on ANT.',
+    minimum_bounty_per_gib: 'Rows at or below this bounty/GiB value can be hidden.',
+    minimum_bounty: 'Minimum total bounty. Zero disables this threshold.',
+    maximum_size_gib:
+      'Maximum torrent size in GiB, not bytes. Rows larger than this can be hidden; zero disables the limit.',
+    excluded_formats:
+      'Each category can ignore selected values or show only selected values. Empty categories are inactive. Enable Apply media filters to hide nonmatching rows. Values match row metadata, including shared values such as Other.',
+    hide_below_bounty_threshold: 'Default state for the minimum bounty/GiB filter.',
+    hide_below_minimum_bounty: 'Default state for the minimum total-bounty filter.',
+    hide_above_maximum_size: 'Default state for the maximum-size filter.',
+    hide_excluded_formats: 'Apply the configured media filters by default.',
+    combine_media_filters:
+      'Combine each mode separately: exclude only when every active Ignore category matches; require every Only show category to match. Empty categories are inactive.',
+    hide_ignored_rows: 'Hide rows marked Ignored by default.',
+    hide_grabbed_rows: 'Hide rows marked Grabbed by default.',
+    show_only_grabbed_rows:
+      'Show only Grabbed rows by default, overriding every other row filter. This takes precedence over Hide Grabbed.',
+    default_sort_field: 'Choose the field used to order a filtered scan when it opens.',
+    default_sort_direction:
+      'Choose the initial direction. Scan order always uses the original scanned order.',
+    seeding_filter:
+      'Choose whether the filtered view starts with all, seeding, or non-seeding rows.',
+    clear_adoption_actions:
+      'Deletes every per-torrent Grabbed/Ignored/Broken marker for this script.',
+    clear_filtered_scan: 'Deletes the saved multi-page result used by Open last scan.',
     skip_trumpable: 'Ignore ANT rows flagged as Trumpable before spending qui or tracker requests.',
     row_delay_seconds:
       'Pause between processed ANT rows to avoid hammering tracker APIs. Minimum 30 seconds.',
@@ -419,10 +772,11 @@
     use_cache:
       'Store ANT metadata, tracker results, qui results, and row completion state locally.',
     load_cache_status_on_page_load:
-      'On page load, restore cached completed/cached row states without making new requests.',
+      'On page load, restore cached processing details for every row without repeating tracker or qui searches. Grabbed, Ignored, and Broken rows are always restored.',
     clean_site_lookup_cache: 'Clears tracker/qui lookup results and row-complete markers.',
     clean_ant_cache: 'Clears cached ANT detail-page metadata and legacy filename cache.',
-    debug_logging: 'Prints request, cache, qui, and matching details to the browser console.',
+    debug_logging:
+      'Prints capped request, cache, qui, and matching details. Lifecycle timings are always logged separately.',
     tracker_scope: 'Restrict this run to one tracker, or use every enabled tracker.',
     refresh_tracker_cache:
       'Re-query the current tracker scope even when cached results already exist.',
@@ -438,10 +792,14 @@
     qui_ant_tags: 'Tags applied when adding ANT torrents. Falls back to site qui tags when empty.',
     qui_skip_recheck: 'Only applies when adding ANT torrents, not other-site torrents.',
     qui_cross_seed_followup_delay_seconds:
-      'After a site torrent completes, wait this long before adding/checking the ANT torrent.',
+      'In automatic-adoption mode, wait this long before adding/checking the ANT torrent.',
     qui_auto_add_site_torrent:
       'Automatically add the highest-seeded matching site torrent after row processing.',
-    qui_auto_add_min_seeders: 'Minimum seeder count required before auto-adding a site torrent.'
+    qui_auto_add_min_seeders: 'Minimum seeder count required before auto-adding a site torrent.',
+    qui_auto_ignore_ungrabbed:
+      'Only with auto-add enabled: mark a row Ignored when all tracker lookups succeed but find no eligible torrent. Lookup or qui submission failures remain retryable.',
+    qui_auto_trigger_adoption:
+      'Disabled by default. Disabled opens completed torrents immediately for manual handling with no further qui polling. Enabled waits the positive qui cross-seed follow-up delay plus 10 seconds, or 5 seconds when it is zero, processes one ready page at a time, polls for 60 seconds, and enforces a two-minute handling cap.'
   };
   const TRACKER_CREDENTIAL_FIELDS = {
     ptp: ['ptp_api_user', 'ptp_api_key'],
@@ -488,7 +846,7 @@
   function styleSettingsFrame(frame) {
     if (!frame?.style) return;
     const { style } = frame;
-    style.width = '880px';
+    style.width = '1280px';
     style.maxWidth = '94vw';
     style.height = '82vh';
     style.maxHeight = '88vh';
@@ -518,10 +876,16 @@
     const buttons = doc.querySelector('#ANTAdoptionFilenameCrossSeedConfig_buttons_holder');
     const columns = doc.createElement('div');
     columns.className = 'ant-config-columns';
-    const mainColumn = createSettingsColumn(doc, 'ant-config-main-column', 'General and site qui');
+    const mainColumn = createSettingsColumn(doc, 'ant-config-main-column', 'General');
+    const filterColumn = createSettingsColumn(
+      doc,
+      'ant-config-filter-column',
+      'Adoption scanning and filters'
+    );
+    const quiColumn = createSettingsColumn(doc, 'ant-config-qui-column', 'Base qui settings');
     const antquiColumn = createSettingsColumn(doc, 'ant-config-ant-qui-column', 'ANT qui');
     const trackerColumn = createSettingsColumn(doc, 'ant-config-tracker-column', 'Trackers');
-    columns.append(mainColumn, trackerColumn);
+    columns.append(filterColumn, mainColumn, trackerColumn);
 
     if (buttons?.parentNode === root) {
       buttons.before(columns);
@@ -536,13 +900,17 @@
       wrapper.classList.toggle('ant-config-checkbox-field', fields[field]?.type === 'checkbox');
       if (TRACKER_CONFIG_FIELDS.has(field)) {
         trackerColumn.appendChild(wrapper);
+      } else if (ADOPTION_FILTER_CONFIG_FIELDS.has(field)) {
+        filterColumn.appendChild(wrapper);
       } else if (ANT_qui_CONFIG_FIELDS.has(field)) {
         antquiColumn.appendChild(wrapper);
+      } else if (field.startsWith('qui_')) {
+        quiColumn.appendChild(wrapper);
       } else {
         mainColumn.appendChild(wrapper);
       }
     }
-    mainColumn.appendChild(antquiColumn);
+    mainColumn.append(quiColumn, antquiColumn);
   }
 
   function addSettingsHelperText() {
@@ -613,6 +981,10 @@
     return node?.dataset?.antSecretMasked === '1' && node.dataset.antSecretEdited !== '1';
   }
 
+  function shouldMaskSensitiveConfigValue(field, value) {
+    return field !== 'qui_base_url' || /\/(?:api\/)?proxy\/[^/?#]+/i.test(value);
+  }
+
   function restoreMaskedSensitiveFieldsForSave() {
     for (const field of SENSITIVE_CONFIG_FIELDS) {
       const node = getSensitiveConfigNode(field);
@@ -627,6 +999,15 @@
       const node = getSensitiveConfigNode(field);
       const saved = String(GM_config.get(field) || '');
       if (!node || !saved) continue;
+      if (!shouldMaskSensitiveConfigValue(field, saved)) {
+        node.value = saved;
+        node.type = 'text';
+        node.dataset.antSecretMasked = '0';
+        node.dataset.antSecretEdited = '0';
+        node.autocomplete = '';
+        node.title = '';
+        continue;
+      }
 
       node.value = SECRET_MASK_VALUE;
       node.type = 'password';
@@ -657,9 +1038,52 @@
 
   GM_config.init({
     id: 'ANTAdoptionFilenameCrossSeedConfig',
-    title: 'ANT adoption cross-seed finder',
+    title: 'ANT adoption finder plus',
     fields,
+    types: {
+      exclusionGroups: {
+        toNode() {
+          const wrapper = document.createElement('div');
+          wrapper.className = 'config_var';
+          wrapper.id = `${this.configId}_${this.id}_var`;
+          this.node = createExclusionGroupsControl(document, this.value);
+          wrapper.appendChild(this.node);
+          return wrapper;
+        },
+        toValue() {
+          return this.node
+            ? readExclusionGroupsControl(this.node)
+            : normalizeExclusionGroups(this.value);
+        },
+        reset() {
+          if (!this.node) return;
+          const replacement = createExclusionGroupsControl(document, this.default);
+          this.node.replaceWith(replacement);
+          this.node = replacement;
+        }
+      },
+      exclusions: {
+        toNode() {
+          const wrapper = document.createElement('div');
+          wrapper.className = 'config_var';
+          wrapper.id = `${this.configId}_${this.id}_var`;
+          this.node = createMediaFilterControl(document, this.value);
+          wrapper.appendChild(this.node);
+          return wrapper;
+        },
+        toValue() {
+          return this.node ? readMediaFilterControl(this.node) : normalizeMediaFilters(this.value);
+        },
+        reset() {
+          if (!this.node) return;
+          const replacement = createMediaFilterControl(document, this.default);
+          this.node.replaceWith(replacement);
+          this.node = replacement;
+        }
+      }
+    },
     css: `
+      ${EXCLUSION_CONTROL_CSS}
       #ANTAdoptionFilenameCrossSeedConfig {
         background: #333;
         color: #f5f5f5;
@@ -680,7 +1104,7 @@
       #ANTAdoptionFilenameCrossSeedConfig .ant-config-columns {
         display: grid;
         gap: 18px;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: repeat(3, minmax(0, 1fr));
       }
 
       #ANTAdoptionFilenameCrossSeedConfig .ant-config-column {
@@ -689,6 +1113,10 @@
         border-radius: 6px;
         min-width: 0;
         padding: 12px;
+      }
+
+      #ANTAdoptionFilenameCrossSeedConfig .ant-config-main-column > .ant-config-column {
+        margin-top: 12px;
       }
 
       #ANTAdoptionFilenameCrossSeedConfig .ant-config-column-heading {
@@ -843,12 +1271,15 @@
       save: function () {
         setTimeout(() => {
           maskSensitiveConfigFields(this.frame?.ownerDocument || document);
+          refreshAdoptionViewFromSettings();
         }, 0);
       }
     }
   });
+  normalizeMaximumSizeGiBSetting();
+  normalizeMediaFilterSetting();
 
-  GM_registerMenuCommand('ANT adoption IMDb cross-seed settings', () => GM_config.open());
+  GM_registerMenuCommand('ANT adoption finder plus settings', () => GM_config.open());
 
   const unit3dTrackers = [
     { key: 'a4k', site: 'A4K', baseUrl: 'https://aura4k.net' },
@@ -935,13 +1366,37 @@
   };
 
   const quiAddJobs = new Map();
+  const adoptionReadyFlowStops = new Map();
   let quiAddPollTimer = null;
   let quiAddPollInFlight = false;
+  let adoptionScanRunning = false;
+  let rowProcessingRunning = false;
+  let filteredScanCachedRaw;
+  let filteredScanCachedValue = null;
+  let filteredScanLegacyCacheChecked = false;
+  let deferredFilteredScanRows = [];
+  let filteredScanRowData = new WeakMap();
+  let filteredScanActions = new Map();
+  let cachedRowStatusRestoreQueue = Promise.resolve();
+  let cachedRowStatusRestoreRequested = false;
+  let cachedRowStatusRestoreRunning = false;
+  let rowProcessingCancelRequested = false;
   const qui_ADD_POLL_INTERVAL_MS = 5000;
+  const qui_ADD_MAX_POLL_INTERVAL_MS = 60000;
   const qui_ANT_FOLLOW_UP_POLL_INTERVAL_MS = 10000;
   const qui_PENDING_STATES = new Set(['checkingresumedata', 'queuedup']);
   const refreshedRowKeys = new Set();
   const iconDataUrlPromises = new Map();
+  const debugLogCounts = new Map();
+  let lifecycleLogStartedAt = null;
+  let lifecycleLastLogAt = null;
+  let lifecycleLogSequence = 0;
+  let adoptionFilterPresentationSequence = 0;
+  const DEBUG_LOG_LIMIT_PER_MESSAGE = 10;
+  const DEBUG_LOG_MAX_ARRAY_ITEMS = 12;
+  const DEBUG_LOG_MAX_OBJECT_ENTRIES = 20;
+  const DEBUG_LOG_MAX_STRING_CHARACTERS = 500;
+  const DEBUG_LOG_MAX_DEPTH = 4;
 
   function cleanBaseUrl(value) {
     return String(value || '')
@@ -953,22 +1408,31 @@
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  async function sleepWithButtonCountdown(ms, button, progressText) {
+  async function sleepWithButtonCountdown(ms, button, progressText, shouldContinue = () => true) {
     const seconds = Math.ceil(ms / 1000);
     for (let remaining = seconds; remaining > 0; remaining -= 1) {
+      if (!shouldContinue()) return false;
       if (button) button.textContent = `Waiting ${remaining}s ${progressText}...`;
       await sleep(Math.min(1000, ms));
       ms -= 1000;
     }
+    return shouldContinue();
   }
 
   async function retryRowAfterError(error, entry, index, total, trackers, refreshCache, button) {
     debugLog('row processing retry scheduled', { index, total, error });
     console.warn('ANT adoption row processing failed; retrying once:', error);
     setRowState(entry.row, `retrying after error: ${error.message || error}`, 'working');
-    await sleepWithButtonCountdown(5000, button, `before retry (${index}/${total})`);
+    const shouldRetry = await sleepWithButtonCountdown(
+      5000,
+      button,
+      `before retry (${index}/${total})`,
+      () => !rowProcessingCancelRequested
+    );
+    if (!shouldRetry) return false;
     if (button) button.textContent = `Retrying ${index}/${total} eligible rows...`;
     await processRow(entry.row, index, total, trackers, entry, refreshCache);
+    return true;
   }
 
   function escapeHtml(value) {
@@ -1000,6 +1464,45 @@
     return Boolean(GM_config.get('debug_logging'));
   }
 
+  function performanceNow() {
+    return globalThis.performance?.now?.() ?? Date.now();
+  }
+
+  function elapsedMilliseconds(startedAt) {
+    return Math.round((performanceNow() - startedAt) * 10) / 10;
+  }
+
+  function lifecycleLog(message, details = null) {
+    const now = performanceNow();
+    lifecycleLogStartedAt ??= now;
+    lifecycleLastLogAt ??= now;
+    lifecycleLogSequence += 1;
+    const prefix = `[${SCRIPT_PREFIX}] ${message}`;
+    console.info(prefix, {
+      timestamp: new Date().toISOString(),
+      lifecycleElapsedMs: Math.round((now - lifecycleLogStartedAt) * 10) / 10,
+      sincePreviousLogMs: Math.round((now - lifecycleLastLogAt) * 10) / 10,
+      sequence: lifecycleLogSequence,
+      ...(details || {})
+    });
+    lifecycleLastLogAt = now;
+  }
+
+  function scheduleAdoptionFilterPresentationLog(startedAt, details) {
+    if (typeof globalThis.requestAnimationFrame !== 'function') return;
+    adoptionFilterPresentationSequence += 1;
+    const updateId = adoptionFilterPresentationSequence;
+    globalThis.requestAnimationFrame(() => {
+      globalThis.requestAnimationFrame(() => {
+        lifecycleLog('adoption filter update presented', {
+          durationMs: elapsedMilliseconds(startedAt),
+          updateId,
+          ...details
+        });
+      });
+    });
+  }
+
   function redactDebugUrl(value) {
     return String(value || '')
       .replace(/([?&](?:apikey|api_token|passkey|authkey|torrent_pass)=)[^&#]*/gi, '$1[redacted]')
@@ -1010,12 +1513,19 @@
       );
   }
 
-  function sanitizeDebugValue(value, key = '') {
+  function truncateDebugString(value) {
+    const text = redactDebugUrl(value);
+    return text.length > DEBUG_LOG_MAX_STRING_CHARACTERS
+      ? `${text.slice(0, DEBUG_LOG_MAX_STRING_CHARACTERS)}… [${text.length - DEBUG_LOG_MAX_STRING_CHARACTERS} characters omitted]`
+      : text;
+  }
+
+  function sanitizeDebugValue(value, key = '', depth = 0) {
     if (value instanceof Error) {
       return {
         name: value.name,
-        message: value.message,
-        stack: value.stack
+        message: truncateDebugString(value.message),
+        stack: truncateDebugString(value.stack)
       };
     }
     if (value === null || value === undefined) return value;
@@ -1026,18 +1536,33 @@
       return value ? '[redacted]' : value;
     }
     if (typeof value === 'string') {
-      return /^https?:\/\//i.test(value) ? redactDebugUrl(value) : value;
+      return truncateDebugString(value);
     }
     if (Array.isArray(value)) {
-      return value.map((item) => sanitizeDebugValue(item));
+      if (depth >= DEBUG_LOG_MAX_DEPTH) return `[array with ${value.length} items]`;
+      const items = value
+        .slice(0, DEBUG_LOG_MAX_ARRAY_ITEMS)
+        .map((item) => sanitizeDebugValue(item, '', depth + 1));
+      if (value.length > DEBUG_LOG_MAX_ARRAY_ITEMS) {
+        items.push(`[${value.length - DEBUG_LOG_MAX_ARRAY_ITEMS} more items omitted]`);
+      }
+      return items;
     }
     if (typeof value === 'object') {
-      return Object.fromEntries(
-        Object.entries(value).map(([entryKey, entryValue]) => [
-          entryKey,
-          sanitizeDebugValue(entryValue, entryKey)
-        ])
+      const entries = Object.entries(value);
+      if (depth >= DEBUG_LOG_MAX_DEPTH) return `[object with ${entries.length} entries]`;
+      const sanitized = Object.fromEntries(
+        entries
+          .slice(0, DEBUG_LOG_MAX_OBJECT_ENTRIES)
+          .map(([entryKey, entryValue]) => [
+            entryKey,
+            sanitizeDebugValue(entryValue, entryKey, depth + 1)
+          ])
       );
+      if (entries.length > DEBUG_LOG_MAX_OBJECT_ENTRIES) {
+        sanitized.__omittedEntries = entries.length - DEBUG_LOG_MAX_OBJECT_ENTRIES;
+      }
+      return sanitized;
     }
     return value;
   }
@@ -1045,6 +1570,13 @@
   function debugLog(message, details = null) {
     if (!isDebugEnabled()) return;
     const prefix = `[${SCRIPT_PREFIX}] ${message}`;
+    const count = (debugLogCounts.get(message) || 0) + 1;
+    debugLogCounts.set(message, count);
+    if (count > DEBUG_LOG_LIMIT_PER_MESSAGE) return;
+    if (count === DEBUG_LOG_LIMIT_PER_MESSAGE) {
+      console.log(`${prefix} (further messages of this type will be suppressed)`);
+      return;
+    }
     if (details === null || details === undefined) {
       console.log(prefix);
       return;
@@ -1104,6 +1636,2620 @@
   function getquiAutoAddMinSeeders() {
     const value = Number.parseInt(GM_config.get('qui_auto_add_min_seeders'), 10);
     return Number.isFinite(value) && value > 0 ? value : 0;
+  }
+
+  function getConfiguredNumber(field, fallback = 0) {
+    const value = Number.parseFloat(String(GM_config.get(field) ?? '').replaceAll(',', ''));
+    return Number.isFinite(value) && value >= 0 ? value : fallback;
+  }
+
+  function normalizeMaximumSizeGiBSetting() {
+    const value = getConfiguredNumber('maximum_size_gib', 0);
+    if (value < 1024 ** 3) return value;
+    const gibibytes = value / 1024 ** 3;
+    GM_config.set('maximum_size_gib', gibibytes);
+    GM_config.write();
+    return gibibytes;
+  }
+
+  function getScanPageCount() {
+    const value = Number.parseInt(GM_config.get('scan_page_count'), 10);
+    return Math.min(MAX_SCAN_PAGES, Number.isFinite(value) && value > 0 ? value : 10);
+  }
+
+  function getMinimumBounty() {
+    return getConfiguredNumber('minimum_bounty', 0);
+  }
+
+  function getBountyScanButtonText() {
+    const minimumBounty = getMinimumBounty();
+    return minimumBounty > 0 ? `Scan until bounty < ${minimumBounty}` : 'Scan until minimum bounty';
+  }
+
+  function getScanDelayMs() {
+    const value = Number.parseInt(GM_config.get('scan_delay_seconds'), 10);
+    return (Number.isFinite(value) && value >= 0 ? value : 3) * 1000;
+  }
+
+  function getDefaultAdoptionFilterState() {
+    const seedingFilter = String(GM_config.get('seeding_filter') || 'All rows');
+    const sortField = String(GM_config.get('default_sort_field') || 'Bounty / GiB');
+    const sortDirection = String(GM_config.get('default_sort_direction') || 'Descending');
+    return {
+      minimumBountyPerGib: getConfiguredNumber('minimum_bounty_per_gib', 200000),
+      minimumBounty: getMinimumBounty(),
+      maximumSizeGib: getConfiguredNumber('maximum_size_gib', 0),
+      excludedFormats: normalizeMediaFilters(GM_config.get('excluded_formats')),
+      exclusionGroups: normalizeExclusionGroups(GM_config.get('exclusion_groups')),
+      hideBelowBountyThreshold: Boolean(GM_config.get('hide_below_bounty_threshold')),
+      hideBelowMinimumBounty: Boolean(GM_config.get('hide_below_minimum_bounty')),
+      hideAboveMaximumSize: Boolean(GM_config.get('hide_above_maximum_size')),
+      hideExcludedFormats: Boolean(GM_config.get('hide_excluded_formats')),
+      combineMediaFilters: Boolean(GM_config.get('combine_media_filters')),
+      hideIgnoredRows: Boolean(GM_config.get('hide_ignored_rows')),
+      hideGrabbedRows: Boolean(GM_config.get('hide_grabbed_rows')),
+      showOnlyGrabbedRows: Boolean(GM_config.get('show_only_grabbed_rows')),
+      sortField: [
+        'Bounty / GiB',
+        'Bounty',
+        'Size',
+        'Torrent',
+        'Listing Time',
+        'Scan order'
+      ].includes(sortField)
+        ? sortField
+        : 'Bounty / GiB',
+      sortDirection: ['Descending', 'Ascending'].includes(sortDirection)
+        ? sortDirection
+        : 'Descending',
+      skipTrumpable: Boolean(GM_config.get('skip_trumpable')),
+      seedingFilter: ['All rows', 'Seeding only', 'Not seeding only'].includes(seedingFilter)
+        ? seedingFilter
+        : 'All rows'
+    };
+  }
+
+  let adoptionFilterState = null;
+
+  function persistAdoptionFilterSettings(stateKeys) {
+    for (const stateKey of stateKeys) {
+      const field = ADOPTION_FILTER_STATE_FIELDS[stateKey];
+      if (field) GM_config.set(field, adoptionFilterState[stateKey]);
+    }
+    GM_config.write();
+  }
+
+  function saveAdoptionFilterSettings() {
+    persistAdoptionFilterSettings(Object.keys(ADOPTION_FILTER_STATE_FIELDS));
+  }
+
+  function parseSizeToGiB(text) {
+    if (!text) return null;
+    const match = String(text)
+      .replaceAll('\u00a0', ' ')
+      .trim()
+      .match(/([\d.,]+)\s*([KMGTP]?i?B)/i);
+    if (!match) return null;
+
+    const value = Number.parseFloat(match[1].replaceAll(',', ''));
+    const unit = match[2].toUpperCase();
+    const multipliers = {
+      B: 1 / 1024 ** 3,
+      KB: 1 / 1024 ** 2,
+      KIB: 1 / 1024 ** 2,
+      MB: 1 / 1024,
+      MIB: 1 / 1024,
+      GB: 1,
+      GIB: 1,
+      TB: 1024,
+      TIB: 1024,
+      PB: 1024 ** 2,
+      PIB: 1024 ** 2
+    };
+    return Number.isFinite(value) && multipliers[unit] !== undefined
+      ? value * multipliers[unit]
+      : null;
+  }
+
+  function parseBounty(text) {
+    const value = Number.parseFloat(
+      String(text || '')
+        .replaceAll('\u00a0', ' ')
+        .replaceAll(',', '')
+    );
+    return Number.isFinite(value) ? value : null;
+  }
+
+  function getTableHeaderRow(table) {
+    return table?.querySelector('tr.colhead_dark, thead tr, tr') || null;
+  }
+
+  function findAdoptionColumnIndex(table, label) {
+    const header = getTableHeaderRow(table);
+    if (!header) return -1;
+    return [...header.children].findIndex(
+      (cell) =>
+        !cell.classList.contains(BOUNTY_GIB_COLUMN_CLASS) &&
+        !cell.classList.contains(ACTION_COLUMN_CLASS) &&
+        cell.textContent.trim().toLowerCase().includes(label)
+    );
+  }
+
+  function findAdoptionTable(root = document) {
+    const row = root.querySelector?.(FILTERABLE_ROW_SELECTOR);
+    if (row) return row.closest('table');
+    return (
+      [...(root.querySelectorAll?.('table') || [])].find((table) => {
+        const text = getTableHeaderRow(table)?.textContent.toLowerCase() || '';
+        return text.includes('size') && text.includes('bounty');
+      }) || null
+    );
+  }
+
+  function getAdoptionRowSizeGiB(row, table = row.closest('table')) {
+    const index = findAdoptionColumnIndex(table, 'size');
+    return index >= 0 && row.children[index]
+      ? parseSizeToGiB(row.children[index].textContent)
+      : null;
+  }
+
+  function getAdoptionRowBounty(row, table = row.closest('table')) {
+    const index = findAdoptionColumnIndex(table, 'bounty');
+    return index >= 0 && row.children[index] ? parseBounty(row.children[index].textContent) : null;
+  }
+
+  function getAdoptionRowMetadata(row) {
+    const excludedSelector = `.${BOUNTY_GIB_COLUMN_CLASS}, .${ACTION_COLUMN_CLASS}, .ant-cross-seed-inline, .ant-cross-seed-qui, .ant-cross-seed-qui-monitor, a[data-title]`;
+    const text = [];
+    const collectText = (node) => {
+      for (const child of node.childNodes || []) {
+        if (child.nodeType === 3) {
+          text.push(child.nodeValue || '');
+        } else if (child.nodeType === 1 && !child.matches?.(excludedSelector)) {
+          collectText(child);
+        }
+      }
+    };
+    collectText(row);
+    return text.join('');
+  }
+
+  function normalizeMediaFilters(value) {
+    return Object.fromEntries(
+      Object.entries(EXCLUSION_OPTIONS).map(([name, options]) => {
+        const group = value?.[name];
+        return [
+          name,
+          {
+            mode: group?.mode === 'only' ? 'only' : 'ignore',
+            values: Array.isArray(group?.values)
+              ? options.filter((option) => group.values.includes(option))
+              : []
+          }
+        ];
+      })
+    );
+  }
+
+  function normalizeMediaFilterSetting() {
+    const saved = GM_config.get('excluded_formats');
+    const normalized = normalizeMediaFilters(saved);
+    if (JSON.stringify(saved) === JSON.stringify(normalized)) return;
+    GM_config.set('excluded_formats', normalized);
+    GM_config.write();
+  }
+
+  function readMediaFilterControl(control) {
+    return Object.fromEntries(
+      [...control.children].map((group) => [
+        group.dataset.mediaCategory,
+        {
+          mode: group.querySelector('select').value,
+          values: [...group.querySelectorAll('input:checked')]
+            .filter((input) => input.dataset.mediaValue === '1')
+            .map((input) => input.value)
+        }
+      ])
+    );
+  }
+
+  function createMediaFilterControl(doc, value, onChange, exclusionGroup = false) {
+    const filters = normalizeMediaFilters(value);
+    const control = doc.createElement('div');
+    control.className = 'ant-media-filters';
+    for (const [name, filter] of Object.entries(filters)) {
+      const group = doc.createElement('details');
+      group.className = 'ant-exclusion-select';
+      group.dataset.mediaCategory = name;
+      const summary = doc.createElement('summary');
+      const options = doc.createElement('div');
+      options.className = 'ant-exclusion-options';
+      const mode = doc.createElement('select');
+      mode.setAttribute('aria-label', `${name} filter mode`);
+      for (const [value, text] of [
+        ['ignore', 'Ignore selected'],
+        ['only', 'Only show selected']
+      ]) {
+        const option = doc.createElement('option');
+        option.value = value;
+        option.textContent = text;
+        mode.appendChild(option);
+      }
+      mode.value = exclusionGroup ? 'ignore' : filter.mode;
+      mode.hidden = exclusionGroup;
+      const inputs = [];
+      let ignoreAll;
+      const update = () => {
+        const count = inputs.filter((input) => input.checked).length;
+        mode.disabled = count === 0;
+        summary.textContent = count
+          ? `${name}: ${exclusionGroup ? 'Match' : mode.value === 'only' ? 'Only show' : 'Ignore'} (${count})`
+          : `${name}: Off`;
+        if (ignoreAll) ignoreAll.checked = mode.value === 'ignore' && count === inputs.length;
+      };
+      const changed = () => {
+        update();
+        onChange?.(readMediaFilterControl(control));
+      };
+      if (name === 'Language') {
+        const label = doc.createElement('label');
+        ignoreAll = doc.createElement('input');
+        ignoreAll.type = 'checkbox';
+        const text = doc.createElement('span');
+        text.textContent = exclusionGroup
+          ? 'Match all listed languages'
+          : 'Ignore all listed languages';
+        ignoreAll.addEventListener('change', () => {
+          for (const input of inputs) input.checked = ignoreAll.checked;
+          mode.value = 'ignore';
+          changed();
+        });
+        label.append(ignoreAll, text);
+        options.appendChild(label);
+      }
+      options.appendChild(mode);
+      for (const value of EXCLUSION_OPTIONS[name]) {
+        const label = doc.createElement('label');
+        const input = doc.createElement('input');
+        input.type = 'checkbox';
+        input.dataset.mediaValue = '1';
+        input.value = value;
+        input.checked = filter.values.includes(value);
+        input.addEventListener('change', changed);
+        inputs.push(input);
+        const text = doc.createElement('span');
+        text.textContent = value;
+        label.append(input, text);
+        options.appendChild(label);
+      }
+      mode.addEventListener('change', changed);
+      update();
+      group.append(summary, options);
+      control.appendChild(group);
+    }
+    return control;
+  }
+
+  function normalizeExclusionGroups(value) {
+    return (Array.isArray(value) ? value : []).map((group) =>
+      Object.fromEntries(
+        Object.entries(normalizeMediaFilters(group)).map(([name, filter]) => [
+          name,
+          { mode: 'ignore', values: filter.values }
+        ])
+      )
+    );
+  }
+
+  function readExclusionGroupsControl(control) {
+    return normalizeExclusionGroups(
+      [...control.querySelectorAll('.ant-exclusion-group')].map((group) =>
+        readMediaFilterControl(group.querySelector('.ant-media-filters'))
+      )
+    );
+  }
+
+  function createExclusionGroupsControl(doc, value, onChange) {
+    const control = doc.createElement('div');
+    control.className = 'ant-exclusion-groups';
+    const description = doc.createElement('p');
+    description.textContent =
+      'Exclusion groups: match ALL selected categories in ANY group. Empty groups are inactive. Existing category filters still apply. These groups are independent of Combine media filters.';
+    const groups = doc.createElement('div');
+    const changed = () => onChange?.(readExclusionGroupsControl(control));
+    const addGroup = (value) => {
+      const group = doc.createElement('fieldset');
+      group.className = 'ant-exclusion-group';
+      const legend = doc.createElement('legend');
+      legend.textContent = 'Exclude when all selected categories match';
+      const filters = createMediaFilterControl(doc, value, changed, true);
+      const remove = doc.createElement('button');
+      remove.type = 'button';
+      remove.textContent = 'Remove group';
+      remove.addEventListener('click', () => {
+        group.remove();
+        changed();
+      });
+      group.append(legend, filters, remove);
+      groups.appendChild(group);
+    };
+    const add = doc.createElement('button');
+    add.type = 'button';
+    add.textContent = 'Add exclusion group';
+    add.addEventListener('click', () => {
+      addGroup({});
+      changed();
+    });
+    control.append(description, groups, add);
+    for (const group of normalizeExclusionGroups(value)) addGroup(group);
+    return control;
+  }
+
+  function buildMediaFilterMatchers(value, groups = []) {
+    const filters = Object.values(normalizeMediaFilters(value))
+      .filter((filter) => filter.values.length > 0)
+      .map((filter) => ({ mode: filter.mode, regexes: buildExcludeRegexes(filter.values) }));
+    for (const group of normalizeExclusionGroups(groups)) {
+      const categories = Object.values(group).filter((filter) => filter.values.length > 0);
+      if (categories.length)
+        filters.push({
+          mode: 'group',
+          categories: categories.map((filter) => buildExcludeRegexes(filter.values))
+        });
+    }
+    return filters;
+  }
+
+  function buildExcludeRegexes(patterns) {
+    return patterns.map((pattern) => {
+      const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s*');
+      const leadingBoundary = /^\w/.test(pattern) ? '\\b' : '';
+      const trailingBoundary = /\w$/.test(pattern) ? '\\b' : '';
+      return new RegExp(`${leadingBoundary}${escaped}${trailingBoundary}`, 'i');
+    });
+  }
+
+  function isAdoptionRowSeeding(row) {
+    return Boolean(row.querySelector('.tl_seeding, strong.torrent_label.tl_seeding'));
+  }
+
+  function actionStorageKey(torrentId) {
+    return `${ACTION_STORAGE_PREFIX}${torrentId}`;
+  }
+
+  function getTorrentAction(torrentId) {
+    const value = String(GM_getValue(actionStorageKey(torrentId), '') || '');
+    return ['grabbed', 'ignored', 'broken'].includes(value) ? value : '';
+  }
+
+  function setTorrentAction(torrentId, action) {
+    if (['grabbed', 'ignored', 'broken'].includes(action)) {
+      GM_setValue(actionStorageKey(torrentId), action);
+      filteredScanActions.set(String(torrentId), action);
+    } else {
+      GM_deleteValue(actionStorageKey(torrentId));
+      filteredScanActions.delete(String(torrentId));
+    }
+  }
+
+  function clearAdoptionActions() {
+    if (!confirm('Delete every Grabbed/Ignored/Broken action saved by ANT Adoption Finder Plus?'))
+      return;
+    const keys = GM_listValues().filter((key) => String(key).startsWith(ACTION_STORAGE_PREFIX));
+    keys.forEach((key) => GM_deleteValue(key));
+    GM_setValue(ACTION_RECOVERY_SUPPRESS_STORAGE_KEY, true);
+    filteredScanActions.clear();
+    document.querySelectorAll(FILTERABLE_ROW_SELECTOR).forEach((row) => {
+      if (row.dataset.antAdoptionAction === 'broken') {
+        setRowState(row, 'ready to retry metadata', '');
+      }
+      row.dataset.antAdoptionAction = '';
+      const select = row.querySelector(`.${ACTION_COLUMN_CLASS} select`);
+      if (select) select.value = '';
+      const rescan = row.querySelector('.ant-cross-seed-rescan-metadata');
+      if (rescan) rescan.hidden = true;
+    });
+    applyAdoptionFilters();
+    alert(`Cleared ${keys.length} adoption action${keys.length === 1 ? '' : 's'}.`);
+  }
+
+  function clearFilteredScan() {
+    if (!confirm('Delete the saved multi-page adoption scan?')) return;
+    GM_deleteValue(FILTERED_SCAN_STORAGE_KEY);
+    getIncompatibleFilteredScanStorageKeys().forEach((key) => GM_deleteValue(key));
+    filteredScanCachedRaw = null;
+    filteredScanCachedValue = null;
+    deferredFilteredScanRows = [];
+    filteredScanRowData = new WeakMap();
+    filteredScanActions = new Map();
+    updateOpenLastScanButton();
+    alert('Saved adoption scan cleared.');
+  }
+
+  function getIncompatibleFilteredScanStorageKeys() {
+    const keys = new Set(LEGACY_FILTERED_SCAN_STORAGE_KEYS);
+    for (const key of GM_listValues()) {
+      const value = String(key);
+      if (
+        value !== FILTERED_SCAN_STORAGE_KEY &&
+        (value === FILTERED_SCAN_STORAGE_PREFIX ||
+          value.startsWith(`${FILTERED_SCAN_STORAGE_PREFIX}-`))
+      ) {
+        keys.add(value);
+      }
+    }
+    return keys;
+  }
+
+  function removeLegacyFilteredScanCache() {
+    if (filteredScanLegacyCacheChecked) return;
+    filteredScanLegacyCacheChecked = true;
+    let removed = 0;
+    for (const key of getIncompatibleFilteredScanStorageKeys()) {
+      if (GM_getValue(key, null) === null) continue;
+      GM_deleteValue(key);
+      removed += 1;
+    }
+    if (removed > 0) {
+      lifecycleLog('removed incompatible saved scan cache', {
+        expectedVersion: FILTERED_SCAN_VERSION,
+        removedEntries: removed
+      });
+    }
+  }
+
+  function isValidFilteredScan(scan) {
+    const isNullableNumber = (value) =>
+      value === null || (typeof value === 'number' && Number.isFinite(value));
+    return Boolean(
+      scan?.version === FILTERED_SCAN_VERSION &&
+      Number.isInteger(scan.pageCount) &&
+      scan.pageCount > 0 &&
+      Array.isArray(scan.rows) &&
+      Array.isArray(scan.rowData) &&
+      scan.rowData.length === scan.rows.length &&
+      scan.rows.every((html) => typeof html === 'string' && html.trim() !== '') &&
+      scan.rowData.every(
+        (data) =>
+          data &&
+          typeof data === 'object' &&
+          !Array.isArray(data) &&
+          isNullableNumber(data.bounty) &&
+          isNullableNumber(data.bountyPerGib) &&
+          typeof data.metadata === 'string' &&
+          Number.isInteger(data.originalIndex) &&
+          data.originalIndex >= 0 &&
+          typeof data.seeding === 'boolean' &&
+          isNullableNumber(data.sizeGiB) &&
+          typeof data.torrentId === 'string' &&
+          /^\d+$/.test(data.torrentId) &&
+          typeof data.trumpable === 'boolean' &&
+          typeof data.zeroSeed === 'boolean'
+      )
+    );
+  }
+
+  function discardFilteredScanCache(reason, details = {}) {
+    GM_deleteValue(FILTERED_SCAN_STORAGE_KEY);
+    filteredScanCachedRaw = null;
+    filteredScanCachedValue = null;
+    lifecycleLog('removed incompatible saved scan cache', {
+      expectedVersion: FILTERED_SCAN_VERSION,
+      reason,
+      ...details
+    });
+  }
+
+  function loadFilteredScan() {
+    removeLegacyFilteredScanCache();
+    const raw = GM_getValue(FILTERED_SCAN_STORAGE_KEY, null);
+    if (raw === filteredScanCachedRaw) return filteredScanCachedValue;
+    if (!raw) {
+      filteredScanCachedRaw = raw;
+      filteredScanCachedValue = null;
+      return null;
+    }
+    const startedAt = performanceNow();
+    try {
+      const scan = decodeCacheValue(raw);
+      if (!isValidFilteredScan(scan)) {
+        discardFilteredScanCache(
+          scan?.version === FILTERED_SCAN_VERSION ? 'schema mismatch' : 'version mismatch',
+          { foundVersion: scan?.version ?? null }
+        );
+        return null;
+      }
+      filteredScanCachedRaw = raw;
+      filteredScanCachedValue = scan;
+      lifecycleLog('saved scan decoded', {
+        durationMs: elapsedMilliseconds(startedAt),
+        encodedCharacters: typeof raw === 'string' ? raw.length : 0,
+        rows: scan.rows.length,
+        version: scan.version
+      });
+      return filteredScanCachedValue;
+    } catch (error) {
+      GM_deleteValue(FILTERED_SCAN_STORAGE_KEY);
+      filteredScanCachedRaw = null;
+      filteredScanCachedValue = null;
+      console.warn(`[${SCRIPT_PREFIX}] removed unreadable saved scan cache`, error);
+      return null;
+    }
+  }
+
+  function saveFilteredScan(scan) {
+    if (!isValidFilteredScan(scan)) {
+      throw new TypeError(`Filtered adoption scans must use version ${FILTERED_SCAN_VERSION}.`);
+    }
+    const startedAt = performanceNow();
+    const encoded = encodeCacheValue(scan);
+    const previous = GM_getValue(FILTERED_SCAN_STORAGE_KEY, null);
+    try {
+      GM_setValue(FILTERED_SCAN_STORAGE_KEY, encoded);
+      if (GM_getValue(FILTERED_SCAN_STORAGE_KEY, null) !== encoded) {
+        throw new Error('The filtered adoption scan could not be verified after saving.');
+      }
+      filteredScanCachedRaw = encoded;
+      filteredScanCachedValue = scan;
+      lifecycleLog('saved scan persisted', {
+        durationMs: elapsedMilliseconds(startedAt),
+        encodedCharacters: encoded.length,
+        rows: scan.rows.length,
+        version: scan.version
+      });
+    } catch (error) {
+      if (previous === null) {
+        GM_deleteValue(FILTERED_SCAN_STORAGE_KEY);
+      } else {
+        GM_setValue(FILTERED_SCAN_STORAGE_KEY, previous);
+      }
+      filteredScanCachedRaw = undefined;
+      filteredScanCachedValue = null;
+      throw error;
+    }
+  }
+
+  function isFilteredAdoptionView() {
+    return new URL(location.href).searchParams.get(FILTERED_VIEW_PARAM) === '1';
+  }
+
+  function exitFilteredAdoptionView() {
+    const url = new URL(location.href);
+    url.searchParams.delete(FILTERED_VIEW_PARAM);
+    history.replaceState(history.state, '', url);
+    lifecycleLog('filtered page initialization aborted', {
+      reason: 'saved scan unavailable or invalid'
+    });
+  }
+
+  function isAdoptionListingView() {
+    return new URL(location.href).searchParams.get('type') === 'adoption';
+  }
+
+  function isAdoptionReadyView() {
+    return new URL(location.href).searchParams.get(ADOPTION_READY_PARAM) === '1';
+  }
+
+  function createAdoptionReadyMarker(job) {
+    const torrentId = String(job?.torrentId || '');
+    const groupId = String(job?.groupId || '');
+    const filename = String(job?.filename || '').trim();
+    if (!/^\d+$/.test(torrentId) || !/^\d+$/.test(groupId) || !filename) return '';
+    const token = String(job?.adoptionReadyToken || '') || globalThis.crypto?.randomUUID?.();
+    if (!token) return '';
+    const createdAt = Date.now();
+    GM_setValue(
+      `${ADOPTION_READY_TOKEN_STORAGE_PREFIX}${token}`,
+      JSON.stringify({
+        version: 1,
+        token,
+        torrentId,
+        groupId,
+        filename,
+        createdAt,
+        expiresAt: createdAt + ADOPTION_READY_TOKEN_TTL_MS
+      })
+    );
+    job.adoptionReadyToken = token;
+    return token;
+  }
+
+  function readAdoptionReadyMarker(consumePending = false) {
+    const url = new URL(location.href);
+    const token = url.searchParams.get(ADOPTION_READY_TOKEN_PARAM) || '';
+    const torrentId = url.searchParams.get('torrentid') || '';
+    const groupId = url.searchParams.get('id') || '';
+    if (!token || !/^\d+$/.test(torrentId) || !/^\d+$/.test(groupId)) {
+      return { ok: true, marker: null };
+    }
+    const key = `${ADOPTION_READY_TOKEN_STORAGE_PREFIX}${token}`;
+    let raw;
+    try {
+      raw = GM_getValue(key, null);
+    } catch (error) {
+      debugLog('auto qui adoption-ready marker read failed', { token, error });
+      return { ok: false, marker: null };
+    }
+    if (!raw) return { ok: true, marker: null };
+    let marker;
+    try {
+      marker = JSON.parse(raw);
+    } catch (error) {
+      debugLog('auto qui adoption-ready marker parse failed', { token, error });
+      return { ok: true, marker: null };
+    }
+    const valid =
+      marker?.version === 1 &&
+      marker.token === token &&
+      marker.torrentId === torrentId &&
+      marker.groupId === groupId &&
+      typeof marker.filename === 'string' &&
+      marker.filename.trim() &&
+      (marker.state === undefined ||
+        (marker.state === 'adopted' && isAdoptionReadyDispatchConfirmed())) &&
+      Number(marker.expiresAt) >= Date.now();
+    if (!valid) {
+      if (Number(marker?.expiresAt) < Date.now()) {
+        try {
+          GM_deleteValue(key);
+        } catch (error) {
+          debugLog('expired auto qui adoption-ready marker cleanup failed', { token, error });
+        }
+      }
+      return { ok: true, marker: null };
+    }
+    if (marker.state === 'adopted' || !consumePending) return { ok: true, marker };
+    try {
+      GM_deleteValue(key);
+    } catch (error) {
+      debugLog('auto qui adoption-ready marker consumption failed', { token, error });
+      return { ok: false, marker: null };
+    }
+    return { ok: true, marker };
+  }
+
+  function consumeAdoptionReadyMarker() {
+    const read = readAdoptionReadyMarker(true);
+    return read.ok ? read.marker : null;
+  }
+
+  function persistAdoptedReadyMarker(readyMarker) {
+    const url = new URL(location.href);
+    const token = String(readyMarker?.token || '');
+    const torrentId = String(readyMarker?.torrentId || url.searchParams.get('torrentid') || '');
+    const groupId = String(readyMarker?.groupId || url.searchParams.get('id') || '');
+    const filename = String(readyMarker?.filename || '').trim();
+    if (!token || !/^\d+$/.test(torrentId) || !/^\d+$/.test(groupId) || !filename) return false;
+
+    const adoptedAt = Date.now();
+    try {
+      GM_setValue(
+        `${ADOPTION_READY_TOKEN_STORAGE_PREFIX}${token}`,
+        JSON.stringify({
+          version: 1,
+          token,
+          torrentId,
+          groupId,
+          filename,
+          state: 'adopted',
+          adoptedAt,
+          createdAt: Number(readyMarker?.createdAt) || adoptedAt,
+          expiresAt: adoptedAt + ADOPTION_READY_TOKEN_TTL_MS
+        })
+      );
+      return true;
+    } catch (error) {
+      debugLog('adopted marker persistence failed', { token, torrentId, groupId, error });
+      return false;
+    }
+  }
+
+  function deleteAdoptionReadyMarker(token, context) {
+    if (!token) return false;
+    try {
+      GM_deleteValue(`${ADOPTION_READY_TOKEN_STORAGE_PREFIX}${token}`);
+      return true;
+    } catch (error) {
+      debugLog(`${context} marker cleanup failed`, { token, error });
+      return false;
+    }
+  }
+
+  function rollbackAdoptedReadyMarker(readyMarker, context) {
+    const token = String(readyMarker?.token || '');
+    if (deleteAdoptionReadyMarker(token, context)) return true;
+    try {
+      GM_setValue(
+        `${ADOPTION_READY_TOKEN_STORAGE_PREFIX}${token}`,
+        JSON.stringify({
+          version: 1,
+          token,
+          state: 'failed',
+          expiresAt: Date.now() + ADOPTION_READY_TOKEN_TTL_MS
+        })
+      );
+      return true;
+    } catch (error) {
+      debugLog(`${context} marker invalidation failed`, { token, error });
+      return false;
+    }
+  }
+
+  function clearAdoptionReadyUrlParams() {
+    if (typeof globalThis.history?.replaceState !== 'function') return false;
+    const url = new URL(location.href);
+    url.searchParams.delete(ADOPTION_READY_PARAM);
+    url.searchParams.delete(ADOPTION_READY_TOKEN_PARAM);
+    url.searchParams.delete(ADOPTION_READY_DISPATCHED_PARAM);
+    url.searchParams.delete('ant_adoption_source');
+    try {
+      globalThis.history.replaceState(globalThis.history.state, '', url.toString());
+      return true;
+    } catch (error) {
+      debugLog('adoption-ready URL cleanup failed', { error });
+      return false;
+    }
+  }
+
+  function setAdoptionReadyDispatchConfirmed(confirmed) {
+    if (typeof globalThis.history?.replaceState !== 'function') return false;
+    const url = new URL(location.href);
+    if (confirmed) {
+      url.searchParams.set(ADOPTION_READY_DISPATCHED_PARAM, '1');
+    } else {
+      url.searchParams.delete(ADOPTION_READY_DISPATCHED_PARAM);
+    }
+    try {
+      globalThis.history.replaceState(globalThis.history.state, '', url.toString());
+      return true;
+    } catch (error) {
+      debugLog('adoption-ready dispatch URL update failed', { confirmed, error });
+      return false;
+    }
+  }
+
+  function isAdoptionReadyDispatchConfirmed() {
+    return new URL(location.href).searchParams.get(ADOPTION_READY_DISPATCHED_PARAM) === '1';
+  }
+
+  function readAdoptionReadyFlowRecord() {
+    try {
+      const raw = GM_getValue(ADOPTION_READY_FLOW_STORAGE_KEY, null);
+      if (!raw) return { ok: true, flow: null };
+      const flow = JSON.parse(raw);
+      const valid =
+        flow?.version === 1 &&
+        typeof flow.token === 'string' &&
+        flow.token &&
+        Number.isFinite(Number(flow.expiresAt)) &&
+        (flow.handlingDeadlineAt === undefined || Number.isFinite(Number(flow.handlingDeadlineAt)));
+      if (!valid) {
+        debugLog('adoption-ready flow record is invalid');
+        return { ok: false, flow: null };
+      }
+      return { ok: true, flow };
+    } catch (error) {
+      debugLog('adoption-ready flow read failed', { error });
+      return { ok: false, flow: null };
+    }
+  }
+
+  function getAdoptionReadyFlowDeadline(flow) {
+    const explicitDeadline = Number(flow?.handlingDeadlineAt);
+    if (Number.isFinite(explicitDeadline)) return explicitDeadline;
+    const claimedAt = Number(flow?.claimedAt);
+    if (Number.isFinite(claimedAt)) return claimedAt + ADOPTION_READY_HANDLING_TIMEOUT_MS;
+    return Number(flow?.expiresAt);
+  }
+
+  function isAdoptionReadyFlowActive(flow, now = Date.now()) {
+    return Number(flow?.expiresAt) > now && Number(getAdoptionReadyFlowDeadline(flow)) > now;
+  }
+
+  function getActiveAdoptionReadyFlow() {
+    const result = readAdoptionReadyFlowRecord();
+    if (!result.ok || !isAdoptionReadyFlowActive(result.flow)) return null;
+    return result.flow;
+  }
+
+  function readAdoptionReadyFlowOwnership(token) {
+    const read = readAdoptionReadyFlowRecord();
+    if (!read.ok) return { ok: false, owns: false, flow: null };
+    const flow = isAdoptionReadyFlowActive(read.flow) ? read.flow : null;
+    return {
+      ok: true,
+      owns: Boolean(token) && flow?.token === token,
+      flow
+    };
+  }
+
+  function ownsAdoptionReadyFlow(token) {
+    const ownership = readAdoptionReadyFlowOwnership(token);
+    return ownership.ok && ownership.owns;
+  }
+
+  async function withAdoptionReadyFlowLock(callback) {
+    const locks = globalThis.navigator?.locks;
+    if (typeof locks?.request !== 'function') {
+      debugLog('adoption-ready flow lock unavailable');
+      return false;
+    }
+    try {
+      return await locks.request(ADOPTION_READY_FLOW_LOCK_NAME, { mode: 'exclusive' }, callback);
+    } catch (error) {
+      debugLog('adoption-ready flow lock failed', { error });
+      return false;
+    }
+  }
+
+  async function claimAdoptionReadyFlow(job) {
+    const token = String(job?.adoptionReadyToken || '');
+    if (!token) return false;
+    return withAdoptionReadyFlowLock(() => {
+      const read = readAdoptionReadyFlowRecord();
+      if (!read.ok) return false;
+      const now = Date.now();
+      const active = isAdoptionReadyFlowActive(read.flow, now) ? read.flow : null;
+      if (active && active.token !== token) return false;
+      if (
+        read.flow?.token === token &&
+        Number.isFinite(Number(read.flow.handlingDeadlineAt)) &&
+        Number(read.flow.handlingDeadlineAt) <= now
+      ) {
+        return false;
+      }
+      const claimedAt = Number(active?.claimedAt) || now;
+      const handlingDeadlineAt =
+        Number(active?.handlingDeadlineAt) || claimedAt + ADOPTION_READY_HANDLING_TIMEOUT_MS;
+      const flow = {
+        version: 1,
+        token,
+        torrentId: String(job.torrentId || ''),
+        filename: String(job.filename || ''),
+        claimedAt,
+        handlingDeadlineAt,
+        expiresAt: Math.min(now + ADOPTION_READY_FLOW_LEASE_MS, handlingDeadlineAt)
+      };
+      try {
+        GM_setValue(ADOPTION_READY_FLOW_STORAGE_KEY, JSON.stringify(flow));
+      } catch (error) {
+        debugLog('adoption-ready flow claim write failed', { token, error });
+        return false;
+      }
+      const stored = readAdoptionReadyFlowRecord();
+      return stored.ok && stored.flow?.token === token && isAdoptionReadyFlowActive(stored.flow);
+    });
+  }
+
+  async function releaseAdoptionReadyFlow(token) {
+    if (!token) return false;
+    return withAdoptionReadyFlowLock(() => {
+      const read = readAdoptionReadyFlowRecord();
+      if (!read.ok) return false;
+      if (!read.flow) return true;
+      if (read.flow.token !== token) return false;
+      try {
+        GM_deleteValue(ADOPTION_READY_FLOW_STORAGE_KEY);
+        return true;
+      } catch (error) {
+        debugLog('adoption-ready flow release failed', { token, error });
+        return false;
+      }
+    });
+  }
+
+  async function releaseAdoptionReadyFlowWithRetry(token) {
+    if (await releaseAdoptionReadyFlow(token)) return true;
+    const read = readAdoptionReadyFlowRecord();
+    if (!read.ok || (read.flow?.token === token && isAdoptionReadyFlowActive(read.flow))) {
+      setTimeout(() => releaseAdoptionReadyFlowWithRetry(token), ADOPTION_READY_FLOW_RETRY_MS);
+    }
+    return false;
+  }
+
+  function addAdoptionReadyNotice() {
+    if (!isAdoptionReadyView()) return null;
+    const existing = document.querySelector('#ant-adoption-ready-notice');
+    if (existing) return existing;
+    const source = new URL(location.href).searchParams.get('ant_adoption_source');
+    const notice = document.createElement('div');
+    notice.id = 'ant-adoption-ready-notice';
+    notice.dataset.state = 'ready';
+    notice.textContent = source
+      ? `READY FOR ADOPTION — the automatically grabbed ${source} torrent has completed in qui.`
+      : 'READY FOR ADOPTION — the automatically grabbed matching torrent has completed in qui.';
+    const target =
+      document.querySelector('.thin > h2, #content > h2, h2') ||
+      document.querySelector('.thin, #content, body');
+    target?.parentNode?.insertBefore(notice, target.nextSibling);
+    document.title = `READY FOR ADOPTION - ${document.title}`;
+    return notice;
+  }
+
+  function isquiItemSeeding(item) {
+    return qui_SEEDING_STATES.has(normalizeTorrentState(item?.state));
+  }
+
+  function isquiItemReadyForAdoption(item) {
+    const progress = toPercent(item?.progress);
+    return isquiItemSeeding(item) && progress !== null && progress >= 100;
+  }
+
+  function isMatchingSeedingAntquiItem(item, readyMarker) {
+    return (
+      Boolean(readyMarker?.filename) &&
+      isAntquiItem(item) &&
+      quiItemMatchesFilename(item, readyMarker.filename) &&
+      isquiItemReadyForAdoption(item)
+    );
+  }
+
+  async function findVerifiedAntquiItem(
+    items,
+    filename,
+    predicate = () => true,
+    shouldContinue = () => true
+  ) {
+    const config = getquiConfig();
+    for (const item of items) {
+      if (!shouldContinue()) return null;
+      if (!isAntquiItem(item) || !item.hash || !predicate(item)) continue;
+      try {
+        const files = await queryquiFiles(config, item.hash, shouldContinue);
+        if (!shouldContinue()) return null;
+        const verified = { ...item, raw: { ...item.raw, files } };
+        if (quiItemMatchesFilename(verified, filename)) return verified;
+      } catch (error) {
+        debugLog('qui ANT file verification failed', { hash: item.hash, error });
+      }
+    }
+    return null;
+  }
+
+  function findVerifiedSeedingAntquiItem(items, readyMarker, shouldContinue) {
+    return findVerifiedAntquiItem(
+      items,
+      readyMarker?.filename,
+      isquiItemReadyForAdoption,
+      shouldContinue
+    );
+  }
+
+  function findAdoptionButton(torrentId) {
+    const detailsRow = document.getElementById(`torrent_${torrentId}`);
+    const adoptHandlerPattern = new RegExp(
+      `^\\s*return\\s+adopt\\(\\s*(?:'${torrentId}'|"${torrentId}")\\s*\\)\\s*;?\\s*$`
+    );
+    return [...(detailsRow?.querySelectorAll('button') || [])].find((candidate) => {
+      const handler = candidate.getAttribute('onclick') || '';
+      return adoptHandlerPattern.test(handler);
+    });
+  }
+
+  function watchAdoptionReadyPageHandling(
+    token,
+    handlingDeadlineAt = Date.now() + ADOPTION_READY_HANDLING_TIMEOUT_MS
+  ) {
+    if (!token) return;
+    adoptionReadyFlowStops.get(token)?.();
+    let stopped = false;
+    const stop = () => {
+      stopped = true;
+      if (adoptionReadyFlowStops.get(token) === stop) adoptionReadyFlowStops.delete(token);
+    };
+    adoptionReadyFlowStops.set(token, stop);
+    const scheduleRenewal = (delay) => {
+      if (!stopped) setTimeout(() => renewFlow(), delay);
+    };
+    const renewFlow = async () => {
+      if (stopped) return;
+      const read = readAdoptionReadyFlowRecord();
+      if (!read.ok) {
+        scheduleRenewal(ADOPTION_READY_FLOW_RETRY_MS);
+        return;
+      }
+      if (!read.flow || read.flow.token !== token) return;
+      const renewed = await claimAdoptionReadyFlow({
+        adoptionReadyToken: token,
+        filename: read.flow.filename,
+        torrentId: read.flow.torrentId
+      });
+      if (stopped) return;
+      if (renewed) {
+        scheduleRenewal(ADOPTION_READY_FLOW_HEARTBEAT_MS);
+        return;
+      }
+      const afterFailure = readAdoptionReadyFlowRecord();
+      if (
+        !afterFailure.ok ||
+        (afterFailure.flow?.token === token && isAdoptionReadyFlowActive(afterFailure.flow))
+      ) {
+        scheduleRenewal(ADOPTION_READY_FLOW_RETRY_MS);
+      }
+    };
+    setTimeout(
+      () => {
+        if (stopped) return false;
+        stop();
+        return releaseAdoptionReadyFlowWithRetry(token);
+      },
+      Math.max(0, handlingDeadlineAt - Date.now())
+    );
+    scheduleRenewal(ADOPTION_READY_FLOW_HEARTBEAT_MS);
+    globalThis.addEventListener?.(
+      'pagehide',
+      () => {
+        stop();
+        void releaseAdoptionReadyFlowWithRetry(token);
+      },
+      { once: true }
+    );
+  }
+
+  function stopAdoptionReadyPageHandling(token) {
+    const stop = adoptionReadyFlowStops.get(token);
+    if (!stop) return false;
+    stop();
+    return true;
+  }
+
+  async function finishAdoptionReadyPageHandling(token) {
+    stopAdoptionReadyPageHandling(token);
+    return releaseAdoptionReadyFlowWithRetry(token);
+  }
+
+  function clickAdoptionButtonAndConfirm(button) {
+    const pageWindow = typeof unsafeWindow === 'undefined' ? globalThis : unsafeWindow;
+    const originalConfirm = pageWindow.confirm;
+    if (button.disabled || typeof originalConfirm !== 'function') return false;
+    let confirmReplaced = false;
+    try {
+      pageWindow.confirm = () => true;
+      confirmReplaced = pageWindow.confirm !== originalConfirm;
+      if (!confirmReplaced) return false;
+      button.click();
+      return true;
+    } finally {
+      if (confirmReplaced) pageWindow.confirm = originalConfirm;
+    }
+  }
+
+  function maybeAutoTriggerAdoption(readyMarker, quiItem) {
+    if (!GM_config.get('qui_auto_trigger_adoption')) return { state: 'disabled' };
+    if (readyMarker?.state === 'adopted') {
+      return isAdoptionReadyDispatchConfirmed()
+        ? { state: 'adopted' }
+        : {
+            state: 'not-triggered',
+            message: 'Auto-adoption stopped: the adoption click was not confirmed as dispatched.'
+          };
+    }
+    const torrentId = new URL(location.href).searchParams.get('torrentid') || '';
+    if (!readyMarker || readyMarker.torrentId !== torrentId) {
+      return {
+        state: 'not-triggered',
+        message: 'Auto-adoption skipped: no valid completion marker.'
+      };
+    }
+    if (!/^\d+$/.test(torrentId)) {
+      return { state: 'not-triggered', message: 'Auto-adoption skipped: missing torrent id.' };
+    }
+    if (!readyMarker.token) {
+      return {
+        state: 'not-triggered',
+        message: 'Auto-adoption stopped: this page no longer owns the active adoption flow.'
+      };
+    }
+    const initialOwnership = readAdoptionReadyFlowOwnership(readyMarker.token);
+    if (!initialOwnership.ok) {
+      return {
+        state: 'waiting',
+        message: 'Waiting for the active adoption flow state to become available.'
+      };
+    }
+    if (!initialOwnership.owns) {
+      return {
+        state: 'not-triggered',
+        message: 'Auto-adoption stopped: this page no longer owns the active adoption flow.'
+      };
+    }
+    if (!isMatchingSeedingAntquiItem(quiItem, readyMarker)) {
+      return {
+        state: 'not-triggered',
+        message:
+          'Auto-adoption skipped: the matching ANT torrent is not both 100% complete and seeding in qui.'
+      };
+    }
+
+    const button = findAdoptionButton(torrentId);
+    if (!button) {
+      return {
+        state: 'not-triggered',
+        message: 'Auto-adoption skipped: Reserve for adoption control not found.'
+      };
+    }
+    const finalOwnership = readAdoptionReadyFlowOwnership(readyMarker.token);
+    if (!finalOwnership.ok) {
+      return {
+        state: 'waiting',
+        message: 'Waiting for the active adoption flow state to become available.'
+      };
+    }
+    if (!finalOwnership.owns) {
+      return {
+        state: 'not-triggered',
+        message: 'Auto-adoption stopped: this page no longer owns the active adoption flow.'
+      };
+    }
+
+    if (!persistAdoptedReadyMarker(readyMarker)) {
+      return {
+        state: 'not-triggered',
+        message:
+          'Auto-adoption skipped: the adopted result could not be preserved across the ANT refresh.'
+      };
+    }
+    if (!setAdoptionReadyDispatchConfirmed(true)) {
+      rollbackAdoptedReadyMarker(readyMarker, 'undispatched adopted');
+      return {
+        state: 'not-triggered',
+        message: 'Auto-adoption skipped: the click dispatch could not be recorded safely.'
+      };
+    }
+
+    try {
+      if (!clickAdoptionButtonAndConfirm(button)) {
+        const rolledBack = rollbackAdoptedReadyMarker(readyMarker, 'unconfirmed adopted');
+        const dispatchCleared = setAdoptionReadyDispatchConfirmed(false);
+        if (!rolledBack && !dispatchCleared) clearAdoptionReadyUrlParams();
+        return {
+          state: 'not-triggered',
+          message: 'Auto-adoption skipped: the confirmation prompt could not be accepted.'
+        };
+      }
+      return { state: 'adopted' };
+    } catch (error) {
+      const rolledBack = rollbackAdoptedReadyMarker(readyMarker, 'failed adopted');
+      const dispatchCleared = setAdoptionReadyDispatchConfirmed(false);
+      if (!rolledBack && !dispatchCleared) clearAdoptionReadyUrlParams();
+      debugLog('automatic ANT adoption failed', { torrentId, error });
+      return {
+        state: 'not-triggered',
+        message: 'Automatic adoption failed; use the button below.'
+      };
+    }
+  }
+
+  async function finishAdoptionReadyForManualMode(readyMarker, notice) {
+    if (GM_config.get('qui_auto_trigger_adoption')) return null;
+    const result = {
+      state: 'not-triggered',
+      message: 'Automatic adoption was disabled; use the adoption control below.'
+    };
+    updateAdoptionReadyNotice(notice, result);
+    if (readyMarker?.token) await finishAdoptionReadyPageHandling(readyMarker.token);
+    return result;
+  }
+
+  async function scheduleAdoptionReadyquiPoll(readyMarker, notice, startedAt, deadlineAt, message) {
+    const remainingMs = deadlineAt - Date.now();
+    if (remainingMs <= 0) {
+      const result = {
+        state: 'not-triggered',
+        message:
+          'Timed out waiting for the matching ANT torrent to reach 100% and seed in qui; this page remains open for manual handling.'
+      };
+      updateAdoptionReadyNotice(notice, result);
+      await finishAdoptionReadyPageHandling(readyMarker?.token);
+      return result;
+    }
+
+    const result = {
+      state: 'waiting',
+      message:
+        message ||
+        `Waiting for the matching ANT torrent to reach 100% and seed in qui (${Math.ceil(remainingMs / 1000)} seconds remaining).`
+    };
+    updateAdoptionReadyNotice(notice, result);
+    const completedAt = Date.now();
+    const elapsedMs = Math.max(0, completedAt - startedAt);
+    const nextPollAt = Math.min(
+      startedAt +
+        (Math.floor(elapsedMs / ADOPTION_READY_QUI_POLL_INTERVAL_MS) + 1) *
+          ADOPTION_READY_QUI_POLL_INTERVAL_MS,
+      deadlineAt
+    );
+    setTimeout(
+      () => pollAdoptionReadyForqui(readyMarker, notice, startedAt, deadlineAt),
+      Math.max(0, nextPollAt - completedAt)
+    );
+    return result;
+  }
+
+  async function pollAdoptionReadyForqui(readyMarker, notice, startedAt, deadlineAt) {
+    const manualResult = await finishAdoptionReadyForManualMode(readyMarker, notice);
+    if (manualResult) return manualResult;
+    if (!readyMarker?.filename) {
+      const result = {
+        state: 'not-triggered',
+        message: 'Auto-adoption skipped: no valid completion marker or ANT filename.'
+      };
+      updateAdoptionReadyNotice(notice, result);
+      if (readyMarker?.token) await finishAdoptionReadyPageHandling(readyMarker.token);
+      return result;
+    }
+    if (!readyMarker.token) {
+      const result = {
+        state: 'not-triggered',
+        message: 'Auto-adoption stopped: this page no longer owns the active adoption flow.'
+      };
+      updateAdoptionReadyNotice(notice, result);
+      await finishAdoptionReadyPageHandling(readyMarker.token);
+      return result;
+    }
+    const initialOwnership = readAdoptionReadyFlowOwnership(readyMarker.token);
+    if (!initialOwnership.ok) {
+      return scheduleAdoptionReadyquiPoll(
+        readyMarker,
+        notice,
+        startedAt,
+        deadlineAt,
+        'Waiting for the active adoption flow state to become available.'
+      );
+    }
+    if (!initialOwnership.owns) {
+      const result = {
+        state: 'not-triggered',
+        message: 'Auto-adoption stopped: this page no longer owns the active adoption flow.'
+      };
+      updateAdoptionReadyNotice(notice, result);
+      await finishAdoptionReadyPageHandling(readyMarker.token);
+      return result;
+    }
+    const pollStartedAt = Date.now();
+    if (pollStartedAt > deadlineAt) {
+      const result = {
+        state: 'not-triggered',
+        message:
+          'Timed out waiting for the matching ANT torrent to reach 100% and seed in qui; this page remains open for manual handling.'
+      };
+      updateAdoptionReadyNotice(notice, result);
+      await finishAdoptionReadyPageHandling(readyMarker.token);
+      return result;
+    }
+
+    let candidates = [];
+    const shouldContinue = () => {
+      if (!GM_config.get('qui_auto_trigger_adoption')) return false;
+      const ownership = readAdoptionReadyFlowOwnership(readyMarker.token);
+      return !ownership.ok || ownership.owns;
+    };
+    try {
+      candidates = await searchAntquiCandidates('', shouldContinue);
+    } catch (error) {
+      debugLog('adoption-ready qui poll failed', {
+        filename: readyMarker.filename,
+        error
+      });
+    }
+
+    const disabledAfterSearch = await finishAdoptionReadyForManualMode(readyMarker, notice);
+    if (disabledAfterSearch) return disabledAfterSearch;
+    const ownershipAfterSearch = readAdoptionReadyFlowOwnership(readyMarker.token);
+    if (!ownershipAfterSearch.ok) {
+      return scheduleAdoptionReadyquiPoll(
+        readyMarker,
+        notice,
+        startedAt,
+        deadlineAt,
+        'Waiting for the active adoption flow state to become available.'
+      );
+    }
+    if (!ownershipAfterSearch.owns) {
+      const result = {
+        state: 'not-triggered',
+        message: 'Auto-adoption stopped: this page no longer owns the active adoption flow.'
+      };
+      updateAdoptionReadyNotice(notice, result);
+      await finishAdoptionReadyPageHandling(readyMarker.token);
+      return result;
+    }
+    const quiItem = await findVerifiedSeedingAntquiItem(candidates, readyMarker, shouldContinue);
+    const disabledAfterVerification = await finishAdoptionReadyForManualMode(readyMarker, notice);
+    if (disabledAfterVerification) return disabledAfterVerification;
+    const ownershipAfterVerification = readAdoptionReadyFlowOwnership(readyMarker.token);
+    if (!ownershipAfterVerification.ok) {
+      return scheduleAdoptionReadyquiPoll(
+        readyMarker,
+        notice,
+        startedAt,
+        deadlineAt,
+        'Waiting for the active adoption flow state to become available.'
+      );
+    }
+    if (!ownershipAfterVerification.owns) {
+      const result = {
+        state: 'not-triggered',
+        message: 'Auto-adoption stopped: this page no longer owns the active adoption flow.'
+      };
+      updateAdoptionReadyNotice(notice, result);
+      await finishAdoptionReadyPageHandling(readyMarker.token);
+      return result;
+    }
+    if (quiItem) {
+      const result = maybeAutoTriggerAdoption(readyMarker, quiItem);
+      if (result.state === 'waiting') {
+        return scheduleAdoptionReadyquiPoll(
+          readyMarker,
+          notice,
+          startedAt,
+          deadlineAt,
+          result.message
+        );
+      }
+      updateAdoptionReadyNotice(notice, result);
+      await finishAdoptionReadyPageHandling(readyMarker.token);
+      return result;
+    }
+    return scheduleAdoptionReadyquiPoll(readyMarker, notice, startedAt, deadlineAt);
+  }
+
+  function startAdoptionReadyquiPolling(readyMarker, notice, startedAt = Date.now()) {
+    const activeFlow = getActiveAdoptionReadyFlow();
+    const flowDeadlineAt =
+      activeFlow?.token === readyMarker?.token
+        ? getAdoptionReadyFlowDeadline(activeFlow)
+        : Number.POSITIVE_INFINITY;
+    return pollAdoptionReadyForqui(
+      readyMarker,
+      notice,
+      startedAt,
+      Math.min(startedAt + ADOPTION_READY_QUI_POLL_DURATION_MS, flowDeadlineAt)
+    );
+  }
+
+  function retryAdoptionReadyInitialization(flowToken, notice, startedAt) {
+    const deadlineAt = startedAt + ADOPTION_READY_HANDLING_TIMEOUT_MS;
+    const remainingMs = deadlineAt - Date.now();
+    if (remainingMs <= 0) {
+      updateAdoptionReadyNotice(notice, {
+        state: 'not-triggered',
+        message:
+          'Timed out waiting for the active adoption flow state; this page remains open for manual handling.'
+      });
+      void finishAdoptionReadyPageHandling(flowToken);
+      return false;
+    }
+    updateAdoptionReadyNotice(notice, {
+      state: 'waiting',
+      message: 'Waiting for the active adoption flow state to become available.'
+    });
+    setTimeout(
+      () => initializeAdoptionReadyView(startedAt),
+      Math.min(ADOPTION_READY_FLOW_RETRY_MS, remainingMs)
+    );
+    return true;
+  }
+
+  function initializeAdoptionReadyView(initializationStartedAt = Date.now()) {
+    const flowToken = new URL(location.href).searchParams.get(ADOPTION_READY_TOKEN_PARAM) || '';
+    const markerRead = readAdoptionReadyMarker(false);
+    const readyMarker = markerRead.marker;
+    const notice = addAdoptionReadyNotice();
+    if (!markerRead.ok) {
+      if (!GM_config.get('qui_auto_trigger_adoption')) {
+        void finishAdoptionReadyPageHandling(flowToken);
+        updateAdoptionReadyNotice(notice, {
+          state: 'not-triggered',
+          message: 'Manual adoption mode is active; use the adoption control below.'
+        });
+        return true;
+      }
+      return retryAdoptionReadyInitialization(flowToken, notice, initializationStartedAt);
+    }
+    if (readyMarker?.state === 'adopted') {
+      if (readyMarker.token === flowToken && isAdoptionReadyDispatchConfirmed()) {
+        updateAdoptionReadyNotice(notice, { state: 'adopted' });
+        if (clearAdoptionReadyUrlParams()) {
+          deleteAdoptionReadyMarker(readyMarker.token, 'adopted');
+        }
+        void finishAdoptionReadyPageHandling(flowToken);
+        return true;
+      }
+      deleteAdoptionReadyMarker(flowToken, 'undispatched adopted');
+      updateAdoptionReadyNotice(notice, {
+        state: 'not-triggered',
+        message: 'Automatic adoption stopped: the adoption click was not confirmed as dispatched.'
+      });
+      void finishAdoptionReadyPageHandling(flowToken);
+      return false;
+    }
+    if (!GM_config.get('qui_auto_trigger_adoption')) {
+      if (readyMarker?.token && readyMarker.token === flowToken) {
+        deleteAdoptionReadyMarker(flowToken, 'manual adoption-ready');
+        void finishAdoptionReadyPageHandling(flowToken);
+      }
+      updateAdoptionReadyNotice(notice, {
+        state: 'not-triggered',
+        message: 'Manual adoption mode is active; use the adoption control below.'
+      });
+      return true;
+    }
+    if (!readyMarker || readyMarker.token !== flowToken) {
+      updateAdoptionReadyNotice(notice, {
+        state: 'not-triggered',
+        message: 'Automatic adoption stopped: this page has no valid completion marker.'
+      });
+      return false;
+    }
+    const ownership = readAdoptionReadyFlowOwnership(flowToken);
+    if (!ownership.ok) {
+      return retryAdoptionReadyInitialization(flowToken, notice, initializationStartedAt);
+    }
+    if (!ownership.owns) {
+      deleteAdoptionReadyMarker(flowToken, 'unowned adoption-ready');
+      updateAdoptionReadyNotice(notice, {
+        state: 'not-triggered',
+        message: 'Automatic adoption stopped: this page does not own the active adoption flow.'
+      });
+      return false;
+    }
+    if (!deleteAdoptionReadyMarker(flowToken, 'pending adoption-ready')) {
+      updateAdoptionReadyNotice(notice, {
+        state: 'not-triggered',
+        message: 'Automatic adoption stopped: the completion marker could not be consumed.'
+      });
+      void finishAdoptionReadyPageHandling(flowToken);
+      return false;
+    }
+    const activeFlow = ownership.flow;
+    const startedAt = Date.now();
+    watchAdoptionReadyPageHandling(
+      readyMarker.token,
+      Math.min(
+        startedAt + ADOPTION_READY_HANDLING_TIMEOUT_MS,
+        getAdoptionReadyFlowDeadline(activeFlow)
+      )
+    );
+    startAdoptionReadyquiPolling(readyMarker, notice, startedAt).catch(async (error) => {
+      debugLog('adoption-ready qui polling failed', { error });
+      updateAdoptionReadyNotice(notice, {
+        state: 'not-triggered',
+        message: 'Automatic adoption failed while checking qui; use the button below.'
+      });
+      await finishAdoptionReadyPageHandling(readyMarker.token);
+    });
+    return true;
+  }
+
+  function updateAdoptionReadyNotice(notice, result) {
+    if (!notice || !result || result.state === 'disabled') return;
+    if (result.state === 'adopted') {
+      notice.dataset.state = 'adopted';
+      notice.textContent =
+        'ADOPTED — the matching torrent completed in qui and adoption was triggered.';
+      document.title = document.title.replace(/^READY FOR ADOPTION - /, 'ADOPTED - ');
+      return;
+    }
+    notice.dataset.state = 'ready';
+    notice.textContent = `READY FOR ADOPTION — ${result.message}`;
+  }
+
+  function buildAdoptionPageUrl(pageNumber, filteredView = false) {
+    const url = new URL(location.href);
+    url.searchParams.set('page', String(pageNumber));
+    if (filteredView) {
+      url.searchParams.set(FILTERED_VIEW_PARAM, '1');
+    } else {
+      url.searchParams.delete(FILTERED_VIEW_PARAM);
+    }
+    return url.toString();
+  }
+
+  function buildAdoptionScanPageUrl(pageNumber) {
+    const url = new URL(buildAdoptionPageUrl(pageNumber));
+    url.searchParams.set('order', 'Bounty');
+    url.searchParams.set('way', 'DESC');
+    return url.toString();
+  }
+
+  function parseScannedAdoptionPage(html) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const table = findAdoptionTable(doc);
+    if (!table) throw new Error('ANT response did not contain an adoption table.');
+    const sizeIndex = findAdoptionColumnIndex(table, 'size');
+    const bountyIndex = findAdoptionColumnIndex(table, 'bounty');
+    return [...table.querySelectorAll(FILTERABLE_ROW_SELECTOR)].map((row) => {
+      const torrentId = getRowTorrentId(row);
+      if (!torrentId) throw new Error('ANT adoption row did not contain a torrent download ID.');
+      const sizeGiB =
+        sizeIndex >= 0 && row.children[sizeIndex]
+          ? parseSizeToGiB(row.children[sizeIndex].textContent)
+          : null;
+      const bounty =
+        bountyIndex >= 0 && row.children[bountyIndex]
+          ? parseBounty(row.children[bountyIndex].textContent)
+          : null;
+      return {
+        bounty,
+        html: row.outerHTML,
+        metadata: getAdoptionRowMetadata(row),
+        seeding: isAdoptionRowSeeding(row),
+        sizeGiB,
+        torrentId,
+        trumpable: isTrumpableRow(row),
+        zeroSeed: row.classList?.contains('zeroseed') === true
+      };
+    });
+  }
+
+  async function scanAdoptionPages(button, untilMinimumBounty = false) {
+    const minimumBounty = getMinimumBounty();
+    if (untilMinimumBounty && minimumBounty <= 0) {
+      throw new Error('Set Minimum bounty above zero before starting a bounty-limited scan.');
+    }
+    const pageLimit = untilMinimumBounty ? MAX_SCAN_PAGES : getScanPageCount();
+    const delayMs = getScanDelayMs();
+    const rows = [];
+    let pageCount = 0;
+    let previousBounty = Number.POSITIVE_INFINITY;
+
+    try {
+      for (let index = 1; index <= pageLimit; index += 1) {
+        const progress = untilMinimumBounty
+          ? `Scanning bounty-sorted adoption page ${index}/${pageLimit}; stopping below ${minimumBounty}...`
+          : `Scanning adoption page ${index}/${pageLimit}...`;
+        if (button) button.textContent = progress;
+
+        const url = buildAdoptionScanPageUrl(index);
+        const response = await gmRequest({ method: 'GET', url });
+        if (response.status < 200 || response.status >= 300) {
+          throw new Error(`ANT page ${index} returned HTTP ${response.status}.`);
+        }
+        const pageRows = parseScannedAdoptionPage(response.responseText);
+        pageCount = index;
+
+        if (untilMinimumBounty) {
+          if (pageRows.some((entry) => entry.bounty === null)) {
+            throw new Error(`ANT page ${index} contained a row without a readable bounty.`);
+          }
+          for (const entry of pageRows) {
+            if (entry.bounty > previousBounty) {
+              throw new Error('ANT adoption results were not sorted by bounty descending.');
+            }
+            previousBounty = entry.bounty;
+          }
+          const boundary = pageRows.findIndex((entry) => entry.bounty < minimumBounty);
+          rows.push(...(boundary >= 0 ? pageRows.slice(0, boundary) : pageRows));
+          if (boundary >= 0 || pageRows.length === 0) break;
+        } else {
+          rows.push(...pageRows);
+        }
+
+        if (index < pageLimit && delayMs > 0) await sleep(delayMs);
+      }
+
+      const seen = new Set();
+      const deduplicatedRows = rows.filter((entry) => {
+        const key = entry.torrentId || entry.html;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      const scan = {
+        version: FILTERED_SCAN_VERSION,
+        scannedAt: new Date().toISOString(),
+        pageCount,
+        scanMode: untilMinimumBounty ? 'minimum-bounty' : 'page-count',
+        minimumBounty: untilMinimumBounty ? minimumBounty : 0,
+        sourceUrl: buildAdoptionScanPageUrl(1),
+        rows: deduplicatedRows.map((entry) => entry.html),
+        rowData: deduplicatedRows.map((entry, originalIndex) => ({
+          bounty: entry.bounty,
+          bountyPerGib:
+            entry.sizeGiB && entry.bounty !== null ? entry.bounty / entry.sizeGiB : null,
+          metadata: entry.metadata,
+          originalIndex,
+          seeding: entry.seeding,
+          sizeGiB: entry.sizeGiB,
+          torrentId: entry.torrentId,
+          trumpable: entry.trumpable,
+          zeroSeed: entry.zeroSeed
+        }))
+      };
+      saveFilteredScan(scan);
+      updateOpenLastScanButton();
+    } finally {
+      if (button) {
+        button.textContent = untilMinimumBounty
+          ? getBountyScanButtonText()
+          : `Scan ${getScanPageCount()} adoption pages`;
+      }
+    }
+  }
+
+  function startAdoptionScan(button, untilMinimumBounty = false) {
+    if (adoptionScanRunning) return;
+    if (untilMinimumBounty && getMinimumBounty() <= 0) {
+      alert('Set Minimum bounty above zero in Settings before starting this scan.');
+      return;
+    }
+
+    adoptionScanRunning = true;
+    updateAdoptionScanButtons();
+    return scanAdoptionPages(button, untilMinimumBounty)
+      .catch((error) => {
+        console.error('ANT adoption scan failed:', error);
+        alert(`Adoption scan failed: ${error.message || error}`);
+      })
+      .finally(() => {
+        adoptionScanRunning = false;
+        updateAdoptionScanButtons();
+      });
+  }
+
+  function openLastFilteredScan() {
+    if (adoptionScanRunning) return;
+    if (!loadFilteredScan()) {
+      alert('No saved adoption scan is available.');
+      return;
+    }
+    window.open(buildAdoptionPageUrl(1, true), '_blank');
+  }
+
+  function updateRunProgress(completed, total, message, state = 'running') {
+    const display = document.querySelector('#ant-cross-seed-progress');
+    if (!display) return;
+    const bar = display.querySelector('progress');
+    const text = display.querySelector('.ant-cross-seed-progress-text');
+    const safeTotal = Math.max(0, Number(total) || 0);
+    const safeCompleted = Math.min(safeTotal, Math.max(0, Number(completed) || 0));
+    display.dataset.state = state;
+    if (bar) {
+      bar.max = Math.max(1, safeTotal);
+      bar.value = safeCompleted;
+    }
+    if (text) text.textContent = message;
+  }
+
+  function updateRunProgressReadyState(visibleRows = getRows().length) {
+    const display = document.querySelector('#ant-cross-seed-progress');
+    if (!display || display.dataset.state !== 'idle') return;
+    updateRunProgress(
+      0,
+      visibleRows,
+      `Ready to process ${visibleRows} visible zero-seed row${visibleRows === 1 ? '' : 's'}.`,
+      'idle'
+    );
+  }
+
+  function addRunProgressDisplay() {
+    if (!isFilteredAdoptionView() || document.querySelector('#ant-cross-seed-progress')) return;
+    const toolbar = document.querySelector('#ant-cross-seed-toolbar');
+    if (!toolbar?.parentNode) return;
+
+    const display = document.createElement('div');
+    display.id = 'ant-cross-seed-progress';
+    display.dataset.state = 'idle';
+    display.setAttribute('role', 'status');
+    display.setAttribute('aria-live', 'polite');
+
+    const bar = document.createElement('progress');
+    bar.max = 1;
+    bar.value = 0;
+    bar.setAttribute('aria-label', 'Cross-seed processing progress');
+    const text = document.createElement('span');
+    text.className = 'ant-cross-seed-progress-text';
+    display.append(bar, text);
+    toolbar.insertAdjacentElement('afterend', display);
+  }
+
+  function getAdoptionFilterResult(data, action, regexes, state = adoptionFilterState) {
+    const bountyPerGib = Number.parseFloat(data?.bountyPerGib);
+    const bounty = Number.parseFloat(data?.bounty);
+    const sizeGiB = Number.parseFloat(data?.sizeGiB);
+    const seeding = data?.seeding === true || data?.seeding === 'true';
+    const trumpable = data?.trumpable === true || data?.trumpable === 'true';
+    const mediaMatches = regexes.map((filter) => ({
+      mode: filter.mode,
+      matches:
+        filter.mode === 'group'
+          ? filter.categories.every((regexes) =>
+              regexes.some((regex) => regex.test(data?.metadata || ''))
+            )
+          : filter.regexes.some((regex) => regex.test(data?.metadata || ''))
+    }));
+    const ignoreMatches = mediaMatches.filter((filter) => filter.mode === 'ignore');
+    const excluded =
+      mediaMatches.some((filter) => filter.mode === 'group' && filter.matches) ||
+      mediaMatches.some((filter) => filter.mode === 'only' && !filter.matches) ||
+      (ignoreMatches.length > 0 &&
+        (state.combineMediaFilters
+          ? ignoreMatches.every((filter) => filter.matches)
+          : ignoreMatches.some((filter) => filter.matches)));
+    const belowThreshold =
+      !Number.isFinite(bountyPerGib) || bountyPerGib <= state.minimumBountyPerGib;
+    const belowMinimumBounty =
+      state.minimumBounty > 0 && (!Number.isFinite(bounty) || bounty < state.minimumBounty);
+    const aboveMaximum =
+      state.maximumSizeGib > 0 && Number.isFinite(sizeGiB) && sizeGiB > state.maximumSizeGib;
+    const wrongSeedingState =
+      (state.seedingFilter === 'Seeding only' && !seeding) ||
+      (state.seedingFilter === 'Not seeding only' && seeding);
+    const hidden = state.showOnlyGrabbedRows
+      ? action !== 'grabbed'
+      : (state.hideBelowBountyThreshold && belowThreshold) ||
+        (state.hideBelowMinimumBounty && belowMinimumBounty) ||
+        (state.hideAboveMaximumSize && aboveMaximum) ||
+        (state.hideExcludedFormats && excluded) ||
+        (state.hideIgnoredRows && action === 'ignored') ||
+        (state.hideGrabbedRows && action === 'grabbed') ||
+        (state.skipTrumpable && trumpable) ||
+        wrongSeedingState;
+    return { excluded, hidden };
+  }
+
+  function partitionFilteredScanEntries(entries, actions, regexes, state = adoptionFilterState) {
+    const visibleEntries = [];
+    const hiddenEntries = [];
+    for (const entry of entries) {
+      const action = actions.get(String(entry.data.torrentId)) || '';
+      const result = getAdoptionFilterResult(entry.data, action, regexes, state);
+      (result.hidden ? hiddenEntries : visibleEntries).push(entry);
+    }
+    return { hiddenEntries, visibleEntries };
+  }
+
+  function readFilteredScanActions(rowData) {
+    const startedAt = performanceNow();
+    const actionKeys = new Set(
+      GM_listValues().filter((key) => String(key).startsWith(ACTION_STORAGE_PREFIX))
+    );
+    const actions = new Map();
+    let grabbed = 0;
+    let ignored = 0;
+    for (const data of rowData) {
+      if (!data?.torrentId || !actionKeys.has(actionStorageKey(data.torrentId))) continue;
+      const action = getTorrentAction(data.torrentId);
+      if (!action) continue;
+      actions.set(String(data.torrentId), action);
+      if (action === 'grabbed') grabbed += 1;
+      if (action === 'ignored') ignored += 1;
+    }
+    lifecycleLog('saved scan actions restored', {
+      durationMs: elapsedMilliseconds(startedAt),
+      grabbed,
+      ignored,
+      matchedActions: actions.size,
+      storedActionKeys: actionKeys.size
+    });
+    return actions;
+  }
+
+  function getSavedScanHtmlTorrentId(html) {
+    const value = String(html).trim();
+    if (!/^<tr\b[\s\S]*<\/tr>$/i.test(value)) return null;
+    if ((value.match(/<tr\b/gi) || []).length !== 1) return null;
+    if ((value.match(/<\/tr\s*>/gi) || []).length !== 1) return null;
+    const openingTag = value.match(/^<tr\b[^>]*>/i)?.[0] || '';
+    const className = openingTag.match(/\bclass\s*=\s*(['"])(.*?)\1/i)?.[2] || '';
+    const classes = new Set(className.split(/\s+/).filter(Boolean));
+    if (!classes.has('torrent') || !classes.has('torrent_row')) return null;
+
+    const torrentIds = [];
+    for (const match of value.matchAll(/<a\b[^>]*>/gi)) {
+      const href = match[0].match(/\bhref\s*=\s*(['"])(.*?)\1/i)?.[2]?.replaceAll('&amp;', '&');
+      if (!href?.includes('torrents.php?action=download')) continue;
+      const torrentId = href.match(/[?&]id=(\d+)/)?.[1];
+      if (torrentId) torrentIds.push(torrentId);
+    }
+    return torrentIds.length > 0 && new Set(torrentIds).size === 1 ? torrentIds[0] : null;
+  }
+
+  function stageFilteredScanEntries(scan) {
+    const startedAt = performanceNow();
+    const valid = scan.rows.every(
+      (html, index) => getSavedScanHtmlTorrentId(html) === String(scan.rowData[index].torrentId)
+    );
+    if (!valid) {
+      discardFilteredScanCache('row HTML mismatch', {
+        durationMs: elapsedMilliseconds(startedAt),
+        storedRows: scan.rows.length
+      });
+      return null;
+    }
+    lifecycleLog('saved scan rows validated', {
+      durationMs: elapsedMilliseconds(startedAt),
+      rows: scan.rows.length
+    });
+    return scan.rows.map((html, index) => ({ data: scan.rowData[index], html }));
+  }
+
+  function parseSavedScanRows(entries) {
+    if (entries.length === 0) return [];
+    const stagingBody = document.createElement('tbody');
+    stagingBody.insertAdjacentHTML('beforeend', entries.map((entry) => entry.html).join(''));
+    const rows = [...stagingBody.children];
+    const valid =
+      rows.length === entries.length &&
+      rows.every(
+        (row, index) =>
+          row.matches?.(FILTERABLE_ROW_SELECTOR) &&
+          getRowTorrentId(row) === String(entries[index].data.torrentId)
+      );
+    return valid ? rows : null;
+  }
+
+  function appendSavedScanRows(body, entries, rows) {
+    rows.forEach((row, index) => {
+      filteredScanRowData.set(row, entries[index].data);
+    });
+    body.append(...rows);
+    return rows;
+  }
+
+  function restoreFilteredScanRows() {
+    if (!isFilteredAdoptionView()) return false;
+    const startedAt = performanceNow();
+    const scan = loadFilteredScan();
+    if (!scan) {
+      alert('The saved adoption scan is missing or invalid.');
+      return false;
+    }
+
+    const table = findAdoptionTable();
+    if (!table) {
+      alert('Could not find the ANT adoption table for the saved scan.');
+      return false;
+    }
+
+    const header = getTableHeaderRow(table);
+    let body = table.tBodies[0];
+    if (!body) body = table.createTBody();
+    adoptionFilterState ||= getDefaultAdoptionFilterState();
+    const entries = stageFilteredScanEntries(scan);
+    if (!entries) {
+      alert('The saved adoption scan contained invalid or mismatched torrent rows.');
+      return false;
+    }
+    migrateLegacyRowProcessingCache();
+    filteredScanActions = readFilteredScanActions(scan.rowData);
+    filteredScanRowData = new WeakMap();
+    const regexes = buildMediaFilterMatchers(
+      adoptionFilterState.excludedFormats,
+      adoptionFilterState.exclusionGroups
+    );
+    const { hiddenEntries, visibleEntries: renderEntries } = partitionFilteredScanEntries(
+      entries,
+      filteredScanActions,
+      regexes
+    );
+    deferredFilteredScanRows = hiddenEntries;
+    const visibleRowsStartedAt = performanceNow();
+    const renderedRows = parseSavedScanRows(renderEntries);
+    if (!renderedRows) {
+      discardFilteredScanCache('visible row HTML parse mismatch', {
+        durationMs: elapsedMilliseconds(visibleRowsStartedAt),
+        renderedRows: renderEntries.length,
+        storedRows: scan.rows.length
+      });
+      alert('The saved adoption scan contained invalid or mismatched torrent rows.');
+      return false;
+    }
+    lifecycleLog('visible saved scan rows parsed', {
+      durationMs: elapsedMilliseconds(visibleRowsStartedAt),
+      rows: renderedRows.length
+    });
+
+    const parent = body.parentNode;
+    const nextSibling = body.nextSibling;
+    body.remove();
+    for (const tableBody of [...table.tBodies]) {
+      for (const row of [...tableBody.rows]) {
+        if (row !== header) row.remove();
+      }
+      if (tableBody !== body) tableBody.remove();
+    }
+    for (const row of [...body.rows]) {
+      if (row !== header) row.remove();
+    }
+    appendSavedScanRows(body, renderEntries, renderedRows);
+    parent?.insertBefore(body, nextSibling?.parentNode === parent ? nextSibling : null);
+    document.title = `Filtered ANT adoptions - ${document.title}`;
+    document.documentElement.dataset.antAdoptionFilteredView = '1';
+    lifecycleLog('saved scan rows restored', {
+      deferredRows: deferredFilteredScanRows.length,
+      durationMs: elapsedMilliseconds(startedAt),
+      renderedRows: renderEntries.length,
+      scannedRows: scan.rows.length
+    });
+    return true;
+  }
+
+  function hydrateDeferredFilteredScanRows() {
+    if (deferredFilteredScanRows.length === 0) return 0;
+    const startedAt = performanceNow();
+    const table = findAdoptionTable();
+    const body = table?.tBodies[0];
+    if (!table || !body) return 0;
+    const regexes = buildMediaFilterMatchers(
+      adoptionFilterState.excludedFormats,
+      adoptionFilterState.exclusionGroups
+    );
+    const { hiddenEntries, visibleEntries: entries } = partitionFilteredScanEntries(
+      deferredFilteredScanRows,
+      filteredScanActions,
+      regexes
+    );
+    deferredFilteredScanRows = hiddenEntries;
+    if (entries.length === 0) return 0;
+    const rows = parseSavedScanRows(entries);
+    if (!rows) {
+      discardFilteredScanCache('deferred row HTML parse mismatch', {
+        storedRows: entries.length
+      });
+      deferredFilteredScanRows = [];
+      return 0;
+    }
+    const parent = body.parentNode;
+    const nextSibling = body.nextSibling;
+    body.remove();
+    appendSavedScanRows(body, entries, rows);
+    parent?.insertBefore(body, nextSibling);
+    decorateAdoptionRows();
+    sortAdoptionRows(table, adoptionFilterState.sortField, adoptionFilterState.sortDirection);
+    lifecycleLog('deferred saved scan rows rendered', {
+      addedRows: entries.length,
+      durationMs: elapsedMilliseconds(startedAt),
+      remainingDeferredRows: deferredFilteredScanRows.length
+    });
+    return entries.length;
+  }
+
+  function ensureAdoptionColumns(table) {
+    const header = getTableHeaderRow(table);
+    if (!header) return;
+
+    if (!header.querySelector(`.${BOUNTY_GIB_COLUMN_CLASS}`)) {
+      const cell = document.createElement('td');
+      cell.className = `sign ${BOUNTY_GIB_COLUMN_CLASS}`;
+      const link = document.createElement('a');
+      link.href = 'javascript:void(0)';
+      link.textContent = 'Bounty / GiB';
+      cell.appendChild(link);
+      header.appendChild(cell);
+    }
+
+    if (isFilteredAdoptionView()) {
+      for (const link of header.querySelectorAll('a')) {
+        const order = new URL(link.href, location.href).searchParams.get('order');
+        const field =
+          { Name: 'Torrent', Size: 'Size', Bounty: 'Bounty', Time: 'Listing Time' }[order] ||
+          (link.textContent === 'Bounty / GiB' ? 'Bounty / GiB' : null);
+        if (!field || link.dataset.antAdoptionSort) continue;
+        link.dataset.antAdoptionSort = field;
+        link.addEventListener('click', (event) => {
+          event.preventDefault();
+          adoptionFilterState ||= getDefaultAdoptionFilterState();
+          adoptionFilterState.sortDirection =
+            adoptionFilterState.sortField === field
+              ? adoptionFilterState.sortDirection === 'Descending'
+                ? 'Ascending'
+                : 'Descending'
+              : field === 'Torrent'
+                ? 'Ascending'
+                : 'Descending';
+          adoptionFilterState.sortField = field;
+          const fieldSelect = document.querySelector('#ant-adoption-sort-field');
+          const directionSelect = document.querySelector('#ant-adoption-sort-direction');
+          if (fieldSelect) fieldSelect.value = field;
+          if (directionSelect) directionSelect.value = adoptionFilterState.sortDirection;
+          sortAdoptionRows(table, field, adoptionFilterState.sortDirection);
+        });
+      }
+    }
+
+    if (!header.querySelector(`.${ACTION_COLUMN_CLASS}`)) {
+      const cell = document.createElement('td');
+      cell.className = ACTION_COLUMN_CLASS;
+      cell.textContent = 'Action';
+      header.appendChild(cell);
+    }
+  }
+
+  function createActionCell(row, torrentId, action) {
+    const cell = document.createElement('td');
+    cell.className = ACTION_COLUMN_CLASS;
+    const select = document.createElement('select');
+    [
+      ['', '—'],
+      ['grabbed', 'Grabbed'],
+      ['ignored', 'Ignored'],
+      ['broken', 'Broken']
+    ].forEach(([value, label]) => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      select.appendChild(option);
+    });
+    select.value = action;
+    select.addEventListener('change', () => {
+      if (row.dataset.antAdoptionAction === 'broken' && select.value !== 'broken') {
+        setRowState(row, 'action updated: ready to process', '');
+      }
+      setTorrentAction(torrentId, select.value);
+      row.dataset.antAdoptionAction = select.value;
+      rescan.hidden = select.value !== 'broken';
+      applyAdoptionFilters(false);
+    });
+    cell.addEventListener('click', (event) => event.stopPropagation());
+    const rescan = document.createElement('button');
+    rescan.type = 'button';
+    rescan.className = 'ant-cross-seed-rescan-metadata';
+    rescan.textContent = 'Rescan metadata';
+    rescan.hidden = action !== 'broken';
+    rescan.addEventListener('click', () => rescanBrokenRow(row, torrentId));
+    cell.append(select, rescan);
+    return cell;
+  }
+
+  function decorateAdoptionRows() {
+    const startedAt = performanceNow();
+    let decoratedCount = 0;
+    let savedActionKeys = null;
+    document.querySelectorAll('table').forEach((table) => {
+      const headerText = getTableHeaderRow(table)?.textContent.toLowerCase() || '';
+      if (!headerText.includes('size') || !headerText.includes('bounty')) return;
+      const sizeIndex = findAdoptionColumnIndex(table, 'size');
+      const bountyIndex = findAdoptionColumnIndex(table, 'bounty');
+      const timeIndex = findAdoptionColumnIndex(table, 'listing time');
+      ensureAdoptionColumns(table);
+      table.querySelectorAll(FILTERABLE_ROW_SELECTOR).forEach((row, index) => {
+        if (row.dataset.antAdoptionDecorated === 'true') return;
+        const scanData = filteredScanRowData.get(row);
+        const torrentId = scanData?.torrentId || getRowTorrentId(row);
+        if (!torrentId) return;
+        const sizeGiB = scanData
+          ? scanData.sizeGiB
+          : sizeIndex >= 0 && row.children[sizeIndex]
+            ? parseSizeToGiB(row.children[sizeIndex].textContent)
+            : null;
+        const bounty = scanData
+          ? scanData.bounty
+          : bountyIndex >= 0 && row.children[bountyIndex]
+            ? parseBounty(row.children[bountyIndex].textContent)
+            : null;
+        const bountyPerGib = scanData
+          ? scanData.bountyPerGib
+          : sizeGiB && bounty !== null
+            ? bounty / sizeGiB
+            : null;
+        if (!scanData) {
+          savedActionKeys ||= new Set(
+            GM_listValues().filter((key) => String(key).startsWith(ACTION_STORAGE_PREFIX))
+          );
+        }
+        const action = scanData
+          ? filteredScanActions.get(String(torrentId)) || ''
+          : savedActionKeys.has(actionStorageKey(torrentId))
+            ? getTorrentAction(torrentId)
+            : '';
+        row.dataset.antAdoptionTorrentId = torrentId;
+        row.dataset.antAdoptionSizeGib = sizeGiB === null ? '' : String(sizeGiB);
+        row.dataset.antAdoptionBounty = bounty === null ? '' : String(bounty);
+        row.dataset.antAdoptionBountyGib = bountyPerGib === null ? '' : String(bountyPerGib);
+        row.dataset.antAdoptionOriginalIndex ||= String(scanData?.originalIndex ?? index);
+        row.dataset.antAdoptionMetadata = scanData?.metadata ?? getAdoptionRowMetadata(row);
+        row.dataset.antAdoptionSeeding = String(scanData?.seeding ?? isAdoptionRowSeeding(row));
+        row.dataset.antAdoptionTrumpable = String(scanData?.trumpable ?? isTrumpableRow(row));
+        row.dataset.antAdoptionAction = action;
+        row.dataset.antAdoptionName =
+          row
+            .querySelector('a[href*="torrents.php?id="][href*="torrentid="]')
+            ?.textContent?.trim() || '';
+        const timeCell = timeIndex >= 0 ? row.children[timeIndex] : null;
+        const timeNode = timeCell?.querySelector('time, [title]');
+        const listingTime = Date.parse(
+          timeNode?.getAttribute('datetime') ||
+            timeNode?.getAttribute('title') ||
+            timeCell?.textContent ||
+            ''
+        );
+        row.dataset.antAdoptionListingTime = Number.isFinite(listingTime)
+          ? String(listingTime)
+          : '';
+
+        if (!row.querySelector(`.${BOUNTY_GIB_COLUMN_CLASS}`)) {
+          const cell = document.createElement('td');
+          cell.className = `right ${BOUNTY_GIB_COLUMN_CLASS}`;
+          cell.dataset.sortValue = bountyPerGib === null ? '' : String(bountyPerGib);
+          cell.textContent =
+            bountyPerGib === null
+              ? '—'
+              : bountyPerGib.toLocaleString(undefined, { maximumFractionDigits: 0 });
+          row.appendChild(cell);
+        }
+        if (!row.querySelector(`.${ACTION_COLUMN_CLASS}`)) {
+          row.appendChild(createActionCell(row, torrentId, action));
+        }
+        row.dataset.antAdoptionDecorated = 'true';
+        decoratedCount += 1;
+      });
+    });
+    if (isFilteredAdoptionView() && decoratedCount > 0) {
+      lifecycleLog('adoption rows decorated', {
+        durationMs: elapsedMilliseconds(startedAt),
+        rows: decoratedCount
+      });
+    }
+  }
+
+  function sortAdoptionRows(table, field, direction) {
+    const startedAt = performanceNow();
+    const datasetField = {
+      'Bounty / GiB': 'antAdoptionBountyGib',
+      Bounty: 'antAdoptionBounty',
+      Size: 'antAdoptionSizeGib',
+      Torrent: 'antAdoptionName',
+      'Listing Time': 'antAdoptionListingTime',
+      'Scan order': 'antAdoptionOriginalIndex'
+    }[field];
+    if (!datasetField) return;
+
+    const rows = [...table.querySelectorAll(FILTERABLE_ROW_SELECTOR)].map((row, index) => ({
+      row,
+      index,
+      value:
+        field === 'Torrent'
+          ? row.dataset[datasetField] || ''
+          : Number.parseFloat(row.dataset[datasetField])
+    }));
+    const descending = field !== 'Scan order' && ['DESC', 'Descending'].includes(direction);
+    rows.sort((left, right) => {
+      const leftValid = field === 'Torrent' ? Boolean(left.value) : Number.isFinite(left.value);
+      const rightValid = field === 'Torrent' ? Boolean(right.value) : Number.isFinite(right.value);
+      if (leftValid !== rightValid) return leftValid ? -1 : 1;
+      if (!leftValid) return left.index - right.index;
+      const ascendingComparison =
+        field === 'Torrent'
+          ? left.value.localeCompare(right.value, undefined, { numeric: true, sensitivity: 'base' })
+          : left.value - right.value;
+      const comparison = descending ? -ascendingComparison : ascendingComparison;
+      return comparison || left.index - right.index;
+    });
+    const body = table.tBodies[0] || table;
+    body.append(...rows.map((entry) => entry.row));
+    for (const link of table.querySelectorAll('a[data-ant-adoption-sort]')) {
+      const label = link.dataset.antAdoptionSort;
+      link.textContent = label === field ? `${label} ${descending ? '↓' : '↑'}` : label;
+    }
+    if (isFilteredAdoptionView()) {
+      lifecycleLog('adoption rows sorted', {
+        direction,
+        durationMs: elapsedMilliseconds(startedAt),
+        field,
+        rows: rows.length
+      });
+    }
+  }
+
+  function sortAdoptionRowsByBounty(table, direction) {
+    sortAdoptionRows(table, 'Bounty / GiB', direction);
+  }
+
+  function applyDefaultAdoptionSort() {
+    adoptionFilterState ||= getDefaultAdoptionFilterState();
+    const table = findAdoptionTable();
+    if (table) {
+      sortAdoptionRows(table, adoptionFilterState.sortField, adoptionFilterState.sortDirection);
+    }
+  }
+
+  function applyAdoptionActionHighlight(row) {
+    row.classList.remove(
+      'ant-adoption-highlight',
+      'ant-adoption-highlight-excluded',
+      'ant-adoption-highlight-grabbed',
+      'ant-adoption-highlight-ignored'
+    );
+    const action = row.dataset.antAdoptionAction;
+    if (action === 'grabbed') {
+      row.classList.add('ant-adoption-highlight-grabbed');
+      return;
+    }
+    if (action === 'ignored') {
+      row.classList.add('ant-adoption-highlight-ignored');
+      return;
+    }
+  }
+
+  function applyAdoptionFilters(includeDeferredRows = true) {
+    const startedAt = performanceNow();
+    if (!adoptionFilterState) adoptionFilterState = getDefaultAdoptionFilterState();
+    const hydratedRows = includeDeferredRows ? hydrateDeferredFilteredScanRows() : 0;
+    const regexes = buildMediaFilterMatchers(
+      adoptionFilterState.excludedFormats,
+      adoptionFilterState.exclusionGroups
+    );
+    let visible = 0;
+    let visibleZeroSeed = 0;
+    const rows = [...document.querySelectorAll(FILTERABLE_ROW_SELECTOR)];
+
+    rows.forEach((row) => {
+      const bountyPerGib = Number.parseFloat(row.dataset.antAdoptionBountyGib);
+      const bounty = Number.parseFloat(row.dataset.antAdoptionBounty);
+      const sizeGiB = Number.parseFloat(row.dataset.antAdoptionSizeGib);
+      const action = row.dataset.antAdoptionAction || '';
+      const { excluded, hidden } = getAdoptionFilterResult(
+        {
+          bounty,
+          bountyPerGib,
+          metadata: row.dataset.antAdoptionMetadata || '',
+          seeding: row.dataset.antAdoptionSeeding,
+          sizeGiB,
+          trumpable: row.dataset.antAdoptionTrumpable
+        },
+        action,
+        regexes
+      );
+
+      row.hidden = hidden;
+      row.dataset.antAdoptionExcluded = String(excluded);
+      applyAdoptionActionHighlight(row);
+      if (!hidden) {
+        visible += 1;
+        if (row.classList.contains('zeroseed')) visibleZeroSeed += 1;
+      }
+    });
+
+    const status = document.querySelector('#ant-adoption-filter-status');
+    const scannedRowCount = loadFilteredScan()?.rows.length || rows.length;
+    if (status)
+      status.textContent = `Showing ${visible} of ${scannedRowCount} adoption rows (${visibleZeroSeed} with zero seeders)`;
+    updateRunProgressReadyState(visibleZeroSeed);
+    if (isFilteredAdoptionView()) {
+      lifecycleLog('adoption filters applied', {
+        durationMs: elapsedMilliseconds(startedAt),
+        evaluatedRows: rows.length,
+        hydratedRows,
+        remainingDeferredRows: deferredFilteredScanRows.length,
+        scannedRows: scannedRowCount,
+        visibleRows: visible,
+        visibleZeroSeedRows: visibleZeroSeed
+      });
+    }
+    const loadAllCachedStatuses = Boolean(GM_config.get('load_cache_status_on_page_load'));
+    if (
+      GM_config.get('use_cache') &&
+      rows.some((row) => isRowEligibleForCachedDataRestore(row, loadAllCachedStatuses))
+    ) {
+      queueCachedRowStatusesOnPageLoad().catch((error) => {
+        console.warn(`[${SCRIPT_PREFIX}] visible row cache restoration failed`, error);
+      });
+    }
+    if (isFilteredAdoptionView()) {
+      scheduleAdoptionFilterPresentationLog(startedAt, {
+        evaluatedRows: rows.length,
+        hydratedRows,
+        remainingDeferredRows: deferredFilteredScanRows.length,
+        visibleRows: visible,
+        visibleZeroSeedRows: visibleZeroSeed
+      });
+    }
+    return {
+      evaluatedRows: rows.length,
+      visibleRows: visible,
+      visibleZeroSeedRows: visibleZeroSeed
+    };
+  }
+
+  function createFilterCheckbox(container, label, stateKey) {
+    const wrapper = document.createElement('label');
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.dataset.filterState = stateKey;
+    input.checked = Boolean(adoptionFilterState[stateKey]);
+    input.addEventListener('change', () => {
+      adoptionFilterState[stateKey] = input.checked;
+      applyAdoptionFilters();
+    });
+    wrapper.append(input, document.createTextNode(` ${label}`));
+    container.appendChild(wrapper);
+    return input;
+  }
+
+  function addAdoptionFilterControls() {
+    if (document.querySelector('#ant-adoption-filter-toolbar')) return;
+    adoptionFilterState ||= getDefaultAdoptionFilterState();
+
+    const toolbar = document.createElement('details');
+    toolbar.id = 'ant-adoption-filter-toolbar';
+    toolbar.open = false;
+    const heading = document.createElement('summary');
+    heading.className = 'ant-filter-heading';
+    const title = document.createElement('span');
+    title.textContent = 'Adoption filters';
+    const status = document.createElement('span');
+    status.id = 'ant-adoption-filter-status';
+    heading.append(title, status);
+    const body = document.createElement('div');
+    body.className = 'ant-filter-body';
+    const sections = {};
+    for (const [key, title] of [
+      ['limits', 'Bounty and size'],
+      ['visibility', 'Row visibility'],
+      ['sort', 'Sorting'],
+      ['media', 'Media filters']
+    ]) {
+      const section = document.createElement('fieldset');
+      section.className = `ant-filter-section ant-filter-${key}`;
+      const legend = document.createElement('legend');
+      legend.textContent = title;
+      section.appendChild(legend);
+      sections[key] = section;
+      body.appendChild(section);
+    }
+    toolbar.append(heading, body);
+
+    const minimumPerGibLabel = document.createElement('label');
+    minimumPerGibLabel.textContent = 'Min bounty/GiB ';
+    const minimumPerGibInput = document.createElement('input');
+    minimumPerGibInput.type = 'number';
+    minimumPerGibInput.min = '0';
+    minimumPerGibInput.value = String(adoptionFilterState.minimumBountyPerGib);
+    minimumPerGibInput.addEventListener('change', () => {
+      adoptionFilterState.minimumBountyPerGib = Math.max(0, Number(minimumPerGibInput.value) || 0);
+      applyAdoptionFilters();
+    });
+    minimumPerGibLabel.appendChild(minimumPerGibInput);
+
+    const minimumBountyLabel = document.createElement('label');
+    minimumBountyLabel.textContent = 'Min bounty ';
+    const minimumBountyInput = document.createElement('input');
+    minimumBountyInput.type = 'number';
+    minimumBountyInput.min = '0';
+    minimumBountyInput.value = String(adoptionFilterState.minimumBounty);
+    minimumBountyInput.addEventListener('change', () => {
+      adoptionFilterState.minimumBounty = Math.max(0, Number(minimumBountyInput.value) || 0);
+      applyAdoptionFilters();
+    });
+    minimumBountyLabel.appendChild(minimumBountyInput);
+
+    const maximumLabel = document.createElement('label');
+    maximumLabel.textContent = 'Max GiB ';
+    const maximumInput = document.createElement('input');
+    maximumInput.type = 'number';
+    maximumInput.min = '0';
+    maximumInput.step = 'any';
+    maximumInput.value = String(adoptionFilterState.maximumSizeGib);
+    maximumInput.addEventListener('change', () => {
+      adoptionFilterState.maximumSizeGib = Math.max(0, Number(maximumInput.value) || 0);
+      applyAdoptionFilters();
+    });
+    maximumLabel.appendChild(maximumInput);
+
+    const excludedLabel = createMediaFilterControl(
+      document,
+      adoptionFilterState.excludedFormats,
+      (values) => {
+        adoptionFilterState.excludedFormats = values;
+        applyAdoptionFilters();
+      }
+    );
+
+    const seedingSelect = document.createElement('select');
+    ['All rows', 'Seeding only', 'Not seeding only'].forEach((value) => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value;
+      seedingSelect.appendChild(option);
+    });
+    seedingSelect.value = adoptionFilterState.seedingFilter;
+    seedingSelect.addEventListener('change', () => {
+      adoptionFilterState.seedingFilter = seedingSelect.value;
+      applyAdoptionFilters();
+    });
+
+    const grabbedSelect = document.createElement('select');
+    ['All grabbed states', 'Hide Grabbed', 'Show only Grabbed'].forEach((value) => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value;
+      grabbedSelect.appendChild(option);
+    });
+    grabbedSelect.value = adoptionFilterState.showOnlyGrabbedRows
+      ? 'Show only Grabbed'
+      : adoptionFilterState.hideGrabbedRows
+        ? 'Hide Grabbed'
+        : 'All grabbed states';
+    grabbedSelect.addEventListener('change', () => {
+      adoptionFilterState.hideGrabbedRows = grabbedSelect.value === 'Hide Grabbed';
+      adoptionFilterState.showOnlyGrabbedRows = grabbedSelect.value === 'Show only Grabbed';
+      applyAdoptionFilters();
+    });
+
+    const sortFieldLabel = document.createElement('label');
+    sortFieldLabel.textContent = 'Sort by ';
+    const sortFieldSelect = document.createElement('select');
+    sortFieldSelect.id = 'ant-adoption-sort-field';
+    ['Bounty / GiB', 'Bounty', 'Size', 'Torrent', 'Listing Time', 'Scan order'].forEach((value) => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value;
+      sortFieldSelect.appendChild(option);
+    });
+    sortFieldSelect.value = adoptionFilterState.sortField;
+    sortFieldSelect.addEventListener('change', () => {
+      adoptionFilterState.sortField = sortFieldSelect.value;
+      applyDefaultAdoptionSort();
+    });
+    sortFieldLabel.appendChild(sortFieldSelect);
+
+    const sortDirectionLabel = document.createElement('label');
+    sortDirectionLabel.textContent = 'Direction ';
+    const sortDirectionSelect = document.createElement('select');
+    sortDirectionSelect.id = 'ant-adoption-sort-direction';
+    ['Descending', 'Ascending'].forEach((value) => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value;
+      sortDirectionSelect.appendChild(option);
+    });
+    sortDirectionSelect.value = adoptionFilterState.sortDirection;
+    sortDirectionSelect.addEventListener('change', () => {
+      adoptionFilterState.sortDirection = sortDirectionSelect.value;
+      applyDefaultAdoptionSort();
+    });
+    sortDirectionLabel.appendChild(sortDirectionSelect);
+
+    sections.limits.appendChild(minimumPerGibLabel);
+    createFilterCheckbox(
+      sections.limits,
+      'Hide below minimum bounty/GiB',
+      'hideBelowBountyThreshold'
+    );
+    sections.limits.appendChild(minimumBountyLabel);
+    createFilterCheckbox(sections.limits, 'Hide below minimum bounty', 'hideBelowMinimumBounty');
+    sections.limits.appendChild(maximumLabel);
+    createFilterCheckbox(sections.limits, 'Hide above maximum size', 'hideAboveMaximumSize');
+    createFilterCheckbox(sections.media, 'Apply media filters', 'hideExcludedFormats');
+    createFilterCheckbox(sections.media, 'Combine media filters', 'combineMediaFilters');
+    sections.media.appendChild(excludedLabel);
+    sections.media.appendChild(
+      createExclusionGroupsControl(document, adoptionFilterState.exclusionGroups, (groups) => {
+        adoptionFilterState.exclusionGroups = groups;
+        applyAdoptionFilters();
+      })
+    );
+    for (const [text, select] of [
+      ['Grabbed status', grabbedSelect],
+      ['Seeding status', seedingSelect]
+    ]) {
+      const label = document.createElement('label');
+      label.textContent = text;
+      label.appendChild(select);
+      sections.visibility.appendChild(label);
+    }
+    createFilterCheckbox(sections.visibility, 'Hide ignored rows', 'hideIgnoredRows');
+    createFilterCheckbox(sections.visibility, 'Hide trumpable rows', 'skipTrumpable');
+    sections.sort.append(sortFieldLabel, sortDirectionLabel);
+
+    const showAll = document.createElement('button');
+    showAll.type = 'button';
+    showAll.textContent = 'Show all';
+    showAll.addEventListener('click', () => {
+      adoptionFilterState.hideBelowBountyThreshold = false;
+      adoptionFilterState.hideBelowMinimumBounty = false;
+      adoptionFilterState.hideAboveMaximumSize = false;
+      adoptionFilterState.hideExcludedFormats = false;
+      adoptionFilterState.hideIgnoredRows = false;
+      adoptionFilterState.hideGrabbedRows = false;
+      adoptionFilterState.showOnlyGrabbedRows = false;
+      adoptionFilterState.skipTrumpable = false;
+      adoptionFilterState.seedingFilter = 'All rows';
+      toolbar.querySelectorAll('input[data-filter-state]').forEach((input) => {
+        input.checked = Boolean(adoptionFilterState[input.dataset.filterState]);
+      });
+      grabbedSelect.value = 'All grabbed states';
+      seedingSelect.value = 'All rows';
+      applyAdoptionFilters();
+    });
+
+    const saveSettings = document.createElement('button');
+    saveSettings.type = 'button';
+    saveSettings.textContent = 'Save page settings globally';
+    saveSettings.addEventListener('click', () => {
+      saveAdoptionFilterSettings();
+      saveSettings.textContent = 'Page settings saved';
+      setTimeout(() => {
+        saveSettings.textContent = 'Save page settings globally';
+      }, 1500);
+    });
+
+    const actions = document.createElement('div');
+    actions.className = 'ant-filter-actions';
+    actions.append(showAll, saveSettings);
+    body.appendChild(actions);
+
+    const mainToolbar = document.querySelector('#ant-cross-seed-toolbar');
+    if (mainToolbar?.parentNode) {
+      mainToolbar.insertAdjacentElement('afterend', toolbar);
+    } else {
+      document.querySelector('.thin, #content, body')?.prepend(toolbar);
+    }
+  }
+
+  function refreshAdoptionViewFromSettings() {
+    adoptionFilterState = getDefaultAdoptionFilterState();
+    updateAdoptionScanButtons();
+    if (!isFilteredAdoptionView()) return;
+    document.querySelector('#ant-adoption-filter-toolbar')?.remove();
+    decorateAdoptionRows();
+    applyDefaultAdoptionSort();
+    addAdoptionFilterControls();
+    applyAdoptionFilters();
+  }
+
+  function updateAdoptionScanButtons() {
+    const scanButton = document.querySelector('#ant-adoption-scan');
+    if (scanButton) {
+      if (!adoptionScanRunning) {
+        scanButton.textContent = `Scan ${getScanPageCount()} adoption pages`;
+      }
+      scanButton.disabled = adoptionScanRunning;
+    }
+    const bountyScanButton = document.querySelector('#ant-adoption-scan-bounty');
+    if (bountyScanButton) {
+      const minimumBounty = getMinimumBounty();
+      if (!adoptionScanRunning) bountyScanButton.textContent = getBountyScanButtonText();
+      bountyScanButton.disabled = adoptionScanRunning || minimumBounty <= 0;
+      bountyScanButton.title =
+        minimumBounty > 0
+          ? `Scans bounty-descending pages until the first bounty below ${minimumBounty}, up to ${MAX_SCAN_PAGES} pages.`
+          : 'Set Minimum bounty above zero in Settings to enable this scan.';
+    }
+    updateOpenLastScanButton();
+  }
+
+  function markAdoptionRowAction(row, action, torrentId = '', refreshFilters = true) {
+    const id = torrentId || row?.dataset?.antAdoptionTorrentId || getRowTorrentId(row);
+    if (!row || !id) return false;
+    setTorrentAction(id, action);
+    row.dataset.antAdoptionAction = action;
+    const select = row.querySelector(`.${ACTION_COLUMN_CLASS} select`);
+    if (select) select.value = action;
+    const rescan = row.querySelector('.ant-cross-seed-rescan-metadata');
+    if (rescan) rescan.hidden = action !== 'broken';
+    if (refreshFilters) applyAdoptionFilters(false);
+    return true;
+  }
+
+  function markAdoptionRowGrabbed(row, torrentId = '') {
+    return markAdoptionRowAction(row, 'grabbed', torrentId);
+  }
+
+  function markAdoptionRowIgnored(row, torrentId = '', refreshFilters = true) {
+    const id = torrentId || row?.dataset?.antAdoptionTorrentId || getRowTorrentId(row);
+    if (
+      row?.dataset?.antAdoptionAction === 'grabbed' ||
+      (id && getTorrentAction(id) === 'grabbed')
+    ) {
+      return false;
+    }
+    return markAdoptionRowAction(row, 'ignored', id, refreshFilters);
+  }
+
+  function updateOpenLastScanButton() {
+    const button = document.querySelector('#ant-adoption-open-last-scan');
+    if (!button) return;
+    const hasSavedScan = Boolean(loadFilteredScan());
+    button.hidden = false;
+    button.disabled = adoptionScanRunning || !hasSavedScan;
+    button.title = adoptionScanRunning
+      ? 'Wait for the current scan to finish'
+      : hasSavedScan
+        ? 'Open the most recent filtered scan'
+        : 'No saved scan is available';
   }
 
   function encodeCacheValue(value) {
@@ -1201,12 +4347,18 @@
   function cacheSet(key, value) {
     if (!GM_config.get('use_cache')) return;
     GM_setValue(cacheStorageKey(key), encodeCacheEntry(key, value));
-    debugLog('cache write', { key, value });
+    debugLog('cache write', { key });
   }
 
   function cacheDelete(key) {
-    GM_deleteValue(cacheStorageKey(key));
-    debugLog('cache delete', { key });
+    try {
+      GM_deleteValue(cacheStorageKey(key));
+      debugLog('cache delete', { key });
+      return true;
+    } catch (error) {
+      debugLog('cache delete failed', { key, error });
+      return false;
+    }
   }
 
   function deleteCacheByPrefixes(prefixes) {
@@ -1222,7 +4374,11 @@
 
   function cleanSiteLookupCache() {
     const count = deleteCacheByPrefixes([
+      'tracker-results-v6:',
+      'tracker-results-v5:',
       'tracker-results-v4:',
+      'row-processing-v1:',
+      'row-fully-completed-v1:',
       'row-complete-v3:',
       'tracker-result-v2:',
       'row-complete-v2:',
@@ -1391,23 +4547,21 @@
   }
 
   function getRows() {
-    return [...document.querySelectorAll('tr.torrent.torrent_row.zeroseed')];
+    return [...document.querySelectorAll('tr.torrent.torrent_row.zeroseed')].filter(
+      (row) => !row.hidden
+    );
   }
 
   function getRowTorrentId(row) {
     const download = row.querySelector('a[href*="torrents.php?action=download"][href*="id="]');
     const href = download?.getAttribute('href') || '';
-    const torrentId = href.match(/[?&]id=(\d+)/)?.[1] || null;
-    debugLog('parsed ANT torrent id', { torrentId, href });
-    return torrentId;
+    return href.match(/[?&]id=(\d+)/)?.[1] || null;
   }
 
   function getRowGroupId(row) {
     const details = row.querySelector('a[href*="torrents.php?id="][href*="torrentid="]');
     const href = details?.getAttribute('href') || '';
-    const groupId = href.match(/[?&]id=(\d+)/)?.[1] || null;
-    debugLog('parsed ANT group id', { groupId, href });
-    return groupId;
+    return href.match(/[?&]id=(\d+)/)?.[1] || null;
   }
 
   function getRowDownloadUrl(row) {
@@ -1418,6 +4572,12 @@
 
   function isTrumpableRow(row) {
     return !!row.querySelector('.tl_trumpable') || /\bTrumpable\b/i.test(row.textContent || '');
+  }
+
+  function shouldSkipTrumpableRows() {
+    return adoptionFilterState
+      ? Boolean(adoptionFilterState.skipTrumpable)
+      : Boolean(GM_config.get('skip_trumpable'));
   }
 
   function isM2tsRow(row) {
@@ -1546,6 +4706,15 @@
     return String(value || '')
       .split(/[\\/]/)
       .pop();
+  }
+
+  function dirname(value) {
+    const path = String(value || '').replace(/[\\/]+$/, '');
+    const separatorIndex = Math.max(path.lastIndexOf('\\'), path.lastIndexOf('/'));
+    if (separatorIndex < 0) return '';
+    const parent = path.slice(0, separatorIndex);
+    if (/^[A-Za-z]:$/.test(parent)) return `${parent}${path[separatorIndex]}`;
+    return parent || path[separatorIndex];
   }
 
   function stripExtension(value) {
@@ -1709,11 +4878,11 @@
     return normalizeImdbId(imdbLink || ratings.textContent);
   }
 
-  async function getAntMetadata(torrentId, groupId) {
+  async function getAntMetadata(torrentId, groupId, refreshCache = false) {
     debugLog('ANT HTML metadata lookup start', { torrentId, groupId });
     const cacheKey = antMetadataCacheKey(torrentId);
     const cached = cacheGet(cacheKey);
-    if (cached?.filename) {
+    if (!refreshCache && cached?.filename) {
       debugLog('ANT metadata lookup cache result', { torrentId, metadata: cached });
       return cached;
     }
@@ -1763,6 +4932,27 @@
     return { enabled, apiToken, baseUrl };
   }
 
+  function parseRequiredTrackerSeeders(value, site) {
+    const normalized = String(value ?? '')
+      .replaceAll(',', '')
+      .trim();
+    if (!/^\d+$/.test(normalized)) {
+      throw new TypeError(`${site} returned an invalid torrent entry.`);
+    }
+    return Number.parseInt(normalized, 10);
+  }
+
+  function isNonemptyString(value) {
+    return typeof value === 'string' && Boolean(value.trim());
+  }
+
+  function isValidTrackerId(value) {
+    return (
+      (typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value))) &&
+      Boolean(String(value).trim())
+    );
+  }
+
   async function searchUnit3dTracker(tracker, antMetadata) {
     const { enabled, apiToken, baseUrl } = getUnit3dConfig(tracker);
     const imdbNumber = imdbIdNumber(antMetadata?.imdbId);
@@ -1797,7 +4987,10 @@
         Accept: 'application/json'
       }
     });
-    const data = Array.isArray(json?.data) ? json.data : [];
+    if (!Array.isArray(json?.data)) {
+      throw new TypeError(`${tracker.site} returned an invalid search response.`);
+    }
+    const data = json.data;
     const matches = data
       .map((entry) => unit3dMatchToResult(tracker.site, baseUrl, entry, antMetadata))
       .filter(Boolean);
@@ -1814,12 +5007,24 @@
   }
 
   function unit3dMatchToResult(site, baseUrl, entry, antMetadata) {
-    const attributes = entry?.attributes || {};
+    const attributes = entry?.attributes;
+    const id = entry?.id || attributes?.id || attributes?.torrent_id;
+    if (
+      !entry ||
+      typeof entry !== 'object' ||
+      Array.isArray(entry) ||
+      !attributes ||
+      typeof attributes !== 'object' ||
+      Array.isArray(attributes) ||
+      !isNonemptyString(attributes.name) ||
+      (!isValidTrackerId(id) && !isNonemptyString(attributes.download_link))
+    ) {
+      throw new TypeError(`${site} returned an invalid torrent entry.`);
+    }
+    const seeders = parseRequiredTrackerSeeders(attributes.seeders ?? attributes.seed, site);
     const files = getObjectFileList(entry);
     if (!candidateMatchesAntFiles(files, antMetadata, attributes.name)) return null;
 
-    const id = entry?.id || attributes.id || attributes.torrent_id;
-    const seeders = Number.parseInt(attributes.seeders ?? attributes.seed ?? '0', 10) || 0;
     return {
       site,
       seeders,
@@ -1831,7 +5036,6 @@
 
   async function searchBhd(antMetadata) {
     const filename = antMetadata?.filename || '';
-    const imdbNumber = imdbIdNumber(antMetadata?.imdbId);
     if (!GM_config.get('bhd')) {
       debugLog('BHD skipped', { reason: 'disabled', filename });
       return null;
@@ -1847,8 +5051,8 @@
       });
       return null;
     }
-    if (!imdbNumber) {
-      debugLog('BHD skipped', { reason: 'missing IMDb id', filename, imdbId: antMetadata?.imdbId });
+    if (!filename) {
+      debugLog('BHD skipped', { reason: 'missing ANT filename' });
       return null;
     }
 
@@ -1859,19 +5063,31 @@
       data: JSON.stringify({
         action: 'search',
         rsskey: rssKey,
-        imdb_id: imdbNumber
+        file_name: filename
       })
     });
 
-    const matches = (Array.isArray(json?.results) ? json.results : [])
-      .filter((item) => candidateMatchesAntFiles(getObjectFileList(item), antMetadata, item.name))
-      .map((item) => ({
+    if (!Array.isArray(json?.results)) {
+      throw new TypeError('BHD returned an invalid search response.');
+    }
+    const matches = json.results.map((item) => {
+      if (
+        !item ||
+        typeof item !== 'object' ||
+        Array.isArray(item) ||
+        !isNonemptyString(item.name) ||
+        !isNonemptyString(item.download_url)
+      ) {
+        throw new TypeError('BHD returned an invalid torrent entry.');
+      }
+      return {
         site: 'BHD',
-        seeders: Number.parseInt(item.seeders ?? item.seed ?? '0', 10) || 0,
-        downloadUrl: item.download_url || '',
+        seeders: parseRequiredTrackerSeeders(item.seeders ?? item.seed, 'BHD'),
+        downloadUrl: item.download_url,
         detailsUrl: item.url || '',
-        title: item.name || filename
-      }));
+        title: item.name
+      };
+    });
     debugLog('BHD search result', {
       imdbId: antMetadata?.imdbId,
       filename,
@@ -1885,7 +5101,6 @@
 
   async function searchHdb(antMetadata) {
     const filename = antMetadata?.filename || '';
-    const imdbNumber = imdbIdNumber(antMetadata?.imdbId);
     if (!GM_config.get('hdb')) {
       debugLog('HDB skipped', { reason: 'disabled', filename });
       return null;
@@ -1901,11 +5116,10 @@
       });
       return null;
     }
-    if (!imdbNumber) {
-      debugLog('HDB skipped', { reason: 'missing IMDb id', filename, imdbId: antMetadata?.imdbId });
+    if (!filename) {
+      debugLog('HDB skipped', { reason: 'missing ANT filename' });
       return null;
     }
-
     const json = await requestJson({
       method: 'POST',
       url: 'https://hdbits.org/api/torrents',
@@ -1914,27 +5128,32 @@
         username,
         passkey,
         limit: 100,
-        imdb: { id: imdbNumber }
+        file_in_torrent: filename
       })
     });
 
-    const matches = (Array.isArray(json?.data) ? json.data : [])
-      .filter((item) =>
-        candidateMatchesAntFiles(getObjectFileList(item), antMetadata, item.filename || item.name)
-      )
-      .map((item) => ({
+    if (!Array.isArray(json?.data)) {
+      throw new TypeError('HDB returned an invalid search response.');
+    }
+    const matches = json.data.map((item) => {
+      if (
+        !item ||
+        typeof item !== 'object' ||
+        Array.isArray(item) ||
+        !isValidTrackerId(item.id) ||
+        !isNonemptyString(item.filename)
+      ) {
+        throw new TypeError('HDB returned an invalid torrent entry.');
+      }
+      return {
         site: 'HDB',
-        seeders: Number.parseInt(item.seeders ?? '0', 10) || 0,
-        downloadUrl: item.filename
-          ? `https://hdbits.org/download.php/${encodeURIComponent(item.filename)}?id=${encodeURIComponent(item.id)}&passkey=${encodeURIComponent(passkey)}`
-          : '',
-        detailsUrl: item.id
-          ? `https://hdbits.org/details.php?id=${encodeURIComponent(item.id)}`
-          : '',
-        title: item.name || filename
-      }));
+        seeders: parseRequiredTrackerSeeders(item.seeders, 'HDB'),
+        downloadUrl: `https://hdbits.org/download.php/${encodeURIComponent(item.filename)}?id=${encodeURIComponent(item.id)}&passkey=${encodeURIComponent(passkey)}`,
+        detailsUrl: `https://hdbits.org/details.php?id=${encodeURIComponent(item.id)}`,
+        title: item.name || stripTorrentExtension(item.filename) || filename
+      };
+    });
     debugLog('HDB search result', {
-      imdbId: antMetadata?.imdbId,
       filename,
       rawCount: json?.data?.length || 0,
       strictMatchCount: matches.length,
@@ -1979,31 +5198,61 @@
         Accept: 'application/json'
       }
     });
-    const movies = Array.isArray(searchJson?.Movies)
-      ? searchJson.Movies
-      : searchJson?.GroupId
-        ? [searchJson]
-        : [];
-    const authKey = String(searchJson?.AuthKey || '').trim();
-    const passKey = String(searchJson?.PassKey || '').trim();
+    let movies;
+    if (Array.isArray(searchJson?.Movies)) {
+      movies = searchJson.Movies;
+    } else if (searchJson?.GroupId && Array.isArray(searchJson?.Torrents)) {
+      movies = [searchJson];
+    } else {
+      throw new TypeError('PTP returned an invalid search response.');
+    }
+    const authKey = isNonemptyString(searchJson?.AuthKey) ? searchJson.AuthKey.trim() : '';
+    const passKey = isNonemptyString(searchJson?.PassKey) ? searchJson.PassKey.trim() : '';
+    if (
+      movies.some(
+        (movie) =>
+          !movie ||
+          typeof movie !== 'object' ||
+          Array.isArray(movie) ||
+          !isValidTrackerId(movie.GroupId) ||
+          !Array.isArray(movie.Torrents)
+      )
+    ) {
+      throw new TypeError('PTP returned an invalid movie entry.');
+    }
+    const torrents = movies.flatMap((movie) => movie.Torrents);
+    if (
+      torrents.some(
+        (torrent) =>
+          !torrent ||
+          typeof torrent !== 'object' ||
+          Array.isArray(torrent) ||
+          !isValidTrackerId(torrent.Id) ||
+          !isNonemptyString(torrent.ReleaseName) ||
+          !/^\d+$/.test(
+            String(torrent.Seeders ?? '')
+              .replaceAll(',', '')
+              .trim()
+          )
+      ) ||
+      (torrents.length > 0 && (!authKey || !passKey))
+    ) {
+      throw new TypeError('PTP returned an invalid torrent entry.');
+    }
     const matches = movies.flatMap((movie) =>
-      (Array.isArray(movie.Torrents) ? movie.Torrents : [])
-        .filter((torrent) => ptpTorrentMatches(torrent, antMetadata))
-        .map((torrent) => {
-          const torrentId = String(torrent.Id || '').trim();
-          const groupId = String(movie.GroupId || '').trim();
-          const detailsUrl = `https://passthepopcorn.me/torrents.php?id=${encodeURIComponent(groupId)}&torrentid=${encodeURIComponent(torrentId)}#torrent${encodeURIComponent(torrentId)}`;
-          return {
-            site: 'PTP',
-            seeders: Number.parseInt(String(torrent.Seeders || '0').replaceAll(',', ''), 10) || 0,
-            downloadUrl:
-              authKey && passKey && torrentId
-                ? `https://passthepopcorn.me/torrents.php?action=download&id=${encodeURIComponent(torrentId)}&authkey=${encodeURIComponent(authKey)}&torrent_pass=${encodeURIComponent(passKey)}`
-                : detailsUrl,
-            detailsUrl,
-            title: torrent.ReleaseName || filename
-          };
-        })
+      movie.Torrents.filter((torrent) => ptpTorrentMatches(torrent, antMetadata)).map((torrent) => {
+        const torrentId = String(torrent.Id || '').trim();
+        const groupId = String(movie.GroupId || '').trim();
+        const seeders = parseRequiredTrackerSeeders(torrent.Seeders, 'PTP');
+        const detailsUrl = `https://passthepopcorn.me/torrents.php?id=${encodeURIComponent(groupId)}&torrentid=${encodeURIComponent(torrentId)}#torrent${encodeURIComponent(torrentId)}`;
+        return {
+          site: 'PTP',
+          seeders,
+          downloadUrl: `https://passthepopcorn.me/torrents.php?action=download&id=${encodeURIComponent(torrentId)}&authkey=${encodeURIComponent(authKey)}&torrent_pass=${encodeURIComponent(passKey)}`,
+          detailsUrl,
+          title: torrent.ReleaseName || filename
+        };
+      })
     );
     debugLog('PTP filelist search result', {
       filename,
@@ -2078,6 +5327,12 @@
     return urls;
   }
 
+  function buildProxyFilesCandidateUrls(baseUrl, tokenValue) {
+    return buildProxySearchCandidateUrls(baseUrl, tokenValue).map((url) =>
+      url.replace(/\/search$/i, '/files')
+    );
+  }
+
   function buildProxySearchUrl(searchBaseUrl, config, searchTerm = '') {
     const queryParts = [
       ...(searchTerm ? [`search=${encodeURIComponent(searchTerm)}`] : []),
@@ -2089,17 +5344,32 @@
   }
 
   function parsequiResults(responseText) {
+    let parsed;
     try {
-      const parsed = JSON.parse(responseText || '[]');
-      if (Array.isArray(parsed)) return parsed;
-      if (parsed && Array.isArray(parsed.torrents)) return parsed.torrents;
-      return [];
+      parsed = JSON.parse(responseText || '');
     } catch {
-      return [];
+      throw new TypeError('Invalid qui JSON response.');
     }
+    if (Array.isArray(parsed)) return parsed;
+    if (parsed && Array.isArray(parsed.torrents)) return parsed.torrents;
+    if (parsed?.torrents === null && parsed.total === 0) return [];
+    throw new TypeError('Invalid qui response shape.');
   }
 
-  async function queryqui(config, searchTerm = '') {
+  function validatequiTorrentResults(results) {
+    if (
+      !Array.isArray(results) ||
+      results.some(
+        (item) =>
+          !item || typeof item !== 'object' || Array.isArray(item) || !isNonemptyString(item.name)
+      )
+    ) {
+      throw new TypeError('Invalid qui torrent entry.');
+    }
+    return results;
+  }
+
+  async function queryqui(config, searchTerm = '', shouldContinue = () => true) {
     const candidateUrls = buildProxySearchCandidateUrls(config.baseUrl, config.token);
     if (candidateUrls.length === 0) {
       throw new Error('Missing qui base URL or token.');
@@ -2114,12 +5384,14 @@
     });
     const attempted = [];
     for (const baseUrl of candidateUrls) {
+      if (!shouldContinue()) return [];
       const url = buildProxySearchUrl(baseUrl, config, searchTerm);
       attempted.push(url);
       try {
         const response = await gmRequest({ method: 'GET', url });
+        if (!shouldContinue()) return [];
         if (response.status >= 200 && response.status < 300) {
-          const results = parsequiResults(response.responseText);
+          const results = validatequiTorrentResults(parsequiResults(response.responseText));
           debugLog('qui search candidate succeeded', {
             searchTerm,
             url,
@@ -2135,16 +5407,49 @@
         debugLog('qui search candidate failed', { searchTerm, url, error });
         if (baseUrl === candidateUrls.at(-1)) {
           throw new Error(
-            `qui search failed: ${error.message || error} (${attempted.join(' | ')})`
+            `qui search failed: ${redactDebugUrl(error?.message || error)} (${attempted.map(redactDebugUrl).join(' | ')})`
           );
         }
       }
     }
 
-    throw new Error(`qui search failed (${attempted.join(' | ')})`);
+    throw new Error(`qui search failed (${attempted.map(redactDebugUrl).join(' | ')})`);
   }
 
-  async function postToqui(config, urls) {
+  async function queryquiFiles(config, hash, shouldContinue = () => true) {
+    const candidateUrls = buildProxyFilesCandidateUrls(config.baseUrl, config.token);
+    if (candidateUrls.length === 0 || !hash) {
+      throw new Error('Missing qui base URL, token, or torrent hash.');
+    }
+
+    const attempted = [];
+    for (const baseUrl of candidateUrls) {
+      if (!shouldContinue()) return [];
+      const url = `${baseUrl}?hash=${encodeURIComponent(hash)}`;
+      attempted.push(url);
+      try {
+        const response = await gmRequest({ method: 'GET', url });
+        if (!shouldContinue()) return [];
+        if (response.status >= 200 && response.status < 300) {
+          return parsequiResults(response.responseText);
+        }
+        if (![401, 403, 404].includes(response.status)) {
+          throw new Error(`File lookup failed with ${response.status}`);
+        }
+      } catch (error) {
+        debugLog('qui file candidate failed', { hash, url, error });
+        if (baseUrl === candidateUrls.at(-1)) {
+          throw new Error(
+            `qui file lookup failed: ${redactDebugUrl(error?.message || error)} (${attempted.map(redactDebugUrl).join(' | ')})`
+          );
+        }
+      }
+    }
+
+    throw new Error(`qui file lookup failed (${attempted.map(redactDebugUrl).join(' | ')})`);
+  }
+
+  async function postToqui(config, urls, shouldContinue = () => true) {
     const candidateUrls = buildProxyAddCandidateUrls(config.baseUrl, config.token);
     if (candidateUrls.length === 0) {
       throw new Error('Missing qui base URL or token.');
@@ -2173,9 +5478,11 @@
 
     const attempted = [];
     for (const url of candidateUrls) {
+      if (!shouldContinue()) return null;
       attempted.push(url);
       try {
         const response = await gmRequest({ method: 'POST', url, data: formData });
+        if (!shouldContinue()) return null;
         if (response.status >= 200 && response.status < 300) {
           debugLog('qui add candidate succeeded', { url, status: response.status });
           return response;
@@ -2187,12 +5494,14 @@
       } catch (error) {
         debugLog('qui add candidate failed', { url, error });
         if (url === candidateUrls.at(-1)) {
-          throw new Error(`qui add failed: ${error.message || error} (${attempted.join(' | ')})`);
+          throw new Error(
+            `qui add failed: ${redactDebugUrl(error?.message || error)} (${attempted.map(redactDebugUrl).join(' | ')})`
+          );
         }
       }
     }
 
-    throw new Error(`qui add failed (${attempted.join(' | ')})`);
+    throw new Error(`qui add failed (${attempted.map(redactDebugUrl).join(' | ')})`);
   }
 
   function normalizequiItem(item) {
@@ -2223,6 +5532,7 @@
       savePath,
       contentPath,
       hosts: Array.from(hosts),
+      trackerHost,
       hash: String(item?.hash || item?.infohash_v1 || item?.infohash || '')
         .trim()
         .toLowerCase(),
@@ -2233,15 +5543,32 @@
   }
 
   function quiItemMatchesFilename(item, filename) {
-    const candidates = [
-      item?.name,
-      item?.contentPath,
-      basename(item?.contentPath),
-      ...(Array.isArray(item?.raw?.files)
-        ? item.raw.files.map((file) => file?.name || file?.path || file)
-        : [])
-    ];
-    return candidates.some((candidate) => filenameMatches(candidate, filename));
+    const target = normalizeFilename(filename);
+    const targetBase = normalizeFilename(stripExtension(filename));
+    if (!target) return false;
+    const hasFileList = Array.isArray(item?.raw?.files);
+    const files = hasFileList ? item.raw.files : [];
+    if (hasFileList) {
+      return files.some((file) => exactFilenameMatches(file?.name || file?.path || file, filename));
+    }
+    const torrentNames = [item?.name, basename(item?.contentPath)].map(normalizeFilename);
+    return torrentNames.some((candidate) => candidate === target || candidate === targetBase);
+  }
+
+  function getAntCrossSeedSavePath(sourceItem, filename, fallback = '') {
+    const savePath = String(sourceItem?.savePath || fallback || '').trim();
+    const contentPath = String(sourceItem?.contentPath || '').trim();
+    if (!contentPath) return savePath;
+
+    if (exactFilenameMatches(basename(contentPath), filename)) {
+      return dirname(contentPath) || savePath;
+    }
+
+    const files = Array.isArray(sourceItem?.raw?.files) ? sourceItem.raw.files : [];
+    if (files.some((file) => exactFilenameMatches(file?.name || file?.path || file, filename))) {
+      return contentPath;
+    }
+    return savePath;
   }
 
   async function searchqui(filename) {
@@ -2255,7 +5582,16 @@
       return [];
     }
 
-    const raw = await cachedLookup(`qui-result:${filename}`, () => queryqui(config, filename));
+    const cacheKey = `qui-result:${filename}`;
+    let raw;
+    try {
+      raw = validatequiTorrentResults(
+        await cachedLookup(cacheKey, () => queryqui(config, filename))
+      );
+    } catch (error) {
+      cacheDelete(cacheKey);
+      throw error;
+    }
     const normalized = raw.map(normalizequiItem);
     const matches = normalized.filter((item) => quiItemMatchesFilename(item, filename));
     debugLog('qui strict filename match result', {
@@ -2275,12 +5611,26 @@
     return matches;
   }
 
-  async function searchquiFresh(filename) {
+  async function searchAntquiCandidates(searchTerm = '', shouldContinue = () => true) {
     const config = getquiConfig();
     if (!config.baseUrl || !config.token) return [];
 
-    const raw = await queryqui(config, filename);
-    return raw.map(normalizequiItem).filter((item) => quiItemMatchesFilename(item, filename));
+    const terms = [searchTerm, '']
+      .map((term) => String(term || '').trim())
+      .filter((term, index, list) => list.indexOf(term) === index);
+    const candidates = [];
+    const seen = new Set();
+    for (const term of terms) {
+      if (!shouldContinue()) break;
+      const raw = await queryqui(config, term, shouldContinue);
+      if (!shouldContinue()) break;
+      for (const item of raw.map(normalizequiItem)) {
+        if (!isAntquiItem(item) || !item.hash || seen.has(item.hash)) continue;
+        seen.add(item.hash);
+        candidates.push(item);
+      }
+    }
+    return candidates;
   }
 
   async function searchquiJobCandidates(job) {
@@ -2357,19 +5707,27 @@
   }
 
   function isAntquiItem(item) {
-    return (Array.isArray(item?.hosts) ? item.hosts : []).some(
-      (host) => host === 'anthelion.me' || host.endsWith('.anthelion.me')
-    );
+    const host = String(item?.trackerHost || '').toLowerCase();
+    return host === 'anthelion.me' || host.endsWith('.anthelion.me');
   }
 
-  function namesLikelyMatch(left, right) {
+  function namesExactlyMatch(left, right) {
     const leftName = normalizeText(left);
     const rightName = normalizeText(right);
-    return (
-      !!leftName &&
-      !!rightName &&
-      (leftName === rightName || leftName.includes(rightName) || rightName.includes(leftName))
-    );
+    return !!leftName && !!rightName && leftName === rightName;
+  }
+
+  function quiItemHasExactFilenameEvidence(item, filename) {
+    const target = normalizeFilename(filename);
+    if (!target) return false;
+    if (Array.isArray(item?.raw?.files)) {
+      return item.raw.files.some((file) =>
+        exactFilenameMatches(file?.name || file?.path || file, filename)
+      );
+    }
+    return [item?.name, basename(item?.contentPath)]
+      .map(normalizeFilename)
+      .some((candidate) => candidate === target);
   }
 
   function findBestquiAddJobMatch(items, job) {
@@ -2380,8 +5738,8 @@
             (host) => host === job.trackerHost || host.endsWith(`.${job.trackerHost}`)
           )
         : false;
-      const filenameMatched = quiItemMatchesFilename(item, job.filename);
-      const titleMatched = namesLikelyMatch(item.name, job.title);
+      const filenameMatched = quiItemHasExactFilenameEvidence(item, job.filename);
+      const titleMatched = namesExactlyMatch(item.name, job.title);
       const savePathMatched =
         !!job.savePath &&
         !!item.savePath &&
@@ -2389,7 +5747,7 @@
       const afterSubmit =
         Number(job.submittedAtSec) > 0 &&
         Number(item.addedOn) > 0 &&
-        Number(item.addedOn) >= Number(job.submittedAtSec) - 5;
+        Number(item.addedOn) >= Number(job.submittedAtSec);
       const score =
         (hashMatched ? 20 : 0) +
         (filenameMatched ? 8 : 0) +
@@ -2412,8 +5770,8 @@
     const viable = candidates.filter(
       (candidate) =>
         candidate.hashMatched ||
-        candidate.filenameMatched ||
         (candidate.afterSubmit &&
+          candidate.filenameMatched &&
           (candidate.hostMatched || candidate.titleMatched || candidate.savePathMatched))
     );
     viable.sort((left, right) => {
@@ -2421,6 +5779,60 @@
       return Number(right.item.addedOn) - Number(left.item.addedOn);
     });
     return viable[0]?.item || null;
+  }
+
+  async function findVerifiedquiAddJobMatch(items, job) {
+    const directMatch = findBestquiAddJobMatch(items, job);
+    if (directMatch) return directMatch;
+
+    const submittedAtSec = Number(job?.submittedAtSec) || 0;
+    const candidates = (Array.isArray(items) ? items : [])
+      .filter((item) => {
+        if (!item?.hash || submittedAtSec <= 0 || Number(item.addedOn) < submittedAtSec) {
+          return false;
+        }
+        const hostMatched = job.trackerHost
+          ? item.hosts.some(
+              (host) => host === job.trackerHost || host.endsWith(`.${job.trackerHost}`)
+            )
+          : false;
+        const titleMatched = namesExactlyMatch(item.name, job.title);
+        const savePathMatched =
+          !!job.savePath &&
+          !!item.savePath &&
+          normalizeText(item.savePath) === normalizeText(job.savePath);
+        return hostMatched || titleMatched || savePathMatched;
+      })
+      .toSorted((left, right) => Number(right.addedOn) - Number(left.addedOn));
+    const config = getquiConfig();
+    for (const item of candidates) {
+      try {
+        const files = await queryquiFiles(config, item.hash);
+        const verified = {
+          ...item,
+          raw: {
+            ...(item.raw || {}),
+            files
+          }
+        };
+        if (!quiItemHasExactFilenameEvidence(verified, job.filename)) continue;
+        debugLog('qui add monitor matched torrent by exact internal filename', {
+          filename: job.filename,
+          hash: item.hash,
+          site: job.site,
+          torrentName: item.name
+        });
+        return verified;
+      } catch (error) {
+        debugLog('qui add monitor file verification failed', {
+          filename: job.filename,
+          hash: item.hash,
+          site: job.site,
+          error
+        });
+      }
+    }
+    return null;
   }
 
   function schedulequiCrossSeedFollowupPoll(jobKey, delayMs = qui_ANT_FOLLOW_UP_POLL_INTERVAL_MS) {
@@ -2434,20 +5846,64 @@
     );
   }
 
+  function cancelquiCrossSeedFollowup(jobKey, job) {
+    job.followUpScheduled = false;
+    job.followUpStatus = '';
+    job.followUpRunAt = 0;
+    job.updatedAt = Date.now();
+    quiAddJobs.set(jobKey, job);
+    renderquiAddMonitor(job.row);
+    debugLog('qui cross-seed follow-up cancelled because manual adoption mode is active', {
+      filename: job.filename,
+      site: job.site
+    });
+  }
+
   async function addAntTorrentForquiFollowup(jobKey, job, antMatch, reason) {
+    const shouldContinue = () => Boolean(GM_config.get('qui_auto_trigger_adoption'));
+    if (!shouldContinue()) {
+      cancelquiCrossSeedFollowup(jobKey, job);
+      return false;
+    }
     const antDownloadUrl = getRowDownloadUrl(job.row);
     if (!antDownloadUrl) {
       throw new Error('Missing ANT download URL for follow-up add.');
     }
 
-    const config = getAntquiConfig(antMatch?.savePath || job.savePath);
+    let savePath = String(antMatch?.savePath || '').trim();
+    if (!savePath) {
+      const sourceSavePath = String(job.sourceSavePath || job.savePath || '').trim();
+      const sourceFiles =
+        job.hash && job.sourceContentPath
+          ? await queryquiFiles(getquiConfig(), job.hash, shouldContinue)
+          : [];
+      if (!shouldContinue()) {
+        cancelquiCrossSeedFollowup(jobKey, job);
+        return false;
+      }
+      savePath = getAntCrossSeedSavePath(
+        {
+          contentPath: job.sourceContentPath,
+          raw: { files: sourceFiles },
+          savePath: sourceSavePath
+        },
+        job.filename,
+        sourceSavePath
+      );
+    }
+
+    const config = getAntquiConfig(savePath);
     job.followUpStatus = 'adding';
     job.followUpSavePath = config.savePath;
     job.updatedAt = Date.now();
     quiAddJobs.set(jobKey, job);
     renderquiAddMonitor(job.row);
 
-    await postToqui(config, [antDownloadUrl]);
+    const submitted = await postToqui(config, [antDownloadUrl], shouldContinue);
+    if (!submitted || !shouldContinue()) {
+      cancelquiCrossSeedFollowup(jobKey, job);
+      return false;
+    }
     cacheDelete(`qui-result:${job.filename}`);
     job.followUpStatus = 'added';
     job.followUpHash = antMatch?.hash || '';
@@ -2463,11 +5919,16 @@
       reason,
       matchedInqui: Boolean(antMatch)
     });
+    return true;
   }
 
   async function runquiCrossSeedFollowup(jobKey) {
     const job = quiAddJobs.get(jobKey);
     if (!job || job.error || !['pending', 'checking'].includes(job.followUpStatus)) return;
+    if (!GM_config.get('qui_auto_trigger_adoption')) {
+      cancelquiCrossSeedFollowup(jobKey, job);
+      return;
+    }
     if (isquiAddJobPending(job)) {
       job.followUpScheduled = false;
       job.followUpStatus = '';
@@ -2497,10 +5958,22 @@
         savePath: job.savePath,
         fallbackRunAt: job.followUpRunAt
       });
-      const quiMatches = await searchquiFresh(job.filename);
-      const antMatch = quiMatches.find(
-        (item) => isAntquiItem(item) && String(item.savePath || '').trim()
+      const shouldContinue = () => Boolean(GM_config.get('qui_auto_trigger_adoption'));
+      const quiCandidates = await searchAntquiCandidates(job.filename, shouldContinue);
+      if (!shouldContinue()) {
+        cancelquiCrossSeedFollowup(jobKey, job);
+        return;
+      }
+      const antMatch = await findVerifiedAntquiItem(
+        quiCandidates,
+        job.filename,
+        (item) => Boolean(String(item.savePath || '').trim()),
+        shouldContinue
       );
+      if (!shouldContinue()) {
+        cancelquiCrossSeedFollowup(jobKey, job);
+        return;
+      }
 
       if (antMatch) {
         await addAntTorrentForquiFollowup(jobKey, job, antMatch, 'qui-follow-up-ant-added');
@@ -2519,7 +5992,7 @@
       debugLog('qui cross-seed follow-up ANT not found yet; polling again', {
         filename: job.filename,
         site: job.site,
-        matchCount: quiMatches.length,
+        matchCount: quiCandidates.length,
         nextPollMs: qui_ANT_FOLLOW_UP_POLL_INTERVAL_MS,
         fallbackRunAt: job.followUpRunAt
       });
@@ -2528,6 +6001,10 @@
         Math.min(qui_ANT_FOLLOW_UP_POLL_INTERVAL_MS, Math.max(0, job.followUpRunAt - Date.now()))
       );
     } catch (error) {
+      if (!GM_config.get('qui_auto_trigger_adoption')) {
+        cancelquiCrossSeedFollowup(jobKey, job);
+        return;
+      }
       job.followUpStatus = 'failed';
       job.followUpError = String(error.message || error);
       job.updatedAt = Date.now();
@@ -2659,6 +6136,166 @@
     rows.forEach((row) => renderquiAddMonitor(row));
   }
 
+  function buildAdoptionReadyUrl(job) {
+    const groupId = job?.groupId || getRowGroupId(job?.row);
+    const torrentId = job?.torrentId || getRowTorrentId(job?.row);
+    if (!groupId) return '';
+    const url = new URL('/torrents.php', location.href);
+    url.searchParams.set('id', String(groupId));
+    if (torrentId) url.searchParams.set('torrentid', String(torrentId));
+    url.searchParams.set(ADOPTION_READY_PARAM, '1');
+    if (job?.adoptionReadyToken) {
+      url.searchParams.set(ADOPTION_READY_TOKEN_PARAM, String(job.adoptionReadyToken));
+    }
+    if (job?.site) url.searchParams.set('ant_adoption_source', String(job.site));
+    return url.toString();
+  }
+
+  function scheduleAdoptionReadyPageOpenRetry(jobKey) {
+    setTimeout(() => {
+      const currentJob = quiAddJobs.get(jobKey);
+      if (currentJob && !currentJob.adoptionPageOpened) {
+        return openAdoptionReadyPage(jobKey, currentJob);
+      }
+      return false;
+    }, ADOPTION_READY_QUI_POLL_INTERVAL_MS);
+  }
+
+  async function openAdoptionReadyPage(jobKey, job) {
+    if (!job?.autoAdded || job.adoptionPageOpened) return false;
+    let automatic = Boolean(GM_config.get('qui_auto_trigger_adoption'));
+    if (!job.adoptionReadyToken) {
+      try {
+        createAdoptionReadyMarker(job);
+      } catch (error) {
+        debugLog('auto qui adoption-ready marker retry failed', {
+          filename: job.filename,
+          torrentId: job.torrentId,
+          error
+        });
+      }
+    }
+    if (automatic) {
+      const claimed = await claimAdoptionReadyFlow(job);
+      if (!GM_config.get('qui_auto_trigger_adoption')) {
+        if (claimed) await releaseAdoptionReadyFlowWithRetry(job.adoptionReadyToken);
+        automatic = false;
+      } else if (!claimed) {
+        scheduleAdoptionReadyPageOpenRetry(jobKey);
+        debugLog('auto qui adoption page waiting for active ready page', {
+          filename: job.filename,
+          torrentId: job.torrentId
+        });
+        return false;
+      }
+    }
+    try {
+      createAdoptionReadyMarker(job);
+    } catch (error) {
+      if (automatic) {
+        await releaseAdoptionReadyFlowWithRetry(job.adoptionReadyToken);
+        scheduleAdoptionReadyPageOpenRetry(jobKey);
+      }
+      debugLog('qui adoption-ready marker refresh failed', {
+        filename: job.filename,
+        torrentId: job.torrentId,
+        automatic,
+        error
+      });
+      if (automatic) return false;
+    }
+    const url = buildAdoptionReadyUrl(job);
+    if (!url) {
+      if (automatic) await releaseAdoptionReadyFlowWithRetry(job.adoptionReadyToken);
+      debugLog('auto qui adoption page not opened: missing ANT group id', {
+        filename: job.filename,
+        torrentId: job.torrentId
+      });
+      return false;
+    }
+    try {
+      GM_openInTab(url, { active: true, insert: true, setParent: true });
+    } catch (error) {
+      if (automatic) await releaseAdoptionReadyFlowWithRetry(job.adoptionReadyToken);
+      debugLog('auto qui adoption page open failed', {
+        filename: job.filename,
+        torrentId: job.torrentId,
+        url,
+        error
+      });
+      return false;
+    }
+    job.adoptionPageOpened = true;
+    job.updatedAt = Date.now();
+    quiAddJobs.set(jobKey, job);
+    debugLog('auto qui adoption page opened', {
+      filename: job.filename,
+      torrentId: job.torrentId,
+      groupId: job.groupId,
+      site: job.site,
+      url
+    });
+    return true;
+  }
+
+  function scheduleAdoptionReadyPage(jobKey, job) {
+    if (!job?.autoAdded || job.adoptionPageScheduled || job.adoptionPageOpened) return false;
+    try {
+      createAdoptionReadyMarker(job);
+    } catch (error) {
+      debugLog('auto qui adoption-ready marker creation failed', {
+        filename: job.filename,
+        torrentId: job.torrentId,
+        error
+      });
+    }
+    const automatic = Boolean(GM_config.get('qui_auto_trigger_adoption'));
+    const followupDelayMs = getquiCrossSeedFollowupDelayMs();
+    const delayMs = automatic ? (followupDelayMs > 0 ? followupDelayMs + 10000 : 5000) : 0;
+    job.adoptionPageScheduled = true;
+    job.adoptionPageOpenAt = Date.now() + delayMs;
+    job.updatedAt = Date.now();
+    quiAddJobs.set(jobKey, job);
+    if (automatic) {
+      setTimeout(() => {
+        const currentJob = quiAddJobs.get(jobKey);
+        if (currentJob) return openAdoptionReadyPage(jobKey, currentJob);
+        return false;
+      }, delayMs);
+    } else {
+      void openAdoptionReadyPage(jobKey, job);
+    }
+    debugLog('auto qui adoption page scheduled', {
+      filename: job.filename,
+      torrentId: job.torrentId,
+      delayMs,
+      automatic
+    });
+    return true;
+  }
+
+  function handleCompletedquiAddJob(jobKey, job) {
+    try {
+      markAdoptionRowGrabbed(job.row, job.torrentId);
+    } catch (error) {
+      debugLog('qui completion Grabbed persistence failed', {
+        filename: job.filename,
+        torrentId: job.torrentId,
+        error
+      });
+    }
+    try {
+      scheduleAdoptionReadyPage(jobKey, job);
+    } catch (error) {
+      debugLog('qui completion adoption-ready scheduling failed', {
+        filename: job.filename,
+        torrentId: job.torrentId,
+        error
+      });
+    }
+    if (GM_config.get('qui_auto_trigger_adoption')) schedulequiCrossSeedFollowup(jobKey);
+  }
+
   async function pollquiAddJobs() {
     if (quiAddPollInFlight || quiAddJobs.size === 0) return;
 
@@ -2673,46 +6310,54 @@
       }
 
       for (const [key, job] of activeJobs) {
-        const quiItems = await searchquiJobCandidates(job);
-        debugLog('qui add monitor poll result', {
-          filename: job.filename,
-          resultCount: quiItems.length,
-          site: job.site,
-          title: job.title,
-          savePath: job.savePath,
-          trackerHost: job.trackerHost
-        });
+        try {
+          const quiItems = await searchquiJobCandidates(job);
+          debugLog('qui add monitor poll result', {
+            filename: job.filename,
+            resultCount: quiItems.length,
+            site: job.site,
+            title: job.title,
+            savePath: job.savePath,
+            trackerHost: job.trackerHost
+          });
 
-        const matched = findBestquiAddJobMatch(quiItems, job);
-        if (!matched) {
-          job.status = 'Submitted. Waiting for qui match...';
+          const matched = await findVerifiedquiAddJobMatch(quiItems, job);
+          if (!matched) {
+            job.status = 'Submitted. Waiting for qui match...';
+            job.updatedAt = Date.now();
+            quiAddJobs.set(key, job);
+            continue;
+          }
+
+          job.progress = toPercent(matched.progress);
+          job.state = matched.state;
+          job.hash = matched.hash;
+          job.sourceContentPath = matched.contentPath;
+          job.sourceSavePath = matched.savePath;
+          job.status = isquiAddJobPending(job) ? 'Added' : 'Complete';
+          if (
+            isquiAddJobPending(job) &&
+            ['pending', 'checking', 'missing'].includes(job.followUpStatus)
+          ) {
+            job.followUpScheduled = false;
+            job.followUpStatus = '';
+            job.followUpRunAt = 0;
+            job.followUpError = '';
+          }
           job.updatedAt = Date.now();
           quiAddJobs.set(key, job);
-          continue;
-        }
-
-        job.progress = toPercent(matched.progress);
-        job.state = matched.state;
-        job.hash = matched.hash;
-        job.status = isquiAddJobPending(job) ? 'Added' : 'Complete';
-        if (
-          isquiAddJobPending(job) &&
-          ['pending', 'checking', 'missing'].includes(job.followUpStatus)
-        ) {
-          job.followUpScheduled = false;
-          job.followUpStatus = '';
-          job.followUpRunAt = 0;
-          job.followUpError = '';
-        }
-        job.updatedAt = Date.now();
-        quiAddJobs.set(key, job);
-        if (!isquiAddJobPending(job)) {
-          schedulequiCrossSeedFollowup(key);
+          if (!isquiAddJobPending(job)) {
+            handleCompletedquiAddJob(key, job);
+          }
+        } catch (error) {
+          debugLog('qui add monitor poll failed', {
+            filename: job.filename,
+            site: job.site,
+            error
+          });
+          console.warn('qui add monitor poll failed:', error);
         }
       }
-    } catch (error) {
-      debugLog('qui add monitor poll failed', { error });
-      console.warn('qui add monitor poll failed:', error);
     } finally {
       quiAddPollInFlight = false;
       renderAllquiAddMonitors();
@@ -2720,19 +6365,42 @@
     }
   }
 
-  function startquiAddPolling() {
+  function startquiAddPolling(reset = false) {
+    if (reset) stopquiAddPolling('new other-site torrent submitted');
     if (quiAddPollTimer) return;
-    quiAddPollTimer = setInterval(() => {
-      pollquiAddJobs();
-    }, qui_ADD_POLL_INTERVAL_MS);
+    schedulequiAddPolling(Date.now());
     pollquiAddJobs().catch((error) => {
       debugLog('qui add initial poll failed', { error });
     });
   }
 
+  function schedulequiAddPolling(startedAt) {
+    const elapsedMinutes = Math.floor(Math.max(0, Date.now() - startedAt) / 60000);
+    const delayMs = Math.min(
+      qui_ADD_POLL_INTERVAL_MS * (elapsedMinutes + 1),
+      qui_ADD_MAX_POLL_INTERVAL_MS
+    );
+    const timer = setTimeout(async () => {
+      if (quiAddPollTimer !== timer) return;
+      try {
+        await pollquiAddJobs();
+      } catch (error) {
+        debugLog('qui add monitor poll failed', { error });
+      } finally {
+        if (quiAddPollTimer === timer) {
+          quiAddPollTimer = null;
+          if (hasPollablequiAddJobs()) {
+            schedulequiAddPolling(startedAt);
+          }
+        }
+      }
+    }, delayMs);
+    quiAddPollTimer = timer;
+  }
+
   function stopquiAddPolling(reason = '') {
     if (quiAddPollTimer) {
-      clearInterval(quiAddPollTimer);
+      clearTimeout(quiAddPollTimer);
       quiAddPollTimer = null;
     }
     debugLog('qui add polling stopped', { reason });
@@ -2748,21 +6416,48 @@
       {
         site: 'PTP',
         enabled: () => Boolean(GM_config.get('ptp')),
+        ready: (antMetadata) =>
+          Boolean(
+            GM_config.get('ptp') &&
+            String(GM_config.get('ptp_api_user') || '').trim() &&
+            String(GM_config.get('ptp_api_key') || '').trim() &&
+            !antMetadata?.isM2tsRow
+          ),
         search: (antMetadata) => searchPtp(antMetadata)
       },
       {
         site: 'BHD',
         enabled: () => Boolean(GM_config.get('bhd')),
+        ready: (antMetadata) =>
+          Boolean(
+            GM_config.get('bhd') &&
+            String(GM_config.get('bhd_api') || '').trim() &&
+            String(GM_config.get('bhd_rss') || '').trim() &&
+            antMetadata?.filename
+          ),
         search: (antMetadata) => searchBhd(antMetadata)
       },
       {
         site: 'HDB',
         enabled: () => Boolean(GM_config.get('hdb')),
+        ready: (antMetadata) =>
+          Boolean(
+            GM_config.get('hdb') &&
+            String(GM_config.get('hdb_user') || '').trim() &&
+            String(GM_config.get('hdb_pass') || '').trim() &&
+            antMetadata?.filename
+          ),
         search: (antMetadata) => searchHdb(antMetadata)
       },
       ...unit3dTrackers.map((tracker) => ({
         site: tracker.site,
         enabled: () => Boolean(getUnit3dConfig(tracker).enabled),
+        ready: (antMetadata) => {
+          const config = getUnit3dConfig(tracker);
+          return Boolean(
+            config.enabled && config.apiToken && config.baseUrl && imdbIdNumber(antMetadata?.imdbId)
+          );
+        },
         search: (antMetadata) => searchUnit3dTracker(tracker, antMetadata)
       }))
     ];
@@ -2781,30 +6476,237 @@
     return scoped;
   }
 
-  function preloadEnabledTrackerIcons() {
-    const enabledSites = getTrackerDefinitions()
-      .filter((tracker) => tracker.enabled())
-      .map((tracker) => tracker.site)
-      .filter((site) => getTrackerIconUrl(site));
-    debugLog('preloading enabled tracker icons', { sites: enabledSites });
-    enabledSites.forEach((site) => {
-      ensureIconDataUrl(site).catch((error) => {
-        debugLog('enabled tracker icon preload failed', { site, error });
-      });
-    });
-  }
-
   function trackerNullResultsCacheKey() {
-    return 'tracker-results-v4:nulls';
+    return 'tracker-results-v6:nulls';
   }
 
   function trackerMatchResultsCacheKey() {
-    return 'tracker-results-v4:matches';
+    return 'tracker-results-v6:matches';
+  }
+
+  function migrateLegacyRowProcessingCache() {
+    if (!GM_config.get('use_cache')) return false;
+    if (
+      Number(GM_getValue(ROW_PROCESSING_MIGRATION_STORAGE_KEY, 0)) >=
+      ROW_PROCESSING_MIGRATION_VERSION
+    ) {
+      return false;
+    }
+
+    const startedAt = performanceNow();
+    const obsoletePrefixes = [
+      'tracker-results-v5:',
+      'tracker-results-v4:',
+      'row-complete-v2:',
+      'tracker-result-v2:',
+      'row-complete:',
+      'tracker-result:',
+      'matches:'
+    ];
+    const completionPrefixes = [
+      'row-fully-completed-v1:',
+      'row-complete-v3:',
+      'row-complete-v2:',
+      'row-complete:'
+    ];
+
+    try {
+      const storedKeys = GM_listValues();
+      const cacheEntries = [];
+      const cacheByLogicalKey = new Map();
+      const obsoleteStoredKeys = [];
+      for (const storedKey of storedKeys) {
+        if (!String(storedKey).startsWith(CACHE_STORAGE_PREFIX)) continue;
+        const raw = GM_getValue(storedKey, null);
+        if (typeof raw !== 'string') continue;
+        try {
+          const entry = decodeCacheEntry(raw);
+          if (!entry.k) continue;
+          const stored = { storedKey, key: entry.k, value: entry.v };
+          cacheEntries.push(stored);
+          cacheByLogicalKey.set(entry.k, stored);
+          if (obsoletePrefixes.some((prefix) => entry.k.startsWith(prefix))) {
+            obsoleteStoredKeys.push(storedKey);
+          }
+        } catch (error) {
+          debugLog('row processing migration cache parse failed', { storedKey, error });
+        }
+      }
+
+      const candidates = new Map();
+      const getCandidate = (torrentId) => {
+        const id = String(torrentId || '');
+        if (!/^\d+$/.test(id)) return null;
+        if (!candidates.has(id)) candidates.set(id, { action: '', completions: [], torrentId: id });
+        return candidates.get(id);
+      };
+
+      for (const storedKey of storedKeys) {
+        const key = String(storedKey);
+        if (!key.startsWith(ACTION_STORAGE_PREFIX)) continue;
+        const candidate = getCandidate(key.slice(ACTION_STORAGE_PREFIX.length));
+        if (candidate) candidate.action = getTorrentAction(candidate.torrentId);
+      }
+
+      for (const entry of cacheEntries) {
+        if (!completionPrefixes.some((prefix) => entry.key.startsWith(prefix))) continue;
+        const candidate = getCandidate(entry.value?.torrentId);
+        if (!candidate || !entry.value?.filename) continue;
+        candidate.completions.push(entry.value);
+      }
+
+      const matchIndex = normalizeTrackerResultIndex(
+        cacheByLogicalKey.get(trackerMatchResultsCacheKey())?.value
+      );
+      const nullIndex = normalizeTrackerResultIndex(
+        cacheByLogicalKey.get(trackerNullResultsCacheKey())?.value
+      );
+      const suppressActionRecovery = Boolean(
+        GM_getValue(ACTION_RECOVERY_SUPPRESS_STORAGE_KEY, false)
+      );
+      let alreadyModern = 0;
+      let migratedRows = 0;
+      let recoveredGrabbedActions = 0;
+      let verifiedRows = 0;
+
+      for (const candidate of candidates.values()) {
+        const existing = cacheByLogicalKey.get(rowProcessingCacheKey(candidate.torrentId))?.value;
+        const completions = candidate.completions.toSorted((left, right) => {
+          const fullyCompletedDifference =
+            Number(isFullyCompletedRowCompletion(right)) -
+            Number(isFullyCompletedRowCompletion(left));
+          return (
+            fullyCompletedDifference ||
+            (Number(right?.completedAt || 0) || 0) - (Number(left?.completedAt || 0) || 0)
+          );
+        });
+        const completion = completions[0] || null;
+        const fullyCompleted = completions.find(isFullyCompletedRowCompletion) || null;
+        const metadata = cacheByLogicalKey.get(antMetadataCacheKey(candidate.torrentId))?.value;
+        const legacyFilename = cacheByLogicalKey.get(`ant-filename:${candidate.torrentId}`)?.value;
+        const filename = String(
+          existing?.filename || completion?.filename || metadata?.filename || legacyFilename || ''
+        ).trim();
+
+        if (fullyCompleted) {
+          const sharedCompletion = {
+            ...fullyCompleted,
+            torrentId: candidate.torrentId,
+            filename,
+            status: 'fully-completed'
+          };
+          if (!filename) throw new Error(`Completed row ${candidate.torrentId} has no filename.`);
+          cacheSet(rowFullyCompletedCacheKey(candidate.torrentId, filename), sharedCompletion);
+          if (
+            !isFullyCompletedRowCompletion(
+              cacheGet(rowFullyCompletedCacheKey(candidate.torrentId, filename), null)
+            )
+          ) {
+            throw new Error(`Could not verify completed row ${candidate.torrentId}.`);
+          }
+          if (!candidate.action && !suppressActionRecovery) {
+            GM_setValue(actionStorageKey(candidate.torrentId), 'grabbed');
+            if (getTorrentAction(candidate.torrentId) !== 'grabbed') {
+              throw new Error(`Could not verify Grabbed action ${candidate.torrentId}.`);
+            }
+            candidate.action = 'grabbed';
+            recoveredGrabbedActions += 1;
+          }
+        }
+
+        if (existing?.version === 1 && existing.filename) {
+          alreadyModern += 1;
+          verifiedRows += 1;
+          continue;
+        }
+        if (!filename || (!candidate.action && !completion)) continue;
+
+        const trackerSites = new Set(
+          completions.flatMap((value) =>
+            Array.isArray(value?.trackers) ? value.trackers.map(String) : []
+          )
+        );
+        const trackerMatches = [];
+        for (const [site, results] of Object.entries(matchIndex.sites || {})) {
+          const match = results?.[filename];
+          if (match === undefined) continue;
+          trackerSites.add(site);
+          if (isValidTrackerMatch(site, match)) trackerMatches.push(match);
+        }
+        for (const [site, results] of Object.entries(nullIndex.sites || {})) {
+          if (results?.[filename] === true) trackerSites.add(site);
+        }
+        const quiEntry = cacheByLogicalKey.get(`qui-result:${filename}`);
+        const quiMatches = Array.isArray(quiEntry?.value) ? quiEntry.value : [];
+        const statusText = fullyCompleted
+          ? getRowCompletionText(fullyCompleted)
+          : candidate.action === 'ignored'
+            ? trackerMatches.length > 0
+              ? 'ignored: no match met auto-qui requirements'
+              : 'ignored: no tracker matches'
+            : trackerMatches.length > 0
+              ? `${trackerMatches.length} cached match${trackerMatches.length === 1 ? '' : 'es'}`
+              : 'cached no matches';
+        const statusState = fullyCompleted
+          ? 'done'
+          : candidate.action === 'ignored'
+            ? 'skipped'
+            : trackerMatches.length > 0
+              ? 'done'
+              : 'none';
+
+        cacheRowProcessingData(
+          candidate.torrentId,
+          filename,
+          [...trackerSites].map((site) => ({ site })),
+          quiMatches,
+          trackerMatches,
+          statusText,
+          statusState,
+          Boolean(quiEntry)
+        );
+        const migrated = getCachedRowProcessingData(candidate.torrentId);
+        if (!migrated || migrated.filename !== filename) {
+          throw new Error(`Could not verify migrated row ${candidate.torrentId}.`);
+        }
+        migratedRows += 1;
+        verifiedRows += 1;
+      }
+
+      obsoleteStoredKeys.forEach((storedKey) => GM_deleteValue(storedKey));
+      if (obsoleteStoredKeys.some((storedKey) => GM_getValue(storedKey, null) !== null)) {
+        throw new Error('Could not verify stale cache cleanup.');
+      }
+      GM_setValue(ROW_PROCESSING_MIGRATION_STORAGE_KEY, ROW_PROCESSING_MIGRATION_VERSION);
+      if (
+        Number(GM_getValue(ROW_PROCESSING_MIGRATION_STORAGE_KEY, 0)) !==
+        ROW_PROCESSING_MIGRATION_VERSION
+      ) {
+        throw new Error('Could not verify the row processing migration marker.');
+      }
+      lifecycleLog('legacy row processing cache migration completed', {
+        alreadyModern,
+        cacheEntries: cacheEntries.length,
+        durationMs: elapsedMilliseconds(startedAt),
+        migratedRows,
+        recoveredGrabbedActions,
+        removedStaleEntries: obsoleteStoredKeys.length,
+        verifiedRows
+      });
+      return true;
+    } catch (error) {
+      console.warn(`[${SCRIPT_PREFIX}] legacy row processing cache migration failed`, error);
+      lifecycleLog('legacy row processing cache migration failed', {
+        durationMs: elapsedMilliseconds(startedAt),
+        error: String(error?.message || error)
+      });
+      return false;
+    }
   }
 
   function createTrackerResultIndex() {
     return {
-      version: 4,
+      version: 6,
       updatedAt: Date.now(),
       sites: {}
     };
@@ -2815,7 +6717,7 @@
       return createTrackerResultIndex();
     }
     return {
-      version: 4,
+      version: 6,
       updatedAt: Number(value.updatedAt || 0) || Date.now(),
       sites: value.sites && typeof value.sites === 'object' ? value.sites : {}
     };
@@ -2825,21 +6727,60 @@
     return normalizeTrackerResultIndex(cacheGet(key, null));
   }
 
+  function isValidTrackerMatch(site, match) {
+    const seeders = String(match?.seeders ?? '')
+      .replaceAll(',', '')
+      .trim();
+    return Boolean(
+      match &&
+      typeof match === 'object' &&
+      !Array.isArray(match) &&
+      match.site === site &&
+      isNonemptyString(match.downloadUrl) &&
+      isNonemptyString(match.title) &&
+      /^\d+$/.test(seeders)
+    );
+  }
+
   function getTrackerResultFromIndex(site, filename) {
     if (!GM_config.get('use_cache')) return { cached: false, value: null };
 
     const matchIndex = getTrackerResultIndex(trackerMatchResultsCacheKey());
     const matchValue = matchIndex.sites?.[site]?.[filename];
-    if (matchValue !== undefined) return { cached: true, value: matchValue };
+    if (matchValue !== undefined) {
+      if (isValidTrackerMatch(site, matchValue)) return { cached: true, value: matchValue };
+      deleteTrackerResultFromIndexes(site, filename);
+      return { cached: false, value: null };
+    }
 
     const nullIndex = getTrackerResultIndex(trackerNullResultsCacheKey());
-    if (nullIndex.sites?.[site]?.[filename]) return { cached: true, value: null };
+    const nullValue = nullIndex.sites?.[site]?.[filename];
+    if (nullValue !== undefined) {
+      if (nullValue === true) return { cached: true, value: null };
+      deleteTrackerResultFromIndexes(site, filename);
+    }
 
     return { cached: false, value: null };
   }
 
+  function deleteTrackerResultFromIndexes(site, filename) {
+    if (!GM_config.get('use_cache')) return;
+
+    for (const key of [trackerNullResultsCacheKey(), trackerMatchResultsCacheKey()]) {
+      const index = getTrackerResultIndex(key);
+      if (!Object.hasOwn(index.sites?.[site] || {}, filename)) continue;
+      delete index.sites[site][filename];
+      if (Object.keys(index.sites[site]).length === 0) delete index.sites[site];
+      index.updatedAt = Date.now();
+      cacheSet(key, index);
+    }
+  }
+
   function setTrackerResultInIndexes(site, filename, result) {
     if (!GM_config.get('use_cache')) return;
+    if (result && !isValidTrackerMatch(site, result)) {
+      throw new TypeError(`${site} returned an invalid normalized torrent match.`);
+    }
 
     const nullIndex = getTrackerResultIndex(trackerNullResultsCacheKey());
     const matchIndex = getTrackerResultIndex(trackerMatchResultsCacheKey());
@@ -2868,6 +6809,32 @@
     return `row-complete-v3:${torrentId}:${filename}:${signature}`;
   }
 
+  function rowFullyCompletedCacheKey(torrentId, filename) {
+    return `row-fully-completed-v1:${torrentId}:${filename}`;
+  }
+
+  function findLegacyFullyCompletedRowCompletion(torrentId, filename) {
+    if (
+      Number(GM_getValue(ROW_PROCESSING_MIGRATION_STORAGE_KEY, 0)) >=
+      ROW_PROCESSING_MIGRATION_VERSION
+    ) {
+      return null;
+    }
+    const prefix = `row-complete-v3:${torrentId}:${filename}:`;
+    for (const storedKey of GM_listValues()) {
+      if (!String(storedKey).startsWith(CACHE_STORAGE_PREFIX)) continue;
+      try {
+        const entry = decodeCacheEntry(GM_getValue(storedKey, null));
+        if (String(entry.k || '').startsWith(prefix) && isFullyCompletedRowCompletion(entry.v)) {
+          return entry.v;
+        }
+      } catch (error) {
+        debugLog('legacy row completion parse failed', { storedKey, error });
+      }
+    }
+    return null;
+  }
+
   function refreshRowKey(torrentId, filename, trackers) {
     const signature = trackers
       .map((tracker) => tracker.site)
@@ -2887,7 +6854,20 @@
   }
 
   function getRowCompletion(torrentId, filename, trackers) {
-    return cacheGet(rowCompleteCacheKey(torrentId, filename, trackers), null);
+    if (!GM_config.get('use_cache')) return null;
+    const scoped = cacheGet(rowCompleteCacheKey(torrentId, filename, trackers), null);
+    if (isFullyCompletedRowCompletion(scoped)) return scoped;
+
+    const sharedKey = rowFullyCompletedCacheKey(torrentId, filename);
+    const shared = cacheGet(sharedKey, null);
+    if (isFullyCompletedRowCompletion(shared)) return shared;
+
+    const legacy = findLegacyFullyCompletedRowCompletion(torrentId, filename);
+    if (legacy) {
+      cacheSet(sharedKey, legacy);
+      return legacy;
+    }
+    return scoped;
   }
 
   function isFullyCompletedRowCompletion(completion) {
@@ -2902,23 +6882,6 @@
       'qui-follow-up-ant-added-without-match': 'completed: ANT fallback submitted'
     };
     return reasonLabels[completion?.reason] || 'completed: ANT submitted to qui';
-  }
-
-  function isRowTrackerComplete(torrentId, filename, trackers) {
-    if (trackers.length === 0) return true;
-    const completion = getRowCompletion(torrentId, filename, trackers);
-    if (isFullyCompletedRowCompletion(completion)) return true;
-    if (!areTrackerResultsCached(filename, trackers)) return false;
-    const completeKey = rowCompleteCacheKey(torrentId, filename, trackers);
-    if (!cacheHas(completeKey)) {
-      cacheSet(completeKey, {
-        torrentId,
-        filename,
-        trackers: trackers.map((tracker) => tracker.site),
-        completedAt: Date.now()
-      });
-    }
-    return true;
   }
 
   function markRowTrackerComplete(torrentId, filename, trackers) {
@@ -2949,21 +6912,37 @@
 
   function markRowProcessingComplete(row, filename, reason = '') {
     const context = getRowProcessingContext(row, filename);
-    if (!context.torrentId || !context.filename || context.trackers.length === 0) {
+    if (!context.torrentId || !context.filename) {
       debugLog('row complete cache skipped', { filename, reason, context });
       return;
     }
 
-    cacheSet(rowCompleteCacheKey(context.torrentId, context.filename, context.trackers), {
-      torrentId: context.torrentId,
-      filename: context.filename,
-      trackers: context.trackers.map((tracker) => tracker.site),
-      status: 'fully-completed',
-      reason,
-      completedAt: Date.now()
-    });
-    setRowState(row, getRowCompletionText({ reason }), 'done');
-    debugLog('row complete cache marked', { reason, context });
+    try {
+      const completion = {
+        torrentId: context.torrentId,
+        filename: context.filename,
+        status: 'fully-completed',
+        reason,
+        completedAt: Date.now()
+      };
+      cacheSet(rowFullyCompletedCacheKey(context.torrentId, context.filename), completion);
+      if (context.trackers.length > 0) {
+        cacheSet(rowCompleteCacheKey(context.torrentId, context.filename, context.trackers), {
+          ...completion,
+          trackers: context.trackers.map((tracker) => tracker.site)
+        });
+      }
+      setRowState(row, getRowCompletionText({ reason }), 'done');
+      debugLog('row complete cache marked', { reason, context });
+      return true;
+    } catch (error) {
+      debugLog('row complete persistence failed after qui accepted the torrent', {
+        reason,
+        context,
+        error
+      });
+      return false;
+    }
   }
 
   async function searchScopedTrackers(antMetadata, antTorrentId, trackers, refreshCache = false) {
@@ -2977,6 +6956,19 @@
     });
 
     const searches = trackers.map(async (tracker) => {
+      if (refreshCache) deleteTrackerResultFromIndexes(tracker.site, filename);
+      if (!tracker.ready?.(antMetadata)) {
+        debugLog('tracker lookup unavailable', {
+          filename,
+          site: tracker.site,
+          reason: 'disabled, missing credentials, or missing required metadata'
+        });
+        return {
+          complete: false,
+          match: refreshCache ? null : getTrackerResultFromIndex(tracker.site, filename).value
+        };
+      }
+
       if (!refreshCache) {
         const cached = getTrackerResultFromIndex(tracker.site, filename);
         if (cached.cached) {
@@ -2985,20 +6977,20 @@
             site: tracker.site,
             hasMatch: Boolean(cached.value)
           });
-          return cached.value;
+          return { complete: true, match: cached.value };
         }
       }
 
       debugLog('tracker aggregate cache miss', { filename, site: tracker.site, refreshCache });
       const result = await tracker.search(antMetadata);
       setTrackerResultInIndexes(tracker.site, filename, result);
-      return result;
+      return { complete: true, match: result };
     });
 
     const settled = await Promise.allSettled(searches);
     const matches = settled
       .map((result, index) => {
-        if (result.status === 'fulfilled') return result.value;
+        if (result.status === 'fulfilled') return result.value.match;
         debugLog('tracker filename lookup failed', {
           filename,
           site: trackers[index]?.site,
@@ -3008,18 +7000,35 @@
         return null;
       })
       .filter(Boolean);
+    const complete = settled.every(
+      (result) => result.status === 'fulfilled' && result.value.complete
+    );
 
     debugLog('scoped tracker searches complete', {
       filename,
       antTorrentId,
       matches,
+      complete,
       trackers: trackers.map((tracker) => tracker.site)
     });
-    return matches;
+    return { matches, complete, trackerCount: trackers.length };
   }
 
-  async function addTrackerMatchToqui(row, filename, match, button) {
-    if (!match?.downloadUrl) return;
+  function shouldAutoIgnoreTrackerSearch(searchResult, autoquiState, fullyCompleted = false) {
+    const quiConfig = getquiConfig();
+    return (
+      !fullyCompleted &&
+      Boolean(GM_config.get('qui_auto_add_site_torrent')) &&
+      Boolean(GM_config.get('qui_auto_ignore_ungrabbed')) &&
+      Boolean(quiConfig.baseUrl && quiConfig.token) &&
+      searchResult?.complete === true &&
+      Number(searchResult?.trackerCount) > 0 &&
+      (autoquiState === 'no-match' || autoquiState === 'ineligible')
+    );
+  }
+
+  async function addTrackerMatchToqui(row, filename, match, button, autoAdded = false) {
+    if (!match?.downloadUrl) return false;
 
     const jobKey = `${filename}:${match.site}:${match.downloadUrl}`;
     const existingJob = quiAddJobs.get(jobKey);
@@ -3027,7 +7036,7 @@
       renderquiAddMonitor(row);
       getquiMonitorContainer(row).scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       if (shouldPollquiAddJob(existingJob)) startquiAddPolling();
-      return;
+      return true;
     }
 
     const config = getquiConfig();
@@ -3037,7 +7046,7 @@
     if (!config.baseUrl || !config.token) {
       button.textContent = 'qui config missing';
       button.dataset.state = 'error';
-      return;
+      return false;
     }
 
     const job = {
@@ -3045,6 +7054,7 @@
       row,
       filename,
       torrentId: getRowProcessingContext(row, filename).torrentId,
+      groupId: getRowGroupId(row),
       site: match.site,
       title: match.title || filename,
       trackerHost: getMatchHost(match),
@@ -3055,6 +7065,8 @@
       progress: null,
       state: '',
       hash: '',
+      sourceContentPath: '',
+      sourceSavePath: '',
       error: '',
       followUpScheduled: false,
       followUpStatus: '',
@@ -3062,6 +7074,10 @@
       followUpSavePath: '',
       followUpHash: '',
       followUpRunAt: 0,
+      autoAdded: Boolean(autoAdded),
+      adoptionPageScheduled: false,
+      adoptionPageOpenAt: 0,
+      adoptionPageOpened: false,
       submittedAtSec: Math.floor(Date.now() / 1000),
       updatedAt: Date.now()
     };
@@ -3077,7 +7093,6 @@
       await postToqui(config, [match.downloadUrl]);
       cacheDelete(`qui-result:${filename}`);
       job.status = 'Submitted';
-      job.submittedAtSec = Math.floor(Date.now() / 1000);
       job.updatedAt = Date.now();
       quiAddJobs.set(jobKey, job);
       button.textContent = 'Monitor';
@@ -3089,7 +7104,8 @@
         savePath: config.savePath
       });
       renderquiAddMonitor(row);
-      startquiAddPolling();
+      startquiAddPolling(true);
+      return true;
     } catch (error) {
       job.status = 'Failed';
       job.error = String(error.message || error);
@@ -3099,13 +7115,13 @@
       button.dataset.state = 'error';
       debugLog('tracker qui add failed', { filename, match, savePath: config.savePath, error });
       renderquiAddMonitor(row);
+      return false;
     } finally {
       button.disabled = false;
     }
   }
 
   function getBestAutoquiMatch(matches) {
-    if (!GM_config.get('qui_auto_add_site_torrent')) return null;
     const minSeeders = getquiAutoAddMinSeeders();
     return (Array.isArray(matches) ? matches : [])
       .filter(
@@ -3118,12 +7134,26 @@
       })[0];
   }
 
+  function getAutoquiMatchDisposition(matches) {
+    if (!GM_config.get('qui_auto_add_site_torrent')) {
+      return { state: 'disabled', match: null };
+    }
+    const candidates = Array.isArray(matches) ? matches : [];
+    const match = getBestAutoquiMatch(candidates);
+    if (match) return { state: 'eligible', match };
+    return { state: candidates.length > 0 ? 'ineligible' : 'no-match', match: null };
+  }
+
   async function maybeAutoAddTrackerMatchToqui(row, filename, matches) {
-    const match = getBestAutoquiMatch(matches);
-    if (!match) return;
+    const disposition = getAutoquiMatchDisposition(matches);
+    if (!disposition.match) return disposition.state;
+    const { match } = disposition;
 
     const autoKey = `${filename}:${match.site}:${match.downloadUrl}`;
-    if (row.dataset.antCrossSeedAutoquiKey === autoKey) return;
+    if (row.dataset.antCrossSeedAutoquiKey === autoKey) {
+      const existingJob = quiAddJobs.get(autoKey);
+      if (existingJob && !existingJob.error) return 'accepted';
+    }
     row.dataset.antCrossSeedAutoquiKey = autoKey;
 
     const button = document.createElement('button');
@@ -3141,8 +7171,9 @@
       minSeeders: getquiAutoAddMinSeeders(),
       title: match.title
     });
-    await addTrackerMatchToqui(row, filename, match, button);
+    const accepted = await addTrackerMatchToqui(row, filename, match, button, true);
     button.remove();
+    return accepted ? 'accepted' : 'failed';
   }
 
   function appendMatches(row, matches, filename) {
@@ -3164,17 +7195,24 @@
       link.rel = 'noreferrer';
       link.title = `${match.site}: ${match.title || 'match'} (${match.seeders || 0} seeders) - open torrent page`;
 
+      const configuredIconUrl = getTrackerIconUrl(match.site);
       const iconUrl =
-        getTrackerIconUrl(match.site) ||
-        `${new URL(match.detailsUrl || match.downloadUrl).origin}/favicon.ico`;
+        configuredIconUrl || `${new URL(match.detailsUrl || match.downloadUrl).origin}/favicon.ico`;
       const icon = document.createElement('img');
-      icon.src = getCachedIconDataUrl(match.site, iconUrl) || iconUrl;
       icon.alt = match.site;
       icon.className = 'ant-cross-seed-icon';
-      if (getTrackerIconUrl(match.site)) {
+      const cachedIcon = getCachedIconDataUrl(match.site, iconUrl);
+      if (cachedIcon) {
+        icon.src = cachedIcon;
+      } else if (configuredIconUrl) {
+        icon.hidden = true;
         ensureIconDataUrl(match.site, iconUrl).then((dataUrl) => {
-          if (dataUrl) icon.src = dataUrl;
+          if (!dataUrl) return;
+          icon.src = dataUrl;
+          icon.hidden = false;
         });
+      } else {
+        icon.hidden = true;
       }
 
       const seeders = document.createElement('span');
@@ -3350,13 +7388,58 @@
     }
   }
 
-  function renderCachedTrackerRow(row, torrentId, filename, trackers, titleSnapshot = null) {
+  function renderCachedTrackerRow(
+    row,
+    torrentId,
+    filename,
+    trackers,
+    titleSnapshot = null,
+    allowAutoIgnore = true,
+    antMetadata = null
+  ) {
     const matches = getCachedTrackerMatches(filename, trackers);
     const completion = getRowCompletion(torrentId, filename, trackers);
+    const cachedProcessing = getCachedRowProcessingData(torrentId);
+    const fullyCompleted = isFullyCompletedRowCompletion(completion);
+    const autoquiState = getAutoquiMatchDisposition(matches).state;
+    const cachedAntMetadata = { ...(antMetadata || {}), filename };
+    const trackerLookupsAvailable = trackers.every(
+      (tracker) => tracker.ready?.(cachedAntMetadata) === true
+    );
+    const autoIgnored =
+      allowAutoIgnore &&
+      cachedProcessing?.quiLookupComplete === true &&
+      cachedProcessing.filename === filename &&
+      trackerLookupsAvailable &&
+      shouldAutoIgnoreTrackerSearch(
+        {
+          complete: areTrackerResultsCached(filename, trackers),
+          trackerCount: trackers.length
+        },
+        autoquiState,
+        fullyCompleted
+      ) &&
+      markAdoptionRowIgnored(row, torrentId, false);
+    const autoIgnoreStatusText = autoIgnored
+      ? autoquiState === 'no-match'
+        ? 'ignored: no tracker matches'
+        : 'ignored: no match met auto-qui requirements'
+      : '';
     appendMatches(row, matches, filename);
     restoreRowTitleLink(row, titleSnapshot);
-    if (isFullyCompletedRowCompletion(completion)) {
+    if (fullyCompleted) {
       setRowState(row, getRowCompletionText(completion), 'done');
+    } else if (autoIgnored) {
+      setRowState(row, autoIgnoreStatusText, 'skipped');
+      cacheRowProcessingData(
+        torrentId,
+        filename,
+        trackers,
+        cachedProcessing?.quiMatches || [],
+        matches,
+        autoIgnoreStatusText,
+        'skipped'
+      );
     } else {
       setRowState(
         row,
@@ -3366,13 +7449,18 @@
         matches.length ? 'done' : 'none'
       );
     }
-    markRowTrackerComplete(torrentId, filename, trackers);
+    if (areTrackerResultsCached(filename, trackers)) {
+      markRowTrackerComplete(torrentId, filename, trackers);
+    }
     debugLog('cached row skipped from batch', {
       torrentId,
       filename,
       trackers: trackers.map((tracker) => tracker.site),
-      completion,
-      matches
+      complete: fullyCompleted,
+      matchCount: matches.length,
+      autoquiState,
+      trackerLookupsAvailable,
+      autoIgnored
     });
   }
 
@@ -3386,12 +7474,18 @@
       skippedMissingTitleLink: 0,
       skippedMissingId: 0,
       skippedCached: 0,
+      skippedBroken: 0,
       skippedRefreshed: 0
     };
 
     for (const row of rows) {
+      if (getTorrentAction(getRowTorrentId(row)) === 'broken') {
+        stats.skippedBroken += 1;
+        setRowState(row, 'broken: rescan metadata to retry', 'error');
+        continue;
+      }
       const titleSnapshot = snapshotRowTitleLink(row);
-      if (GM_config.get('skip_trumpable') && isTrumpableRow(row)) {
+      if (shouldSkipTrumpableRows() && isTrumpableRow(row)) {
         stats.skippedTrumpable += 1;
         setRowState(row, 'skipped trumpable', 'skipped');
         restoreRowTitleLink(row, titleSnapshot);
@@ -3407,7 +7501,13 @@
 
       if (!titleSnapshot) {
         stats.skippedMissingTitleLink += 1;
-        setRowState(row, 'missing ANT title link', 'skipped');
+        const torrentId = getRowTorrentId(row);
+        if (torrentId) markAdoptionRowAction(row, 'broken', torrentId, false);
+        setRowState(
+          row,
+          torrentId ? 'broken: missing ANT title link' : 'missing ANT torrent id and title link',
+          'error'
+        );
         continue;
       }
 
@@ -3426,22 +7526,60 @@
       const completion = cachedFilename
         ? getRowCompletion(torrentId, cachedFilename, rowTrackers)
         : null;
+      const cachedProcessing = getCachedRowProcessingData(torrentId);
+      const quiConfig = getquiConfig();
+      const quiLookupRequired = Boolean(quiConfig.baseUrl && quiConfig.token);
+      const availableTrackers = rowTrackers.filter((tracker) =>
+        tracker.ready?.({ ...cachedMetadata, filename: cachedFilename })
+      );
+      if (cachedFilename && isFullyCompletedRowCompletion(completion)) {
+        stats.skippedCached += 1;
+        renderCachedTrackerRow(
+          row,
+          torrentId,
+          cachedFilename,
+          rowTrackers,
+          titleSnapshot,
+          true,
+          cachedMetadata
+        );
+        continue;
+      }
       if (refreshCache) {
         const key = refreshRowKey(torrentId, cachedFilename, rowTrackers);
         if (refreshedRowKeys.has(key)) {
           stats.skippedRefreshed += 1;
           if (cachedFilename) {
-            renderCachedTrackerRow(row, torrentId, cachedFilename, rowTrackers, titleSnapshot);
+            renderCachedTrackerRow(
+              row,
+              torrentId,
+              cachedFilename,
+              rowTrackers,
+              titleSnapshot,
+              false,
+              cachedMetadata
+            );
           }
           continue;
         }
-      } else if (cachedFilename && isFullyCompletedRowCompletion(completion)) {
+      } else if (
+        cachedFilename &&
+        (cachedMetadata?.filename || availableTrackers.length === rowTrackers.length) &&
+        (!quiLookupRequired ||
+          (cachedProcessing?.quiLookupComplete === true &&
+            cachedProcessing.filename === cachedFilename)) &&
+        areTrackerResultsCached(cachedFilename, availableTrackers)
+      ) {
         stats.skippedCached += 1;
-        renderCachedTrackerRow(row, torrentId, cachedFilename, rowTrackers, titleSnapshot);
-        continue;
-      } else if (cachedFilename && isRowTrackerComplete(torrentId, cachedFilename, rowTrackers)) {
-        stats.skippedCached += 1;
-        renderCachedTrackerRow(row, torrentId, cachedFilename, rowTrackers, titleSnapshot);
+        renderCachedTrackerRow(
+          row,
+          torrentId,
+          cachedFilename,
+          rowTrackers,
+          titleSnapshot,
+          true,
+          cachedMetadata
+        );
         continue;
       }
 
@@ -3470,38 +7608,239 @@
 
   function getRunButtonIdleText(limit, hasRemaining) {
     if (!hasRemaining) return 'No uncached rows remaining';
-    if (limit > 0) return `Process next ${limit} rows by IMDb`;
-    return 'Search adoption rows by IMDb';
+    if (limit > 0) return `Process next ${limit} adoption rows`;
+    return 'Search adoption rows';
   }
 
-  function loadCachedRowStatusesOnPageLoad() {
-    if (!GM_config.get('load_cache_status_on_page_load') || !GM_config.get('use_cache')) return;
+  function setRowProcessingControls(running) {
+    rowProcessingRunning = running;
+    document.querySelectorAll('.ant-cross-seed-rescan-metadata').forEach((button) => {
+      button.disabled = running;
+    });
+    const cancelButton = document.querySelector('#ant-cross-seed-cancel');
+    if (!cancelButton) return;
+    cancelButton.disabled = !running || rowProcessingCancelRequested;
+    cancelButton.textContent = rowProcessingCancelRequested
+      ? 'Cancelling...'
+      : 'Cancel row processing';
+  }
 
-    const rows = getRows();
-    const trackers = getScopedTrackers();
-    if (trackers.length === 0) {
-      debugLog('page-load cache status skipped: no scoped trackers');
-      return;
-    }
+  function requestRowProcessingCancellation() {
+    if (!rowProcessingRunning || rowProcessingCancelRequested) return false;
+    rowProcessingCancelRequested = true;
+    setRowProcessingControls(true);
+    const display = document.querySelector('#ant-cross-seed-progress');
+    const bar = display?.querySelector('progress');
+    updateRunProgress(
+      Number(bar?.value) || 0,
+      Number(bar?.max) || 0,
+      'Cancellation requested; finishing the current request...',
+      'running'
+    );
+    return true;
+  }
 
-    const { stats } = collectBatchRows(rows, trackers, 0, false);
-    debugLog('page-load cache status loaded', {
-      rowCount: rows.length,
-      trackers: trackers.map((tracker) => tracker.site),
-      stats
+  function rowProcessingCacheKey(torrentId) {
+    return `row-processing-v1:${torrentId}`;
+  }
+
+  function cacheRowProcessingData(
+    torrentId,
+    filename,
+    trackers,
+    quiMatches,
+    trackerMatches,
+    statusText,
+    statusState,
+    quiLookupComplete = true
+  ) {
+    if (!torrentId || !filename) return;
+    cacheSet(rowProcessingCacheKey(torrentId), {
+      version: 1,
+      torrentId: String(torrentId),
+      filename,
+      trackerSites: trackers.map((tracker) => tracker.site),
+      quiMatches: quiMatches.map((match) => ({
+        name: match.name || '',
+        savePath: match.savePath || ''
+      })),
+      trackerMatches,
+      statusText,
+      statusState,
+      quiLookupComplete,
+      processedAt: Date.now()
     });
   }
 
+  function getCachedRowProcessingData(torrentId) {
+    const cached = cacheGet(rowProcessingCacheKey(torrentId), null);
+    return cached?.version === 1 && cached.filename ? cached : null;
+  }
+
+  function restoreCachedRowProcessingData(row) {
+    const torrentId = getRowTorrentId(row);
+    if (getTorrentAction(torrentId) === 'broken') {
+      setRowState(row, 'broken: rescan metadata to retry', 'error');
+      return true;
+    }
+    const cached = getCachedRowProcessingData(torrentId);
+    if (!cached) {
+      const metadata = cacheGet(antMetadataCacheKey(torrentId), null);
+      const filename = metadata?.filename || cacheGet(`ant-filename:${torrentId}`);
+      if (!filename) return false;
+      const trackers = getTrackersForRow(row, getScopedTrackers());
+      const matches = getCachedTrackerMatches(filename, trackers);
+      if (!matches.length) return false;
+      row.dataset.antCrossSeedTorrentId = String(torrentId);
+      row.dataset.antCrossSeedFilename = filename;
+      row.dataset.antCrossSeedTrackerSites = trackers.map((tracker) => tracker.site).join(',');
+      appendMatches(row, matches, filename);
+      setRowState(row, `cached ${matches.length} match${matches.length === 1 ? '' : 'es'}`, 'done');
+      return true;
+    }
+
+    row.dataset.antCrossSeedTorrentId = String(torrentId);
+    row.dataset.antCrossSeedFilename = cached.filename;
+    row.dataset.antCrossSeedTrackerSites = (cached.trackerSites || []).join(',');
+    renderquiMatches(row, cached.filename, cached.quiMatches || []);
+    appendMatches(row, cached.trackerMatches || [], cached.filename);
+    setRowState(row, cached.statusText || 'cached processing data', cached.statusState || 'done');
+    return true;
+  }
+
+  function isRowEligibleForCachedDataRestore(row, loadAll) {
+    return Boolean(
+      row?.classList?.contains('zeroseed') &&
+      !row.hidden &&
+      row.dataset.antCrossSeedPageCacheChecked !== 'true' &&
+      (loadAll || ['grabbed', 'ignored', 'broken'].includes(row.dataset.antAdoptionAction))
+    );
+  }
+
+  function getRowsForCachedDataRestore(loadAll) {
+    return [...document.querySelectorAll('tr.torrent.torrent_row.zeroseed')].filter((row) =>
+      isRowEligibleForCachedDataRestore(row, loadAll)
+    );
+  }
+
+  function restoreCachedRowStatuses(rows) {
+    const rowsWithoutSnapshots = rows.filter((row) => !restoreCachedRowProcessingData(row));
+    rows.forEach((row) => {
+      row.dataset.antCrossSeedPageCacheChecked = 'true';
+    });
+    return rows.length - rowsWithoutSnapshots.length;
+  }
+
+  function loadCachedRowStatusesOnPageLoad() {
+    if (!GM_config.get('use_cache')) return 0;
+    const startedAt = performanceNow();
+    const loadAll = Boolean(GM_config.get('load_cache_status_on_page_load'));
+    const rows = getRowsForCachedDataRestore(loadAll);
+    const snapshotCount = restoreCachedRowStatuses(rows);
+    debugLog('page-load cache status loaded', {
+      rowCount: rows.length,
+      snapshotCount
+    });
+    lifecycleLog('cached row status restoration completed', {
+      durationMs: elapsedMilliseconds(startedAt),
+      rows: rows.length,
+      snapshots: snapshotCount
+    });
+    return rows.length;
+  }
+
+  async function scheduleCachedRowStatusesOnPageLoad() {
+    if (!GM_config.get('use_cache')) {
+      lifecycleLog('deferred cached row status restoration skipped', { reason: 'cache disabled' });
+      return;
+    }
+    const startedAt = performanceNow();
+    const loadAll = Boolean(GM_config.get('load_cache_status_on_page_load'));
+    const rows = getRowsForCachedDataRestore(loadAll);
+    const snapshotCount = restoreCachedRowStatuses(rows);
+    lifecycleLog('deferred cached row status restoration completed', {
+      durationMs: elapsedMilliseconds(startedAt),
+      passes: rows.length > 0 ? 1 : 0,
+      rows: rows.length,
+      snapshots: snapshotCount
+    });
+  }
+
+  function queueCachedRowStatusesOnPageLoad() {
+    cachedRowStatusRestoreRequested = true;
+    if (cachedRowStatusRestoreRunning) return cachedRowStatusRestoreQueue;
+    cachedRowStatusRestoreRunning = true;
+    cachedRowStatusRestoreQueue = cachedRowStatusRestoreQueue
+      .catch(() => undefined)
+      .then(async () => {
+        while (cachedRowStatusRestoreRequested) {
+          cachedRowStatusRestoreRequested = false;
+          await scheduleCachedRowStatusesOnPageLoad();
+        }
+      })
+      .finally(() => {
+        cachedRowStatusRestoreRunning = false;
+      });
+    return cachedRowStatusRestoreQueue;
+  }
+
+  async function resolveRowAntMetadata(
+    row,
+    torrentId,
+    groupId,
+    cachedMetadata = null,
+    refreshCache = false
+  ) {
+    try {
+      const metadata =
+        !refreshCache && cachedMetadata?.filename && cachedMetadata?.imdbId
+          ? cachedMetadata
+          : await getAntMetadata(torrentId, groupId, refreshCache);
+      if (!isNonemptyString(metadata?.filename)) throw new Error('No usable ANT filename found.');
+      return metadata;
+    } catch (error) {
+      markAdoptionRowAction(row, 'broken', torrentId, false);
+      setRowState(row, `broken: ${error.message || error}`, 'error');
+      debugLog('ANT metadata lookup failed', { torrentId, error });
+      return null;
+    }
+  }
+
+  async function rescanBrokenRow(row, torrentId) {
+    if (rowProcessingRunning || getTorrentAction(torrentId) !== 'broken') return;
+    rowProcessingCancelRequested = false;
+    setRowProcessingControls(true);
+    try {
+      setRowState(row, 'rescanning ANT metadata', 'working');
+      const metadata = await resolveRowAntMetadata(row, torrentId, getRowGroupId(row), null, true);
+      if (metadata) {
+        markAdoptionRowAction(row, '', torrentId, false);
+        setRowState(row, 'metadata resolved: ready to process', 'done');
+      }
+    } catch (error) {
+      setRowState(row, `rescan failed: ${error.message || error}`, 'error');
+    } finally {
+      setRowProcessingControls(false);
+    }
+  }
+
   async function processRow(row, index, total, trackers, rowMeta = {}, refreshCache = false) {
+    if (getTorrentAction(rowMeta.torrentId || getRowTorrentId(row)) === 'broken') return;
     const rowTrackers = rowMeta.trackers || getTrackersForRow(row, trackers);
     const titleSnapshot = snapshotRowTitleLink(row);
     if (!titleSnapshot) {
       debugLog('row skipped', { index, total, reason: 'missing ANT title link' });
-      setRowState(row, `missing ANT title link (${index}/${total})`, 'skipped');
+      const torrentId = rowMeta.torrentId || getRowTorrentId(row);
+      if (torrentId) markAdoptionRowAction(row, 'broken', torrentId, false);
+      setRowState(
+        row,
+        torrentId ? 'broken: missing ANT title link' : 'missing ANT torrent id and title link',
+        'error'
+      );
       return;
     }
 
-    if (GM_config.get('skip_trumpable') && isTrumpableRow(row)) {
+    if (shouldSkipTrumpableRows() && isTrumpableRow(row)) {
       debugLog('row skipped', { index, total, reason: 'trumpable' });
       setRowState(row, `skipped trumpable (${index}/${total})`, 'skipped');
       restoreRowTitleLink(row, titleSnapshot);
@@ -3526,10 +7865,16 @@
 
     debugLog('row processing start', { index, total, torrentId, groupId });
     setRowState(row, `resolving metadata (${index}/${total})`, 'working');
-    const antMetadata =
-      rowMeta.cachedMetadata?.filename && rowMeta.cachedMetadata?.imdbId
-        ? rowMeta.cachedMetadata
-        : await getAntMetadata(torrentId, groupId);
+    const antMetadata = await resolveRowAntMetadata(
+      row,
+      torrentId,
+      groupId,
+      rowMeta.cachedMetadata
+    );
+    if (!antMetadata) {
+      restoreRowTitleLink(row, titleSnapshot);
+      return;
+    }
     antMetadata.isM2tsRow = isM2tsRow(row);
     const filename = antMetadata.filename;
     debugLog('row metadata resolved', { index, total, torrentId, groupId, antMetadata });
@@ -3538,8 +7883,12 @@
     row.dataset.antCrossSeedTrackerSites = rowTrackers.map((tracker) => tracker.site).join(',');
 
     setRowState(row, `searching qui for ${filename} (${index}/${total})`, 'working');
+    let quiMatches = [];
+    let quiLookupComplete = false;
+    const quiConfig = getquiConfig();
     try {
-      const quiMatches = await searchqui(filename);
+      quiMatches = await searchqui(filename);
+      quiLookupComplete = Boolean(quiConfig.baseUrl && quiConfig.token);
       renderquiMatches(row, filename, quiMatches);
     } catch (error) {
       debugLog('qui filename lookup failed', { filename, error });
@@ -3549,9 +7898,22 @@
 
     setRowState(row, `searching ${filename} (${index}/${total})`, 'working');
 
-    const matches = await searchScopedTrackers(antMetadata, torrentId, rowTrackers, refreshCache);
+    const trackerSearch = await searchScopedTrackers(
+      antMetadata,
+      torrentId,
+      rowTrackers,
+      refreshCache
+    );
+    const { matches } = trackerSearch;
     appendMatches(row, matches, filename);
-    await maybeAutoAddTrackerMatchToqui(row, filename, matches);
+    const autoquiState = await maybeAutoAddTrackerMatchToqui(row, filename, matches);
+    const fullyCompleted = isFullyCompletedRowCompletion(
+      getRowCompletion(torrentId, filename, rowTrackers)
+    );
+    const autoIgnored =
+      quiLookupComplete &&
+      shouldAutoIgnoreTrackerSearch(trackerSearch, autoquiState, fullyCompleted) &&
+      markAdoptionRowIgnored(row, torrentId);
     restoreRowTitleLink(row, titleSnapshot);
     if (areTrackerResultsCached(filename, rowTrackers)) {
       markRowTrackerComplete(torrentId, filename, rowTrackers);
@@ -3560,22 +7922,51 @@
       refreshedRowKeys.add(refreshRowKey(torrentId, filename, rowTrackers));
       refreshedRowKeys.add(refreshRowKey(torrentId, rowMeta.cachedFilename, rowTrackers));
     }
-    debugLog('row processing complete', { index, total, torrentId, groupId, filename, matches });
-    setRowState(
-      row,
-      matches.length ? `${matches.length} match${matches.length === 1 ? '' : 'es'}` : 'no matches',
-      matches.length ? 'done' : 'none'
+    debugLog('row processing complete', {
+      index,
+      total,
+      torrentId,
+      groupId,
+      filename,
+      matches,
+      trackerSearchComplete: trackerSearch.complete,
+      quiLookupComplete,
+      autoquiState,
+      autoIgnored
+    });
+    const statusText = autoIgnored
+      ? autoquiState === 'no-match'
+        ? 'ignored: no tracker matches'
+        : 'ignored: no match met auto-qui requirements'
+      : matches.length
+        ? `${matches.length} match${matches.length === 1 ? '' : 'es'}`
+        : 'no matches';
+    const statusState = autoIgnored ? 'skipped' : matches.length ? 'done' : 'none';
+    cacheRowProcessingData(
+      torrentId,
+      filename,
+      rowTrackers,
+      quiMatches,
+      matches,
+      statusText,
+      statusState,
+      quiLookupComplete
     );
+    setRowState(row, statusText, statusState);
   }
 
   async function run() {
+    if (rowProcessingRunning) return;
     const button = document.querySelector('#ant-cross-seed-run');
     const rows = getRows();
     const limit = getRowLimit();
     const trackers = getScopedTrackers();
     const refreshCache = shouldRefreshTrackerCache();
     const { batch, stats } = collectBatchRows(rows, trackers, limit, refreshCache);
+    applyAdoptionFilters(false);
     const hasRemaining = stats.eligibleTotal > batch.length;
+    rowProcessingCancelRequested = false;
+    setRowProcessingControls(true);
     debugLog('run start', {
       rowCount: rows.length,
       batchCount: batch.length,
@@ -3583,7 +7974,7 @@
       trackers: trackers.map((tracker) => tracker.site),
       limit,
       refreshCache,
-      skipTrumpable: GM_config.get('skip_trumpable'),
+      skipTrumpable: shouldSkipTrumpableRows(),
       rowDelaySeconds: getRowDelaySeconds(),
       useCache: GM_config.get('use_cache'),
       trackerScope: getTrackerScope() || 'All enabled trackers',
@@ -3599,25 +7990,51 @@
           ? `Processing 0/${batch.length} eligible rows...`
           : 'No uncached rows remaining';
     }
+    updateRunProgress(
+      0,
+      batch.length,
+      batch.length > 0
+        ? `Processing 0 of ${batch.length} eligible rows.`
+        : 'No uncached eligible rows remain.',
+      batch.length > 0 ? 'running' : 'complete'
+    );
 
     if (batch.length === 0) {
       if (button) {
         button.disabled = false;
         button.textContent = getRunButtonIdleText(limit, false);
       }
+      setRowProcessingControls(false);
       debugLog('run complete: no eligible rows', { stats });
       return;
     }
 
     const delayMs = getRowDelaySeconds() * 1000;
+    let failedRows = 0;
+    let handledRows = 0;
+    let cancelled = false;
     for (let i = 0; i < batch.length; i += 1) {
+      if (rowProcessingCancelRequested) {
+        cancelled = true;
+        break;
+      }
       const entry = batch[i];
       try {
         if (button) button.textContent = `Processing ${i + 1}/${batch.length} eligible rows...`;
+        updateRunProgress(
+          i,
+          batch.length,
+          `Processing row ${i + 1} of ${batch.length}...`,
+          'running'
+        );
         await processRow(entry.row, i + 1, batch.length, trackers, entry, refreshCache);
       } catch (error) {
+        if (rowProcessingCancelRequested) {
+          cancelled = true;
+          break;
+        }
         try {
-          await retryRowAfterError(
+          const retried = await retryRowAfterError(
             error,
             entry,
             i + 1,
@@ -3626,6 +8043,10 @@
             refreshCache,
             button
           );
+          if (!retried) {
+            cancelled = true;
+            break;
+          }
         } catch (retryError) {
           debugLog('row processing failed after retry', {
             index: i + 1,
@@ -3634,19 +8055,84 @@
           });
           console.error('ANT adoption row processing failed after retry:', retryError);
           setRowState(entry.row, `error: ${retryError.message || retryError}`, 'error');
+          failedRows += 1;
         }
+      }
+      handledRows = i + 1;
+      updateRunProgress(
+        handledRows,
+        batch.length,
+        `Handled ${handledRows} of ${batch.length} rows${failedRows ? `; ${failedRows} failed` : ''}.`,
+        failedRows ? 'error' : 'running'
+      );
+      if (rowProcessingCancelRequested) {
+        cancelled = true;
+        break;
       }
       if (i < batch.length - 1 && delayMs > 0) {
         debugLog('row delay start', { delayMs, nextIndex: i + 2, total: batch.length });
-        await sleepWithButtonCountdown(delayMs, button, `(${i + 1}/${batch.length})`);
+        updateRunProgress(
+          i + 1,
+          batch.length,
+          `Handled ${i + 1} of ${batch.length}${failedRows ? `; ${failedRows} failed` : ''}; waiting before the next row...`,
+          failedRows ? 'error' : 'running'
+        );
+        const completedDelay = await sleepWithButtonCountdown(
+          delayMs,
+          button,
+          `(${i + 1}/${batch.length})`,
+          () => !rowProcessingCancelRequested
+        );
+        if (!completedDelay) {
+          cancelled = true;
+          break;
+        }
       }
     }
 
     if (button) {
       button.disabled = false;
-      button.textContent = getRunButtonIdleText(limit, hasRemaining);
+      button.textContent = getRunButtonIdleText(
+        limit,
+        hasRemaining || cancelled || handledRows < batch.length
+      );
     }
-    debugLog('run complete', { rowCount: rows.length, batchCount: batch.length, stats });
+    if (cancelled) {
+      updateRunProgress(
+        handledRows,
+        batch.length,
+        `Cancelled after ${handledRows} of ${batch.length} rows${failedRows ? `; ${failedRows} failed` : ''}.`,
+        'cancelled'
+      );
+      debugLog('run cancelled', {
+        rowCount: rows.length,
+        batchCount: batch.length,
+        handledRows,
+        failedRows,
+        stats
+      });
+      rowProcessingCancelRequested = false;
+      setRowProcessingControls(false);
+      return;
+    }
+    updateRunProgress(
+      batch.length,
+      batch.length,
+      failedRows
+        ? `Finished with errors: ${batch.length} rows handled; ${failedRows} failed.`
+        : hasRemaining
+          ? `Finished this batch: ${batch.length} rows handled. More eligible rows remain.`
+          : `Finished: ${batch.length} of ${batch.length} eligible rows handled.`,
+      failedRows ? 'error' : 'complete'
+    );
+    debugLog('run complete', {
+      rowCount: rows.length,
+      batchCount: batch.length,
+      failedRows,
+      stats
+    });
+    rowProcessingCancelRequested = false;
+    setRowProcessingControls(false);
   }
 
   function addControls() {
@@ -3655,37 +8141,103 @@
     const toolbar = document.createElement('div');
     toolbar.id = 'ant-cross-seed-toolbar';
 
-    const button = document.createElement('button');
-    button.id = 'ant-cross-seed-run';
-    button.type = 'button';
-    button.textContent = getRunButtonIdleText(getRowLimit(), true);
-    button.addEventListener('click', () => {
-      run().catch((error) => {
-        console.error('ANT adoption IMDb search failed:', error);
-        button.disabled = false;
-        button.textContent = getRunButtonIdleText(getRowLimit(), true);
-      });
-    });
+    const scanButton = document.createElement('button');
+    scanButton.id = 'ant-adoption-scan';
+    scanButton.type = 'button';
+    scanButton.textContent = `Scan ${getScanPageCount()} adoption pages`;
+    scanButton.addEventListener('click', () => startAdoptionScan(scanButton));
+
+    const bountyScanButton = document.createElement('button');
+    bountyScanButton.id = 'ant-adoption-scan-bounty';
+    bountyScanButton.type = 'button';
+    bountyScanButton.textContent = getBountyScanButtonText();
+    bountyScanButton.disabled = getMinimumBounty() <= 0;
+    bountyScanButton.title =
+      getMinimumBounty() > 0
+        ? `Scans bounty-descending pages until the first bounty below ${getMinimumBounty()}, up to ${MAX_SCAN_PAGES} pages.`
+        : 'Set Minimum bounty above zero in Settings to enable this scan.';
+    bountyScanButton.addEventListener('click', () => startAdoptionScan(bountyScanButton, true));
+
+    const openLastScanButton = document.createElement('button');
+    openLastScanButton.id = 'ant-adoption-open-last-scan';
+    openLastScanButton.type = 'button';
+    openLastScanButton.textContent = 'Open last scan';
+    openLastScanButton.addEventListener('click', openLastFilteredScan);
 
     const settings = document.createElement('button');
     settings.type = 'button';
     settings.textContent = 'Settings';
     settings.addEventListener('click', () => GM_config.open());
 
-    toolbar.append(button, settings);
+    toolbar.append(scanButton, bountyScanButton, openLastScanButton);
+    if (isFilteredAdoptionView()) {
+      const button = document.createElement('button');
+      button.id = 'ant-cross-seed-run';
+      button.type = 'button';
+      button.textContent = getRunButtonIdleText(getRowLimit(), true);
+      button.addEventListener('click', () => {
+        run().catch((error) => {
+          console.error('ANT adoption row processing failed:', error);
+          button.disabled = false;
+          button.textContent = getRunButtonIdleText(getRowLimit(), true);
+          rowProcessingCancelRequested = false;
+          setRowProcessingControls(false);
+          const bar = document.querySelector('#ant-cross-seed-progress progress');
+          updateRunProgress(
+            Number(bar?.value) || 0,
+            Number(bar?.max) || 0,
+            `Processing failed: ${error.message || error}`,
+            'error'
+          );
+        });
+      });
+
+      const cancelButton = document.createElement('button');
+      cancelButton.id = 'ant-cross-seed-cancel';
+      cancelButton.type = 'button';
+      cancelButton.disabled = true;
+      cancelButton.textContent = 'Cancel row processing';
+      cancelButton.addEventListener('click', requestRowProcessingCancellation);
+      toolbar.append(button, cancelButton);
+    }
+    toolbar.appendChild(settings);
 
     const target =
       document.querySelector('.thin > h2, #content > h2, h2') ||
       document.querySelector('.thin, #content, body');
     target.parentNode.insertBefore(toolbar, target.nextSibling);
+    if (isFilteredAdoptionView()) addRunProgressDisplay();
+    updateOpenLastScanButton();
   }
 
   function addStyles() {
     const style = document.createElement('style');
     style.textContent = `
+      ${EXCLUSION_CONTROL_CSS}
+      #ant-adoption-ready-notice {
+        background: #b00020;
+        border: 4px solid #ff5252;
+        box-shadow: 0 0 18px rgba(255, 0, 0, 0.65);
+        color: #fff;
+        font-size: 24px;
+        font-weight: 800;
+        line-height: 1.3;
+        margin: 12px 0;
+        padding: 16px 20px;
+        text-align: center;
+        text-transform: uppercase;
+      }
+
+      #ant-adoption-ready-notice[data-state="adopted"] {
+        background: #147a35;
+        border-color: #48d978;
+        box-shadow: 0 0 18px rgba(46, 204, 113, 0.65);
+      }
+
       #ant-cross-seed-toolbar {
         align-items: center;
         display: flex;
+        flex-wrap: wrap;
         gap: 8px;
         margin: 8px 0 12px;
       }
@@ -3693,6 +8245,184 @@
       #ant-cross-seed-toolbar button {
         cursor: pointer;
         padding: 4px 9px;
+      }
+
+      #ant-cross-seed-progress {
+        align-items: center;
+        background: rgba(0, 0, 0, 0.18);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        display: grid;
+        gap: 6px;
+        grid-template-columns: minmax(180px, 1fr) minmax(260px, 2fr);
+        margin: 0 0 12px;
+        padding: 8px;
+      }
+
+      #ant-cross-seed-progress progress {
+        accent-color: #d0ae3d;
+        width: 100%;
+      }
+
+      #ant-cross-seed-progress[data-state="complete"] progress {
+        accent-color: #4aa564;
+      }
+
+      #ant-cross-seed-progress[data-state="error"] progress {
+        accent-color: #c94f4f;
+      }
+
+      #ant-cross-seed-progress[data-state="cancelled"] progress {
+        accent-color: #aaa;
+      }
+
+      .ant-cross-seed-progress-text {
+        color: #c8c8c8;
+      }
+
+      #ant-adoption-filter-toolbar {
+        background: #292c30;
+        border: 1px solid #484c52;
+        border-radius: 8px;
+        color: #e5e7eb;
+        margin: 12px 0 18px;
+        width: 100%;
+        box-sizing: border-box;
+      }
+
+      #ant-adoption-filter-toolbar > summary {
+        cursor: pointer;
+        padding: 16px 20px;
+        font-size: 15px;
+        font-weight: 600;
+        color: #f2db83;
+      }
+
+      #ant-adoption-filter-toolbar[open] > summary {
+        border-bottom: 1px solid #484c52;
+      }
+
+      #ant-adoption-filter-toolbar .ant-filter-body {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 18px;
+        padding: 20px;
+      }
+
+      #ant-adoption-filter-toolbar .ant-filter-section {
+        border: 1px solid #484c52;
+        border-radius: 6px;
+        padding: 14px;
+        margin: 0;
+        min-width: 0;
+      }
+
+      #ant-adoption-filter-toolbar legend {
+        color: #d8dce2;
+        font-size: 13px;
+        font-weight: 600;
+        padding: 0 6px;
+      }
+
+      #ant-adoption-filter-toolbar .ant-filter-section > label {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin: 0 0 12px;
+        font-size: 12px;
+      }
+
+      #ant-adoption-filter-toolbar select,
+      #ant-adoption-filter-toolbar input[type="number"] {
+        background: #202327;
+        border: 1px solid #585e67;
+        border-radius: 4px;
+        color: #f1f3f5;
+        padding: 7px 9px;
+        box-sizing: border-box;
+        min-width: 0;
+        max-width: 100%;
+      }
+
+      #ant-adoption-filter-toolbar .ant-filter-section > label > select {
+        width: 100%;
+      }
+
+      #ant-adoption-filter-toolbar input[type="number"] {
+        width: 130px;
+        margin-left: auto;
+      }
+
+      #ant-adoption-filter-toolbar input[type="checkbox"] {
+        accent-color: #d0ae3d;
+        margin: 0;
+      }
+
+      #ant-adoption-filter-toolbar .ant-filter-media,
+      #ant-adoption-filter-toolbar .ant-filter-actions {
+        grid-column: 1 / -1;
+      }
+
+      #ant-adoption-filter-toolbar .ant-media-filters {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        align-items: start;
+        gap: 10px;
+      }
+
+      #ant-adoption-filter-toolbar .ant-exclusion-select { min-width: 0; }
+      #ant-adoption-filter-toolbar .ant-exclusion-select summary { padding: 10px; background: #33373d; }
+      #ant-adoption-filter-toolbar .ant-exclusion-options {
+        position: static;
+        min-width: 0;
+        margin-top: 5px;
+        border-radius: 4px;
+        background: #202327;
+        max-height: 320px;
+      }
+
+      #ant-adoption-filter-toolbar .ant-exclusion-options select { width: 100%; margin-bottom: 8px; }
+      #ant-adoption-filter-toolbar select:disabled { opacity: 0.5; }
+      #ant-adoption-filter-toolbar .ant-filter-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+      #ant-adoption-filter-toolbar .ant-filter-actions button {
+        background: #3d434b;
+        border: 1px solid #626a75;
+        border-radius: 5px;
+        color: #fff;
+        cursor: pointer;
+        padding: 9px 14px;
+      }
+      #ant-adoption-filter-toolbar .ant-filter-actions button:last-child { background: #326044; border-color: #4b8562; }
+      #ant-adoption-filter-toolbar :is(button, input, select, summary):focus-visible { outline: 2px solid #f2db83; outline-offset: 3px; }
+
+      @media (max-width: 800px) {
+        #ant-adoption-filter-toolbar .ant-filter-body { grid-template-columns: 1fr; padding: 12px; }
+        #ant-adoption-filter-status { display: block; margin-top: 6px; }
+      }
+
+      #ant-adoption-filter-status {
+        color: #b7bec8;
+        font-size: 12px;
+        font-weight: normal;
+        margin-left: 16px;
+      }
+
+      ${FILTERABLE_ROW_SELECTOR}[hidden] {
+        display: none !important;
+      }
+
+      .${BOUNTY_GIB_COLUMN_CLASS},
+      .${ACTION_COLUMN_CLASS} {
+        text-align: center;
+        white-space: nowrap;
+      }
+
+      .ant-adoption-highlight-grabbed {
+        background-image: linear-gradient(${GRABBED_HIGHLIGHT_COLOR}, ${GRABBED_HIGHLIGHT_COLOR}) !important;
+      }
+
+      .ant-adoption-highlight-ignored {
+        background-image: linear-gradient(${IGNORED_HIGHLIGHT_COLOR}, ${IGNORED_HIGHLIGHT_COLOR}) !important;
       }
 
       .ant-cross-seed-inline {
@@ -3870,8 +8600,30 @@
     document.head.appendChild(style);
   }
 
+  if (isAdoptionReadyView()) {
+    addStyles();
+    initializeAdoptionReadyView();
+    return;
+  }
+  if (!isAdoptionListingView()) return;
+
+  let filteredAdoptionView = isFilteredAdoptionView();
+  const filteredViewStartedAt = filteredAdoptionView ? performanceNow() : null;
+  if (filteredAdoptionView) lifecycleLog('filtered page initialization started');
+  if (filteredAdoptionView && !restoreFilteredScanRows()) {
+    exitFilteredAdoptionView();
+    filteredAdoptionView = false;
+  }
   addStyles();
   addControls();
-  loadCachedRowStatusesOnPageLoad();
-  preloadEnabledTrackerIcons();
+  if (!filteredAdoptionView) return;
+  decorateAdoptionRows();
+  applyDefaultAdoptionSort();
+  addAdoptionFilterControls();
+  const initialFilterResult = applyAdoptionFilters(false);
+  lifecycleLog('filtered page initial render completed', {
+    deferredRows: deferredFilteredScanRows.length,
+    durationMs: elapsedMilliseconds(filteredViewStartedAt),
+    renderedRows: initialFilterResult.evaluatedRows
+  });
 })();
