@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Layout Change
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.2.4
+// @version      0.2.5
 // @description  Change UNIT3D similar torrents layout with additional details and sorting options.
 // @author       Audionut
 // @match        https://aither.cc/torrents/similar/1*
@@ -1826,6 +1826,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     document.addEventListener('click', handleMediaInfoToggleClick);
     document.addEventListener('click', handleDescriptionLightboxClick);
     document.addEventListener('click', handleInlineCopyClick, true);
+    document.addEventListener('submit', handleFreeleechTokenSubmit);
     initSimilarPageSingleTorrentViewBypass();
     document.addEventListener('keydown', handleComparisonKeydown);
     document.addEventListener('keydown', handleDescriptionLightboxKeydown);
@@ -4543,14 +4544,22 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
 
     const clone = menu.cloneNode(true);
     clone.classList.add('unit3d-ptp-detail-actions');
-    normalizeActionMenu(clone);
+    normalizeActionMenu(clone, doc);
     return clone;
   }
 
-  function normalizeActionMenu(menu) {
+  function normalizeActionMenu(menu, doc) {
     const uniquePrefix = `unit3d-ptp-action-${++actionMenuCounter}`;
     menu.querySelectorAll('script').forEach((element) => element.remove());
     rewriteActionMenuIds(menu, uniquePrefix);
+    const tokenForm = menu.querySelector('form[x-data="freeleechTokenConfirmation"]');
+    if (tokenForm) {
+      tokenForm.removeAttribute('x-data');
+      tokenForm.querySelector('button')?.removeAttribute('x-on:click.prevent');
+      tokenForm.dataset.unit3dPtpZeroSeeders = String(
+        Boolean(doc.querySelector('.torrent__activity'))
+      );
+    }
     menu.querySelectorAll('[href]').forEach((element) => {
       element.setAttribute('href', absolutizeUrl(element.getAttribute('href')));
       if (element instanceof HTMLAnchorElement) openLinkInNewTab(element);
@@ -4605,6 +4614,58 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
         console.warn('[UNIT3D PTP Adapter] Could not initialize inline dynamic controls', error);
       }
     });
+  }
+
+  async function handleFreeleechTokenSubmit(event) {
+    const form = event.target;
+    if (!form.matches?.('.unit3d-ptp-detail-actions form[data-unit3d-ptp-zero-seeders]')) return;
+    event.preventDefault();
+    const downloadLink = form
+      .closest('.unit3d-ptp-detail-actions')
+      ?.querySelector('li:first-child a[href]');
+    const downloadUrl = downloadLink && new URL(downloadLink.href, location.href);
+    const torrentUrl = form
+      .closest('tr.torrent_info_row')
+      ?.previousElementSibling?.querySelector('a.torrent-info-link')?.href;
+    const tokenId = new URL(form.action, location.href).pathname.match(
+      /\/(\d+)\/freeleech_token$/
+    )?.[1];
+    const downloadId = downloadUrl?.pathname.match(/\/download(?:_check)?\/(\d+)$/)?.[1];
+    if (!tokenId || tokenId !== downloadId || downloadUrl.origin !== location.origin) {
+      globalThis.alert('Could not find the torrent download link. No token was used.');
+      return;
+    }
+    downloadUrl.pathname = downloadUrl.pathname.replace('/download_check/', '/download/');
+
+    if (!globalThis.confirm('This will use one of your freeleech tokens. Continue?')) return;
+    if (
+      form.dataset.unit3dPtpZeroSeeders === 'true' &&
+      !globalThis.confirm('This torrent has 0 seeders. Continue?')
+    )
+      return;
+
+    const button = form.querySelector('button');
+    button.disabled = true;
+    try {
+      const response = await fetch(form.action, {
+        method: 'POST',
+        body: new FormData(form),
+        credentials: 'same-origin'
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const html = await response.text();
+      if (!html.includes('You have successfully activated a freeleech token for this torrent!')) {
+        throw new Error('The tracker did not confirm token activation.');
+      }
+    } catch (error) {
+      button.disabled = false;
+      globalThis.alert(`Torrent was not downloaded: ${error.message}`);
+      return;
+    }
+
+    form.closest('li')?.remove();
+    if (torrentUrl) detailCache.delete(torrentUrl);
+    location.assign(downloadUrl.href);
   }
 
   function getDetailPanels(doc) {
