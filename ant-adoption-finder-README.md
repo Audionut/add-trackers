@@ -1,6 +1,6 @@
 # ANT Adoption Finder Plus
 
-This README applies only to [`ant-adoption-finder.user.js`](./ant-adoption-finder.user.js), currently version `0.2.0`.
+This README applies only to [`ant-adoption-finder.user.js`](./ant-adoption-finder.user.js), currently version `0.2.1`.
 
 The userscript scans ANT adoption listings, builds a saved multi-page view, filters and sorts the collected rows, and searches enabled trackers using the ANT filename and any tracker-specific metadata they require. It can also send matching torrents to qui, monitor their progress, mark rows as Grabbed or Ignored, and optionally complete the ANT adoption flow.
 
@@ -327,6 +327,12 @@ The script always writes a small set of lifecycle timing messages to the browser
 Page-only filter edits are intentionally temporary until **Save page settings globally** is selected.
 
 ## Troubleshooting
+
+### Adoption scanning or ANT metadata lookup returns HTTP 401/403
+
+Version `0.2.1` reads ANT adoption and torrent detail pages through the page's browser session, including its cookies, with a 30-second request timeout. This helps avoid differences between normal browsing and extension background requests, such as Brave/Tampermonkey requests missing login or security-check cookies.
+
+If access is still refused, open ANT in the same browser, sign in or complete any security check, then retry. On Brave, temporarily disabling Shields for `anthelion.me` and reloading can help identify whether site protection settings are involved. A server-side block can still prevent access. Failed scans preserve the previous saved scan.
 
 ### Only scan and settings controls appear on the normal adoption page
 

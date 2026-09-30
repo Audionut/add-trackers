@@ -17,6 +17,7 @@ const documentElements = new Map();
 const globalEventListeners = new Map();
 const openedTabs = [];
 const requestedOptions = [];
+const pageRequests = [];
 const scheduledTimeouts = [];
 let openTabError = null;
 let actionSetValueError = null;
@@ -80,6 +81,7 @@ const instrumented = source
     findVerifiedquiAddJobMatch,
     findVerifiedAntquiItem,
     getAutoquiMatchDisposition,
+    getAntMetadata,
     getAntCrossSeedSavePath,
     getDefaultAdoptionFilterState,
     getAdoptionFilterResult,
@@ -200,6 +202,9 @@ const context = {
     return true;
   },
   console,
+  fetch() {
+    assert.fail('ANT page reads must use the page fetch, not the userscript sandbox fetch');
+  },
   CSS: { escape: (value) => String(value) },
   Date: class extends NativeDate {
     static now() {
@@ -476,6 +481,27 @@ const context = {
     }
   },
   unsafeWindow: {
+    AbortSignal,
+    async fetch(url, options) {
+      assert.equal(this, context.unsafeWindow);
+      const request = { url, ...options };
+      pageRequests.push(request);
+      requestedUrls.push(url);
+      requestedOptions.push(request);
+      const response = requestResponses.shift();
+      await Promise.resolve();
+      if (response?.advanceMs) nowOverride += response.advanceMs;
+      response?.beforeResponse?.();
+      if (response?.errorFromUrl) throw new Error(`network failed for ${url}`);
+      return {
+        ok: response.status >= 200 && response.status < 300,
+        status: response.status,
+        url,
+        async text() {
+          return response.responseText;
+        }
+      };
+    },
     confirm() {
       return false;
     }
@@ -732,7 +758,7 @@ test('retains the original settings and cache identity', () => {
   assert.match(source, /const SCRIPT_PREFIX = 'ant-adoption-filename-cross-seed';/);
   assert.match(source, /id: 'ANTAdoptionFilenameCrossSeedConfig'/);
   assert.match(source, /\/\/ @name\s+ANT - Adoption cross-seed finder/);
-  assert.match(source, /\/\/ @version\s+0\.2\.0/);
+  assert.match(source, /\/\/ @version\s+0\.2\.1/);
 });
 
 test('parses ANT sizes into GiB', () => {
@@ -5362,6 +5388,132 @@ test('adoption page scans have a hard limit of 30 pages', () => {
   assert.equal(api.getScanPageCount(), 30);
   assert.equal(context.GM_config.definition.fields.scan_page_count.max, 30);
   configValues.delete('scan_page_count');
+});
+
+test('ANT page reads use the page session for scans and torrent metadata', async () => {
+  const previousRequest = context.GM_xmlhttpRequest;
+  const previousHref = context.location.href;
+  const requestStart = pageRequests.length;
+  let backgroundRequests = 0;
+  context.GM_xmlhttpRequest = (options) => {
+    backgroundRequests += 1;
+    queueMicrotask(() =>
+      options.onload({ status: 403, responseText: 'blocked extension request' })
+    );
+  };
+  context.location.href = 'https://anthelion.me/torrents.php?type=adoption';
+  configValues.set('scan_page_count', 1);
+  configValues.set('scan_delay_seconds', 0);
+  configValues.set('use_cache', false);
+  parsedDocuments.set(
+    'session-ant-scan',
+    createScannedDocument([{ id: '98411', html: '<tr>session scan</tr>' }])
+  );
+  parsedDocuments.set('session-ant-metadata', {
+    querySelectorAll: () => [{ textContent: 'Session.mkv' }],
+    querySelector: () => null
+  });
+  requestResponses = [
+    { status: 200, responseText: 'session-ant-scan' },
+    { status: 200, responseText: 'session-ant-metadata' }
+  ];
+  try {
+    await api.scanAdoptionPages(null);
+    assert.deepEqual([...api.loadFilteredScan().rows], ['<tr>session scan</tr>']);
+    const metadata = await api.getAntMetadata('98411', '741');
+    assert.equal(metadata.filename, 'Session.mkv');
+    assert.equal(backgroundRequests, 0);
+    const requests = pageRequests.slice(requestStart);
+    assert.equal(requests.length, 2);
+    assert.match(requests[0].url, /type=adoption/);
+    assert.match(requests[1].url, /id=741&torrentid=98411/);
+    for (const request of requests) {
+      assert.equal(request.credentials, 'same-origin');
+      assert.equal(request.mode, 'same-origin');
+      assert.ok(request.signal instanceof AbortSignal);
+    }
+  } finally {
+    context.GM_xmlhttpRequest = previousRequest;
+    context.location.href = previousHref;
+    configValues.delete('scan_page_count');
+    configValues.delete('scan_delay_seconds');
+    configValues.set('use_cache', true);
+  }
+});
+
+test('ANT access errors explain how to retry and preserve the saved scan and metadata', async () => {
+  const previous = createFilteredScan(['<tr>previous session scan</tr>']);
+  api.saveFilteredScan(previous);
+  configValues.set('scan_page_count', 1);
+  configValues.set('scan_delay_seconds', 0);
+  api.cacheDelete('ant-metadata-v2:98412');
+  try {
+    for (const status of [401, 403]) {
+      requestResponses = [{ status, responseText: 'ANT access denied' }];
+      await assert.rejects(api.scanAdoptionPages(null), (error) => {
+        assert.match(error.message, new RegExp(`ANT page 1 returned HTTP ${status}`));
+        assert.match(error.message, /sign in or complete any security check/);
+        return true;
+      });
+      assert.equal(JSON.stringify(api.loadFilteredScan()), JSON.stringify(previous));
+      requestResponses = [{ status, responseText: 'ANT access denied' }];
+      await assert.rejects(api.getAntMetadata('98412', '741'), (error) => {
+        assert.match(error.message, new RegExp(`ANT torrent 98412 returned HTTP ${status}`));
+        assert.match(error.message, /sign in or complete any security check/);
+        return true;
+      });
+      assert.equal(api.cacheGet('ant-metadata-v2:98412', null), null);
+    }
+  } finally {
+    configValues.delete('scan_page_count');
+    configValues.delete('scan_delay_seconds');
+  }
+});
+
+test('ANT page timeouts cover pending responses and bodies without replacing the saved scan', async () => {
+  const previousFetch = context.unsafeWindow.fetch;
+  const previousAbortSignal = context.unsafeWindow.AbortSignal;
+  const previous = createFilteredScan(['<tr>previous timeout scan</tr>']);
+  api.saveFilteredScan(previous);
+  configValues.set('scan_page_count', 1);
+  configValues.set('scan_delay_seconds', 0);
+  try {
+    for (const phase of ['response', 'body']) {
+      const controller = new AbortController();
+      const timeoutError = new DOMException('ANT request timed out', 'TimeoutError');
+      context.unsafeWindow.AbortSignal = {
+        timeout(milliseconds) {
+          assert.equal(milliseconds, 30000);
+          return controller.signal;
+        }
+      };
+      let markWaiting;
+      const waiting = new Promise((resolve) => {
+        markWaiting = resolve;
+      });
+      context.unsafeWindow.fetch = async (_url, options) => {
+        const pending = () => {
+          markWaiting();
+          return new Promise((_resolve, reject) => {
+            options.signal.addEventListener('abort', () => reject(options.signal.reason), {
+              once: true
+            });
+          });
+        };
+        return phase === 'response' ? pending() : { ok: true, status: 200, text: pending };
+      };
+      const scan = api.scanAdoptionPages(null);
+      await waiting;
+      controller.abort(timeoutError);
+      await assert.rejects(scan, (error) => error === timeoutError);
+      assert.equal(JSON.stringify(api.loadFilteredScan()), JSON.stringify(previous));
+    }
+  } finally {
+    context.unsafeWindow.fetch = previousFetch;
+    context.unsafeWindow.AbortSignal = previousAbortSignal;
+    configValues.delete('scan_page_count');
+    configValues.delete('scan_delay_seconds');
+  }
 });
 
 test('a bounty-limited scan sorts descending and stops before the first lower bounty', async () => {

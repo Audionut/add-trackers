@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ANT - Adoption cross-seed finder
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.2.0
+// @version      0.2.1
 // @description  Scan and filter ANT adoption torrents, then find filename and file-list matches on other trackers.
 // @author       Audionut with additions from Surferosa
 // @match        https://anthelion.me/torrents.php?type=adoption*
@@ -3202,11 +3202,8 @@
         if (button) button.textContent = progress;
 
         const url = buildAdoptionScanPageUrl(index);
-        const response = await gmRequest({ method: 'GET', url });
-        if (response.status < 200 || response.status >= 300) {
-          throw new Error(`ANT page ${index} returned HTTP ${response.status}.`);
-        }
-        const pageRows = parseScannedAdoptionPage(response.responseText);
+        const html = await requestAntPage(url, `ANT page ${index}`);
+        const pageRows = parseScannedAdoptionPage(html);
         pageCount = index;
 
         if (untilMinimumBounty) {
@@ -4415,6 +4412,30 @@
     return value;
   }
 
+  async function requestAntPage(url, pageDescription) {
+    const pageWindow = typeof unsafeWindow === 'undefined' ? globalThis : unsafeWindow;
+    debugLog('ANT page request', { url });
+    const response = await pageWindow.fetch(url, {
+      mode: 'same-origin',
+      credentials: 'same-origin',
+      signal: pageWindow.AbortSignal.timeout(30000)
+    });
+    const html = await response.text();
+    debugLog('ANT page response', {
+      url,
+      finalUrl: response.url,
+      status: response.status,
+      responseLength: html.length
+    });
+    if (!response.ok) {
+      const advice = [401, 403].includes(response.status)
+        ? ' Open ANT in this browser, sign in or complete any security check, then retry.'
+        : '';
+      throw new Error(`${pageDescription} returned HTTP ${response.status}.${advice}`);
+    }
+    return html;
+  }
+
   function gmRequest(options) {
     return new Promise((resolve, reject) => {
       debugLog('HTTP request', {
@@ -4900,8 +4921,8 @@
   async function getAntMetadataFromHtml(torrentId, groupId) {
     if (!groupId) return null;
     const url = `https://anthelion.me/torrents.php?id=${encodeURIComponent(groupId)}&torrentid=${encodeURIComponent(torrentId)}`;
-    const response = await gmRequest({ method: 'GET', url });
-    const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
+    const html = await requestAntPage(url, `ANT torrent ${torrentId}`);
+    const doc = new DOMParser().parseFromString(html, 'text/html');
     const files = [
       ...doc.querySelectorAll(
         `#files_${CSS.escape(torrentId)} td:first-child, tr[id="torrent_${CSS.escape(torrentId)}"] td:first-child`
