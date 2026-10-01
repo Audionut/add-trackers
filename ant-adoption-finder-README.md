@@ -1,6 +1,6 @@
 # ANT Adoption Finder Plus
 
-This README applies only to [`ant-adoption-finder.user.js`](./ant-adoption-finder.user.js), currently version `0.2.1`.
+This README applies only to [`ant-adoption-finder.user.js`](./ant-adoption-finder.user.js), currently version `0.2.2`.
 
 The userscript scans ANT adoption listings, builds a saved multi-page view, filters and sorts the collected rows, and searches enabled trackers using the ANT filename and any tracker-specific metadata they require. It can also send matching torrents to qui, monitor their progress, mark rows as Grabbed or Ignored, and optionally complete the ANT adoption flow.
 
@@ -38,7 +38,7 @@ The replacement is storage-compatible with the original script. It deliberately 
 - The same GM_config ID: `ANTAdoptionFilenameCrossSeedConfig`.
 - The same storage prefix: `ant-adoption-filename-cross-seed`.
 
-Existing tracker credentials, qui settings, compatible lookup caches, and row-completion data therefore remain available when the source is replaced in place. Aggregate tracker match/miss indexes from versions 4 and 5 are deliberately rebuilt under version 6 so previously cached misses do not hide the filename-only BHD and HDB results. A legacy maximum-size value stored in bytes is converted to GiB automatically when the new script starts. Legacy text exclusions and custom exclusion values are cleared automatically; configure the new media dropdowns after upgrading. Valid selections already stored in the new dropdown format are retained.
+Existing tracker credentials, qui settings, and completed adoption actions remain available when the source is replaced in place. Version `0.2.2` rebuilds ANT metadata, tracker match/miss indexes, and row-processing snapshots so earlier filename-only matches cannot bypass folder checks. Folder lookups are cached separately from single-file lookups and other folder layouts sharing the same video filename. A legacy maximum-size value stored in bytes is converted to GiB automatically when the new script starts. Legacy text exclusions and custom exclusion values are cleared automatically; configure the new media dropdowns after upgrading. Valid selections already stored in the new dropdown format are retained.
 
 ## Fresh installation
 
@@ -102,7 +102,7 @@ Changes made in the filtered page take effect immediately on that page. They do 
 | Min bounty/GiB              | Sets the bounty-per-GiB threshold. With hiding enabled, rows at or below the value are hidden.                                                                 |
 | Min bounty                  | Sets the minimum total bounty. `0` disables this threshold; otherwise rows below it can be hidden.                                                             |
 | Max GiB                     | Sets the maximum torrent size in GiB. `0` disables the size limit.                                                                                             |
-| Media filters               | Multi-select dropdowns for Source, Codec, Audio, Subtitles, Resolution, and Language. Each category supports Ignore selected or Only show selected.            |
+| Media filters               | Multi-select dropdowns for Source, Extension, Codec, Audio, Subtitles, Resolution, and Language. Each category supports Ignore selected or Only show selected. |
 | Hide below min bounty/GiB   | Hides rows that do not exceed the bounty/GiB threshold.                                                                                                        |
 | Hide below min bounty       | Hides rows below Min bounty.                                                                                                                                   |
 | Hide above maximum          | Hides rows larger than Max GiB.                                                                                                                                |
@@ -118,6 +118,8 @@ Changes made in the filtered page take effect immediately on that page. They do 
 | Save page settings globally | Saves the current page filters and sorting as the defaults used by later scans and Settings.                                                                   |
 
 Within a media category, any selected value can match. By default, a match in any Ignore category excludes a row, and every Only-show category must match. Enable **Combine media filters** to exclude a row only when every active Ignore category matches. Only-show categories still all have to match, independently of the Ignore group. For example, ignoring WEB and H265 in combined mode excludes WEB/H265 rows while retaining WEB/H264 and BluRay/H265 rows, provided they pass any Only-show categories. This option is off by default and is available in Settings and the in-page panel. **Show all** preserves it alongside the media selections. **Ignore selected** excludes matching rows, while **Only show selected** requires a match. With no selections, a category is Off and its mode selector is disabled. The Language dropdown starts with **Ignore all listed languages**, which selects every listed language and switches to Ignore selected. Unchecking it clears the language selections. These values match row metadata; shared labels such as Other are not restricted to a typed metadata field.
+
+The **Extension** dropdown offers MKV, MP4, AVI, M2TS, MPG, MPEG, TS, VOB, ISO, and **None**. None matches rows without a listed video extension. Leaving Extension empty does not filter these rows; selecting Only show MKV excludes them, while selecting Only show MKV and None retains both. These choices also work in exclusion groups. A missing extension label does not by itself classify a torrent as a folder; processing reads the ANT detail page's file list and root directory.
 
 Use **Add exclusion group** in Settings or the in-page panel for rules that mix independent exclusions with combinations. Every selected category within a group must match; matching any group excludes the row. Multiple values within one category are alternatives, and empty groups or categories do not exclude anything. **Remove group** deletes that group. **Apply media filters** controls these groups too, while **Combine media filters** affects only the original category filters. **Show all** preserves the groups while disabling their application; **Save page settings globally** saves them for later scans.
 
@@ -170,6 +172,8 @@ For each eligible row, the script:
 5. Displays matching tracker links, tracker icons, and seeder counts in the ANT row.
 6. Applies automatic site-torrent selection and safe auto-ignore rules when enabled.
 7. Caches the row result and processing status when caching is enabled.
+
+For an ANT folder torrent, the candidate must contain the video files under the same root directory and relative paths. A standalone file with the same video filename is rejected. Candidates without enough file-path information to verify the folder are also rejected, including filename-only BHD/HDB results. Single-file ANT adoptions can still match videos inside source folders. When an ANT folder is submitted during the qui follow-up, its save path is the parent of the verified source root directory.
 
 The progress display remains separate from the filter-panel header. **Cancel row processing** requests a safe cancellation: the active network request is allowed to finish, then no further rows are started.
 
@@ -237,27 +241,27 @@ Transient adoption-flow storage reads are retried on the same 10-second cadence 
 
 ### Scan and filter defaults
 
-| Setting                                |        Default | Meaning                                                                                                                               |
-| -------------------------------------- | -------------: | ------------------------------------------------------------------------------------------------------------------------------------- |
-| Adoption pages to scan                 |           `10` | Number of pages fetched by the fixed scan, starting at page 1; maximum `30`.                                                          |
-| Delay between scanned pages            |    `3` seconds | Pause between ANT page requests.                                                                                                      |
-| Minimum bounty per GiB                 |       `200000` | Default bounty/GiB threshold.                                                                                                         |
-| Minimum bounty                         |            `0` | Default total-bounty threshold. Values above `0` also enable the bounty-limited scan button.                                          |
-| Maximum size in GiB                    |            `0` | Default maximum size; `0` means unlimited.                                                                                            |
-| Media filters                          |          Empty | Multi-select Source, Codec, Audio, Subtitles, Resolution, and Language filters, each with Ignore selected or Only show selected mode. |
-| Hide rows below the bounty/GiB minimum |        Enabled | Applies the minimum bounty/GiB filter by default.                                                                                     |
-| Hide rows below the minimum bounty     |        Enabled | Applies Min bounty when it is greater than zero.                                                                                      |
-| Hide rows above the maximum size       |        Enabled | Applies Max GiB when it is greater than zero.                                                                                         |
-| Apply media filters                    |       Disabled | Applies selected media filters; empty categories remain inactive.                                                                     |
-| Combine media filters                  |       Disabled | Excludes only when all active Ignore categories match; all Only-show categories must still match.                                     |
-| Exclusion groups                       |          Empty | Excludes a row matching all selected categories in any group. Independent of Combine media filters.                                   |
-| Hide Ignored rows                      |       Disabled | Hides saved Ignored actions by default.                                                                                               |
-| Hide Grabbed rows                      |       Disabled | Hides saved Grabbed actions by default.                                                                                               |
-| Show only Grabbed rows                 |       Disabled | Shows Grabbed rows irrespective of all other filters when enabled.                                                                    |
-| Default sort field                     | `Bounty / GiB` | Initial filtered-page sort; also supports Bounty, Size, Torrent, Listing Time, or Scan order.                                         |
-| Default sort direction                 |   `Descending` | Initial ascending or descending order.                                                                                                |
-| Seeding filter                         |       All rows | Default seeding-state filter.                                                                                                         |
-| Skip Trumpable rows                    |        Enabled | Hides and skips Trumpable rows.                                                                                                       |
+| Setting                                |        Default | Meaning                                                                                                                                          |
+| -------------------------------------- | -------------: | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Adoption pages to scan                 |           `10` | Number of pages fetched by the fixed scan, starting at page 1; maximum `30`.                                                                     |
+| Delay between scanned pages            |    `3` seconds | Pause between ANT page requests.                                                                                                                 |
+| Minimum bounty per GiB                 |       `200000` | Default bounty/GiB threshold.                                                                                                                    |
+| Minimum bounty                         |            `0` | Default total-bounty threshold. Values above `0` also enable the bounty-limited scan button.                                                     |
+| Maximum size in GiB                    |            `0` | Default maximum size; `0` means unlimited.                                                                                                       |
+| Media filters                          |          Empty | Multi-select Source, Extension, Codec, Audio, Subtitles, Resolution, and Language filters, each with Ignore selected or Only show selected mode. |
+| Hide rows below the bounty/GiB minimum |        Enabled | Applies the minimum bounty/GiB filter by default.                                                                                                |
+| Hide rows below the minimum bounty     |        Enabled | Applies Min bounty when it is greater than zero.                                                                                                 |
+| Hide rows above the maximum size       |        Enabled | Applies Max GiB when it is greater than zero.                                                                                                    |
+| Apply media filters                    |       Disabled | Applies selected media filters; empty categories remain inactive.                                                                                |
+| Combine media filters                  |       Disabled | Excludes only when all active Ignore categories match; all Only-show categories must still match.                                                |
+| Exclusion groups                       |          Empty | Excludes a row matching all selected categories in any group. Independent of Combine media filters.                                              |
+| Hide Ignored rows                      |       Disabled | Hides saved Ignored actions by default.                                                                                                          |
+| Hide Grabbed rows                      |       Disabled | Hides saved Grabbed actions by default.                                                                                                          |
+| Show only Grabbed rows                 |       Disabled | Shows Grabbed rows irrespective of all other filters when enabled.                                                                               |
+| Default sort field                     | `Bounty / GiB` | Initial filtered-page sort; also supports Bounty, Size, Torrent, Listing Time, or Scan order.                                                    |
+| Default sort direction                 |   `Descending` | Initial ascending or descending order.                                                                                                           |
+| Seeding filter                         |       All rows | Default seeding-state filter.                                                                                                                    |
+| Skip Trumpable rows                    |        Enabled | Hides and skips Trumpable rows.                                                                                                                  |
 
 ### Processing and cache
 

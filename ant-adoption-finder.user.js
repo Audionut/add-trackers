@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ANT - Adoption cross-seed finder
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.2.1
+// @version      0.2.2
 // @description  Scan and filter ANT adoption torrents, then find filename and file-list matches on other trackers.
 // @author       Audionut with additions from Surferosa
 // @match        https://anthelion.me/torrents.php?type=adoption*
@@ -112,6 +112,7 @@
 
   const EXCLUSION_OPTIONS = {
     Source: ['BluRay', 'WEB', 'DVD', 'HDDVD', 'LaserDisc', 'HDTV', 'TV', 'VHS', 'Unknown', 'Other'],
+    Extension: [...VIDEO_EXTENSIONS].map((extension) => extension.toUpperCase()).concat('None'),
     Codec: ['H264', 'H265', 'VC1', 'MPEG2', 'MPEG1', 'AV1', 'Xvid', 'Other'],
     Audio: [
       'EAC3',
@@ -2002,6 +2003,9 @@
 
   function buildExcludeRegexes(patterns) {
     return patterns.map((pattern) => {
+      if (pattern === 'None') {
+        return new RegExp(`^(?![\\s\\S]*\\b(?:${[...VIDEO_EXTENSIONS].join('|')})\\b)`, 'i');
+      }
       const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s*');
       const leadingBoundary = /^\w/.test(pattern) ? '\\b' : '';
       const trailingBoundary = /\w$/.test(pattern) ? '\\b' : '';
@@ -2241,11 +2245,12 @@
     GM_setValue(
       `${ADOPTION_READY_TOKEN_STORAGE_PREFIX}${token}`,
       JSON.stringify({
-        version: 1,
+        version: 2,
         token,
         torrentId,
         groupId,
         filename,
+        antMetadata: job.antMetadata || null,
         createdAt,
         expiresAt: createdAt + ADOPTION_READY_TOKEN_TTL_MS
       })
@@ -2279,7 +2284,7 @@
       return { ok: true, marker: null };
     }
     const valid =
-      marker?.version === 1 &&
+      marker?.version === 2 &&
       marker.token === token &&
       marker.torrentId === torrentId &&
       marker.groupId === groupId &&
@@ -2326,11 +2331,12 @@
       GM_setValue(
         `${ADOPTION_READY_TOKEN_STORAGE_PREFIX}${token}`,
         JSON.stringify({
-          version: 1,
+          version: 2,
           token,
           torrentId,
           groupId,
           filename,
+          antMetadata: readyMarker.antMetadata || null,
           state: 'adopted',
           adoptedAt,
           createdAt: Number(readyMarker?.createdAt) || adoptedAt,
@@ -2579,7 +2585,7 @@
     return (
       Boolean(readyMarker?.filename) &&
       isAntquiItem(item) &&
-      quiItemMatchesFilename(item, readyMarker.filename) &&
+      quiItemMatchesAntMetadata(item, readyMarker.filename, readyMarker.antMetadata) &&
       isquiItemReadyForAdoption(item)
     );
   }
@@ -2588,7 +2594,8 @@
     items,
     filename,
     predicate = () => true,
-    shouldContinue = () => true
+    shouldContinue = () => true,
+    antMetadata = null
   ) {
     const config = getquiConfig();
     for (const item of items) {
@@ -2598,7 +2605,7 @@
         const files = await queryquiFiles(config, item.hash, shouldContinue);
         if (!shouldContinue()) return null;
         const verified = { ...item, raw: { ...item.raw, files } };
-        if (quiItemMatchesFilename(verified, filename)) return verified;
+        if (quiItemMatchesAntMetadata(verified, filename, antMetadata)) return verified;
       } catch (error) {
         debugLog('qui ANT file verification failed', { hash: item.hash, error });
       }
@@ -2611,7 +2618,8 @@
       items,
       readyMarker?.filename,
       isquiItemReadyForAdoption,
-      shouldContinue
+      shouldContinue,
+      readyMarker?.antMetadata
     );
   }
 
@@ -4371,9 +4379,11 @@
 
   function cleanSiteLookupCache() {
     const count = deleteCacheByPrefixes([
+      'tracker-results-v7:',
       'tracker-results-v6:',
       'tracker-results-v5:',
       'tracker-results-v4:',
+      'row-processing-v2:',
       'row-processing-v1:',
       'row-fully-completed-v1:',
       'row-complete-v3:',
@@ -4388,7 +4398,12 @@
   }
 
   function cleanAntCache() {
-    const count = deleteCacheByPrefixes(['ant-metadata-v2:', 'ant-metadata:', 'ant-filename:']);
+    const count = deleteCacheByPrefixes([
+      'ant-metadata-v3:',
+      'ant-metadata-v2:',
+      'ant-metadata:',
+      'ant-filename:'
+    ]);
     alert(`Cleaned ${count} ANT cache entr${count === 1 ? 'y' : 'ies'}.`);
   }
 
@@ -4780,6 +4795,20 @@
     const trackerFiles = videoFilesForMatch(candidateFiles);
     const antFilename = antMetadata?.filename || '';
 
+    if (antMetadata?.rootFolder) {
+      const root = String(antMetadata.rootFolder).replaceAll('\\', '/').toLowerCase();
+      const paths = new Set(
+        trackerFiles.map((file) => file.path.replaceAll('\\', '/').toLowerCase())
+      );
+      return (
+        antFiles.length > 0 &&
+        antFiles.every((file) => {
+          const path = file.path.replaceAll('\\', '/').toLowerCase();
+          return paths.has(`${root}/${path}`);
+        })
+      );
+    }
+
     if (antFiles.length > 0 && trackerFiles.length > 0) {
       const trackerFileNames = new Set(trackerFiles.map((file) => normalizeFilename(file.name)));
       return antFiles.every((file) => trackerFileNames.has(normalizeFilename(file.name)));
@@ -4827,14 +4856,14 @@
     const name =
       typeof file === 'string'
         ? file
-        : file?.name ||
+        : file?.path ||
+          file?.Path ||
+          file?.name ||
           file?.Name ||
           file?.filename ||
           file?.Filename ||
           file?.fileName ||
           file?.FileName ||
-          file?.path ||
-          file?.Path ||
           '';
     return {
       name: basename(name),
@@ -4886,7 +4915,7 @@
   }
 
   function antMetadataCacheKey(torrentId) {
-    return `ant-metadata-v2:${torrentId}`;
+    return `ant-metadata-v3:${torrentId}`;
   }
 
   function extractImdbIdFromAntRatings(doc) {
@@ -4925,21 +4954,33 @@
     const doc = new DOMParser().parseFromString(html, 'text/html');
     const files = [
       ...doc.querySelectorAll(
-        `#files_${CSS.escape(torrentId)} td:first-child, tr[id="torrent_${CSS.escape(torrentId)}"] td:first-child`
+        `#files_${CSS.escape(torrentId)} tr:not(.colhead):not(.colhead_dark) > td:first-child, tr[id="torrent_${CSS.escape(torrentId)}"] .filelist_table tr:not(.colhead):not(.colhead_dark) > td:first-child`
       )
     ]
       .map((cell) => cell.textContent.trim())
       .filter(Boolean);
     debugLog('ANT HTML filename candidates', { torrentId, groupId, files });
-    const normalizedFiles = normalizeFileList(files).filter((file) => isVideoFile(file.name));
+    const normalizedFiles = normalizeFileList(files);
     const filename = findLargestVideoFile(normalizedFiles);
+    const rootFolder = String(
+      doc.querySelector(`#files_${CSS.escape(torrentId)} .filelist_path`)?.textContent || ''
+    )
+      .trim()
+      .replace(/^[\\/]+|[\\/]+$/g, '');
+    if (
+      !rootFolder &&
+      (normalizedFiles.length > 1 || normalizedFiles.some((file) => /[\\/]/.test(file.path)))
+    ) {
+      throw new Error('ANT file list indicates a folder but its root directory is missing.');
+    }
     const imdbId = extractImdbIdFromAntRatings(doc);
     debugLog('ANT HTML IMDb candidate', { torrentId, groupId, imdbId });
     if (!filename) return null;
     return {
       filename,
       files: normalizedFiles,
-      imdbId
+      imdbId,
+      rootFolder
     };
   }
 
@@ -5091,24 +5132,29 @@
     if (!Array.isArray(json?.results)) {
       throw new TypeError('BHD returned an invalid search response.');
     }
-    const matches = json.results.map((item) => {
-      if (
-        !item ||
-        typeof item !== 'object' ||
-        Array.isArray(item) ||
-        !isNonemptyString(item.name) ||
-        !isNonemptyString(item.download_url)
-      ) {
-        throw new TypeError('BHD returned an invalid torrent entry.');
-      }
-      return {
-        site: 'BHD',
-        seeders: parseRequiredTrackerSeeders(item.seeders ?? item.seed, 'BHD'),
-        downloadUrl: item.download_url,
-        detailsUrl: item.url || '',
-        title: item.name
-      };
-    });
+    const matches = json.results
+      .map((item) => {
+        if (
+          !item ||
+          typeof item !== 'object' ||
+          Array.isArray(item) ||
+          !isNonemptyString(item.name) ||
+          !isNonemptyString(item.download_url)
+        ) {
+          throw new TypeError('BHD returned an invalid torrent entry.');
+        }
+        const seeders = parseRequiredTrackerSeeders(item.seeders ?? item.seed, 'BHD');
+        const files = getObjectFileList(item);
+        if (antMetadata?.rootFolder && !candidateMatchesAntFiles(files, antMetadata)) return null;
+        return {
+          site: 'BHD',
+          seeders,
+          downloadUrl: item.download_url,
+          detailsUrl: item.url || '',
+          title: item.name
+        };
+      })
+      .filter(Boolean);
     debugLog('BHD search result', {
       imdbId: antMetadata?.imdbId,
       filename,
@@ -5156,24 +5202,29 @@
     if (!Array.isArray(json?.data)) {
       throw new TypeError('HDB returned an invalid search response.');
     }
-    const matches = json.data.map((item) => {
-      if (
-        !item ||
-        typeof item !== 'object' ||
-        Array.isArray(item) ||
-        !isValidTrackerId(item.id) ||
-        !isNonemptyString(item.filename)
-      ) {
-        throw new TypeError('HDB returned an invalid torrent entry.');
-      }
-      return {
-        site: 'HDB',
-        seeders: parseRequiredTrackerSeeders(item.seeders, 'HDB'),
-        downloadUrl: `https://hdbits.org/download.php/${encodeURIComponent(item.filename)}?id=${encodeURIComponent(item.id)}&passkey=${encodeURIComponent(passkey)}`,
-        detailsUrl: `https://hdbits.org/details.php?id=${encodeURIComponent(item.id)}`,
-        title: item.name || stripTorrentExtension(item.filename) || filename
-      };
-    });
+    const matches = json.data
+      .map((item) => {
+        if (
+          !item ||
+          typeof item !== 'object' ||
+          Array.isArray(item) ||
+          !isValidTrackerId(item.id) ||
+          !isNonemptyString(item.filename)
+        ) {
+          throw new TypeError('HDB returned an invalid torrent entry.');
+        }
+        const seeders = parseRequiredTrackerSeeders(item.seeders, 'HDB');
+        const files = getObjectFileList(item);
+        if (antMetadata?.rootFolder && !candidateMatchesAntFiles(files, antMetadata)) return null;
+        return {
+          site: 'HDB',
+          seeders,
+          downloadUrl: `https://hdbits.org/download.php/${encodeURIComponent(item.filename)}?id=${encodeURIComponent(item.id)}&passkey=${encodeURIComponent(passkey)}`,
+          detailsUrl: `https://hdbits.org/details.php?id=${encodeURIComponent(item.id)}`,
+          title: item.name || stripTorrentExtension(item.filename) || filename
+        };
+      })
+      .filter(Boolean);
     debugLog('HDB search result', {
       filename,
       rawCount: json?.data?.length || 0,
@@ -5290,7 +5341,17 @@
   }
 
   function ptpTorrentMatches(torrent, antMetadata) {
-    return candidateMatchesAntFiles(getObjectFileList(torrent), antMetadata, torrent?.ReleaseName);
+    const files = getObjectFileList(torrent);
+    if (antMetadata?.rootFolder && files.length && !isVideoFile(torrent?.ReleaseName)) {
+      const root = String(torrent.ReleaseName || '')
+        .replaceAll('\\', '/')
+        .replace(/\/+$/, '');
+      for (const file of files) {
+        const path = file.path.replaceAll('\\', '/');
+        file.path = `${root}/${path}`;
+      }
+    }
+    return candidateMatchesAntFiles(files, antMetadata, torrent?.ReleaseName);
   }
 
   function buildProxySearchCandidateUrls(baseUrl, tokenValue) {
@@ -5576,9 +5637,21 @@
     return torrentNames.some((candidate) => candidate === target || candidate === targetBase);
   }
 
-  function getAntCrossSeedSavePath(sourceItem, filename, fallback = '') {
+  function quiItemMatchesAntMetadata(item, filename, antMetadata) {
+    return antMetadata?.rootFolder
+      ? exactFilenameMatches(basename(item?.contentPath), antMetadata.rootFolder) &&
+          candidateMatchesAntFiles(item?.raw?.files, antMetadata)
+      : quiItemMatchesFilename(item, filename);
+  }
+
+  function getAntCrossSeedSavePath(sourceItem, filename, fallback = '', antMetadata = null) {
     const savePath = String(sourceItem?.savePath || fallback || '').trim();
     const contentPath = String(sourceItem?.contentPath || '').trim();
+    if (antMetadata?.rootFolder) {
+      return quiItemMatchesAntMetadata(sourceItem, filename, antMetadata)
+        ? dirname(contentPath) || savePath
+        : '';
+    }
     if (!contentPath) return savePath;
 
     if (exactFilenameMatches(basename(contentPath), filename)) {
@@ -5592,7 +5665,7 @@
     return savePath;
   }
 
-  async function searchqui(filename) {
+  async function searchqui(filename, antMetadata = null) {
     const config = getquiConfig();
     if (!config.baseUrl || !config.token) {
       debugLog('qui skipped', {
@@ -5614,7 +5687,18 @@
       throw error;
     }
     const normalized = raw.map(normalizequiItem);
-    const matches = normalized.filter((item) => quiItemMatchesFilename(item, filename));
+    const matches = [];
+    for (const item of normalized) {
+      if (antMetadata?.rootFolder) {
+        if (!exactFilenameMatches(basename(item.contentPath), antMetadata.rootFolder)) continue;
+        const files = Array.isArray(item.raw?.files)
+          ? item.raw.files
+          : await queryquiFiles(config, item.hash);
+        item.raw = { ...item.raw, files };
+      }
+      if (!quiItemMatchesAntMetadata(item, filename, antMetadata)) continue;
+      matches.push(item);
+    }
     debugLog('qui strict filename match result', {
       filename,
       rawCount: raw.length,
@@ -5804,7 +5888,12 @@
 
   async function findVerifiedquiAddJobMatch(items, job) {
     const directMatch = findBestquiAddJobMatch(items, job);
-    if (directMatch) return directMatch;
+    if (
+      directMatch &&
+      (!job.antMetadata?.rootFolder ||
+        quiItemMatchesAntMetadata(directMatch, job.filename, job.antMetadata))
+    )
+      return directMatch;
 
     const submittedAtSec = Number(job?.submittedAtSec) || 0;
     const candidates = (Array.isArray(items) ? items : [])
@@ -5825,6 +5914,8 @@
         return hostMatched || titleMatched || savePathMatched;
       })
       .toSorted((left, right) => Number(right.addedOn) - Number(left.addedOn));
+    if (directMatch && !candidates.some((item) => item.hash === directMatch.hash))
+      candidates.unshift(directMatch);
     const config = getquiConfig();
     for (const item of candidates) {
       try {
@@ -5836,7 +5927,12 @@
             files
           }
         };
-        if (!quiItemHasExactFilenameEvidence(verified, job.filename)) continue;
+        if (
+          job.antMetadata?.rootFolder
+            ? !quiItemMatchesAntMetadata(verified, job.filename, job.antMetadata)
+            : !quiItemHasExactFilenameEvidence(verified, job.filename)
+        )
+          continue;
         debugLog('qui add monitor matched torrent by exact internal filename', {
           filename: job.filename,
           hash: item.hash,
@@ -5909,8 +6005,11 @@
           savePath: sourceSavePath
         },
         job.filename,
-        sourceSavePath
+        sourceSavePath,
+        job.antMetadata
       );
+      if (job.antMetadata?.rootFolder && !savePath)
+        throw new Error('Source torrent does not have the ANT root folder.');
     }
 
     const config = getAntquiConfig(savePath);
@@ -5989,7 +6088,8 @@
         quiCandidates,
         job.filename,
         (item) => Boolean(String(item.savePath || '').trim()),
-        shouldContinue
+        shouldContinue,
+        job.antMetadata
       );
       if (!shouldContinue()) {
         cancelquiCrossSeedFollowup(jobKey, job);
@@ -6498,11 +6598,11 @@
   }
 
   function trackerNullResultsCacheKey() {
-    return 'tracker-results-v6:nulls';
+    return 'tracker-results-v7:nulls';
   }
 
   function trackerMatchResultsCacheKey() {
-    return 'tracker-results-v6:matches';
+    return 'tracker-results-v7:matches';
   }
 
   function migrateLegacyRowProcessingCache() {
@@ -6516,6 +6616,7 @@
 
     const startedAt = performanceNow();
     const obsoletePrefixes = [
+      'tracker-results-v6:',
       'tracker-results-v5:',
       'tracker-results-v4:',
       'row-complete-v2:',
@@ -6648,17 +6749,23 @@
           )
         );
         const trackerMatches = [];
+        const lookupFilename = metadata?.filename
+          ? trackerLookupFilename(filename, metadata)
+          : null;
         for (const [site, results] of Object.entries(matchIndex.sites || {})) {
-          const match = results?.[filename];
+          const match = results?.[lookupFilename];
           if (match === undefined) continue;
           trackerSites.add(site);
           if (isValidTrackerMatch(site, match)) trackerMatches.push(match);
         }
         for (const [site, results] of Object.entries(nullIndex.sites || {})) {
-          if (results?.[filename] === true) trackerSites.add(site);
+          if (results?.[lookupFilename] === true) trackerSites.add(site);
         }
         const quiEntry = cacheByLogicalKey.get(`qui-result:${filename}`);
-        const quiMatches = Array.isArray(quiEntry?.value) ? quiEntry.value : [];
+        const quiMatches =
+          metadata?.filename && !metadata.rootFolder && Array.isArray(quiEntry?.value)
+            ? quiEntry.value
+            : [];
         const statusText = fullyCompleted
           ? getRowCompletionText(fullyCompleted)
           : candidate.action === 'ignored'
@@ -6684,7 +6791,8 @@
           trackerMatches,
           statusText,
           statusState,
-          Boolean(quiEntry)
+          Boolean(quiEntry) && Boolean(metadata?.filename) && !metadata.rootFolder,
+          metadata
         );
         const migrated = getCachedRowProcessingData(candidate.torrentId);
         if (!migrated || migrated.filename !== filename) {
@@ -6727,7 +6835,7 @@
 
   function createTrackerResultIndex() {
     return {
-      version: 6,
+      version: 7,
       updatedAt: Date.now(),
       sites: {}
     };
@@ -6738,7 +6846,7 @@
       return createTrackerResultIndex();
     }
     return {
-      version: 6,
+      version: 7,
       updatedAt: Number(value.updatedAt || 0) || Date.now(),
       sites: value.sites && typeof value.sites === 'object' ? value.sites : {}
     };
@@ -6763,7 +6871,18 @@
     );
   }
 
-  function getTrackerResultFromIndex(site, filename) {
+  function trackerLookupFilename(filename, antMetadata) {
+    return antMetadata?.rootFolder
+      ? JSON.stringify([
+          filename,
+          antMetadata.rootFolder,
+          (antMetadata.files || []).map((file) => file.path || file.name || file).toSorted()
+        ])
+      : filename;
+  }
+
+  function getTrackerResultFromIndex(site, filename, antMetadata = null) {
+    filename = trackerLookupFilename(filename, antMetadata);
     if (!GM_config.get('use_cache')) return { cached: false, value: null };
 
     const matchIndex = getTrackerResultIndex(trackerMatchResultsCacheKey());
@@ -6784,7 +6903,8 @@
     return { cached: false, value: null };
   }
 
-  function deleteTrackerResultFromIndexes(site, filename) {
+  function deleteTrackerResultFromIndexes(site, filename, antMetadata = null) {
+    filename = trackerLookupFilename(filename, antMetadata);
     if (!GM_config.get('use_cache')) return;
 
     for (const key of [trackerNullResultsCacheKey(), trackerMatchResultsCacheKey()]) {
@@ -6797,7 +6917,8 @@
     }
   }
 
-  function setTrackerResultInIndexes(site, filename, result) {
+  function setTrackerResultInIndexes(site, filename, result, antMetadata = null) {
+    filename = trackerLookupFilename(filename, antMetadata);
     if (!GM_config.get('use_cache')) return;
     if (result && !isValidTrackerMatch(site, result)) {
       throw new TypeError(`${site} returned an invalid normalized torrent match.`);
@@ -6864,14 +6985,16 @@
     return `${torrentId}:${filename || 'unresolved'}:${signature}`;
   }
 
-  function getCachedTrackerMatches(filename, trackers) {
+  function getCachedTrackerMatches(filename, trackers, antMetadata = null) {
     return trackers
-      .map((tracker) => getTrackerResultFromIndex(tracker.site, filename).value)
+      .map((tracker) => getTrackerResultFromIndex(tracker.site, filename, antMetadata).value)
       .filter(Boolean);
   }
 
-  function areTrackerResultsCached(filename, trackers) {
-    return trackers.every((tracker) => getTrackerResultFromIndex(tracker.site, filename).cached);
+  function areTrackerResultsCached(filename, trackers, antMetadata = null) {
+    return trackers.every(
+      (tracker) => getTrackerResultFromIndex(tracker.site, filename, antMetadata).cached
+    );
   }
 
   function getRowCompletion(torrentId, filename, trackers) {
@@ -6977,7 +7100,7 @@
     });
 
     const searches = trackers.map(async (tracker) => {
-      if (refreshCache) deleteTrackerResultFromIndexes(tracker.site, filename);
+      if (refreshCache) deleteTrackerResultFromIndexes(tracker.site, filename, antMetadata);
       if (!tracker.ready?.(antMetadata)) {
         debugLog('tracker lookup unavailable', {
           filename,
@@ -6986,12 +7109,14 @@
         });
         return {
           complete: false,
-          match: refreshCache ? null : getTrackerResultFromIndex(tracker.site, filename).value
+          match: refreshCache
+            ? null
+            : getTrackerResultFromIndex(tracker.site, filename, antMetadata).value
         };
       }
 
       if (!refreshCache) {
-        const cached = getTrackerResultFromIndex(tracker.site, filename);
+        const cached = getTrackerResultFromIndex(tracker.site, filename, antMetadata);
         if (cached.cached) {
           debugLog('tracker aggregate cache hit', {
             filename,
@@ -7004,7 +7129,7 @@
 
       debugLog('tracker aggregate cache miss', { filename, site: tracker.site, refreshCache });
       const result = await tracker.search(antMetadata);
-      setTrackerResultInIndexes(tracker.site, filename, result);
+      setTrackerResultInIndexes(tracker.site, filename, result, antMetadata);
       return { complete: true, match: result };
     });
 
@@ -7074,6 +7199,7 @@
       key: jobKey,
       row,
       filename,
+      antMetadata: row.antCrossSeedMetadata || null,
       torrentId: getRowProcessingContext(row, filename).torrentId,
       groupId: getRowGroupId(row),
       site: match.site,
@@ -7418,15 +7544,23 @@
     allowAutoIgnore = true,
     antMetadata = null
   ) {
-    const matches = getCachedTrackerMatches(filename, trackers);
-    const completion = getRowCompletion(torrentId, filename, trackers);
     const cachedProcessing = getCachedRowProcessingData(torrentId);
+    const metadata =
+      antMetadata ||
+      cachedProcessing?.antMetadata ||
+      cacheGet(antMetadataCacheKey(torrentId), null) ||
+      row.antCrossSeedMetadata;
+    const cachedAntMetadata = metadata ? { ...metadata, filename } : null;
+    row.antCrossSeedMetadata = cachedAntMetadata;
+    const matches = cachedAntMetadata
+      ? getCachedTrackerMatches(filename, trackers, cachedAntMetadata)
+      : [];
+    const completion = getRowCompletion(torrentId, filename, trackers);
     const fullyCompleted = isFullyCompletedRowCompletion(completion);
     const autoquiState = getAutoquiMatchDisposition(matches).state;
-    const cachedAntMetadata = { ...(antMetadata || {}), filename };
-    const trackerLookupsAvailable = trackers.every(
-      (tracker) => tracker.ready?.(cachedAntMetadata) === true
-    );
+    const trackerLookupsAvailable =
+      Boolean(cachedAntMetadata) &&
+      trackers.every((tracker) => tracker.ready?.(cachedAntMetadata) === true);
     const autoIgnored =
       allowAutoIgnore &&
       cachedProcessing?.quiLookupComplete === true &&
@@ -7434,7 +7568,7 @@
       trackerLookupsAvailable &&
       shouldAutoIgnoreTrackerSearch(
         {
-          complete: areTrackerResultsCached(filename, trackers),
+          complete: areTrackerResultsCached(filename, trackers, cachedAntMetadata),
           trackerCount: trackers.length
         },
         autoquiState,
@@ -7459,7 +7593,9 @@
         cachedProcessing?.quiMatches || [],
         matches,
         autoIgnoreStatusText,
-        'skipped'
+        'skipped',
+        true,
+        cachedAntMetadata
       );
     } else {
       setRowState(
@@ -7470,7 +7606,7 @@
         matches.length ? 'done' : 'none'
       );
     }
-    if (areTrackerResultsCached(filename, trackers)) {
+    if (cachedAntMetadata && areTrackerResultsCached(filename, trackers, cachedAntMetadata)) {
       markRowTrackerComplete(torrentId, filename, trackers);
     }
     debugLog('cached row skipped from batch', {
@@ -7585,11 +7721,11 @@
         }
       } else if (
         cachedFilename &&
-        (cachedMetadata?.filename || availableTrackers.length === rowTrackers.length) &&
+        cachedMetadata?.filename &&
         (!quiLookupRequired ||
           (cachedProcessing?.quiLookupComplete === true &&
             cachedProcessing.filename === cachedFilename)) &&
-        areTrackerResultsCached(cachedFilename, availableTrackers)
+        areTrackerResultsCached(cachedFilename, availableTrackers, cachedMetadata)
       ) {
         stats.skippedCached += 1;
         renderCachedTrackerRow(
@@ -7662,7 +7798,7 @@
   }
 
   function rowProcessingCacheKey(torrentId) {
-    return `row-processing-v1:${torrentId}`;
+    return `row-processing-v2:${torrentId}`;
   }
 
   function cacheRowProcessingData(
@@ -7673,13 +7809,15 @@
     trackerMatches,
     statusText,
     statusState,
-    quiLookupComplete = true
+    quiLookupComplete = true,
+    antMetadata = null
   ) {
     if (!torrentId || !filename) return;
     cacheSet(rowProcessingCacheKey(torrentId), {
       version: 1,
       torrentId: String(torrentId),
       filename,
+      antMetadata,
       trackerSites: trackers.map((tracker) => tracker.site),
       quiMatches: quiMatches.map((match) => ({
         name: match.name || '',
@@ -7707,13 +7845,14 @@
     const cached = getCachedRowProcessingData(torrentId);
     if (!cached) {
       const metadata = cacheGet(antMetadataCacheKey(torrentId), null);
-      const filename = metadata?.filename || cacheGet(`ant-filename:${torrentId}`);
+      const filename = metadata?.filename;
       if (!filename) return false;
       const trackers = getTrackersForRow(row, getScopedTrackers());
-      const matches = getCachedTrackerMatches(filename, trackers);
+      const matches = getCachedTrackerMatches(filename, trackers, metadata);
       if (!matches.length) return false;
       row.dataset.antCrossSeedTorrentId = String(torrentId);
       row.dataset.antCrossSeedFilename = filename;
+      row.antCrossSeedMetadata = metadata;
       row.dataset.antCrossSeedTrackerSites = trackers.map((tracker) => tracker.site).join(',');
       appendMatches(row, matches, filename);
       setRowState(row, `cached ${matches.length} match${matches.length === 1 ? '' : 'es'}`, 'done');
@@ -7722,6 +7861,7 @@
 
     row.dataset.antCrossSeedTorrentId = String(torrentId);
     row.dataset.antCrossSeedFilename = cached.filename;
+    row.antCrossSeedMetadata = cached.antMetadata;
     row.dataset.antCrossSeedTrackerSites = (cached.trackerSites || []).join(',');
     renderquiMatches(row, cached.filename, cached.quiMatches || []);
     appendMatches(row, cached.trackerMatches || [], cached.filename);
@@ -7901,6 +8041,7 @@
     debugLog('row metadata resolved', { index, total, torrentId, groupId, antMetadata });
     row.dataset.antCrossSeedTorrentId = String(torrentId);
     row.dataset.antCrossSeedFilename = filename;
+    row.antCrossSeedMetadata = antMetadata;
     row.dataset.antCrossSeedTrackerSites = rowTrackers.map((tracker) => tracker.site).join(',');
 
     setRowState(row, `searching qui for ${filename} (${index}/${total})`, 'working');
@@ -7908,7 +8049,7 @@
     let quiLookupComplete = false;
     const quiConfig = getquiConfig();
     try {
-      quiMatches = await searchqui(filename);
+      quiMatches = await searchqui(filename, antMetadata);
       quiLookupComplete = Boolean(quiConfig.baseUrl && quiConfig.token);
       renderquiMatches(row, filename, quiMatches);
     } catch (error) {
@@ -7936,7 +8077,7 @@
       shouldAutoIgnoreTrackerSearch(trackerSearch, autoquiState, fullyCompleted) &&
       markAdoptionRowIgnored(row, torrentId);
     restoreRowTitleLink(row, titleSnapshot);
-    if (areTrackerResultsCached(filename, rowTrackers)) {
+    if (areTrackerResultsCached(filename, rowTrackers, antMetadata)) {
       markRowTrackerComplete(torrentId, filename, rowTrackers);
     }
     if (refreshCache) {
@@ -7971,7 +8112,8 @@
       matches,
       statusText,
       statusState,
-      quiLookupComplete
+      quiLookupComplete,
+      antMetadata
     );
     setRowState(row, statusText, statusState);
   }

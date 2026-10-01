@@ -80,8 +80,13 @@ const instrumented = source
     findBestquiAddJobMatch,
     findVerifiedquiAddJobMatch,
     findVerifiedAntquiItem,
+    findVerifiedSeedingAntquiItem,
     getAutoquiMatchDisposition,
     getAntMetadata,
+    candidateMatchesAntFiles,
+    ptpTorrentMatches,
+    searchqui,
+    unit3dMatchToResult,
     getAntCrossSeedSavePath,
     getDefaultAdoptionFilterState,
     getAdoptionFilterResult,
@@ -758,7 +763,7 @@ test('retains the original settings and cache identity', () => {
   assert.match(source, /const SCRIPT_PREFIX = 'ant-adoption-filename-cross-seed';/);
   assert.match(source, /id: 'ANTAdoptionFilenameCrossSeedConfig'/);
   assert.match(source, /\/\/ @name\s+ANT - Adoption cross-seed finder/);
-  assert.match(source, /\/\/ @version\s+0\.2\.1/);
+  assert.match(source, /\/\/ @version\s+0\.2\.2/);
 });
 
 test('parses ANT sizes into GiB', () => {
@@ -869,7 +874,7 @@ test('media dropdowns discard legacy values and keep empty categories inactive',
   });
   assert.deepEqual(
     control.children.map((group) => group.dataset.mediaCategory),
-    ['Source', 'Codec', 'Audio', 'Subtitles', 'Resolution', 'Language']
+    ['Source', 'Extension', 'Codec', 'Audio', 'Subtitles', 'Resolution', 'Language']
   );
   const codec = control.children.find((group) => group.dataset.mediaCategory === 'Codec');
   const mode = codec.querySelector('select');
@@ -1052,6 +1057,77 @@ test('media filters combine only-show and ignore modes and skip empty groups for
     filterRows = previousRows;
     api.setFilterState(api.getDefaultAdoptionFilterState());
   }
+});
+
+test('extension filters handle absent extensions for live and saved rows', () => {
+  const previousRows = filterRows;
+  const cases = ['WEB / H264 / MKV', 'WEB / H264 / mp4', 'WEB / H264', ''];
+  try {
+    for (const [mode, values, expected] of [
+      ['ignore', ['MKV'], [true, false, false, false]],
+      ['only', ['MKV'], [false, true, true, true]],
+      ['ignore', ['None'], [false, false, true, true]],
+      ['only', ['None', 'MKV'], [false, true, false, false]]
+    ]) {
+      const filters = { Extension: { mode, values } };
+      const state = {
+        ...api.getDefaultAdoptionFilterState(),
+        hideBelowBountyThreshold: false,
+        hideExcludedFormats: true,
+        excludedFormats: filters
+      };
+      const matchers = api.buildMediaFilterMatchers(filters);
+      const entries = cases.map((metadata, index) => ({
+        data: { torrentId: String(index), metadata }
+      }));
+      assert.deepEqual(
+        entries.map((entry) => api.getAdoptionFilterResult(entry.data, '', matchers, state).hidden),
+        expected
+      );
+      assert.equal(
+        api.partitionFilteredScanEntries(entries, new Map(), matchers, state).visibleEntries.length,
+        expected.filter((hidden) => !hidden).length
+      );
+      filterRows = cases.map((metadata) => createRow({ metadata }));
+      api.setFilterState(state);
+      api.applyAdoptionFilters();
+      assert.deepEqual(
+        filterRows.map((row) => row.hidden),
+        expected
+      );
+    }
+    const group = api.buildMediaFilterMatchers({}, [
+      { Source: { values: ['WEB'] }, Extension: { values: ['None'] } }
+    ]);
+    const state = { ...api.getDefaultAdoptionFilterState(), hideExcludedFormats: true };
+    assert.equal(
+      api.getAdoptionFilterResult({ metadata: 'WEB / H264' }, '', group, state).excluded,
+      true
+    );
+    assert.equal(
+      api.getAdoptionFilterResult({ metadata: 'WEB / H264 / MKV' }, '', group, state).excluded,
+      false
+    );
+    assert.equal(
+      api.getAdoptionFilterResult({ metadata: 'BluRay / H264' }, '', group, state).excluded,
+      false
+    );
+  } finally {
+    filterRows = previousRows;
+    api.setFilterState(api.getDefaultAdoptionFilterState());
+  }
+});
+
+test('extension dropdown selections survive normalization and settings round trips', () => {
+  const type = context.GM_config.definition.types.exclusions;
+  const value = { Extension: { mode: 'only', values: ['MKV', 'None', 'custom'] } };
+  const field = { configId: 'test', id: 'excluded_formats', value, default: {} };
+  type.toNode.call(field);
+  const filter = field.node.children.find((node) => node.dataset.mediaCategory === 'Extension');
+  assert.equal(filter.querySelector('select').value, 'only');
+  assert.deepEqual([...type.toValue.call(field).Extension.values], ['MKV', 'None']);
+  const reopened = api.createMediaFilterControl(context.document, type.toValue.call(field));
+  assert.deepEqual([...api.readMediaFilterControl(reopened).Extension.values], ['MKV', 'None']);
 });
 
 test('Show all preserves media choices when another value is selected', () => {
@@ -1300,7 +1376,9 @@ test('cached under-seeded matches are auto-ignored when processed again', () => 
     [],
     [match],
     '1 match',
-    'done'
+    'done',
+    true,
+    { filename: 'Underseeded.mkv', rootFolder: '', files: ['Underseeded.mkv'] }
   );
   api.setTorrentAction('456', '');
   const row = createRow();
@@ -1389,10 +1467,11 @@ test('cached auto-ignore refreshes stale processing details while preserving qui
     title: 'Current underseeded match'
   };
   api.setTrackerResultInIndexes('PTP', 'Current.mkv', match);
-  api.cacheSet('row-processing-v1:459', {
+  api.cacheSet('row-processing-v2:459', {
     version: 1,
     torrentId: '459',
     filename: 'Current.mkv',
+    antMetadata: { filename: 'Current.mkv', rootFolder: '', files: ['Current.mkv'] },
     trackerSites: ['HDB'],
     quiMatches: [{ name: 'Current.mkv', savePath: 'D:\\Media' }],
     trackerMatches: [{ site: 'HDB', title: 'Stale match' }],
@@ -1438,7 +1517,7 @@ test('a failed refresh cannot auto-ignore from stale cached matches', async () =
   };
   api.setTrackerResultInIndexes('PTP', 'Stale.mkv', match);
   api.setTorrentAction('457', '');
-  api.cacheSet('ant-metadata-v2:457', {
+  api.cacheSet('ant-metadata-v3:457', {
     filename: 'Stale.mkv',
     imdbId: 'tt1234567'
   });
@@ -1505,7 +1584,7 @@ test('cached matches never auto-ignore while a scoped tracker is unavailable', (
     title: 'Cached underseeded match'
   };
   api.setTrackerResultInIndexes('Unavailable', 'UnavailableCached.mkv', match);
-  api.cacheSet('ant-metadata-v2:460', {
+  api.cacheSet('ant-metadata-v3:460', {
     filename: 'UnavailableCached.mkv',
     imdbId: 'tt1234567'
   });
@@ -1546,7 +1625,7 @@ test('unconfigured services do not block cached rows, and newly configured servi
   configValues.set('qui_base_url', '');
   configValues.set('qui_token', '');
   const filename = 'OptionalServices.mkv';
-  api.cacheSet('ant-metadata-v2:98220', { filename, imdbId: 'tt1234567' });
+  api.cacheSet('ant-metadata-v3:98220', { filename, imdbId: 'tt1234567' });
   const match = {
     site: 'PTP',
     downloadUrl: 'https://passthepopcorn.me/torrents.php?action=download&id=1',
@@ -1583,11 +1662,11 @@ test('filename-only caches resolve metadata before skipping metadata-dependent t
   const tracker = api.getTrackerDefinitions().find((entry) => entry.site === 'Aither');
   const row = createBatchRow('98223');
   assert.equal(api.collectBatchRows([row], [tracker], 0).batch.length, 1);
-  api.cacheSet('ant-metadata-v2:98223', { filename, imdbId: 'tt1234567' });
+  api.cacheSet('ant-metadata-v3:98223', { filename, imdbId: 'tt1234567' });
   assert.equal(api.collectBatchRows([row], [tracker], 0).batch.length, 1);
   api.setTrackerResultInIndexes(tracker.site, filename, null);
   assert.equal(api.collectBatchRows([row], [tracker], 0).batch.length, 0);
-  api.cacheSet('ant-metadata-v2:98223', { filename, imdbId: '' });
+  api.cacheSet('ant-metadata-v3:98223', { filename, imdbId: '' });
   assert.equal(api.collectBatchRows([row], [tracker], 0).batch.length, 0);
   configValues.set('aither', false);
   configValues.set('aither_api', '');
@@ -1622,7 +1701,7 @@ test('page-load display restores tracker matches without a row snapshot or crede
   configValues.set('ptp_api_user', '');
   configValues.set('ptp_api_key', '');
   const filename = 'IndexOnly.mkv';
-  api.cacheSet('ant-metadata-v2:98222', { filename });
+  api.cacheSet('ant-metadata-v3:98222', { filename });
   api.setTrackerResultInIndexes('PTP', filename, {
     site: 'PTP',
     downloadUrl: 'https://passthepopcorn.me/torrents.php?action=download&id=3',
@@ -1644,12 +1723,12 @@ test('cached tracker results without a confirmed qui lookup are queued for proce
   configValues.set('qui_base_url', 'http://localhost:7476');
   configValues.set('qui_token', 'token');
 
-  api.cacheSet('ant-metadata-v2:462', {
+  api.cacheSet('ant-metadata-v3:462', {
     filename: 'UnknownQuiState.mkv',
     imdbId: 'tt1234567'
   });
   api.setTrackerResultInIndexes('Available', 'UnknownQuiState.mkv', null);
-  api.cacheSet('row-processing-v1:462', {
+  api.cacheSet('row-processing-v2:462', {
     version: 1,
     torrentId: '462',
     filename: 'OldFilename.mkv',
@@ -1681,11 +1760,11 @@ test('a malformed cached tracker match is evicted instead of auto-ignored', () =
   configValues.set('qui_base_url', 'http://localhost:7476');
   configValues.set('qui_token', 'token');
 
-  api.cacheSet('ant-metadata-v2:1462', {
+  api.cacheSet('ant-metadata-v3:1462', {
     filename: 'MalformedCachedTracker.mkv',
     imdbId: 'tt1234567'
   });
-  api.cacheSet('tracker-results-v6:matches', {
+  api.cacheSet('tracker-results-v7:matches', {
     version: 6,
     sites: {
       Available: {
@@ -1723,7 +1802,7 @@ test('a malformed cached tracker match is evicted instead of auto-ignored', () =
   assert.equal(result.stats.skippedCached, 0);
   assert.equal(api.getTorrentAction('1462'), '');
   assert.equal(
-    api.cacheGet('tracker-results-v6:matches').sites?.Available?.['MalformedCachedTracker.mkv'],
+    api.cacheGet('tracker-results-v7:matches').sites?.Available?.['MalformedCachedTracker.mkv'],
     undefined
   );
 
@@ -1738,11 +1817,11 @@ test('a malformed cached tracker miss is evicted instead of auto-ignored', () =>
   configValues.set('qui_base_url', 'http://localhost:7476');
   configValues.set('qui_token', 'token');
 
-  api.cacheSet('ant-metadata-v2:1463', {
+  api.cacheSet('ant-metadata-v3:1463', {
     filename: 'MalformedCachedMiss.mkv',
     imdbId: 'tt1234567'
   });
-  api.cacheSet('tracker-results-v6:nulls', {
+  api.cacheSet('tracker-results-v7:nulls', {
     version: 6,
     sites: { Available: { 'MalformedCachedMiss.mkv': { unexpected: true } } }
   });
@@ -1771,7 +1850,7 @@ test('a malformed cached tracker miss is evicted instead of auto-ignored', () =>
   assert.equal(result.stats.skippedCached, 0);
   assert.equal(api.getTorrentAction('1463'), '');
   assert.equal(
-    api.cacheGet('tracker-results-v6:nulls').sites?.Available?.['MalformedCachedMiss.mkv'],
+    api.cacheGet('tracker-results-v7:nulls').sites?.Available?.['MalformedCachedMiss.mkv'],
     undefined
   );
 
@@ -2063,7 +2142,7 @@ test('a wrong-typed qui torrent entry cannot auto-ignore after a complete tracke
     search: async () => null
   };
   const row = createBatchRow('461');
-  api.cacheSet('ant-metadata-v2:461', {
+  api.cacheSet('ant-metadata-v3:461', {
     filename: 'QuiFailure.mkv',
     imdbId: 'tt1234567'
   });
@@ -2124,7 +2203,7 @@ test('a malformed cached qui result is evicted and retried before auto-ignore', 
   };
   const row = createBatchRow('1461');
   const metadata = { filename: 'MalformedCachedQui.mkv', imdbId: 'tt1234567' };
-  api.cacheSet('ant-metadata-v2:1461', metadata);
+  api.cacheSet('ant-metadata-v3:1461', metadata);
   api.cacheSet('qui-result:MalformedCachedQui.mkv', [{ name: {} }]);
   api.setTorrentAction('1461', '');
 
@@ -2176,7 +2255,7 @@ test('processing without qui configuration stays retryable after configuration i
     search: async () => null
   };
   const row = createBatchRow('463');
-  api.cacheSet('ant-metadata-v2:463', {
+  api.cacheSet('ant-metadata-v3:463', {
     filename: 'MissingQuiConfig.mkv',
     imdbId: 'tt1234567'
   });
@@ -2212,7 +2291,7 @@ test('processing without qui configuration stays retryable after configuration i
 
 test('forced refresh skips fully completed rows before auto-ignore processing', () => {
   configValues.set('use_cache', true);
-  api.cacheSet('ant-metadata-v2:458', {
+  api.cacheSet('ant-metadata-v3:458', {
     filename: 'Complete.mkv',
     imdbId: 'tt1234567'
   });
@@ -2256,7 +2335,7 @@ test('a successful ANT submission with no scoped trackers stays terminal across 
     'fully-completed'
   );
 
-  api.cacheSet('ant-metadata-v2:1460', {
+  api.cacheSet('ant-metadata-v3:1460', {
     filename: 'NoScopedTrackers.mkv',
     imdbId: 'tt1234567'
   });
@@ -2280,21 +2359,21 @@ test('a successful ANT submission with no scoped trackers stays terminal across 
 
 test('cleaning site lookup cache removes current and legacy tracker result indexes', () => {
   configValues.set('use_cache', true);
-  api.cacheSet('tracker-results-v6:nulls', { sites: { HDB: { 'Current.mkv': true } } });
-  api.cacheSet('tracker-results-v6:matches', { sites: { BHD: { 'Current.mkv': {} } } });
+  api.cacheSet('tracker-results-v7:nulls', { sites: { HDB: { 'Current.mkv': true } } });
+  api.cacheSet('tracker-results-v7:matches', { sites: { BHD: { 'Current.mkv': {} } } });
   api.cacheSet('tracker-results-v5:nulls', { sites: { HDB: { 'Previous.mkv': true } } });
   api.cacheSet('tracker-results-v4:nulls', { sites: { HDB: { 'Legacy.mkv': true } } });
   api.cacheSet('row-fully-completed-v1:999:Complete.mkv', { status: 'fully-completed' });
-  api.cacheSet('ant-metadata-v2:keep', { filename: 'Keep.mkv' });
+  api.cacheSet('ant-metadata-v3:keep', { filename: 'Keep.mkv' });
 
   api.cleanSiteLookupCache();
 
-  assert.equal(api.cacheGet('tracker-results-v6:nulls', 'missing'), 'missing');
-  assert.equal(api.cacheGet('tracker-results-v6:matches', 'missing'), 'missing');
+  assert.equal(api.cacheGet('tracker-results-v7:nulls', 'missing'), 'missing');
+  assert.equal(api.cacheGet('tracker-results-v7:matches', 'missing'), 'missing');
   assert.equal(api.cacheGet('tracker-results-v5:nulls', 'missing'), 'missing');
   assert.equal(api.cacheGet('tracker-results-v4:nulls', 'missing'), 'missing');
   assert.equal(api.cacheGet('row-fully-completed-v1:999:Complete.mkv', 'missing'), 'missing');
-  assert.equal(api.cacheGet('ant-metadata-v2:keep').filename, 'Keep.mkv');
+  assert.equal(api.cacheGet('ant-metadata-v3:keep').filename, 'Keep.mkv');
 });
 
 test('previous tracker misses are rebuilt and then read from the current cache', async () => {
@@ -2318,7 +2397,7 @@ test('previous tracker misses are rebuilt and then read from the current cache',
   assert.equal(first.complete, true);
   assert.equal(second.complete, true);
   assert.equal(searchCount, 1);
-  assert.equal(api.cacheGet('tracker-results-v6:nulls').sites[site][filename], true);
+  assert.equal(api.cacheGet('tracker-results-v7:nulls').sites[site][filename], true);
 });
 
 test('tracker adapters reject wrong-shape HTTP 200 responses', async () => {
@@ -5446,7 +5525,7 @@ test('ANT access errors explain how to retry and preserve the saved scan and met
   api.saveFilteredScan(previous);
   configValues.set('scan_page_count', 1);
   configValues.set('scan_delay_seconds', 0);
-  api.cacheDelete('ant-metadata-v2:98412');
+  api.cacheDelete('ant-metadata-v3:98412');
   try {
     for (const status of [401, 403]) {
       requestResponses = [{ status, responseText: 'ANT access denied' }];
@@ -5462,7 +5541,7 @@ test('ANT access errors explain how to retry and preserve the saved scan and met
         assert.match(error.message, /sign in or complete any security check/);
         return true;
       });
-      assert.equal(api.cacheGet('ant-metadata-v2:98412', null), null);
+      assert.equal(api.cacheGet('ant-metadata-v3:98412', null), null);
     }
   } finally {
     configValues.delete('scan_page_count');
@@ -5679,8 +5758,8 @@ test('page-load restoration reads only migrated row snapshots', () => {
   const torrentId = '98100';
   const row = createRestorableRow(torrentId, 'grabbed');
   row.hidden = false;
-  api.cacheDelete(`row-processing-v1:${torrentId}`);
-  api.cacheSet(`ant-metadata-v2:${torrentId}`, { filename: 'LegacyOnly.mkv' });
+  api.cacheDelete(`row-processing-v2:${torrentId}`);
+  api.cacheSet(`ant-metadata-v3:${torrentId}`, { filename: 'LegacyOnly.mkv' });
   api.cacheSet(`row-complete-v3:${torrentId}:LegacyOnly.mkv:PTP`, {
     completedAt: 1,
     filename: 'LegacyOnly.mkv',
@@ -5704,10 +5783,10 @@ test('one-time row cache migration verifies snapshots before removing stale entr
   storage.delete(suppressKey);
   api.setTorrentAction(grabbedId, '');
   api.setTorrentAction(ignoredId, 'ignored');
-  api.cacheDelete(`row-processing-v1:${grabbedId}`);
-  api.cacheDelete(`row-processing-v1:${ignoredId}`);
-  api.cacheSet(`ant-metadata-v2:${grabbedId}`, { filename: 'MigratedGrabbed.mkv' });
-  api.cacheSet(`ant-metadata-v2:${ignoredId}`, { filename: 'MigratedIgnored.mkv' });
+  api.cacheDelete(`row-processing-v2:${grabbedId}`);
+  api.cacheDelete(`row-processing-v2:${ignoredId}`);
+  api.cacheSet(`ant-metadata-v3:${grabbedId}`, { filename: 'MigratedGrabbed.mkv' });
+  api.cacheSet(`ant-metadata-v3:${ignoredId}`, { filename: 'MigratedIgnored.mkv' });
   api.cacheSet(staleCompletionKey, {
     completedAt: 10,
     filename: 'MigratedGrabbed.mkv',
@@ -5738,7 +5817,7 @@ test('one-time row cache migration verifies snapshots before removing stale entr
   assert.equal(api.getCachedRowProcessingData(ignoredId).filename, 'MigratedIgnored.mkv');
   assert.equal(api.cacheGet(staleCompletionKey, null), null);
 
-  api.cacheDelete(`row-processing-v1:${grabbedId}`);
+  api.cacheDelete(`row-processing-v2:${grabbedId}`);
   assert.equal(api.migrateLegacyRowProcessingCache(), false);
   assert.equal(api.getCachedRowProcessingData(grabbedId), null);
 });
@@ -5764,7 +5843,7 @@ test('metadata failures persist Broken, skip normal processing, and rescan bypas
   const reloaded = createBatchRow('98301');
   assert.equal(api.restoreCachedRowStatuses([reloaded]), 1);
   assert.match(findDescendantByClass(reloaded, 'ant-cross-seed-state').textContent, /^broken:/);
-  api.cacheSet('ant-metadata-v2:98301', { filename: 'Stale.mkv', imdbId: 'tt1234567' });
+  api.cacheSet('ant-metadata-v3:98301', { filename: 'Stale.mkv', imdbId: 'tt1234567' });
   requestResponses = [{ status: 200, responseText: 'missing-ant-files' }];
   parsedDocuments.set('missing-ant-files', {
     querySelectorAll: () => [],
@@ -5780,7 +5859,7 @@ test('metadata failures persist Broken, skip normal processing, and rescan bypas
   requestResponses = [{ status: 200, responseText: 'recovered-ant-files' }];
   await api.rescanBrokenRow(row, '98301');
   assert.equal(api.getTorrentAction('98301'), '');
-  assert.equal(api.cacheGet('ant-metadata-v2:98301').filename, 'Recovered.mkv');
+  assert.equal(api.cacheGet('ant-metadata-v3:98301').filename, 'Recovered.mkv');
   assert.equal(requestedUrls.length, 3);
   assert.match(findDescendantByClass(row, 'ant-cross-seed-state').textContent, /ready to process/);
   const next = createBatchRow('98302');
@@ -6122,5 +6201,639 @@ test('exclusion group controls add, remove, normalize, save and reload groups', 
     if (previous === undefined) configValues.delete('exclusion_groups');
     else configValues.set('exclusion_groups', previous);
     api.setFilterState(api.getDefaultAdoptionFilterState());
+  }
+});
+
+test('ANT metadata retains the folder root and relative file paths during row processing', async () => {
+  const row = createBatchRow('98501');
+  const root = 'Folder.Release.2026';
+  const files = ['video/Folder.Release.mkv', 'Folder.Release.nfo'];
+  const previousAutoAdd = configValues.get('qui_auto_add_site_torrent');
+  const previousQuiUrl = configValues.get('qui_base_url');
+  configValues.set('qui_auto_add_site_torrent', false);
+  configValues.set('qui_base_url', '');
+  parsedDocuments.set('folder-ant-metadata', {
+    querySelectorAll(selector) {
+      assert.match(selector, /tr:not\(\.colhead\):not\(\.colhead_dark\)/);
+      return files.map((textContent) => ({ textContent }));
+    },
+    querySelector(selector) {
+      return selector.includes('.filelist_path') ? { textContent: `/${root}/` } : null;
+    }
+  });
+  requestResponses = [{ status: 200, responseText: 'folder-ant-metadata' }];
+  let searchedMetadata;
+  const trackers = [
+    {
+      site: 'FolderFixture',
+      ready: () => true,
+      async search(metadata) {
+        searchedMetadata = metadata;
+        assert.equal(api.candidateMatchesAntFiles(['Folder.Release.mkv'], metadata), false);
+        assert.equal(
+          api.candidateMatchesAntFiles([`${root}/video/Folder.Release.mkv`], metadata),
+          true
+        );
+        return null;
+      }
+    }
+  ];
+  try {
+    await api.processRow(row, 1, 1, trackers);
+    assert.equal(searchedMetadata.rootFolder, root);
+    assert.equal(searchedMetadata.filename, 'Folder.Release.mkv');
+    assert.deepEqual(
+      [...searchedMetadata.files].map((file) => file.path),
+      files
+    );
+    assert.equal(row.antCrossSeedMetadata.rootFolder, root);
+    assert.equal(api.getCachedRowProcessingData('98501').antMetadata.rootFolder, root);
+    const restored = createBatchRow('98501');
+    assert.equal(api.restoreCachedRowStatuses([restored]), 1);
+    assert.equal(restored.antCrossSeedMetadata.rootFolder, root);
+    assert.equal(api.getTorrentAction('98501'), '');
+  } finally {
+    if (previousAutoAdd === undefined) configValues.delete('qui_auto_add_site_torrent');
+    else configValues.set('qui_auto_add_site_torrent', previousAutoAdd);
+    if (previousQuiUrl === undefined) configValues.delete('qui_base_url');
+    else configValues.set('qui_base_url', previousQuiUrl);
+  }
+});
+
+test('folder matches require the ANT root and relative paths while single-file matches remain valid', () => {
+  const folder = { filename: 'Movie.mkv', rootFolder: 'Movie.2026', files: ['Movie.mkv'] };
+  for (const files of [
+    [],
+    ['Movie.mkv'],
+    ['Other.Root/Movie.mkv'],
+    ['Movie.2026/other/Movie.mkv']
+  ]) {
+    assert.equal(api.candidateMatchesAntFiles(files, folder, 'Movie.mkv'), false);
+  }
+  assert.equal(api.candidateMatchesAntFiles(['Movie.2026\\Movie.mkv'], folder), true);
+  assert.equal(
+    api.candidateMatchesAntFiles([{ name: 'Movie.mkv', path: 'Movie.2026/Movie.mkv' }], folder),
+    true
+  );
+  const single = { ...folder, rootFolder: '' };
+  assert.equal(api.candidateMatchesAntFiles(['Movie.mkv'], single), true);
+  assert.equal(
+    api.candidateMatchesAntFiles(['Movie.2026/Movie.mkv', 'Movie.2026/Movie.nfo'], single),
+    true
+  );
+  assert.equal(api.candidateMatchesAntFiles([], single, 'Movie.mkv'), true);
+  assert.equal(
+    api.ptpTorrentMatches({ ReleaseName: 'Movie.mkv', FileList: ['Movie.mkv'] }, folder),
+    false
+  );
+  assert.equal(
+    api.ptpTorrentMatches({ ReleaseName: 'Movie.2026', FileList: ['Movie.mkv'] }, folder),
+    true
+  );
+  assert.equal(
+    api.ptpTorrentMatches({ ReleaseName: 'Other.Root', FileList: ['Movie.mkv'] }, folder),
+    false
+  );
+  const entry = { id: '98502', attributes: { name: 'Movie.2026', seeders: 2 } };
+  assert.equal(api.unit3dMatchToResult('Aither', 'https://aither.cc', entry, folder), null);
+  assert.equal(
+    api.unit3dMatchToResult(
+      'Aither',
+      'https://aither.cc',
+      { ...entry, files: ['Movie.mkv'] },
+      folder
+    ),
+    null
+  );
+  assert.equal(
+    api.unit3dMatchToResult(
+      'Aither',
+      'https://aither.cc',
+      { ...entry, files: ['Movie.2026/Movie.mkv'] },
+      folder
+    ).site,
+    'Aither'
+  );
+});
+
+test('BHD and HDB reject single-file or unverified results for ANT folders', async () => {
+  const settings = ['bhd', 'bhd_api', 'bhd_rss', 'hdb', 'hdb_user', 'hdb_pass'];
+  const previous = new Map(settings.map((key) => [key, configValues.get(key)]));
+  for (const key of settings)
+    configValues.set(key, key === 'bhd' || key === 'hdb' ? true : 'fixture');
+  const metadata = {
+    filename: 'AdapterFolder.mkv',
+    rootFolder: 'AdapterFolder',
+    files: ['AdapterFolder.mkv']
+  };
+  try {
+    for (const files of [undefined, ['AdapterFolder.mkv'], ['AdapterFolder/AdapterFolder.mkv']]) {
+      requestResponses = [
+        {
+          status: 200,
+          responseText: JSON.stringify({
+            results: [
+              {
+                name: 'AdapterFolder',
+                seeders: 3,
+                download_url: 'https://beyond-hd.me/download/98503',
+                files
+              }
+            ]
+          })
+        }
+      ];
+      const bhd = await api.searchBhd(metadata);
+      requestResponses = [
+        {
+          status: 200,
+          responseText: JSON.stringify({
+            data: [{ id: 98503, filename: 'AdapterFolder.torrent', seeders: 3, files }]
+          })
+        }
+      ];
+      const hdb = await api.searchHdb(metadata);
+      assert.equal(Boolean(bhd), Boolean(files?.[0].includes('/')));
+      assert.equal(Boolean(hdb), Boolean(files?.[0].includes('/')));
+    }
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) configValues.delete(key);
+      else configValues.set(key, value);
+    }
+  }
+});
+
+test('folder tracker caches are isolated from single-file rows and other folder layouts', async () => {
+  const filename = 'SharedLayout.mkv';
+  let calls = 0;
+  const tracker = {
+    site: 'LayoutCache',
+    ready: () => true,
+    async search() {
+      calls += 1;
+      return null;
+    }
+  };
+  const single = { filename, files: [filename], rootFolder: '' };
+  const folder = { ...single, rootFolder: 'SharedLayout' };
+  const nested = { ...folder, files: [`nested/${filename}`] };
+  await api.searchScopedTrackers(single, '98510', [tracker]);
+  await api.searchScopedTrackers(folder, '98511', [tracker]);
+  await api.searchScopedTrackers(nested, '98512', [tracker]);
+  assert.equal(calls, 3);
+  await api.searchScopedTrackers(folder, '98511', [tracker]);
+  assert.equal(calls, 3);
+  await api.searchScopedTrackers(folder, '98511', [tracker], true);
+  assert.equal(calls, 4);
+});
+
+test('qui folder matches verify file paths and use the parent of the ANT root for follow-up', async () => {
+  const settings = ['qui_base_url', 'qui_token'];
+  const previous = new Map(settings.map((key) => [key, configValues.get(key)]));
+  configValues.set('qui_base_url', 'https://qui.example');
+  configValues.set('qui_token', 'fixture');
+  const metadata = {
+    filename: 'LocalFolder.mkv',
+    rootFolder: 'LocalFolder',
+    files: ['LocalFolder.mkv']
+  };
+  const items = [
+    {
+      name: 'LocalFolder.mkv',
+      content_path: 'D:\\Media\\LocalFolder.mkv',
+      save_path: 'D:\\Media',
+      hash: 'single'
+    },
+    {
+      name: 'LocalFolder',
+      content_path: 'D:\\Media\\LocalFolder',
+      save_path: 'D:\\Media',
+      hash: 'folder'
+    }
+  ];
+  api.cacheDelete(`qui-result:${metadata.filename}`);
+  requestResponses = [
+    { status: 200, responseText: JSON.stringify(items) },
+    { status: 200, responseText: JSON.stringify([{ name: 'LocalFolder/LocalFolder.mkv' }]) }
+  ];
+  try {
+    const matches = await api.searchqui(metadata.filename, metadata);
+    assert.deepEqual(
+      [...matches].map((item) => item.hash),
+      ['folder']
+    );
+    assert.equal(
+      api.getAntCrossSeedSavePath(matches[0], metadata.filename, '', metadata),
+      'D:\\Media'
+    );
+    assert.equal(
+      api.getAntCrossSeedSavePath(
+        { contentPath: items[0].content_path, savePath: 'D:\\Media' },
+        metadata.filename,
+        '',
+        metadata
+      ),
+      ''
+    );
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) configValues.delete(key);
+      else configValues.set(key, value);
+    }
+  }
+});
+
+test('old filename-only caches cannot skip folder metadata resolution or restore unsafe matches', async () => {
+  const id = '98520';
+  const filename = 'CacheUpgrade.mkv';
+  const match = {
+    site: 'UpgradeFixture',
+    title: filename,
+    seeders: 3,
+    downloadUrl: 'https://tracker.example/98520'
+  };
+  api.cacheSet(`ant-metadata-v2:${id}`, { filename });
+  api.cacheSet(`ant-filename:${id}`, filename);
+  api.cacheSet(`row-processing-v1:${id}`, { version: 1, filename, trackerMatches: [match] });
+  api.cacheSet('tracker-results-v6:matches', { sites: { UpgradeFixture: { [filename]: match } } });
+  api.setTrackerResultInIndexes('UpgradeFixture', filename, match);
+  const row = createBatchRow(id);
+  const tracker = { site: 'UpgradeFixture', ready: () => true };
+  assert.equal(api.restoreCachedRowStatuses([row]), 0);
+  assert.equal(api.collectBatchRows([row], [tracker], 0).batch.length, 1);
+  parsedDocuments.set('upgrade-folder-metadata', {
+    querySelectorAll: () => [{ textContent: filename }],
+    querySelector: (selector) =>
+      selector.includes('.filelist_path') ? { textContent: '/CacheUpgrade/' } : null
+  });
+  requestResponses = [{ status: 200, responseText: 'upgrade-folder-metadata' }];
+  const metadata = await api.getAntMetadata(id, '741');
+  assert.equal(metadata.rootFolder, 'CacheUpgrade');
+  let calls = 0;
+  const result = await api.searchScopedTrackers(metadata, id, [
+    {
+      ...tracker,
+      async search() {
+        calls += 1;
+        return null;
+      }
+    }
+  ]);
+  assert.equal(calls, 1);
+  assert.equal(result.matches.length, 0);
+});
+
+test('missing ANT roots block proven folder layouts while preserving a single file without an extension label', async () => {
+  const previousUrl = configValues.get('qui_base_url');
+  configValues.set('qui_base_url', '');
+  try {
+    for (const [index, files] of [
+      ['MissingRoot.mkv', 'MissingRoot.nfo'],
+      ['video/MissingRoot.mkv'],
+      ['MissingRoot.mkv']
+    ].entries()) {
+      const id = String(98600 + index);
+      const html = `missing-root-${id}`;
+      parsedDocuments.set(html, {
+        querySelectorAll: () => files.map((textContent) => ({ textContent })),
+        querySelector: () => null
+      });
+      requestResponses = [{ status: 200, responseText: html }];
+      let calls = 0;
+      const row = createBatchRow(id);
+      const query = row.querySelector.bind(row);
+      row.querySelector = (selector) =>
+        selector === '.ant-cross-seed-state'
+          ? findDescendantByClass(row, 'ant-cross-seed-state')
+          : query(selector);
+      await api.processRow(row, 1, 1, [
+        {
+          site: `MissingRoot${id}`,
+          ready: () => true,
+          async search() {
+            calls += 1;
+            return null;
+          }
+        }
+      ]);
+      assert.equal(calls, index === 2 ? 1 : 0);
+      assert.equal(api.getTorrentAction(id), index === 2 ? '' : 'broken');
+      if (index < 2)
+        assert.match(
+          findDescendantByClass(row, 'ant-cross-seed-state').textContent,
+          /root directory is missing/
+        );
+    }
+  } finally {
+    if (previousUrl === undefined) configValues.delete('qui_base_url');
+    else configValues.set('qui_base_url', previousUrl);
+  }
+});
+
+test('ANT file paths remain relative when an inner directory shares the root name', async () => {
+  parsedDocuments.set('repeated-root-folder', {
+    querySelectorAll: () => [{ textContent: 'Movie/Movie.mkv' }],
+    querySelector: (selector) =>
+      selector.includes('.filelist_path') ? { textContent: '/Movie/' } : null
+  });
+  requestResponses = [{ status: 200, responseText: 'repeated-root-folder' }];
+  const metadata = await api.getAntMetadata('98610', '741');
+  assert.equal(api.candidateMatchesAntFiles(['Movie/Movie.mkv'], metadata), false);
+  assert.equal(api.candidateMatchesAntFiles(['Movie/Movie/Movie.mkv'], metadata), true);
+  assert.equal(
+    api.ptpTorrentMatches({ ReleaseName: 'Movie', FileList: ['Movie/Movie.mkv'] }, metadata),
+    true
+  );
+});
+
+test('completed cached folders retain full layout after the ANT metadata cache is cleared', () => {
+  const id = '98620';
+  const filename = 'CachedRoot.mkv';
+  const metadata = {
+    filename,
+    rootFolder: 'CachedRoot',
+    files: ['video/CachedRoot.mkv', 'CachedRoot.nfo']
+  };
+  api.cacheRowProcessingData(id, filename, [], [], [], 'completed', 'done', true, metadata);
+  api.cacheSet(`ant-filename:${id}`, filename);
+  api.cacheSet(`row-fully-completed-v1:${id}:${filename}`, {
+    status: 'fully-completed',
+    filename,
+    torrentId: id
+  });
+  const match = {
+    site: 'CachedRootFixture',
+    title: filename,
+    seeders: 4,
+    downloadUrl: 'https://tracker.example/98620'
+  };
+  api.setTrackerResultInIndexes(match.site, filename, match);
+  const row = createBatchRow(id);
+  assert.equal(api.restoreCachedRowStatuses([row]), 1);
+  assert.equal(row.antCrossSeedMetadata.rootFolder, metadata.rootFolder);
+  api.cacheDelete(`ant-metadata-v3:${id}`);
+  const batch = api.collectBatchRows([row], [{ site: match.site, ready: () => true }], 0);
+  assert.equal(batch.batch.length, 0);
+  assert.equal(row.antCrossSeedMetadata.rootFolder, metadata.rootFolder);
+  assert.deepEqual([...row.antCrossSeedMetadata.files], metadata.files);
+  assert.equal(findDescendantByClass(row, 'ant-cross-seed-match-add'), null);
+  assert.equal(
+    api.getAntCrossSeedSavePath(
+      { contentPath: 'D:/Media/CachedRoot', raw: { files: ['CachedRoot/video/CachedRoot.mkv'] } },
+      filename,
+      '',
+      row.antCrossSeedMetadata
+    ),
+    'D:/Media'
+  );
+  assert.equal(
+    api.getAntCrossSeedSavePath(
+      { contentPath: 'D:/Media/CachedRoot', raw: { files: ['CachedRoot/CachedRoot.mkv'] } },
+      filename,
+      '',
+      row.antCrossSeedMetadata
+    ),
+    ''
+  );
+});
+
+test('folder metadata survives processing, cached restoration, qui submission and adoption polling', async () => {
+  const keys = [
+    'qui_base_url',
+    'qui_token',
+    'qui_auto_add_site_torrent',
+    'qui_auto_trigger_adoption'
+  ];
+  const previous = new Map(keys.map((key) => [key, configValues.get(key)]));
+  const previousRequest = context.GM_xmlhttpRequest;
+  const previousHref = context.location.href;
+  const id = '98630';
+  const root = 'Adoption.Folder';
+  const filename = 'Feature.mkv';
+  const paths = ['video/Feature.mkv', 'extras/Extra.mkv', 'Feature.nfo'];
+  const fullPaths = paths.map((path) => `${root}/${path}`);
+  const match = {
+    site: 'FolderPipeline',
+    title: root,
+    seeders: 4,
+    downloadUrl: 'https://tracker.example/download/98630'
+  };
+  configValues.set('qui_base_url', '');
+  configValues.set('qui_auto_add_site_torrent', false);
+  parsedDocuments.set('folder-pipeline-metadata', {
+    querySelectorAll: () => paths.map((textContent) => ({ textContent })),
+    querySelector: (selector) =>
+      selector.includes('.filelist_path') ? { textContent: `/${root}/` } : null
+  });
+  requestResponses = [{ status: 200, responseText: 'folder-pipeline-metadata' }];
+  const items = [
+    { contentPath: 'D:/Elsewhere/Feature.mkv', files: ['Feature.mkv'] },
+    { contentPath: `D:/Media/${root}`, files: [`${root}/Feature.mkv`, `${root}/extras/Extra.mkv`] },
+    { contentPath: `D:/Media/${root}`, files: [`${root}/video/Feature.mkv`] },
+    { contentPath: `D:/Media/${root}`, files: fullPaths }
+  ].map(({ contentPath, files }, index) => ({
+    addedOn: Math.floor(Date.now() / 1000) + 1,
+    contentPath,
+    hash: `folder-pipeline-${index}`,
+    hosts: ['tracker.example'],
+    name: filename,
+    progress: 1,
+    raw: {},
+    savePath: contentPath.startsWith('D:/Elsewhere') ? 'D:/Elsewhere' : 'D:/Media',
+    state: 'stalledUP',
+    trackerHost: 'tracker.example',
+    testFiles: files.map((name) => ({ name }))
+  }));
+  let listedItems = [];
+  let clicks = 0;
+  try {
+    const originalRow = createBatchRow(id, '741');
+    await api.processRow(originalRow, 1, 1, [
+      { site: match.site, ready: () => true, search: async () => match }
+    ]);
+    api.cacheDelete(`ant-metadata-v3:${id}`);
+    const row = createBatchRow(id, '741');
+    assert.equal(api.restoreCachedRowStatuses([row]), 1);
+    assert.deepEqual(
+      [...row.antCrossSeedMetadata.files].map((file) => file.path),
+      paths
+    );
+    const button = findDescendantByClass(row, 'ant-cross-seed-match-add');
+    assert.ok(button, 'the verified tracker match must expose its submission control');
+    configValues.set('qui_base_url', 'https://qui.example');
+    configValues.set('qui_token', 'fixture');
+    context.GM_xmlhttpRequest = (options) => {
+      const hash = new URL(options.url).searchParams.get('hash');
+      const response = hash ? items.find((item) => item.hash === hash).testFiles : listedItems;
+      queueMicrotask(() => options.onload({ status: 200, responseText: JSON.stringify(response) }));
+    };
+    await button.listeners.click();
+    await new Promise(setImmediate);
+    api.stopquiAddPolling();
+    const job = api.getquiAddJob(`${filename}:${match.site}:${match.downloadUrl}`);
+    assert.ok(job);
+    assert.equal(job.antMetadata.rootFolder, root);
+    assert.deepEqual(
+      [...job.antMetadata.files].map((file) => file.path),
+      paths
+    );
+    for (const item of items.slice(0, 3)) {
+      job.hash = item.hash; // Even an exact known hash must retain the ANT folder contract.
+      assert.equal(await api.findVerifiedquiAddJobMatch([item], job), null);
+    }
+    job.hash = items[3].hash;
+    assert.equal((await api.findVerifiedquiAddJobMatch([items[3]], job)).hash, items[3].hash);
+
+    api.createAdoptionReadyMarker(job);
+    assert.equal(await api.claimAdoptionReadyFlow(job), true);
+    context.location.href = api.buildAdoptionReadyUrl(job);
+    const marker = api.consumeAdoptionReadyMarker();
+    assert.deepEqual(
+      JSON.parse(JSON.stringify(marker.antMetadata)),
+      JSON.parse(JSON.stringify(job.antMetadata))
+    );
+    configValues.set('qui_auto_trigger_adoption', true);
+    documentElements.set(`torrent_${id}`, {
+      querySelectorAll: () => [
+        {
+          click() {
+            clicks += 1;
+          },
+          getAttribute: () => `return adopt('${id}');`
+        }
+      ]
+    });
+    const asAnt = (item) => ({
+      added_on: item.addedOn,
+      content_path: item.contentPath,
+      hash: item.hash,
+      name: item.name,
+      progress: item.progress,
+      save_path: item.savePath,
+      state: item.state,
+      tracker: 'https://anthelion.me/announce'
+    });
+    listedItems = items.slice(0, 3).map(asAnt);
+    const waiting = await api.pollAdoptionReadyForqui(marker, null, Date.now(), Date.now() + 60000);
+    assert.equal(waiting.state, 'waiting');
+    assert.equal(clicks, 0);
+    listedItems = [asAnt(items[3])];
+    const adopted = await api.pollAdoptionReadyForqui(marker, null, Date.now(), Date.now() + 60000);
+    assert.equal(adopted.state, 'adopted');
+    assert.equal(clicks, 1);
+    assert.deepEqual(api.consumeAdoptionReadyMarker().antMetadata, marker.antMetadata);
+  } finally {
+    api.stopquiAddPolling();
+    api.clearquiAddJobs();
+    const flow = api.getActiveAdoptionReadyFlow();
+    if (flow) await api.releaseAdoptionReadyFlow(flow.token);
+    documentElements.delete(`torrent_${id}`);
+    context.GM_xmlhttpRequest = previousRequest;
+    context.location.href = previousHref;
+    for (const [key, value] of previous) {
+      if (value === undefined) configValues.delete(key);
+      else configValues.set(key, value);
+    }
+  }
+});
+
+test('folder follow-up rejects an ANT single file and verifies every relative video before fallback submission', async () => {
+  const keys = ['qui_base_url', 'qui_token', 'qui_auto_trigger_adoption'];
+  const previous = new Map(keys.map((key) => [key, configValues.get(key)]));
+  const previousRequest = context.GM_xmlhttpRequest;
+  configValues.set('qui_base_url', 'https://qui.example');
+  configValues.set('qui_token', 'fixture');
+  configValues.set('qui_auto_trigger_adoption', true);
+  const metadata = {
+    filename: 'Followup.mkv',
+    rootFolder: 'Followup',
+    files: ['video/Followup.mkv', 'extras/Extra.mkv']
+  };
+  const job = {
+    antMetadata: metadata,
+    error: '',
+    filename: metadata.filename,
+    followUpRunAt: Date.now() + 60000,
+    followUpStatus: 'pending',
+    hash: 'folder-source',
+    progress: 100,
+    row: createBatchRow('98631'),
+    savePath: 'D:/Media',
+    site: 'FolderFollowup',
+    sourceContentPath: 'D:/Media/Followup',
+    sourceSavePath: 'D:/Media',
+    state: 'complete'
+  };
+  let sourceFiles = [{ name: 'Followup/video/Followup.mkv' }];
+  const posts = [];
+  context.GM_xmlhttpRequest = (options) => {
+    let response;
+    if (options.method === 'POST') {
+      posts.push(options);
+      response = [];
+    } else {
+      const hash = new URL(options.url).searchParams.get('hash');
+      response =
+        hash === job.hash
+          ? sourceFiles
+          : hash
+            ? [{ name: metadata.filename }]
+            : [
+                {
+                  content_path: 'D:/Elsewhere/Followup.mkv',
+                  hash: 'standalone-ant',
+                  name: metadata.filename,
+                  progress: 1,
+                  save_path: 'D:/Elsewhere',
+                  state: 'stalledUP',
+                  tracker: 'https://anthelion.me/announce'
+                }
+              ];
+    }
+    queueMicrotask(() => options.onload({ status: 200, responseText: JSON.stringify(response) }));
+  };
+  try {
+    api.setquiAddJob('folder-followup', job);
+    await api.runquiCrossSeedFollowup('folder-followup');
+    assert.equal(job.followUpStatus, 'pending');
+    assert.equal(posts.length, 0);
+    job.followUpRunAt = 0;
+    await api.runquiCrossSeedFollowup('folder-followup');
+    assert.equal(job.followUpStatus, 'failed');
+    assert.equal(posts.length, 0);
+    job.followUpStatus = 'pending';
+    sourceFiles.push({ name: 'Followup/extras/Extra.mkv' });
+    await api.runquiCrossSeedFollowup('folder-followup');
+    assert.equal(job.followUpStatus, 'added', job.followUpError);
+    assert.equal(posts.length, 1);
+    assert.deepEqual(
+      posts[0].data.entries.find(([name]) => name === 'savepath'),
+      ['savepath', 'D:/Media']
+    );
+  } finally {
+    api.clearquiAddJobs();
+    context.GM_xmlhttpRequest = previousRequest;
+    for (const [key, value] of previous) {
+      if (value === undefined) configValues.delete(key);
+      else configValues.set(key, value);
+    }
+  }
+});
+
+test('legacy adoption-ready markers cannot authorize adoption without the new folder evidence', () => {
+  const previousHref = context.location.href;
+  const job = { filename: 'Legacy.mkv', groupId: '741', torrentId: '98632' };
+  const token = api.createAdoptionReadyMarker(job);
+  const key = `ant-adoption-filename-cross-seed:adoption-ready-token:${token}`;
+  const marker = JSON.parse(storage.get(key));
+  marker.version = 1;
+  storage.set(key, JSON.stringify(marker));
+  context.location.href = api.buildAdoptionReadyUrl(job);
+  try {
+    assert.equal(api.consumeAdoptionReadyMarker(), null);
+  } finally {
+    storage.delete(key);
+    context.location.href = previousHref;
   }
 });
