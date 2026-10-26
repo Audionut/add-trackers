@@ -58,5 +58,8 @@ try {
   Date.now = originalDateNow;
 }
 
-assert.match(source, /buildUnit3dNumberCell\(completed\),\s*buildUnit3dExternalAgeCell\(torrent\)/);
+assert.match(
+  source,
+  /buildUnit3dNumberCell\(completed,[^\n]+\),\s*buildUnit3dExternalAgeCell\(torrent\)/
+);
 assert.match(source, /function buildUnit3dExternalDetailRow[\s\S]+?cell\.colSpan = 7;/);

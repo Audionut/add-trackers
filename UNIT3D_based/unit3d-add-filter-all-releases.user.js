@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Add releases from other trackers
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.1.5
+// @version      0.1.6
 // @description  Add releases from other trackers to UNIT3D similar torrent pages.
 // @author       passthepopcorn_cc (edited by Perilune + Audionut)
 // @match        https://aither.cc/torrents/similar/1*
@@ -7908,6 +7908,12 @@ ${tcsHighlightCss}
       const seeders = Number.parseInt(torrent.seed, 10) || 0;
       const leechers = Number.parseInt(torrent.leech, 10) || 0;
       const completed = Number.parseInt(torrent.snatch, 10) || 0;
+      const torrentPath = /^https?:\/\/[^/?#]+\/torrents\/(\d+)[A-Za-z0-9_-]*(?:[/?#]|$)/.exec(
+        torrent.torrent_page || ''
+      );
+      const torrentUrl = torrentPath
+        ? `${getUrlOrigin(torrent.torrent_page)}/torrents/${torrentPath[1]}`
+        : '';
       const releaseName = buildExternalReleaseName(torrent);
       const releaseDisplayName = formatExternalReleaseDisplayText(torrent, releaseName);
       const unit3dQuality = unit3dQualityId(torrent);
@@ -7938,9 +7944,13 @@ ${tcsHighlightCss}
         buildUnit3dExternalOverviewCell(torrent, id, releaseDisplayName),
         buildUnit3dExternalBadgeCell(torrent),
         buildUnit3dExternalSizeCell(torrent, sizeBytes),
-        buildUnit3dNumberCell(seeders, seeders === 0 ? 'no-seeders' : ''),
-        buildUnit3dNumberCell(leechers),
-        buildUnit3dNumberCell(completed),
+        buildUnit3dNumberCell(
+          seeders,
+          torrentUrl ? `${torrentUrl}/peers` : '',
+          seeders === 0 ? 'no-seeders' : ''
+        ),
+        buildUnit3dNumberCell(leechers, torrentUrl ? `${torrentUrl}/peers` : ''),
+        buildUnit3dNumberCell(completed, torrentUrl ? `${torrentUrl}/history` : ''),
         buildUnit3dExternalAgeCell(torrent)
       );
 
@@ -8392,10 +8402,14 @@ ${tcsHighlightCss}
       return cell;
     }
 
-    function buildUnit3dNumberCell(value, className = '') {
+    function buildUnit3dNumberCell(value, href, className = '') {
       const cell = document.createElement('td');
       if (className) cell.className = className;
-      cell.textContent = String(value || 0);
+      if (href) {
+        cell.appendChild(buildExternalActionLink('', href, String(value || 0), ''));
+      } else {
+        cell.textContent = String(value || 0);
+      }
       return cell;
     }
 

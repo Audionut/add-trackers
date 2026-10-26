@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Layout Change
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.2.5
+// @version      0.2.6
 // @description  Change UNIT3D similar torrents layout with additional details and sorting options.
 // @author       Audionut
 // @match        https://aither.cc/torrents/similar/1*
@@ -3058,9 +3058,9 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
       buildOverviewCell(torrent),
       buildStatusBadgesCell(torrent),
       buildSizeCell(torrent),
-      buildNumericCell(torrent.seeders, 'seeders'),
-      buildNumericCell(torrent.leechers, 'leechers'),
-      buildNumericCell(torrent.completed, 'completed'),
+      buildNumericCell(torrent.seeders, 'seeders', torrent),
+      buildNumericCell(torrent.leechers, 'leechers', torrent),
+      buildNumericCell(torrent.completed, 'completed', torrent),
       buildAgeCell(torrent)
     );
 
@@ -3212,10 +3212,12 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     return cell;
   }
 
-  function buildNumericCell(value, type) {
+  function buildNumericCell(value, type, torrent) {
     const cell = document.createElement('td');
     cell.className = `unit3d-ptp-${type}`;
-    cell.textContent = String(value || 0);
+    const page = type === 'completed' ? 'history' : 'peers';
+    const url = new URL(`/torrents/${torrent.id}/${page}`, torrent.torrentUrl).href;
+    cell.appendChild(buildActionLink('', url, String(value || 0), ''));
     return cell;
   }
 
