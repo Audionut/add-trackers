@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Layout Change
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.2.6
+// @version      0.2.7
 // @description  Change UNIT3D similar torrents layout with additional details and sorting options.
 // @author       Audionut
 // @match        https://aither.cc/torrents/similar/1*
@@ -42,6 +42,7 @@
   const SINGLE_TORRENT_INLINE_INTENT_TTL_MS = 5 * 60 * 1000;
   const SINGLE_TORRENT_VIEW_BYPASS_STORAGE_KEY = `${SCRIPT_ID}_singleTorrentViewBypass`;
   const SINGLE_TORRENT_VIEW_BYPASS_TTL_MS = 2 * 60 * 1000;
+  const SINGLE_TORRENT_DIRECT_VIEW_PARAM = 'unit3d-ptp-view';
   const EXTERNAL_DETAIL_EVENT_TARGET_ID = 'unit3d-add-releases-private-detail-event-target';
   const EXTERNAL_DETAIL_REQUEST_EVENT = 'unit3d-add-releases-private-detail-request';
   const EXTERNAL_DETAIL_RESPONSE_EVENT = 'unit3d-add-releases-private-detail-response';
@@ -716,6 +717,38 @@ html.unit3d-ptp-adapter-enabled .movie-page__torrent__panel .panel__body {
   padding: 12px;
 }
 
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-visibility-notice {
+  display: inline-block;
+  margin-left: 0.35em;
+  padding: 2px 6px;
+  border: 1px solid #ff6b6b;
+  border-radius: 4px;
+  background: rgba(180, 25, 25, 0.18);
+  color: #ff6b6b !important;
+  font-weight: 800;
+}
+
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-visibility-warning {
+  margin: 12px;
+  padding: 14px 16px;
+  border: 2px solid #ef5350;
+  border-left-width: 6px;
+  border-radius: 6px;
+  background: #3d2024;
+  color: #ffe0e0;
+  line-height: 1.5;
+}
+
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-visibility-warning strong {
+  display: block;
+  color: #ff8f8f;
+  font-size: 1.1em;
+}
+
+html.unit3d-ptp-adapter-enabled .unit3d-ptp-visibility-warning p {
+  margin: 6px 0 0;
+}
+
 html.unit3d-ptp-adapter-enabled .unit3d-ptp-detail-body {
   display: flex;
   flex-direction: column;
@@ -1064,6 +1097,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
   const tvmazeLookupPromises = new Map();
   const torrentSimilarResolvePromises = new Map();
   const torrentSimilarUrlCache = new Map();
+  const unlistedTorrents = new Map();
 
   let activeDetailFetches = 0;
   let aitherIconObserver = null;
@@ -1081,6 +1115,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
   let pendingSingleTorrentInlineTorrentId = '';
   let pendingSingleTorrentInlineTorrentUrl = '';
   let pendingSingleTorrentInlineTimer = null;
+  let unlistedTorrentLoadStarted = false;
   let rebuildTimer = null;
   let actionMenuCounter = 0;
   let currentSort = { direction: 'asc', key: 'sizeBytes' };
@@ -1095,8 +1130,22 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     initAitherTrackerIconDecorator();
     if (getLayoutSetting('forceRedirectSingleTorrentLinks')) initTorrentIndexLinkRedirector();
     waitForElement(SELECTORS.nativeTable, CONFIG.initialDomTimeoutMs).then((table) => {
-      if (!table) return;
+      if (!table) {
+        if (pendingSingleTorrentInlineTorrentId) {
+          const torrentUrl =
+            pendingSingleTorrentInlineTorrentUrl ||
+            new URL(`/torrents/${pendingSingleTorrentInlineTorrentId}`, location.href).href;
+          location.replace(directTorrentViewUrl(torrentUrl));
+        }
+        return;
+      }
       initAdapter();
+      if (pendingSingleTorrentInlineTorrentId) {
+        void loadUnlistedTorrent(
+          pendingSingleTorrentInlineTorrentId,
+          pendingSingleTorrentInlineTorrentUrl
+        );
+      }
     });
   } else if (getLayoutSetting('forceRedirectSingleTorrentLinks') && isTorrentShowPage()) {
     initSingleTorrentPageRedirector();
@@ -1372,20 +1421,21 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
   }
 
   function initSingleTorrentPageRedirector() {
-    if (consumeSingleTorrentViewBypass(location.href)) {
+    if (consumeSingleTorrentViewBypass(location.href) || isDirectTorrentViewUrl(location.href)) {
       return;
     }
 
     waitForElement(
       '.meta__title-link[href*="/torrents/similar/"], a[href*="/torrents/similar/"]',
       CONFIG.initialDomTimeoutMs
-    ).then((link) => {
-      const similarUrl = link ? absolutizeUrl(link.getAttribute('href')) : '';
-      if (!isSupportedSimilarTorrentUrl(similarUrl)) return;
-      if (new URL(similarUrl, location.href).href === location.href) return;
-      rememberSingleTorrentInlineIntent(similarUrl, location.href);
-      location.replace(addSingleTorrentInlineIntent(similarUrl, location.href));
-    });
+    )
+      .then((link) => verifySimilarTorrentUrl(link ? absolutizeUrl(link.getAttribute('href')) : ''))
+      .then((similarUrl) => {
+        if (!similarUrl) return;
+        rememberSingleTorrentInlineIntent(similarUrl, location.href);
+        location.replace(addSingleTorrentInlineIntent(similarUrl, location.href));
+      })
+      .catch(() => {});
   }
 
   function initImdbTorrentSearchPageRedirector() {
@@ -1440,6 +1490,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     if (!(link instanceof HTMLAnchorElement)) return null;
     if (link.dataset.unit3dPtpBypassSimilarRedirect === 'true') return null;
     const href = getOriginalTorrentLinkHref(link);
+    if (isDirectTorrentViewUrl(href)) return null;
     if (isImdbTorrentSearchUrl(href)) return link;
     if (!isTorrentShowUrl(href)) return null;
     return link.closest('.unit3d-ptp-page, .unit3d-ptp-detail-actions') ? null : link;
@@ -1457,12 +1508,6 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     }
 
     const nearbySimilarUrl = findNearbySimilarTorrentUrl(link);
-    if (nearbySimilarUrl) {
-      cacheSimilarTorrentUrl(resolutionKey, nearbySimilarUrl);
-      rewriteTorrentIndexLink(link, nearbySimilarUrl);
-      return Promise.resolve(nearbySimilarUrl);
-    }
-
     if (!options.priority && torrentSimilarResolvePromises.has(resolutionKey)) {
       return torrentSimilarResolvePromises.get(resolutionKey).then((similarUrl) => {
         if (similarUrl) rewriteTorrentIndexLink(link, similarUrl);
@@ -1471,9 +1516,13 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     }
 
     const sourceUrl = buildImdbGroupedSearchUrl(originalHref);
-    const detailFetch = () => fetchTorrentDetail(sourceUrl);
+    const detailFetch = () =>
+      nearbySimilarUrl
+        ? verifySimilarTorrentUrl(nearbySimilarUrl)
+        : fetchTorrentDetail(sourceUrl).then((html) =>
+            extractSimilarUrlFromTorrentDetail(html, sourceUrl)
+          );
     const promise = (options.priority ? detailFetch() : enqueueDetailFetch(detailFetch))
-      .then((html) => extractSimilarUrlFromTorrentDetail(html, sourceUrl))
       .then((similarUrl) => {
         if (similarUrl) {
           cacheSimilarTorrentUrl(resolutionKey, similarUrl);
@@ -1539,7 +1588,33 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
       isSupportedSimilarTorrentUrl(new URL(candidate.getAttribute('href'), torrentUrl).href)
     );
 
-    return link ? new URL(link.getAttribute('href'), torrentUrl).href : '';
+    return verifySimilarTorrentUrl(link ? new URL(link.getAttribute('href'), torrentUrl).href : '');
+  }
+
+  async function verifySimilarTorrentUrl(similarUrl) {
+    if (!isSupportedSimilarTorrentUrl(similarUrl)) return '';
+    // UNIT3D emits this link even when its approved-only similar query will return 404.
+    const html = await fetchTorrentDetail(similarUrl);
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    return doc.querySelector(SELECTORS.nativeTable) ? similarUrl : '';
+  }
+
+  function isDirectTorrentViewUrl(value) {
+    try {
+      const url = new URL(value, location.href);
+      return (
+        isTorrentShowUrl(url.href) &&
+        url.searchParams.get(SINGLE_TORRENT_DIRECT_VIEW_PARAM) === 'direct'
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  function directTorrentViewUrl(value) {
+    const url = new URL(value, location.href);
+    url.searchParams.set(SINGLE_TORRENT_DIRECT_VIEW_PARAM, 'direct');
+    return url.href;
   }
 
   function cacheSimilarTorrentUrl(resolutionKey, similarUrl) {
@@ -1660,7 +1735,8 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     if (!torrentId) return '';
 
     pendingSingleTorrentInlineStartedAt = Date.now();
-    pendingSingleTorrentInlineTorrentUrl = storedIntent.torrentUrl || '';
+    pendingSingleTorrentInlineTorrentUrl =
+      extractTorrentId(storedIntent.torrentUrl) === torrentId ? storedIntent.torrentUrl : '';
     clearSingleTorrentInlineIntent();
     return torrentId;
   }
@@ -2088,6 +2164,10 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     if (getLayoutSetting('showTvmazeId')) void addTvmazeIdLink();
 
     const torrents = extractTorrentRowsFromTables(nativeTables);
+    const nativeIds = new Set(torrents.map((torrent) => torrent.id));
+    torrents.push(
+      ...[...unlistedTorrents.values()].filter((torrent) => !nativeIds.has(torrent.id))
+    );
     const metaItems = collectMetaItems();
     const signature = [
       torrents.map(getTorrentSignature).join('\n'),
@@ -2227,7 +2307,8 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
       torrent.age,
       torrent.tvGroupKey,
       torrent.tvGroupLabel,
-      torrent.tvScope
+      torrent.tvScope,
+      torrent.visibilityLabel
     ].join('|');
   }
 
@@ -3073,12 +3154,22 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
 
     const actionSpan = document.createElement('span');
     actionSpan.className = 'basic-movie-list__torrent__action';
-    const viewLink = buildActionLink('link_1', torrent.torrentUrl, 'View', 'View torrent page');
+    const viewLink = buildActionLink(
+      'link_1',
+      directTorrentViewUrl(torrent.torrentUrl),
+      'View',
+      'View torrent page'
+    );
     viewLink.dataset.unit3dPtpBypassSimilarRedirect = 'true';
     actionSpan.append(
       viewLink,
       document.createTextNode(' '),
-      buildActionLink('link_2', torrent.downloadUrl || torrent.torrentUrl, 'DL', 'Download torrent')
+      buildActionLink(
+        'link_2',
+        torrent.downloadUrl || directTorrentViewUrl(torrent.torrentUrl),
+        'DL',
+        'Download torrent'
+      )
     );
 
     const infoLink = buildReleaseInfoLink(torrent);
@@ -3091,6 +3182,14 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
       document.createTextNode(' '),
       infoLink
     );
+    if (torrent.visibilityLabel) {
+      const notice = document.createElement('strong');
+      notice.className = 'unit3d-ptp-visibility-notice';
+      notice.textContent = ` [${torrent.visibilityLabel}]`;
+      notice.title =
+        'Accessible to you but absent from the similar list. Unlisted torrents may be in ModQ. Use View to open the torrent page directly.';
+      cell.appendChild(notice);
+    }
     const visionIcons = cloneVisionBadges(torrent.icons);
     if (visionIcons) {
       const badges = document.createElement('span');
@@ -3226,6 +3325,7 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     row.className = 'torrent_info_row unit3d-ptp-detail-row';
     row.dataset.unit3dTorrentId = torrent.id;
     row.dataset.unit3dTvGroupKey = torrent.tvGroupKey || 'movie';
+    if (torrent.visibilityLabel) row.dataset.unit3dVisibilityLabel = torrent.visibilityLabel;
     row.hidden = true;
 
     const cell = document.createElement('td');
@@ -3611,6 +3711,8 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
         `tr.group_torrent.group_torrent_header[data-unit3d-torrent-id="${cssEscape(torrentId)}"]`
       ) || findTorrentHeaderRowByTorrentUrl(pendingSingleTorrentInlineTorrentUrl);
     if (!headerRow) {
+      showUnlistedTorrentNotice(torrentId, pendingSingleTorrentInlineTorrentUrl);
+      void loadUnlistedTorrent(torrentId, pendingSingleTorrentInlineTorrentUrl);
       retryPendingSingleTorrentInlineDetail();
       return;
     }
@@ -3621,6 +3723,131 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
       pendingSingleTorrentInlineTorrentId = '';
       pendingSingleTorrentInlineTorrentUrl = '';
     }
+  }
+
+  function showUnlistedTorrentNotice(torrentId, torrentUrl) {
+    const linkbox = adapterRoot?.querySelector('.unit3d-ptp-linkbox');
+    if (!linkbox || linkbox.querySelector('.unit3d-ptp-unlisted-notice')) return;
+    const notice = document.createElement('p');
+    notice.className = 'unit3d-ptp-unlisted-notice';
+    notice.setAttribute('role', 'status');
+    notice.append(
+      document.createTextNode(
+        'The requested torrent is not in this similar list. It may be in ModQ. '
+      )
+    );
+    const link = buildActionLink(
+      '',
+      directTorrentViewUrl(torrentUrl || `/torrents/${torrentId}`),
+      'View torrent page',
+      'View torrent page'
+    );
+    link.dataset.unit3dPtpBypassSimilarRedirect = 'true';
+    notice.appendChild(link);
+    linkbox.appendChild(notice);
+  }
+
+  async function loadUnlistedTorrent(torrentId, torrentUrl) {
+    if (unlistedTorrentLoadStarted) return;
+    unlistedTorrentLoadStarted = true;
+    const sourceUrl = torrentUrl || new URL(`/torrents/${torrentId}`, location.href).href;
+    try {
+      const html = await enqueueDetailFetch(() => fetchTorrentDetail(sourceUrl));
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const torrent = extractUnlistedTorrent(doc, sourceUrl);
+      if (!torrent) return;
+      detailCache.set(sourceUrl, parseTorrentDetailPage(html, sourceUrl));
+      unlistedTorrents.set(torrent.id, torrent);
+      try {
+        // Keep this release available on reload without saving its protected page content.
+        history.replaceState(
+          history.state,
+          document.title,
+          addSingleTorrentInlineIntent(location.href, sourceUrl)
+        );
+      } catch {
+        // The row remains usable if History API updates are unavailable.
+      }
+      rebuildAdapter();
+    } catch {
+      // A hidden or unavailable torrent must not be reconstructed from saved page content.
+    }
+  }
+
+  function extractUnlistedTorrent(doc, torrentUrl) {
+    const name = doc.querySelector('.torrent__name');
+    const groupLink = doc.querySelector('.meta__title-link[href*="/torrents/similar/"]');
+    const groupUrl = groupLink ? new URL(groupLink.getAttribute('href'), torrentUrl).href : '';
+    if (
+      !name ||
+      !groupUrl ||
+      normalizeSimilarTorrentIntentKey(groupUrl) !== normalizeSimilarTorrentIntentKey(location.href)
+    )
+      return null;
+
+    const id = extractTorrentId(torrentUrl);
+    if (!id) return null;
+    const releaseName = normalizeWhitespace(name.textContent);
+    const size = doc.querySelector('.torrent__size-link');
+    const age = doc.querySelector('.torrent__uploaded-at time');
+    const status = doc.querySelector(
+      'form[action*="/torrents/moderation/"] input[name="old_status"]'
+    )?.value;
+    const download = [...doc.querySelectorAll('menu.torrent__buttons a[href]')].find((link) =>
+      /\/torrents\/(?:download|download_check)\//.test(link.getAttribute('href') || '')
+    );
+    const context = getUnlistedTorrentContext(releaseName);
+    return {
+      ...context,
+      tvGroupKey: context.groupKey,
+      tvGroupLabel: context.groupLabel,
+      id,
+      torrentUrl,
+      releaseName,
+      releaseGroup: extractReleaseGroup(releaseName),
+      quality: classifyReleaseQuality(releaseName),
+      sizeText: normalizeWhitespace(size?.textContent),
+      sizeBytes: parseSizeBytes(size?.getAttribute('title') || size?.textContent || ''),
+      seeders: parseInteger(doc.querySelector('.torrent__seeder-count')?.textContent),
+      leechers: parseInteger(doc.querySelector('.torrent__leecher-count')?.textContent),
+      completed: parseInteger(doc.querySelector('.torrent__times-completed-count')?.textContent),
+      age: normalizeWhitespace(age?.textContent),
+      ageCell: null,
+      icons: cloneOptional(doc.querySelector('.torrent__tags .torrent-icons')),
+      type: normalizeWhitespace(doc.querySelector('.torrent__type-link')?.textContent),
+      downloadUrl: download ? new URL(download.getAttribute('href'), torrentUrl).href : '',
+      visibilityLabel:
+        status === '0'
+          ? 'ModQ'
+          : status === '3'
+            ? 'ModQ (postponed)'
+            : status === '2'
+              ? 'Rejected'
+              : 'Unlisted'
+    };
+  }
+
+  function getUnlistedTorrentContext(releaseName) {
+    const context = createMovieTorrentContext();
+    if (!/^\/torrents\/similar\/2\./.test(location.pathname)) return context;
+    // The detail page has no season/episode fields; use the same release-name pattern as the releases script.
+    const match =
+      /(?:^|[^A-Za-z0-9])S(\d{1,3})(?!\d)(?:[\s._-]*E(\d{1,4})(?!\d))?/i.exec(releaseName) ||
+      /\bSeason[\s._-]*(\d{1,3})(?!\d)(?:[\s./_-]*(?:Episode|Ep)[\s._-]*(\d{1,4})(?!\d))?/i.exec(
+        releaseName
+      );
+    if (!match)
+      return { ...context, groupKey: 'tv:unlisted', groupLabel: 'Other TV', tvScope: 'unknown' };
+    const season = Number.parseInt(match[1], 10);
+    const episode = match[2] === undefined ? null : Number.parseInt(match[2], 10);
+    return {
+      groupKey: `s${String(season).padStart(3, '0')}:${episode === null ? 'season' : `e${String(episode).padStart(4, '0')}`}`,
+      groupLabel: `Season ${season} / ${episode === null ? 'Season Packs' : `Episode ${episode}`}`,
+      sortEpisode: episode === null ? Number.POSITIVE_INFINITY : episode,
+      sortSeason: season,
+      sortTvScope: episode === null ? 0 : 1,
+      tvScope: episode === null ? 'season' : 'episode'
+    };
   }
 
   function retryPendingSingleTorrentInlineDetail() {
@@ -5093,6 +5320,29 @@ html.unit3d-ptp-adapter-enabled .unit3d-ptp-image-marker {
     if (!cell) return;
     syncImageMarkersToHeader(detailRow, content);
     cell.replaceChildren(content);
+    const visibilityLabel = detailRow.dataset.unit3dVisibilityLabel;
+    if (visibilityLabel) {
+      const warning = document.createElement('aside');
+      warning.className = 'unit3d-ptp-visibility-warning';
+      warning.setAttribute('role', 'status');
+      const heading = document.createElement('strong');
+      heading.textContent =
+        visibilityLabel === 'Unlisted'
+          ? 'Unlisted torrent — may be in ModQ'
+          : visibilityLabel === 'Rejected'
+            ? 'Rejected torrent'
+            : `${visibilityLabel} — torrent in moderation queue`;
+      const message = document.createElement('p');
+      message.textContent =
+        visibilityLabel === 'Unlisted'
+          ? 'This torrent is missing from the approved similar list and may be awaiting moderation (ModQ). The site does not expose its moderation status.'
+          : visibilityLabel.startsWith('ModQ')
+            ? 'This torrent is in the moderation queue (ModQ) and is not in the approved similar list.'
+            : 'This torrent was rejected and is not in the approved similar list.';
+      message.append(document.createTextNode(' Use View to open the torrent page directly.'));
+      warning.append(heading, message);
+      cell.prepend(warning);
+    }
     initializeDynamicActionMenu(cell);
     if (markLoaded) {
       detailRow.dataset.loaded = 'true';
