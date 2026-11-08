@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UNIT3D - Coming Soon
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.0.8
+// @version      1.0.9
 // @description  Upcoming movie and TV releases in native UNIT3D cards, with an optional homepage sidebar for today's episodes.
 // @author       Audionut
 // @match        https://aither.cc/*
@@ -2891,12 +2891,19 @@
     const modeLabel = element('label', null, 'Releases');
     countryLabel.append(country);
     modeLabel.append(mode);
-    const previous = element('button', 'form__button form__button--outlined', '← Previous month');
-    const current = element('button', 'form__button form__button--outlined', 'This month');
-    const next = element('button', 'form__button form__button--outlined', 'Next month →');
+    controls.append(modeLabel, countryLabel);
+    const bottomControls = element('div', 'panel__body unit3d-upcoming__controls');
+    const monthNavigation = [controls, bottomControls].map((container) => {
+      const previous = element('button', 'form__button form__button--outlined', '← Previous month');
+      const monthSelect = element('select', 'form__select unit3d-upcoming__month');
+      monthSelect.setAttribute('aria-label', 'Month');
+      const next = element('button', 'form__button form__button--outlined', 'Next month →');
+      const current = element('button', 'form__button form__button--outlined', 'This month');
+      container.append(previous, monthSelect, next, current);
+      return { previous, monthSelect, next, current };
+    });
+    const monthControls = monthNavigation.flatMap((navigation) => Object.values(navigation));
     const refresh = element('button', 'form__button form__button--outlined', 'Refresh');
-    const monthSelect = element('select', 'form__select unit3d-upcoming__month');
-    monthSelect.setAttribute('aria-label', 'Month');
     const episodeWindow = element('span');
     episodeWindow.hidden = true;
     const episodeSonarrFilter = element('select', 'form__select');
@@ -2913,17 +2920,7 @@
     episodeSonarrLabel.hidden = true;
     let month = monthRange(new Date()).from.slice(0, 7);
     let fromToday = true;
-    controls.append(
-      modeLabel,
-      countryLabel,
-      previous,
-      monthSelect,
-      next,
-      current,
-      episodeWindow,
-      episodeSonarrLabel,
-      refresh
-    );
+    controls.append(episodeWindow, episodeSonarrLabel, refresh);
     const settings = element('details', 'panel__body unit3d-upcoming__settings');
     settings.append(element('summary', null, 'Settings'));
     const widthLabel = element('label', 'unit3d-upcoming__width');
@@ -3110,7 +3107,17 @@
     more.type = 'button';
     moreRow.append(more);
     moreRow.hidden = true;
-    panel.append(header, controls, settings, searchPanel, source, message, results, moreRow);
+    panel.append(
+      header,
+      controls,
+      settings,
+      searchPanel,
+      source,
+      message,
+      results,
+      moreRow,
+      bottomControls
+    );
     // The native card wrapper expands past the standard main margins when enabled.
     const page = element('div', 'torrent-search__component');
     page.classList.toggle('page__torrents', fullWidth.checked);
@@ -3488,19 +3495,21 @@
       apiStatus.textContent = '';
       if (force) void refreshTorrentMatches(true);
       const today = new Date();
-      monthSelect.replaceChildren(
-        ...calendarMonths(month, today).map(
-          (value) =>
-            new Option(
-              new Date(`${value}-01T12:00:00`).toLocaleDateString(undefined, {
-                month: 'long',
-                year: 'numeric'
-              }),
-              value
-            )
-        )
-      );
-      monthSelect.value = month;
+      monthNavigation.forEach(({ monthSelect }) => {
+        monthSelect.replaceChildren(
+          ...calendarMonths(month, today).map(
+            (value) =>
+              new Option(
+                new Date(`${value}-01T12:00:00`).toLocaleDateString(undefined, {
+                  month: 'long',
+                  year: 'numeric'
+                }),
+                value
+              )
+          )
+        );
+        monthSelect.value = month;
+      });
       const selectedModes = RELEASE_VIEWS[mode.value].modes;
       const includesDigital = selectedModes.includes('digital');
       const episodes = mode.value === 'episodes';
@@ -3519,9 +3528,10 @@
         });
       }
       countryLabel.hidden = includesDigital;
-      [monthSelect, previous, current, next].forEach((control) => {
+      monthControls.forEach((control) => {
         control.hidden = episodes;
       });
+      bottomControls.hidden = episodes;
       episodeWindow.hidden = !episodes;
       episodeSonarrLabel.hidden = !episodes;
       episodeWindow.textContent = episodes
@@ -3541,10 +3551,7 @@
         language,
         titleCountry,
         episodeSonarrFilter,
-        monthSelect,
-        previous,
-        current,
-        next,
+        ...monthControls,
         refresh
       ].forEach((control) => {
         control.disabled = true;
@@ -3579,10 +3586,7 @@
             language,
             titleCountry,
             episodeSonarrFilter,
-            monthSelect,
-            previous,
-            current,
-            next,
+            ...monthControls,
             refresh
           ].forEach((control) => {
             control.disabled = false;
@@ -3605,10 +3609,12 @@
       void refreshPage();
     }
 
-    previous.addEventListener('click', () => selectMonth(shiftMonth(month, -1)));
-    next.addEventListener('click', () => selectMonth(shiftMonth(month, 1)));
-    current.addEventListener('click', () => selectMonth(monthRange(new Date()).from.slice(0, 7)));
-    monthSelect.addEventListener('change', () => selectMonth(monthSelect.value));
+    monthNavigation.forEach(({ previous, monthSelect, next, current }) => {
+      previous.addEventListener('click', () => selectMonth(shiftMonth(month, -1)));
+      next.addEventListener('click', () => selectMonth(shiftMonth(month, 1)));
+      current.addEventListener('click', () => selectMonth(monthRange(new Date()).from.slice(0, 7)));
+      monthSelect.addEventListener('change', () => selectMonth(monthSelect.value));
+    });
     mode.addEventListener('change', () => {
       void refreshPage();
     });

@@ -4017,8 +4017,10 @@ test('Sonarr changes reapply episode filters to cached search results after a ca
   assert.equal(renders, 1);
 });
 
-test('the main episode Sonarr control reapplies its filter and Refresh forces Sonarr libraries', () => {
-  const from = source.indexOf("    previous.addEventListener('click'");
+test('both month navigation rows work and the main Sonarr controls retain their actions', () => {
+  const from = source.indexOf(
+    '    monthNavigation.forEach(({ previous, monthSelect, next, current })'
+  );
   const boundary = source.indexOf('\n  function init()', from);
   const until =
     source.lastIndexOf('    void refreshPage();', boundary) + '    void refreshPage();'.length;
@@ -4032,13 +4034,17 @@ test('the main episode Sonarr control reapplies its filter and Refresh forces So
   const updates = [];
   const refreshes = [];
   const pageRefreshes = [];
+  const selectedMonths = [];
+  const monthNavigation = Array.from({ length: 2 }, () => ({
+    previous: control(),
+    monthSelect: { ...control(), value: '2026-11' },
+    next: control(),
+    current: control()
+  }));
   let saves = 0;
   let renders = 0;
   const context = {
-    previous: control(),
-    next: control(),
-    current: control(),
-    monthSelect: { ...control(), value: '2026-09' },
+    monthNavigation,
     mode: { ...control(), value: 'episodes' },
     country: control(),
     language: control(),
@@ -4046,9 +4052,9 @@ test('the main episode Sonarr control reapplies its filter and Refresh forces So
     episodeSonarrFilter: control(),
     refresh: control(),
     month: '2026-09',
-    shiftMonth: () => '2026-09',
+    shiftMonth: api.shiftMonth,
     monthRange: () => ({ from: '2026-09-01' }),
-    selectMonth() {},
+    selectMonth: (value) => selectedMonths.push(value),
     saveSettings: () => saves++,
     updateVisibleReleases: () => renders++,
     refreshPage: (force) => pageRefreshes.push(force),
@@ -4059,6 +4065,22 @@ test('the main episode Sonarr control reapplies its filter and Refresh forces So
   };
   runInNewContext(source.slice(from, until), context);
   pageRefreshes.length = 0;
+  for (const navigation of monthNavigation) {
+    navigation.previous.handlers.click();
+    navigation.next.handlers.click();
+    navigation.current.handlers.click();
+    navigation.monthSelect.handlers.change();
+  }
+  assert.deepEqual(selectedMonths, [
+    '2026-08',
+    '2026-10',
+    '2026-09',
+    '2026-11',
+    '2026-08',
+    '2026-10',
+    '2026-09',
+    '2026-11'
+  ]);
   context.episodeSonarrFilter.handlers.change();
   assert.equal(saves, 1);
   assert.equal(renders, 1);
@@ -4102,10 +4124,13 @@ test('failed Refresh restores an active cached search even when background month
     country: { value: 'US' },
     language: { value: 'fr-FR' },
     titleCountry: { value: 'PL' },
-    monthSelect: node(),
-    previous: {},
-    current: {},
-    next: {},
+    monthNavigation: Array.from({ length: 2 }, () => ({
+      previous: node(),
+      monthSelect: node(),
+      next: node(),
+      current: node()
+    })),
+    bottomControls: {},
     refresh: {},
     countryLabel: {},
     panel: { dataset: {} },
@@ -4126,6 +4151,7 @@ test('failed Refresh restores an active cached search even when background month
     CARD_PAGE_SIZE: 24,
     RELEASE_VIEWS: api.RELEASE_VIEWS,
     monthRange: api.monthRange,
+    episodeRange: api.episodeRange,
     calendarMonths: api.calendarMonths,
     readReleaseCache: (language, titleCountry) => {
       assert.equal(language, 'fr-FR');
@@ -4152,8 +4178,14 @@ test('failed Refresh restores an active cached search even when background month
     requestAnimationFrame: (callback) => callback(),
     clearTimeout() {},
     setTimeout: (callback) => scheduled.push(callback),
-    Option: class {},
+    Option: class {
+      constructor(text, value) {
+        this.text = text;
+        this.value = value;
+      }
+    },
     loadReleases: async (options, _onProgress, force) => {
+      if (force) assert.ok(context.monthControls.every((control) => control.disabled));
       assert.equal(options.language, 'fr-FR');
       assert.equal(options.titleCountry, 'PL');
       calls.push(options);
@@ -4161,6 +4193,9 @@ test('failed Refresh restores an active cached search even when background month
       return { cached: true, notices: [] };
     }
   };
+  context.monthControls = context.monthNavigation.flatMap((navigation) =>
+    Object.values(navigation)
+  );
   for (const [first, last] of [
     ['    function appendReleases(', '    function updateSearch('],
     ['    async function prefetchMonths(', '    function saveSettings('],
@@ -4184,6 +4219,16 @@ test('failed Refresh restores an active cached search even when background month
   const siteRefreshes = [];
   context.refreshTorrentMatches = (force) => siteRefreshes.push(force);
   await context.refreshPage(true);
+  const expectedMonths = api.calendarMonths(month);
+  for (const { monthSelect } of context.monthNavigation) {
+    assert.equal(monthSelect.value, month);
+    assert.deepEqual(
+      monthSelect.children.map((option) => option.value),
+      expectedMonths
+    );
+  }
+  assert.ok(context.monthControls.every((control) => !control.disabled && !control.hidden));
+  assert.equal(context.bottomControls.hidden, false);
   assert.deepEqual(siteRefreshes, [true], 'calendar failure must still restart site checks');
   assert.equal(context.results.children.length, 24, 'cached matches survive a failed Refresh');
   assert.equal(context.visibleReleases.length, 30);
@@ -4198,6 +4243,10 @@ test('failed Refresh restores an active cached search even when background month
   context.updateVisibleReleases();
   assert.equal(context.results.children.length, 0);
   assert.match(context.message.textContent, /offline/);
+  context.mode.value = 'episodes';
+  await context.refreshPage(true);
+  assert.ok(context.monthControls.every((control) => control.hidden && !control.disabled));
+  assert.equal(context.bottomControls.hidden, true);
 });
 
 test('lazy loading reuses sources across views and months, and loads only missing earlier days for This month', async () => {
