@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ANT - Adoption cross-seed finder
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.2.2
+// @version      0.2.3
 // @description  Scan and filter ANT adoption torrents, then find filename and file-list matches on other trackers.
 // @author       Audionut with additions from Surferosa
 // @match        https://anthelion.me/torrents.php?type=adoption*
@@ -1377,6 +1377,7 @@
   let filteredScanLegacyCacheChecked = false;
   let deferredFilteredScanRows = [];
   let filteredScanRowData = new WeakMap();
+  let filteredScanReferenceTime = null;
   let filteredScanActions = new Map();
   let cachedRowStatusRestoreQueue = Promise.resolve();
   let cachedRowStatusRestoreRequested = false;
@@ -1761,6 +1762,45 @@
     return Number.isFinite(value) ? value : null;
   }
 
+  function parseAdoptionListingAge(text) {
+    const age = text.toLowerCase();
+    if (age === 'just now') return 0;
+    if (!age.endsWith(' ago')) return NaN;
+
+    // Displayed ages are rounded, so use approximate lengths for months and years.
+    const unitSeconds = {
+      year: 365 * 86400,
+      month: 30 * 86400,
+      week: 7 * 86400,
+      day: 86400,
+      hour: 3600,
+      minute: 60,
+      min: 60,
+      second: 1,
+      sec: 1
+    };
+    let seconds = 0;
+    for (const part of age.slice(0, -4).split(',')) {
+      const match = part.trim().match(/^(\d+)\s+([a-z]+?)s?$/);
+      if (!match || !Object.hasOwn(unitSeconds, match[2])) return NaN;
+      seconds += Number(match[1]) * unitSeconds[match[2]];
+    }
+    return seconds * 1000;
+  }
+
+  function parseAdoptionListingTime(cell, referenceTime) {
+    const text = cell?.textContent.trim() || '';
+    const age = parseAdoptionListingAge(text);
+    if (Number.isFinite(age)) return referenceTime - age;
+
+    const timeNode = cell?.querySelector('time, [title]');
+    for (const attribute of ['datetime', 'title']) {
+      const timestamp = Date.parse(timeNode?.getAttribute(attribute));
+      if (Number.isFinite(timestamp)) return timestamp;
+    }
+    return Date.parse(text);
+  }
+
   function getTableHeaderRow(table) {
     return table?.querySelector('tr.colhead_dark, thead tr, tr') || null;
   }
@@ -2065,6 +2105,7 @@
     filteredScanCachedValue = null;
     deferredFilteredScanRows = [];
     filteredScanRowData = new WeakMap();
+    filteredScanReferenceTime = null;
     filteredScanActions = new Map();
     updateOpenLastScanButton();
     alert('Saved adoption scan cleared.');
@@ -3558,6 +3599,8 @@
     for (const row of [...body.rows]) {
       if (row !== header) row.remove();
     }
+    const scannedAt = Date.parse(scan.scannedAt);
+    filteredScanReferenceTime = Number.isFinite(scannedAt) ? scannedAt : Date.now();
     appendSavedScanRows(body, renderEntries, renderedRows);
     parent?.insertBefore(body, nextSibling?.parentNode === parent ? nextSibling : null);
     document.title = `Filtered ANT adoptions - ${document.title}`;
@@ -3700,6 +3743,7 @@
 
   function decorateAdoptionRows() {
     const startedAt = performanceNow();
+    const referenceTime = filteredScanReferenceTime ?? Date.now();
     let decoratedCount = 0;
     let savedActionKeys = null;
     document.querySelectorAll('table').forEach((table) => {
@@ -3753,13 +3797,7 @@
             .querySelector('a[href*="torrents.php?id="][href*="torrentid="]')
             ?.textContent?.trim() || '';
         const timeCell = timeIndex >= 0 ? row.children[timeIndex] : null;
-        const timeNode = timeCell?.querySelector('time, [title]');
-        const listingTime = Date.parse(
-          timeNode?.getAttribute('datetime') ||
-            timeNode?.getAttribute('title') ||
-            timeCell?.textContent ||
-            ''
-        );
+        const listingTime = parseAdoptionListingTime(timeCell, referenceTime);
         row.dataset.antAdoptionListingTime = Number.isFinite(listingTime)
           ? String(listingTime)
           : '';

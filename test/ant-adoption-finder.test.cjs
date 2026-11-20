@@ -4531,19 +4531,9 @@ test('decorates adoption rows once and reads only stored action values', () => {
       );
     }
   };
-  const createDecorationRow = (torrentId, title) => {
+  const createDecorationRow = (torrentId, title, timeCell) => {
     const row = {
-      children: [
-        headerCell(title),
-        headerCell('2 GiB'),
-        headerCell('600,000'),
-        {
-          textContent: '1 day ago',
-          querySelector: () => ({
-            getAttribute: (name) => (name === 'title' ? '2026-09-18 12:00:00' : null)
-          })
-        }
-      ],
+      children: [headerCell(title), headerCell('2 GiB'), headerCell('600,000'), timeCell],
       childNodes: [{ nodeType: 3, nodeValue: `${title} 2 GiB 600,000` }],
       dataset: {},
       textContent: `${title} 2 GiB 600,000`,
@@ -4576,8 +4566,22 @@ test('decorates adoption rows once and reads only stored action values', () => {
     return row;
   };
   const rows = [
-    createDecorationRow('980001', 'First Movie'),
-    createDecorationRow('980002', 'Second Movie')
+    createDecorationRow('980001', 'First Movie', {
+      textContent: '1 day ago',
+      querySelector: () => ({
+        getAttribute: (name) => (name === 'title' ? '2024-01-01 00:00:00' : null)
+      })
+    }),
+    createDecorationRow('980002', 'Second Movie', {
+      textContent: '1 year, 3 weeks ago',
+      querySelector: () => null
+    }),
+    createDecorationRow('980003', 'Third Movie', {
+      textContent: '—',
+      querySelector: () => ({
+        getAttribute: (name) => (name === 'title' ? '2025-08-01 00:00:00' : null)
+      })
+    })
   ];
   const table = {
     querySelector() {
@@ -4592,7 +4596,14 @@ test('decorates adoption rows once and reads only stored action values', () => {
   const listCallsBefore = gmListValuesCount;
   const actionReadsBefore = actionGetValueCount;
 
-  api.decorateAdoptionRows();
+  const referenceTime = Date.parse('2026-09-19T12:00:00Z');
+  const previousNow = nowOverride;
+  nowOverride = referenceTime;
+  try {
+    api.decorateAdoptionRows();
+  } finally {
+    nowOverride = previousNow;
+  }
 
   assert.equal(gmListValuesCount, listCallsBefore + 1);
   assert.equal(actionGetValueCount, actionReadsBefore + 1);
@@ -4600,8 +4611,10 @@ test('decorates adoption rows once and reads only stored action values', () => {
   assert.equal(rows[1].dataset.antAdoptionAction, '');
   assert.equal(rows[0].dataset.antAdoptionDecorated, 'true');
   assert.equal(rows[0].dataset.antAdoptionName, 'First Movie');
-  assert.equal(Number(rows[0].dataset.antAdoptionListingTime), Date.parse('2026-09-18 12:00:00'));
+  assert.equal(Number(rows[0].dataset.antAdoptionListingTime), Date.parse('2026-09-18T12:00:00Z'));
   assert.equal(rows[1].dataset.antAdoptionDecorated, 'true');
+  assert.equal(Number(rows[1].dataset.antAdoptionListingTime), Date.parse('2025-08-29T12:00:00Z'));
+  assert.equal(Number(rows[2].dataset.antAdoptionListingTime), Date.parse('2025-08-01 00:00:00'));
   const childCounts = rows.map((row) => row.children.length);
 
   api.decorateAdoptionRows();
@@ -5907,29 +5920,26 @@ test('filtered header sorting stays local and supports names and listing times',
     context.location.href += '&ant_adoption_filtered=1';
     api.ensureAdoptionColumns(table);
     let prevented = 0;
-    headers[0].listeners.click({
+    const event = {
       preventDefault() {
         prevented++;
       }
-    });
+    };
+    headers[0].listeners.click(event);
     assert.deepEqual(rows, [second, first]);
-    headers[0].listeners.click({
-      preventDefault() {
-        prevented++;
-      }
-    });
+    headers[0].listeners.click(event);
     assert.deepEqual(rows, [first, second]);
-    headers[3].listeners.click({
-      preventDefault() {
-        prevented++;
-      }
-    });
+    headers[3].listeners.click(event);
     assert.deepEqual(rows, [second, first]);
-    assert.equal(prevented, 3);
     assert.equal(headers[3].textContent, 'Listing Time ↓');
+    headers[3].listeners.click(event);
+    assert.deepEqual(rows, [first, second]);
+    assert.equal(headers[3].textContent, 'Listing Time ↑');
+    assert.equal(prevented, 4);
     assert.equal(context.location.href.includes('order='), false);
   } finally {
     context.location.href = previousUrl;
+    api.setFilterState(null);
   }
 });
 
