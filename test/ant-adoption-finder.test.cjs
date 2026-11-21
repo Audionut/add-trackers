@@ -719,11 +719,17 @@ function createAntquiItem({ state = 'stalledUP' } = {}) {
 function createScannedDocument(entries) {
   const createCell = (textContent) => ({
     classList: { contains: () => false },
+    querySelector: () => null,
     textContent
   });
   const header = {
-    children: [createCell('Torrent'), createCell('Size'), createCell('Bounty')],
-    textContent: 'Torrent Size Bounty'
+    children: [
+      createCell('Torrent'),
+      createCell('Size'),
+      createCell('Bounty'),
+      createCell('Listing Time')
+    ],
+    textContent: 'Torrent Size Bounty Listing Time'
   };
   const table = {
     querySelector() {
@@ -733,23 +739,30 @@ function createScannedDocument(entries) {
       return rows;
     }
   };
-  const rows = entries.map(({ id, html, bounty = 1000 }) => ({
-    children: [createCell('Torrent'), createCell('1 GiB'), createCell(String(bounty))],
-    childNodes: [{ nodeType: 3, nodeValue: `Torrent 1 GiB ${bounty}` }],
-    classList: { contains: (className) => className === 'zeroseed' },
-    closest() {
-      return table;
-    },
-    outerHTML: html,
-    querySelector(selector) {
-      if (!selector.includes('torrents.php?action=download')) return null;
-      return {
-        getAttribute() {
-          return `torrents.php?action=download&id=${id}`;
-        }
-      };
-    }
-  }));
+  const rows = entries.map(
+    ({ id, html, bounty = 1000, age = '', size = '1 GiB', zeroSeed = true }) => ({
+      children: [
+        createCell('Torrent'),
+        createCell(size),
+        createCell(String(bounty)),
+        createCell(age)
+      ],
+      childNodes: [{ nodeType: 3, nodeValue: `Torrent 1 GiB ${bounty}` }],
+      classList: { contains: (className) => zeroSeed && className === 'zeroseed' },
+      closest() {
+        return table;
+      },
+      outerHTML: html,
+      querySelector(selector) {
+        if (!selector.includes('torrents.php?action=download')) return null;
+        return {
+          getAttribute() {
+            return `torrents.php?action=download&id=${id}`;
+          }
+        };
+      }
+    })
+  );
   return {
     querySelector() {
       return rows[0] || null;
@@ -807,7 +820,7 @@ test('retains the original settings and cache identity', () => {
   assert.match(source, /const SCRIPT_PREFIX = 'ant-adoption-filename-cross-seed';/);
   assert.match(source, /id: 'ANTAdoptionFilenameCrossSeedConfig'/);
   assert.match(source, /\/\/ @name\s+ANT - Adoption cross-seed finder/);
-  assert.match(source, /\/\/ @version\s+0\.2\.4/);
+  assert.match(source, /\/\/ @version\s+0\.2\.5/);
 });
 
 test('parses ANT sizes into GiB', () => {
@@ -831,6 +844,7 @@ test('saves page filter values into the durable shared settings record', () => {
   api.setFilterState({
     ...api.getDefaultAdoptionFilterState(),
     minimumBounty: 750000,
+    useEstimatedOrbsPerGib: true,
     minimumCombinedOrbs: 900000,
     skipSeededTorrents: true,
     hideNotEnoughOrbsRows: true,
@@ -846,6 +860,7 @@ test('saves page filter values into the durable shared settings record', () => {
   const saved = JSON.parse(storage.get('ANTAdoptionFilenameCrossSeedConfig'));
   assert.equal(saved.maximum_size_gib, 20);
   assert.equal(saved.minimum_bounty, 750000);
+  assert.equal(saved.use_estimated_orbs_per_gib, true);
   assert.equal(saved.minimum_combined_orbs, 900000);
   assert.equal(saved.skip_seeded_torrents, true);
   assert.equal(saved.hide_not_enough_orbs_rows, true);
@@ -859,6 +874,7 @@ test('saves page filter values into the durable shared settings record', () => {
   Object.entries(saved).forEach(([field, value]) => configValues.set(field, value));
   assert.equal(api.getDefaultAdoptionFilterState().maximumSizeGib, 20);
   assert.equal(api.getDefaultAdoptionFilterState().minimumBounty, 750000);
+  assert.equal(api.getDefaultAdoptionFilterState().useEstimatedOrbsPerGib, true);
   assert.equal(api.getDefaultAdoptionFilterState().minimumCombinedOrbs, 900000);
   assert.equal(api.getDefaultAdoptionFilterState().skipSeededTorrents, true);
   assert.equal(api.getDefaultAdoptionFilterState().hideNotEnoughOrbsRows, true);
@@ -871,6 +887,7 @@ test('saves page filter values into the durable shared settings record', () => {
   configValues.set('minimum_bounty', 0);
   for (const field of [
     'minimum_combined_orbs',
+    'use_estimated_orbs_per_gib',
     'skip_seeded_torrents',
     'hide_not_enough_orbs_rows',
     'hide_already_adopted_rows'
@@ -1230,6 +1247,12 @@ test('Show all preserves media choices when another value is selected', () => {
     orbsInput.valueAsNumber = 75000;
     orbsInput.listeners.change();
     assert.equal(state.minimumCombinedOrbs, 75000);
+    const includeBonus = limits
+      .querySelectorAll('input[data-filter-state]')
+      .find((node) => node.dataset.filterState === 'useEstimatedOrbsPerGib');
+    includeBonus.checked = true;
+    includeBonus.listeners.change();
+    assert.equal(state.useEstimatedOrbsPerGib, true);
     const visibility = body.children.find((node) =>
       node.className?.includes('ant-filter-visibility')
     );
@@ -4657,6 +4680,7 @@ test('decorates adoption rows once and reads only stored action values', () => {
     const row = {
       children: [headerCell(title), headerCell('2 GiB'), headerCell('600,000'), timeCell],
       childNodes: [{ nodeType: 3, nodeValue: `${title} 2 GiB 600,000` }],
+      classList: { contains: (name) => name === 'zeroseed' },
       dataset: {},
       textContent: `${title} 2 GiB 600,000`,
       appendChild(cell) {
@@ -4736,6 +4760,12 @@ test('decorates adoption rows once and reads only stored action values', () => {
   assert.equal(Number(rows[0].dataset.antAdoptionListingTime), Date.parse('2026-09-18T12:00:00Z'));
   assert.equal(rows[1].dataset.antAdoptionDecorated, 'true');
   assert.equal(Number(rows[1].dataset.antAdoptionListingTime), Date.parse('2025-08-29T12:00:00Z'));
+  assert.equal(Number(rows[1].dataset.antAdoptionBountyGib), 300000);
+  assert.equal(Number(rows[1].dataset.antAdoptionEstimatedRevivalBonus), 500000);
+  assert.equal(
+    rows[1].querySelector('.ant-adoption-estimated-orbs-gib').textContent,
+    (550000).toLocaleString()
+  );
   assert.equal(Number(rows[2].dataset.antAdoptionListingTime), Date.parse('2025-08-01 00:00:00'));
   const childCounts = rows.map((row) => row.children.length);
 
@@ -5654,6 +5684,81 @@ test('adoption page scans have a hard limit of 30 pages', () => {
   configValues.delete('scan_page_count');
 });
 
+test('a saved scan filters by estimated Orbs/GiB only when the bonus is enabled', async () => {
+  const savedScanKey = 'ant-adoption-filename-cross-seed:filtered-scan-v2';
+  const previousScan = storage.get(savedScanKey);
+  const previousPages = configValues.get('scan_page_count');
+  configValues.set('scan_page_count', 1);
+  const batches = [
+    { id: '98801', age: '29 days ago' },
+    { id: '98802', age: '30 days ago', size: '2 GiB' },
+    { id: '98803', age: '11 months, 3 weeks ago', size: '20 GiB' },
+    { id: '98804', age: '1 year ago', zeroSeed: false },
+    { id: '98805', age: '', bounty: 20000 }
+  ];
+  parsedDocuments.set(
+    'scan-with-listing-times',
+    createScannedDocument(
+      batches.map((row) => ({ ...row, html: createSavedTorrentRowHtml(row.id) }))
+    )
+  );
+  requestResponses = [{ status: 200, responseText: 'scan-with-listing-times' }];
+  try {
+    await api.scanAdoptionPages(null);
+    api.resetFilteredScanCache();
+    const scan = api.loadFilteredScan();
+    assert.deepEqual(
+      Array.from(scan.rowData, (row) => row.estimatedRevivalBonus),
+      [0, 62500, 250000, 0, null]
+    );
+    const entries = api.stageFilteredScanEntries(scan);
+    const state = {
+      ...api.getDefaultAdoptionFilterState(),
+      minimumBountyPerGib: 20000,
+      hideBelowBountyThreshold: true,
+      hideBelowMinimumBounty: false,
+      hideAboveMaximumSize: false,
+      seedingFilter: 'All rows'
+    };
+    const actions = new Map();
+    assert.equal(
+      api.partitionFilteredScanEntries(entries, actions, [], state).visibleEntries.length,
+      0
+    );
+    state.useEstimatedOrbsPerGib = true;
+    const { visibleEntries, hiddenEntries } = api.partitionFilteredScanEntries(
+      entries,
+      actions,
+      [],
+      state
+    );
+    assert.deepEqual(
+      Array.from(visibleEntries, ({ data }) => data.torrentId),
+      ['98802', '98805'],
+      'the base-rate fallback qualifies at the combined minimum'
+    );
+    assert.deepEqual(
+      Array.from(hiddenEntries, ({ data }) => data.torrentId),
+      ['98801', '98803', '98804']
+    );
+    state.minimumBountyPerGib = 31750;
+    assert.deepEqual(
+      Array.from(
+        api.partitionFilteredScanEntries(entries, actions, [], state).visibleEntries,
+        ({ data }) => data.torrentId
+      ),
+      ['98802'],
+      'the estimated rate qualifies at the combined minimum'
+    );
+  } finally {
+    if (previousScan === undefined) storage.delete(savedScanKey);
+    else storage.set(savedScanKey, previousScan);
+    if (previousPages === undefined) configValues.delete('scan_page_count');
+    else configValues.set('scan_page_count', previousPages);
+    api.resetFilteredScanCache();
+  }
+});
+
 test('ANT page reads use the page session for scans and torrent metadata', async () => {
   const previousRequest = context.GM_xmlhttpRequest;
   const previousHref = context.location.href;
@@ -6146,7 +6251,8 @@ test('fresh ANT availability and seeder count gate even rows with cached metadat
 
     const grabbed = createBatchRow('98716');
     const later = createBatchRow('98717');
-    api.markAdoptionRowGrabbed(grabbed);
+    filterRows = [grabbed, later];
+    api.setTorrentAction('98716', 'grabbed'); // A second tab updates storage without updating this row.
     const firstBatch = api.collectBatchRows([grabbed, later], [], 1);
     assert.equal(firstBatch.batch[0].row, grabbed);
     queueAntTorrentPage('98716', { adoptable: false });
@@ -6213,6 +6319,67 @@ test('fresh ANT availability and seeder count gate even rows with cached metadat
     filterRows = previousRows;
     api.setFilterState(null);
     configValues.set('qui_base_url', oldQuiUrl);
+  }
+});
+
+test('the combined rate filter lets verified rates at or above the minimum proceed', async () => {
+  const state = {
+    ...api.getDefaultAdoptionFilterState(),
+    hideBelowBountyThreshold: true,
+    useEstimatedOrbsPerGib: true,
+    showOnlyGrabbedRows: false,
+    skipSeededTorrents: false,
+    minimumCombinedOrbs: 0
+  };
+  const oldQuiUrl = configValues.get('qui_base_url');
+  configValues.set('qui_base_url', '');
+  api.setFilterState(state);
+  try {
+    const cases = [
+      { estimate: 125000, age: '30 days ago' },
+      { estimate: 62500, age: '180 days ago' },
+      { estimate: 125000, age: '30 days ago', minimum: 31750 },
+      { estimate: 125000, age: '30 days ago', minimum: 31751, skip: true },
+      { estimate: 62500, age: '30 days ago', seeders: '1', skip: true }
+    ];
+    for (const [index, { estimate, age, seeders, minimum = 30000, skip }] of cases.entries()) {
+      state.minimumBountyPerGib = minimum;
+      const id = String(98820 + index);
+      const row = createBatchRow(id);
+      row.dataset.antAdoptionSizeGib = '2';
+      row.dataset.antAdoptionEstimatedRevivalBonus = String(estimate);
+      requestResponses = [];
+      queueAntTorrentPage(id, { age, seeders, files: [`Verified-${id}.mkv`] });
+      let searches = 0;
+      const tracker = {
+        site: 'VerifiedRate',
+        ready: () => true,
+        async search() {
+          searches++;
+          return null;
+        }
+      };
+      const outcome = await api.processRow(row, 1, 1, [tracker]);
+      if (skip) {
+        assert.equal(searches, 0);
+        assert.equal(outcome?.delayMs, 5000);
+        assert.match(
+          findDescendantByClass(row, 'ant-cross-seed-state').textContent,
+          /Not enough Orbs\/GiB/
+        );
+        assert.equal(api.collectBatchRows([row], [tracker], 1).batch.length, 0);
+        assert.equal(api.getTorrentAction(id), 'not-enough-orbs');
+        api.setTorrentAction(id, '');
+      } else {
+        assert.equal(searches, 1);
+        assert.equal(outcome, undefined);
+        assert.equal(api.getTorrentAction(id), '');
+      }
+    }
+  } finally {
+    api.setFilterState(null);
+    if (oldQuiUrl === undefined) configValues.delete('qui_base_url');
+    else configValues.set('qui_base_url', oldQuiUrl);
   }
 });
 
@@ -6345,8 +6512,11 @@ test('batch processing waits five seconds after a low-Orbs row and sixty after a
 
 test('filtered header sorting stays local and supports names and listing times', () => {
   const previousUrl = context.location.href;
-  const headers = ['Name', 'Size', 'Bounty', 'Time'].map((order) => ({
-    href: `https://anthelion.me/torrents.php?type=adoption&order=${order}&way=ASC`,
+  const headers = ['Name', 'Size', 'Bounty', 'Time', 'Est. Orbs / GiB'].map((order) => ({
+    href:
+      order === 'Est. Orbs / GiB'
+        ? 'javascript:void(0)'
+        : `https://anthelion.me/torrents.php?type=adoption&order=${order}&way=ASC`,
     textContent: order,
     dataset: {},
     listeners: {},
@@ -6361,6 +6531,8 @@ test('filtered header sorting stays local and supports names and listing times',
   second.dataset.antAdoptionName = 'Movie 2';
   first.dataset.antAdoptionListingTime = '1000';
   second.dataset.antAdoptionListingTime = '2000';
+  first.dataset.antAdoptionEstimatedOrbsGib = '1000';
+  second.dataset.antAdoptionEstimatedOrbsGib = '2000';
   let rows = [first, second];
   const table = {
     querySelector: () => header,
@@ -6395,7 +6567,10 @@ test('filtered header sorting stays local and supports names and listing times',
     headers[3].listeners.click(event);
     assert.deepEqual(rows, [first, second]);
     assert.equal(headers[3].textContent, 'Listing Time ↑');
-    assert.equal(prevented, 4);
+    headers[4].listeners.click(event);
+    assert.deepEqual(rows, [second, first]);
+    assert.equal(headers[4].textContent, 'Est. Orbs / GiB ↓');
+    assert.equal(prevented, 5);
     assert.equal(context.location.href.includes('order='), false);
   } finally {
     context.location.href = previousUrl;

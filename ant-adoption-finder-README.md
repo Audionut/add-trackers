@@ -99,12 +99,13 @@ Changes made in the filtered page take effect immediately on that page. They do 
 
 | Page control                        | Behavior                                                                                                                                                        |
 | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Min bounty/GiB                      | Sets the bounty-per-GiB threshold. With hiding enabled, rows at or below the value are hidden.                                                                  |
+| Min bounty/GiB                      | Sets the bounty-per-GiB threshold. Rows at the minimum qualify when the estimated revival bonus is included.                                                    |
+| Include estimated revival bonus     | Applies the bounty/GiB threshold to **Est. Orbs / GiB** and verifies the rate during processing.                                                                |
 | Min bounty                          | Sets the minimum total bounty. `0` disables this threshold; otherwise rows below it can be hidden.                                                              |
 | Min combined Orbs                   | Requires the saved adoption bounty plus the revival bonus to meet this amount. The script checks the total when it processes the row. `0` disables the minimum. |
 | Max GiB                             | Sets the maximum torrent size in GiB. `0` disables the size limit.                                                                                              |
 | Media filters                       | Multi-select dropdowns for Source, Extension, Codec, Audio, Subtitles, Resolution, and Language. Each category supports Ignore selected or Only show selected.  |
-| Hide below min bounty/GiB           | Hides rows that do not exceed the bounty/GiB threshold.                                                                                                         |
+| Hide below min bounty/GiB           | Applies the rate threshold to the selected bounty/GiB basis.                                                                                                    |
 | Hide below min bounty               | Hides rows below Min bounty.                                                                                                                                    |
 | Hide above maximum                  | Hides rows larger than Max GiB.                                                                                                                                 |
 | Apply media filters                 | Applies the active media-category selections. Empty categories do not filter rows.                                                                              |
@@ -148,7 +149,9 @@ Leave **Combine media filters unchecked** to exclude all VHS and all Xvid indepe
 
 Selections within a single dropdown are always alternatives. For example, selecting **HDDVD** and **VHS** in the top-level Source Ignore dropdown excludes either source. If Source is the only active top-level Ignore category, Combine makes no difference. Paired with the WEB+SD exclusion group, the rule is `HDDVD OR VHS OR (WEB AND SD)` in either checkbox state.
 
-Filtered scans open sorted by **Bounty / GiB**, descending, unless you change the global defaults. Select the **Bounty / GiB** column heading to alternate that column between descending and ascending order. On the saved filtered page, the **Torrent**, **Size**, **Bounty**, **Listing Time**, and **Bounty / GiB** headings sort the saved rows locally without navigating. Repeated clicks reverse the direction; the sort controls and heading arrow stay in sync. Torrent uses natural name order. Listing Time sorts by the displayed age, such as `1 year, 3 weeks ago`, using the saved scan time as its reference. Listings without a readable age use the absolute date when available. Rows with missing sort values remain at the end. Normal ANT listing pages retain their native sorting links.
+Filtered scans open sorted by **Bounty / GiB**, descending, unless you change the global defaults. On the saved filtered page, the **Torrent**, **Size**, **Bounty**, **Listing Time**, **Bounty / GiB**, and **Est. Orbs / GiB** headings sort the saved rows locally. Repeated clicks reverse the direction, and the sort controls and heading arrow stay in sync. Torrent uses natural name order. Listing Time sorts by the displayed age, such as `1 year, 3 weeks ago`, using the saved scan time as its reference. Listings without a readable age use the absolute date when available. Rows with missing sort values remain at the end. Normal ANT listing pages retain their native sorting links.
+
+**Est. Orbs / GiB** adds the revival bonus estimated from **Listing Time** to the adoption bounty, then divides by size. The estimate assumes a torrent shown with zero seeders has been unseeded for its listing age at scan time. If the listing age is unreadable, the column shows a dash and the filter uses the original bounty rate. Older saved scans can derive the estimate from their saved rows.
 
 Each row also has an Action selector:
 
@@ -171,7 +174,7 @@ Processing starts with visible rows that had zero seeders in the adoption scan. 
 
 For each eligible row, the script:
 
-1. Fetches the current ANT detail page to verify the adoption button and seeder count, then checks the combined Orbs minimum. Rows that pass use cached matching metadata or read it from the same page.
+1. Fetches the current ANT detail page to verify the adoption button and seeder count, then checks the combined Orbs minimum and the combined rate filter when enabled. Rows that pass use cached matching metadata or read it from the same page.
 2. Searches qui for strict filename matches and shows matching save paths when qui is configured.
 3. Searches the enabled tracker scope using each tracker's supported fields. BHD receives only the exact ANT filename as `file_name`; HDB receives only the exact ANT filename as `file_in_torrent`.
 4. Keeps the exact filename/file-list matches returned by those searches.
@@ -189,6 +192,8 @@ For torrents with zero current seeders, the script estimates the revival bonus u
 | 1 year                |  500,000 Orbs |
 
 If a torrent has seeders, its revival bonus is zero. Turn on **Skip torrents that now have seeders** to exclude it from processing even when its bounty meets the minimum. A row skipped for having seeders stays out of later batches in that tab. Turn off the option or reopen the scan to check it again.
+
+When **Hide below minimum bounty/GiB** and **Include estimated revival bonus in minimum bounty/GiB** are both enabled, processing verifies the combined rate using current seeders and tracker last activity. A verified rate at or above the configured minimum qualifies, even when it differs from the estimate. A verified rate below the minimum saves **Not enough Orbs** for rows outside the **Grabbed** group. For Grabbed rows, the skip applies to the current tab.
 
 For an ANT folder torrent, the candidate must contain the video files under the same root directory and relative paths. A standalone file with the same video filename is rejected. Candidates without enough file-path information to verify the folder are also rejected, including filename-only BHD/HDB results. Single-file ANT adoptions can still match videos inside source folders. When an ANT folder is submitted during the qui follow-up, its save path is the parent of the verified source root directory.
 
@@ -263,6 +268,7 @@ Transient adoption-flow storage reads are retried on the same 10-second cadence 
 | Adoption pages to scan                 |           `10` | Number of pages fetched by the fixed scan, starting at page 1; maximum `30`.                                                                     |
 | Delay between scanned pages            |    `3` seconds | Pause between ANT page requests.                                                                                                                 |
 | Minimum bounty per GiB                 |       `200000` | Default bounty/GiB threshold.                                                                                                                    |
+| Include estimated revival bonus        |       Disabled | Uses the estimated combined Orbs/GiB rate for the minimum filter and verifies it during processing.                                              |
 | Minimum bounty                         |            `0` | Default total-bounty threshold. Values above `0` also enable the bounty-limited scan button.                                                     |
 | Minimum combined Orbs                  |            `0` | Minimum bounty plus revival bonus during processing. Zero disables the minimum.                                                                  |
 | Maximum size in GiB                    |            `0` | Default maximum size; `0` means unlimited.                                                                                                       |
@@ -278,7 +284,7 @@ Transient adoption-flow storage reads are retried on the same 10-second cadence 
 | Hide Not enough Orbs rows              |       Disabled | Hides saved Not enough Orbs actions by default.                                                                                                  |
 | Hide Already adopted rows              |       Disabled | Hides saved Already adopted actions by default.                                                                                                  |
 | Show only Grabbed rows                 |       Disabled | Shows Grabbed rows irrespective of all other filters when enabled.                                                                               |
-| Default sort field                     | `Bounty / GiB` | Initial filtered-page sort; also supports Bounty, Size, Torrent, Listing Time, or Scan order.                                                    |
+| Default sort field                     | `Bounty / GiB` | Initial filtered-page sort. Also supports Est. Orbs / GiB, Bounty, Size, Torrent, Listing Time, and Scan order.                                  |
 | Default sort direction                 |   `Descending` | Initial ascending or descending order.                                                                                                           |
 | Seeding filter                         |       All rows | Default seeding-state filter.                                                                                                                    |
 | Skip Trumpable rows                    |        Enabled | Hides and skips Trumpable rows.                                                                                                                  |

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ANT - Adoption cross-seed finder
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.2.4
+// @version      0.2.5
 // @description  Scan and filter ANT adoption torrents, then find filename and file-list matches on other trackers.
 // @author       Audionut with additions from Surferosa
 // @match        https://anthelion.me/torrents.php?type=adoption*
@@ -85,6 +85,18 @@
   const ADOPTION_READY_FLOW_STORAGE_KEY = `${SCRIPT_PREFIX}:adoption-ready-flow-v1`;
   const ADOPTION_READY_FLOW_LOCK_NAME = `${SCRIPT_PREFIX}:adoption-ready-flow-lock-v1`;
   const BOUNTY_GIB_COLUMN_CLASS = 'ant-adoption-bounty-gib';
+  const ESTIMATED_ORBS_GIB_COLUMN_CLASS = 'ant-adoption-estimated-orbs-gib';
+  const BOUNTY_GIB_LABEL = 'Bounty / GiB';
+  const ESTIMATED_ORBS_GIB_LABEL = 'Est. Orbs / GiB';
+  const ADOPTION_SORT_FIELDS = [
+    BOUNTY_GIB_LABEL,
+    ESTIMATED_ORBS_GIB_LABEL,
+    'Bounty',
+    'Size',
+    'Torrent',
+    'Listing Time',
+    'Scan order'
+  ];
   const ACTION_COLUMN_CLASS = 'ant-adoption-action';
   const FILTERABLE_ROW_SELECTOR = 'tr.torrent.torrent_row';
   const GRABBED_HIGHLIGHT_COLOR = 'rgba(46, 160, 67, 0.35)';
@@ -264,6 +276,11 @@
       type: 'unsigned int',
       default: 200000
     },
+    use_estimated_orbs_per_gib: {
+      label: 'Include estimated revival bonus in minimum bounty/GiB',
+      type: 'checkbox',
+      default: false
+    },
     minimum_bounty: {
       label: 'Minimum bounty',
       type: 'unsigned int',
@@ -350,8 +367,8 @@
     default_sort_field: {
       label: 'Default sort field',
       type: 'select',
-      default: 'Bounty / GiB',
-      options: ['Bounty / GiB', 'Bounty', 'Size', 'Torrent', 'Listing Time', 'Scan order']
+      default: BOUNTY_GIB_LABEL,
+      options: ADOPTION_SORT_FIELDS
     },
     default_sort_direction: {
       label: 'Default sort direction',
@@ -735,6 +752,7 @@
     'scan_page_count',
     'scan_delay_seconds',
     'minimum_bounty_per_gib',
+    'use_estimated_orbs_per_gib',
     'minimum_bounty',
     'minimum_combined_orbs',
     'maximum_size_gib',
@@ -760,6 +778,7 @@
   ]);
   const ADOPTION_FILTER_STATE_FIELDS = {
     minimumBountyPerGib: 'minimum_bounty_per_gib',
+    useEstimatedOrbsPerGib: 'use_estimated_orbs_per_gib',
     minimumBounty: 'minimum_bounty',
     minimumCombinedOrbs: 'minimum_combined_orbs',
     maximumSizeGib: 'maximum_size_gib',
@@ -784,7 +803,10 @@
   const CONFIG_HELP_TEXT = {
     scan_page_count: `Fetch this many ANT adoption pages, starting at page 1. The hard limit is ${MAX_SCAN_PAGES}.`,
     scan_delay_seconds: 'Pause between adoption-page requests to reduce load on ANT.',
-    minimum_bounty_per_gib: 'Rows at or below this bounty/GiB value can be hidden.',
+    minimum_bounty_per_gib:
+      'Minimum Orbs per GiB. Rows at this value qualify when the revival bonus is included.',
+    use_estimated_orbs_per_gib:
+      'Use listing age to estimate the revival bonus for filtering. Processing checks the current rate against the minimum.',
     minimum_bounty: 'Minimum total bounty. Zero disables this threshold.',
     minimum_combined_orbs:
       'Minimum bounty plus revival bonus, checked before each torrent search. Zero disables this threshold.',
@@ -1723,10 +1745,11 @@
 
   function getDefaultAdoptionFilterState() {
     const seedingFilter = String(GM_config.get('seeding_filter') || 'All rows');
-    const sortField = String(GM_config.get('default_sort_field') || 'Bounty / GiB');
+    const sortField = String(GM_config.get('default_sort_field') || BOUNTY_GIB_LABEL);
     const sortDirection = String(GM_config.get('default_sort_direction') || 'Descending');
     return {
       minimumBountyPerGib: getConfiguredNumber('minimum_bounty_per_gib', 200000),
+      useEstimatedOrbsPerGib: Boolean(GM_config.get('use_estimated_orbs_per_gib')),
       minimumBounty: getMinimumBounty(),
       minimumCombinedOrbs: getConfiguredNumber('minimum_combined_orbs', 0),
       maximumSizeGib: getConfiguredNumber('maximum_size_gib', 0),
@@ -1742,16 +1765,7 @@
       hideNotEnoughOrbsRows: Boolean(GM_config.get('hide_not_enough_orbs_rows')),
       hideAlreadyAdoptedRows: Boolean(GM_config.get('hide_already_adopted_rows')),
       showOnlyGrabbedRows: Boolean(GM_config.get('show_only_grabbed_rows')),
-      sortField: [
-        'Bounty / GiB',
-        'Bounty',
-        'Size',
-        'Torrent',
-        'Listing Time',
-        'Scan order'
-      ].includes(sortField)
-        ? sortField
-        : 'Bounty / GiB',
+      sortField: ADOPTION_SORT_FIELDS.includes(sortField) ? sortField : BOUNTY_GIB_LABEL,
       sortDirection: ['Descending', 'Ascending'].includes(sortDirection)
         ? sortDirection
         : 'Descending',
@@ -1853,6 +1867,24 @@
     return Date.parse(text);
   }
 
+  function revivalBonusForAge(age) {
+    if (!Number.isFinite(age)) return null;
+    return REVIVAL_BONUS_TIERS.find(([days]) => age >= days * 86400000)?.[1] ?? 0;
+  }
+
+  function estimateAdoptionRevivalBonus(zeroSeed, listingTime, referenceTime) {
+    return zeroSeed ? revivalBonusForAge(referenceTime - listingTime) : 0;
+  }
+
+  function adoptionOrbsPerGib(bounty, bonus, sizeGiB) {
+    return Number.isFinite(bounty) &&
+      Number.isFinite(bonus) &&
+      Number.isFinite(sizeGiB) &&
+      sizeGiB > 0
+      ? (bounty + bonus) / sizeGiB
+      : null;
+  }
+
   function getTableHeaderRow(table) {
     return table?.querySelector('tr.colhead_dark, thead tr, tr') || null;
   }
@@ -1863,6 +1895,7 @@
     return [...header.children].findIndex(
       (cell) =>
         !cell.classList.contains(BOUNTY_GIB_COLUMN_CLASS) &&
+        !cell.classList.contains(ESTIMATED_ORBS_GIB_COLUMN_CLASS) &&
         !cell.classList.contains(ACTION_COLUMN_CLASS) &&
         cell.textContent.trim().toLowerCase().includes(label)
     );
@@ -2233,6 +2266,8 @@
           !Array.isArray(data) &&
           isNullableNumber(data.bounty) &&
           isNullableNumber(data.bountyPerGib) &&
+          (data.estimatedRevivalBonus === undefined ||
+            isNullableNumber(data.estimatedRevivalBonus)) &&
           typeof data.metadata === 'string' &&
           Number.isInteger(data.originalIndex) &&
           data.originalIndex >= 0 &&
@@ -3282,6 +3317,8 @@
     if (!table) throw new Error('ANT response did not contain an adoption table.');
     const sizeIndex = findAdoptionColumnIndex(table, 'size');
     const bountyIndex = findAdoptionColumnIndex(table, 'bounty');
+    const timeIndex = findAdoptionColumnIndex(table, 'listing time');
+    const referenceTime = Date.now();
     return [...table.querySelectorAll(FILTERABLE_ROW_SELECTOR)].map((row) => {
       const torrentId = getRowTorrentId(row);
       if (!torrentId) throw new Error('ANT adoption row did not contain a torrent download ID.');
@@ -3293,15 +3330,21 @@
         bountyIndex >= 0 && row.children[bountyIndex]
           ? parseBounty(row.children[bountyIndex].textContent)
           : null;
+      const zeroSeed = row.classList?.contains('zeroseed') === true;
       return {
         bounty,
+        estimatedRevivalBonus: estimateAdoptionRevivalBonus(
+          zeroSeed,
+          parseAdoptionListingTime(row.children[timeIndex], referenceTime),
+          referenceTime
+        ),
         html: row.outerHTML,
         metadata: getAdoptionRowMetadata(row),
         seeding: isAdoptionRowSeeding(row),
         sizeGiB,
         torrentId,
         trumpable: isTrumpableRow(row),
-        zeroSeed: row.classList?.contains('zeroseed') === true
+        zeroSeed
       };
     });
   }
@@ -3368,6 +3411,7 @@
           bounty: entry.bounty,
           bountyPerGib:
             entry.sizeGiB && entry.bounty !== null ? entry.bounty / entry.sizeGiB : null,
+          estimatedRevivalBonus: entry.estimatedRevivalBonus,
           metadata: entry.metadata,
           originalIndex,
           seeding: entry.seeding,
@@ -3465,9 +3509,12 @@
   }
 
   function getAdoptionFilterResult(data, action, regexes, state = adoptionFilterState) {
-    const bountyPerGib = Number.parseFloat(data?.bountyPerGib);
     const bounty = Number.parseFloat(data?.bounty);
     const sizeGiB = Number.parseFloat(data?.sizeGiB);
+    const estimatedRate = state.useEstimatedOrbsPerGib
+      ? adoptionOrbsPerGib(bounty, data?.estimatedRevivalBonus, sizeGiB)
+      : null;
+    const bountyPerGib = estimatedRate ?? Number.parseFloat(data?.bountyPerGib);
     const seeding = data?.seeding === true || data?.seeding === 'true';
     const trumpable = data?.trumpable === true || data?.trumpable === 'true';
     const mediaMatches = regexes.map((filter) => ({
@@ -3488,7 +3535,10 @@
           ? ignoreMatches.every((filter) => filter.matches)
           : ignoreMatches.some((filter) => filter.matches)));
     const belowThreshold =
-      !Number.isFinite(bountyPerGib) || bountyPerGib <= state.minimumBountyPerGib;
+      !Number.isFinite(bountyPerGib) ||
+      (state.useEstimatedOrbsPerGib
+        ? bountyPerGib < state.minimumBountyPerGib
+        : bountyPerGib <= state.minimumBountyPerGib);
     const belowMinimumBounty =
       state.minimumBounty > 0 && (!Number.isFinite(bounty) || bounty < state.minimumBounty);
     const aboveMaximum =
@@ -3587,9 +3637,9 @@
     return scan.rows.map((html, index) => ({ data: scan.rowData[index], html }));
   }
 
-  function parseSavedScanRows(entries) {
+  function parseSavedScanRows(entries, owner = document) {
     if (entries.length === 0) return [];
-    const stagingBody = document.createElement('tbody');
+    const stagingBody = owner.createElement('tbody');
     stagingBody.insertAdjacentHTML('beforeend', entries.map((entry) => entry.html).join(''));
     const rows = [...stagingBody.children];
     const valid =
@@ -3600,6 +3650,29 @@
           getRowTorrentId(row) === String(entries[index].data.torrentId)
       );
     return valid ? rows : null;
+  }
+
+  function restoreSavedRevivalEstimates(entries, table, referenceTime) {
+    const legacyEntries = entries.filter(({ data }) => data.estimatedRevivalBonus === undefined);
+    if (!legacyEntries.length) return true;
+    const timeIndex = findAdoptionColumnIndex(table, 'listing time');
+    // Keep deferred old rows inert while reading their saved listing times.
+    const owner = document.createElement('template').content.ownerDocument;
+    const rows = parseSavedScanRows(legacyEntries, owner);
+    if (!rows) return false;
+    rows.forEach((row, index) => {
+      const entry = legacyEntries[index];
+      const listingTime = parseAdoptionListingTime(row.children[timeIndex], referenceTime);
+      entry.data = {
+        ...entry.data,
+        estimatedRevivalBonus: estimateAdoptionRevivalBonus(
+          entry.data.zeroSeed,
+          listingTime,
+          referenceTime
+        )
+      };
+    });
+    return true;
   }
 
   function appendSavedScanRows(body, entries, rows) {
@@ -3631,6 +3704,13 @@
     adoptionFilterState ||= getDefaultAdoptionFilterState();
     const entries = stageFilteredScanEntries(scan);
     if (!entries) {
+      alert('The saved adoption scan contained invalid or mismatched torrent rows.');
+      return false;
+    }
+    const scannedAt = Date.parse(scan.scannedAt);
+    const referenceTime = Number.isFinite(scannedAt) ? scannedAt : Date.now();
+    if (!restoreSavedRevivalEstimates(entries, table, referenceTime)) {
+      discardFilteredScanCache('saved row HTML parse mismatch', { storedRows: entries.length });
       alert('The saved adoption scan contained invalid or mismatched torrent rows.');
       return false;
     }
@@ -3675,8 +3755,7 @@
     for (const row of [...body.rows]) {
       if (row !== header) row.remove();
     }
-    const scannedAt = Date.parse(scan.scannedAt);
-    filteredScanReferenceTime = Number.isFinite(scannedAt) ? scannedAt : Date.now();
+    filteredScanReferenceTime = referenceTime;
     appendSavedScanRows(body, renderEntries, renderedRows);
     parent?.insertBefore(body, nextSibling?.parentNode === parent ? nextSibling : null);
     document.title = `Filtered ANT adoptions - ${document.title}`;
@@ -3734,12 +3813,19 @@
     const header = getTableHeaderRow(table);
     if (!header) return;
 
-    if (!header.querySelector(`.${BOUNTY_GIB_COLUMN_CLASS}`)) {
+    for (const [columnClass, label] of [
+      [BOUNTY_GIB_COLUMN_CLASS, BOUNTY_GIB_LABEL],
+      [ESTIMATED_ORBS_GIB_COLUMN_CLASS, ESTIMATED_ORBS_GIB_LABEL]
+    ]) {
+      if (header.querySelector(`.${columnClass}`)) continue;
       const cell = document.createElement('td');
-      cell.className = `sign ${BOUNTY_GIB_COLUMN_CLASS}`;
+      cell.className = `sign ${columnClass}`;
       const link = document.createElement('a');
       link.href = 'javascript:void(0)';
-      link.textContent = 'Bounty / GiB';
+      link.textContent = label;
+      if (label === ESTIMATED_ORBS_GIB_LABEL) {
+        link.title = 'Estimated bounty plus revival bonus per GiB, using the saved listing age';
+      }
       cell.appendChild(link);
       header.appendChild(cell);
     }
@@ -3749,7 +3835,9 @@
         const order = new URL(link.href, location.href).searchParams.get('order');
         const field =
           { Name: 'Torrent', Size: 'Size', Bounty: 'Bounty', Time: 'Listing Time' }[order] ||
-          (link.textContent === 'Bounty / GiB' ? 'Bounty / GiB' : null);
+          ([BOUNTY_GIB_LABEL, ESTIMATED_ORBS_GIB_LABEL].includes(link.textContent)
+            ? link.textContent
+            : null);
         if (!field || link.dataset.antAdoptionSort) continue;
         link.dataset.antAdoptionSort = field;
         link.addEventListener('click', (event) => {
@@ -3881,14 +3969,26 @@
           ? String(listingTime)
           : '';
 
-        if (!row.querySelector(`.${BOUNTY_GIB_COLUMN_CLASS}`)) {
+        const estimatedRevivalBonus = scanData
+          ? scanData.estimatedRevivalBonus
+          : estimateAdoptionRevivalBonus(
+              row.classList?.contains('zeroseed') === true,
+              listingTime,
+              referenceTime
+            );
+        const estimatedRate = adoptionOrbsPerGib(bounty, estimatedRevivalBonus, sizeGiB);
+        row.dataset.antAdoptionEstimatedRevivalBonus = estimatedRevivalBonus ?? '';
+        row.dataset.antAdoptionEstimatedOrbsGib = estimatedRate ?? '';
+        for (const [columnClass, rate] of [
+          [BOUNTY_GIB_COLUMN_CLASS, bountyPerGib],
+          [ESTIMATED_ORBS_GIB_COLUMN_CLASS, estimatedRate]
+        ]) {
+          if (row.querySelector(`.${columnClass}`)) continue;
           const cell = document.createElement('td');
-          cell.className = `right ${BOUNTY_GIB_COLUMN_CLASS}`;
-          cell.dataset.sortValue = bountyPerGib === null ? '' : String(bountyPerGib);
+          cell.className = `right ${columnClass}`;
+          cell.dataset.sortValue = rate === null ? '' : String(rate);
           cell.textContent =
-            bountyPerGib === null
-              ? '—'
-              : bountyPerGib.toLocaleString(undefined, { maximumFractionDigits: 0 });
+            rate === null ? '—' : rate.toLocaleString(undefined, { maximumFractionDigits: 0 });
           row.appendChild(cell);
         }
         if (!row.querySelector(`.${ACTION_COLUMN_CLASS}`)) {
@@ -3909,7 +4009,8 @@
   function sortAdoptionRows(table, field, direction) {
     const startedAt = performanceNow();
     const datasetField = {
-      'Bounty / GiB': 'antAdoptionBountyGib',
+      [BOUNTY_GIB_LABEL]: 'antAdoptionBountyGib',
+      [ESTIMATED_ORBS_GIB_LABEL]: 'antAdoptionEstimatedOrbsGib',
       Bounty: 'antAdoptionBounty',
       Size: 'antAdoptionSizeGib',
       Torrent: 'antAdoptionName',
@@ -3956,7 +4057,7 @@
   }
 
   function sortAdoptionRowsByBounty(table, direction) {
-    sortAdoptionRows(table, 'Bounty / GiB', direction);
+    sortAdoptionRows(table, BOUNTY_GIB_LABEL, direction);
   }
 
   function applyDefaultAdoptionSort() {
@@ -4014,6 +4115,7 @@
         {
           bounty,
           bountyPerGib,
+          estimatedRevivalBonus: parseBounty(row.dataset.antAdoptionEstimatedRevivalBonus),
           metadata: row.dataset.antAdoptionMetadata || '',
           seeding: row.dataset.antAdoptionSeeding,
           sizeGiB,
@@ -4217,7 +4319,7 @@
     sortFieldLabel.textContent = 'Sort by ';
     const sortFieldSelect = document.createElement('select');
     sortFieldSelect.id = 'ant-adoption-sort-field';
-    ['Bounty / GiB', 'Bounty', 'Size', 'Torrent', 'Listing Time', 'Scan order'].forEach((value) => {
+    ADOPTION_SORT_FIELDS.forEach((value) => {
       const option = document.createElement('option');
       option.value = value;
       option.textContent = value;
@@ -4252,6 +4354,11 @@
       sections.limits,
       'Hide below minimum bounty/GiB',
       'hideBelowBountyThreshold'
+    );
+    createFilterCheckbox(
+      sections.limits,
+      'Include estimated revival bonus in minimum bounty/GiB',
+      'useEstimatedOrbsPerGib'
     );
     sections.limits.appendChild(minimumBountyLabel);
     createFilterCheckbox(sections.limits, 'Hide below minimum bounty', 'hideBelowMinimumBounty');
@@ -5150,8 +5257,7 @@
       element.textContent.trimStart().startsWith('Tracker last activity:')
     );
     const age = parseAdoptionListingAge(activity?.querySelector('.time')?.textContent.trim() || '');
-    if (!Number.isFinite(age)) return null;
-    return REVIVAL_BONUS_TIERS.find(([days]) => age >= days * 86400000)?.[1] ?? 0;
+    return revivalBonusForAge(age);
   }
 
   function checkAntAdoption(row, doc, torrentId) {
@@ -5177,20 +5283,38 @@
 
     const bonus = seeders > 0 ? 0 : getAntRevivalBonus(detailsRow);
     const bounty = parseBounty(row.dataset.antAdoptionBounty);
-    const minimum =
-      adoptionFilterState?.minimumCombinedOrbs ?? getConfiguredNumber('minimum_combined_orbs', 0);
+    const state = adoptionFilterState;
+    const minimum = state?.minimumCombinedOrbs ?? getConfiguredNumber('minimum_combined_orbs', 0);
     const combinedOrbs = (bounty ?? 0) + (bonus ?? 0);
-    if (!minimum || combinedOrbs >= minimum) return null;
-    if (bounty === null || bonus === null) {
-      throw new Error(
-        'Could not determine the combined Orbs from the bounty and tracker activity.'
-      );
+    if (minimum > 0 && combinedOrbs < minimum) {
+      if (bounty === null || bonus === null) {
+        throw new Error(
+          'Could not determine the combined Orbs from the bounty and tracker activity.'
+        );
+      }
+      return {
+        action: 'not-enough-orbs',
+        message: `Not enough Orbs: ${combinedOrbs.toLocaleString()} of ${minimum.toLocaleString()} (${bounty.toLocaleString()} bounty + ${bonus.toLocaleString()} revival bonus)`
+      };
     }
 
-    return {
-      action: 'not-enough-orbs',
-      message: `Not enough Orbs: ${combinedOrbs.toLocaleString()} of ${minimum.toLocaleString()} (${bounty.toLocaleString()} bounty + ${bonus.toLocaleString()} revival bonus)`
-    };
+    if (
+      state?.hideBelowBountyThreshold &&
+      state.useEstimatedOrbsPerGib &&
+      !state.showOnlyGrabbedRows
+    ) {
+      const sizeGiB = Number.parseFloat(row.dataset.antAdoptionSizeGib);
+      const actualRate = adoptionOrbsPerGib(bounty, bonus, sizeGiB);
+      if (actualRate === null) throw new Error('Could not verify the combined Orbs/GiB rate.');
+      const minimumRate = state.minimumBountyPerGib;
+      if (actualRate < minimumRate) {
+        return {
+          action: 'not-enough-orbs',
+          message: `Not enough Orbs/GiB: verified ${actualRate.toLocaleString()}, minimum ${minimumRate.toLocaleString()}`
+        };
+      }
+    }
+    return null;
   }
 
   function getUnit3dConfig(tracker) {
