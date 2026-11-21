@@ -95,7 +95,7 @@ Version `0.2.0` uses saved-scan format version 2. Saved-scan keys from any other
 
 The in-page **Adoption filters** panel is collapsed by default. Select its header to expand the bounty and size, row visibility, sorting, and media controls.
 
-Changes made in the filtered page take effect immediately on that page. They do not replace the global defaults until you select **Save page settings globally**.
+Changes made on the filtered page take effect immediately. The main release group filter saves automatically. Use **Save page settings globally** to save the other filters and sorting as defaults.
 
 | Page control                          | Behavior                                                                                                                                                        |
 | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -104,7 +104,7 @@ Changes made in the filtered page take effect immediately on that page. They do 
 | Min bounty                            | Sets the minimum total bounty. `0` disables this threshold; otherwise rows below it can be hidden.                                                              |
 | Min combined Orbs                     | Requires the saved adoption bounty plus the revival bonus to meet this amount. The script checks the total when it processes the row. `0` disables the minimum. |
 | Max GiB                               | Sets the maximum torrent size in GiB. `0` disables the size limit.                                                                                              |
-| Media filters                         | Multi-select dropdowns for Source, Extension, Codec, Audio, Subtitles, Resolution, and Language. Each category supports Ignore selected or Only show selected.  |
+| Media filters                         | Multi-select filters for Source, Extension, Codec, Audio, Subtitles, Resolution, Language, and Release group.                                                   |
 | Hide below min bounty/GiB             | Applies the rate threshold to the selected bounty/GiB basis.                                                                                                    |
 | Hide below min bounty                 | Hides rows below Min bounty.                                                                                                                                    |
 | Hide above maximum                    | Hides rows larger than Max GiB.                                                                                                                                 |
@@ -127,6 +127,10 @@ Changes made in the filtered page take effect immediately on that page. They do 
 Within a media category, any selected value can match. By default, a match in any Ignore category excludes a row, and every Only-show category must match. Enable **Combine media filters** to exclude a row only when every active Ignore category matches. Only-show categories still all have to match, independently of the Ignore group. For example, ignoring WEB and H265 in combined mode excludes WEB/H265 rows while retaining WEB/H264 and BluRay/H265 rows, provided they pass any Only-show categories. This option is off by default and is available in Settings and the in-page panel. **Show all** preserves it alongside the media selections. **Ignore selected** excludes matching rows, while **Only show selected** requires a match. With no selections, a category is Off and its mode selector is disabled. The Language dropdown starts with **Ignore all listed languages**, which selects every listed language and switches to Ignore selected. Unchecking it clears the language selections. These values match row metadata; shared labels such as Other are not restricted to a typed metadata field.
 
 The **Extension** dropdown offers MKV, MP4, AVI, M2TS, MPG, MPEG, TS, VOB, ISO, and **None**. None matches rows without a listed video extension. Leaving Extension empty does not filter these rows; selecting Only show MKV excludes them, while selecting Only show MKV and None retains both. These choices also work in exclusion groups. A missing extension label does not by itself classify a torrent as a folder; processing reads the ANT detail page's file list and root directory.
+
+The **Release group** dropdown lists groups from the entire scan and remembers groups from earlier scans. The scan page saves the main release group filter as you change it. In Settings, use **Save**. Release group choices inside exclusion groups follow the usual **Save page settings globally** workflow. **Reset release group selections** clears the choices and mode in that dropdown while keeping the remembered names available.
+
+Use **Ignore selected**, **Only show selected**, or add release groups to an exclusion group. The filter matches the whole group name regardless of capitalization. It ignores trailing **Trumpable** and **Internal** labels and fields containing **Pollination** or **Double Seed**. Choose **No release group** for listings that end with the file extension or have no group listed. Existing saved scans work without a new scan.
 
 Use **Add exclusion group** in Settings or the in-page panel for rules that mix independent exclusions with combinations. Every selected category within a group must match; matching any group excludes the row. Multiple values within one category are alternatives, and empty groups or categories do not exclude anything. **Remove group** deletes that group. **Apply media filters** controls these groups too, while **Combine media filters** affects only the original category filters. **Show all** preserves the groups while disabling their application; **Save page settings globally** saves them for later scans.
 
@@ -276,7 +280,7 @@ Transient adoption-flow storage reads are retried on the same 10-second cadence 
 | Minimum bounty                         |            `0` | Default total-bounty threshold. Values above `0` also enable the bounty-limited scan button.                                                     |
 | Minimum combined Orbs                  |            `0` | Minimum bounty plus revival bonus during processing. Zero disables the minimum.                                                                  |
 | Maximum size in GiB                    |            `0` | Default maximum size; `0` means unlimited.                                                                                                       |
-| Media filters                          |          Empty | Multi-select Source, Extension, Codec, Audio, Subtitles, Resolution, and Language filters, each with Ignore selected or Only show selected mode. |
+| Media filters                          |          Empty | Multi-select Source, Extension, Codec, Audio, Subtitles, Resolution, Language and Release group. Supports Ignore selected or Only show selected. |
 | Hide rows below the bounty/GiB minimum |        Enabled | Applies the minimum bounty/GiB filter by default.                                                                                                |
 | Hide rows below the minimum bounty     |        Enabled | Applies Min bounty when it is greater than zero.                                                                                                 |
 | Hide rows above the maximum size       |        Enabled | Applies Max GiB when it is greater than zero.                                                                                                    |
@@ -361,7 +365,7 @@ Refreshing the filtered page reconstructs it from the saved scan, reapplies the 
 
 The script always writes a small set of lifecycle timing messages to the browser console, independently of **Debug logging**. These report saved-scan decoding, stored-row validation, visible-row HTML parsing, row restoration, decoration, sorting, filtering, initial rendering, and deferred cache restoration. Every message includes an ISO timestamp, time since filtered-page initialization, time since the previous lifecycle message, and a sequence number. The `adoption filter update presented` message is emitted after two animation frames, so its duration includes browser layout and paint work that synchronous filtering measurements cannot see.
 
-Page-only filter edits are intentionally temporary until **Save page settings globally** is selected.
+The main release group filter is saved as you change it. Use **Save page settings globally** to keep other page filter edits for later scans.
 
 ## Troubleshooting
 

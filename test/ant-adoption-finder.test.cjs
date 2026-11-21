@@ -7,6 +7,7 @@ const vm = require('node:vm');
 const scriptPath = path.resolve(__dirname, '..', 'ant-adoption-finder.user.js');
 const source = fs.readFileSync(scriptPath, 'utf8');
 const storage = new Map();
+const releaseGroupCatalogPrefix = 'ant-adoption-filename-cross-seed:release-group-catalog:';
 let filterRows = [];
 let requestResponses = [];
 const requestedUrls = [];
@@ -236,6 +237,7 @@ const context = {
       return { textContent };
     },
     createElement(tagName) {
+      if (tagName === 'template') return { content: { ownerDocument: this } };
       if (String(tagName).toLowerCase() === 'tbody') {
         return {
           children: [],
@@ -247,6 +249,9 @@ const context = {
                 const hrefs = [...match[0].matchAll(/\bhref=(['"])(.*?)\1/gi)].map((value) =>
                   value[2].replaceAll('&amp;', '&')
                 );
+                const title = match[0].match(
+                  /<a href="torrents\.php\?id=[^"]+">([^<]*)<\/a>/i
+                )?.[1];
                 return {
                   matches(selector) {
                     return (
@@ -256,6 +261,9 @@ const context = {
                     );
                   },
                   querySelector(selector) {
+                    if (selector.includes('torrents.php?id=')) {
+                      return title ? { nodeType: 1, textContent: title } : null;
+                    }
                     if (!selector.includes('torrents.php?action=download')) return null;
                     const href = hrefs.find(
                       (value) =>
@@ -759,7 +767,17 @@ function createScannedDocument(entries) {
     }
   };
   const rows = entries.map(
-    ({ id, html, bounty = 1000, age = '', size = '1 GiB', zeroSeed = true }) => ({
+    ({
+      id,
+      html,
+      bounty = 1000,
+      age = '',
+      size = '1 GiB',
+      zeroSeed = true,
+      title,
+      edition,
+      badges = []
+    }) => ({
       children: [
         createCell('Torrent'),
         createCell(size),
@@ -773,6 +791,22 @@ function createScannedDocument(entries) {
       },
       outerHTML: html,
       querySelector(selector) {
+        if (selector === '.group_info' && !title && edition) {
+          return { firstChild: { nodeType: 3, textContent: edition } };
+        }
+        if (selector.includes('torrents.php?id=')) {
+          if (!title) return null;
+          const labels = badges.map((textContent) => ({
+            nodeType: 1,
+            textContent,
+            matches: (selector) => selector.includes('.torrent_label')
+          }));
+          const nextSibling = [{ nodeType: 3, textContent: edition }, ...labels].reduceRight(
+            (nextSibling, node) => ({ ...node, nextSibling }),
+            null
+          );
+          return { nodeType: 1, textContent: title, nextSibling };
+        }
         if (!selector.includes('torrents.php?action=download')) return null;
         return {
           getAttribute() {
@@ -817,6 +851,21 @@ function createSavedTorrentRowHtml(torrentId) {
   return `<tr class="torrent torrent_row zeroseed"><td><a href="torrents.php?action=download&amp;id=${torrentId}">Download</a></td></tr>`;
 }
 
+function storedReleaseGroups() {
+  return [...storage.keys()]
+    .filter((key) => key.startsWith(releaseGroupCatalogPrefix))
+    .map((key) => key.slice(releaseGroupCatalogPrefix.length));
+}
+
+function isolateReleaseGroupCatalog() {
+  const previous = storedReleaseGroups();
+  previous.forEach((group) => storage.delete(releaseGroupCatalogPrefix + group));
+  return () => {
+    storedReleaseGroups().forEach((group) => storage.delete(releaseGroupCatalogPrefix + group));
+    previous.forEach((group) => storage.set(releaseGroupCatalogPrefix + group, true));
+  };
+}
+
 async function flushScheduledPromise(promise, firstTimerIndex, maxAttempts = 100) {
   let timerIndex = firstTimerIndex;
   let settled = false;
@@ -839,7 +888,7 @@ test('retains the original settings and cache identity', () => {
   assert.match(source, /const SCRIPT_PREFIX = 'ant-adoption-filename-cross-seed';/);
   assert.match(source, /id: 'ANTAdoptionFilenameCrossSeedConfig'/);
   assert.match(source, /\/\/ @name\s+ANT - Adoption cross-seed finder/);
-  assert.match(source, /\/\/ @version\s+0\.2\.7/);
+  assert.match(source, /\/\/ @version\s+0\.2\.8/);
 });
 
 test('parses ANT sizes into GiB', () => {
@@ -983,7 +1032,16 @@ test('media dropdowns discard legacy values and keep empty categories inactive',
   });
   assert.deepEqual(
     control.children.map((group) => group.dataset.mediaCategory),
-    ['Source', 'Extension', 'Codec', 'Audio', 'Subtitles', 'Resolution', 'Language']
+    [
+      'Source',
+      'Extension',
+      'Codec',
+      'Audio',
+      'Subtitles',
+      'Resolution',
+      'Language',
+      'Release group'
+    ]
   );
   const codec = control.children.find((group) => group.dataset.mediaCategory === 'Codec');
   const mode = codec.querySelector('select');
@@ -4579,6 +4637,234 @@ test('round-trips a filtered scan independently of lookup-cache settings', () =>
   assert.equal(JSON.stringify(api.loadFilteredScan()), JSON.stringify(scan));
 });
 
+test('release group filters use exact choices from old scans and keep saved selections', () => {
+  const key = 'ant-adoption-filename-cross-seed:filtered-scan-v2';
+  const selectionKey = 'ant-adoption-filename-cross-seed:release-group-selection';
+  const previous = storage.get(key);
+  const previousSelection = storage.get(selectionKey);
+  const previousRules = configValues.get('exclusion_groups');
+  const restoreCatalog = isolateReleaseGroupCatalog();
+  storage.delete(selectionKey);
+  configValues.set('exclusion_groups', [{ 'Release group': { values: ['RuleTeam'] } }]);
+  const titles = [
+    'Example [2020] - 1080p / WEB / H264 / MKV / Team-X / Internal / Pollination ends in 2h / Trumpable',
+    'Team-X in title [2021] - 1080p / WEB / H264 / MKV / Ongoing POLLINATION offer',
+    'Other [2022] - 1080p / BluRay / H264 / MP4 / Team-X-Plus / Eligible for DOUBLE SEED / Internal'
+  ];
+  const scan = createFilteredScan(
+    titles.map((title, index) => {
+      const id = index + 1;
+      return `<tr class="torrent torrent_row zeroseed"><td class="big_info"><div class="group_info"><a href="torrents.php?id=45&amp;torrentid=${id}">${title}</a><div class="tags">genre</div></div><a href="torrents.php?action=download&amp;id=${id}">Download</a></td></tr>`;
+    })
+  );
+  scan.releaseGroupVersion = 1;
+  scan.rowData.forEach((row, index) => {
+    row.metadata = titles[index];
+    row.releaseGroup = [
+      'Pollination ends in 2h',
+      'Ongoing POLLINATION offer',
+      'Eligible for DOUBLE SEED'
+    ][index];
+  });
+  const state = {
+    ...api.getDefaultAdoptionFilterState(),
+    hideBelowBountyThreshold: false,
+    hideBelowMinimumBounty: false,
+    hideExcludedFormats: true,
+    showOnlyGrabbedRows: false
+  };
+  const group = 'Release group';
+  try {
+    [
+      'Trumpable',
+      'Internal',
+      'POLLINATION',
+      'Ongoing POLLINATION offer',
+      'Eligible for DOUBLE SEED'
+    ].forEach((marker) => storage.set(releaseGroupCatalogPrefix + marker, true));
+    api.saveFilteredScan(scan);
+    const field = {
+      configId: 'test',
+      id: 'excluded_formats',
+      value: {
+        [group]: {
+          mode: 'only',
+          values: ['team-x', 'AbsentGroup', 'Internal', 'Eligible for DOUBLE SEED']
+        }
+      }
+    };
+    const config = context.GM_config.definition.types.exclusions;
+    config.toNode.call(field);
+    const options = field.node.children.find((entry) => entry.dataset.mediaCategory === group);
+    assert.deepEqual(
+      options.querySelectorAll('input').map((input) => input.value),
+      ['', 'AbsentGroup', 'RuleTeam', 'team-x', 'Team-X-Plus']
+    );
+    const selected = config.toValue.call(field);
+    assert.deepEqual([...selected[group].values], ['AbsentGroup', 'team-x']);
+    const entries = api.stageFilteredScanEntries(api.loadFilteredScan());
+    const visible = (filters, groups = []) =>
+      Array.from(
+        api.partitionFilteredScanEntries(
+          entries,
+          new Map(),
+          api.buildMediaFilterMatchers(filters, groups),
+          state
+        ).visibleEntries,
+        ({ data }) => data.torrentId
+      );
+    assert.deepEqual(visible(selected), ['1']);
+    assert.deepEqual(visible({ [group]: { mode: 'only', values: [''] } }), ['2']);
+    assert.deepEqual(
+      visible({}, [{ Source: { values: ['WEB'] }, [group]: { values: ['TEAM-X'] } }]),
+      ['2', '3']
+    );
+    const reset = options.children[1].children.find(
+      (node) => node.textContent === 'Reset release group selections'
+    );
+    reset.listeners.click();
+    config.toValue.call(field);
+    storage.delete(key);
+    api.resetFilteredScanCache();
+    config.toNode.call(field);
+    const reopened = field.node.children.find((entry) => entry.dataset.mediaCategory === group);
+    assert.ok(
+      reopened
+        .querySelectorAll('input')
+        .some((input) => input.value === 'AbsentGroup' && !input.checked)
+    );
+  } finally {
+    restoreCatalog();
+    if (previousRules === undefined) configValues.delete('exclusion_groups');
+    else configValues.set('exclusion_groups', previousRules);
+    if (previous === undefined) storage.delete(key);
+    else storage.set(key, previous);
+    if (previousSelection === undefined) storage.delete(selectionKey);
+    else storage.set(selectionKey, previousSelection);
+    api.resetFilteredScanCache();
+  }
+});
+
+test('release group choices include history and resetting a selection keeps the catalog', () => {
+  const key = 'ant-adoption-filename-cross-seed:filtered-scan-v2';
+  const selectionKey = 'ant-adoption-filename-cross-seed:release-group-selection';
+  const previousStorage = new Map([key, selectionKey].map((name) => [name, storage.get(name)]));
+  const restoreCatalog = isolateReleaseGroupCatalog();
+  const previousRows = filterRows;
+  const mount = '.thin, #content, body';
+  const previousMount = documentNodes.get(mount);
+  let toolbar;
+  documentNodes.set(mount, {
+    prepend(node) {
+      toolbar = node;
+    }
+  });
+  const visible = createRestorableRow('1');
+  visible.dataset.antAdoptionReleaseGroup = 'OpenTeam';
+  filterRows = [visible];
+  const replacement = createFilteredScan([createSavedTorrentRowHtml('2')]);
+  replacement.releaseGroupVersion = 2;
+  replacement.rowData[0].torrentId = '2';
+  replacement.rowData[0].releaseGroup = 'NewTeam';
+  storage.set(releaseGroupCatalogPrefix + 'HistoryTeam', true);
+  storage.delete(selectionKey);
+  api.setFilterState({
+    ...api.getDefaultAdoptionFilterState(),
+    exclusionGroups: [{ 'Release group': { values: ['LegacyRule'] } }]
+  });
+  try {
+    api.saveFilteredScan(replacement);
+    api.addAdoptionFilterControls();
+    const media = toolbar.children[1].children.find((node) =>
+      node.className?.includes('ant-filter-media')
+    );
+    const releaseGroup = 'Release group';
+    const dropdown = (control) =>
+      control.children.find((node) => node.dataset.mediaCategory === releaseGroup);
+    const choices = (control) =>
+      dropdown(control)
+        .querySelectorAll('input')
+        .map((node) => node.value);
+    const topLevel = media.querySelector('.ant-media-filters');
+    const pageChoices = ['', 'HistoryTeam', 'LegacyRule', 'OpenTeam'];
+    const rememberedChoices = ['', 'HistoryTeam', 'LegacyRule', 'NewTeam', 'OpenTeam'];
+    assert.deepEqual(choices(topLevel), pageChoices);
+    const groups = media.querySelector('.ant-exclusion-groups');
+    groups.children.find((node) => node.tagName === 'button').listeners.click();
+    for (const rule of groups.querySelectorAll('.ant-media-filters')) {
+      assert.deepEqual(choices(rule), pageChoices);
+    }
+    assert.deepEqual(
+      choices(api.createMediaFilterControl(context.document, {})),
+      rememberedChoices
+    );
+    storage.delete(key);
+    api.resetFilteredScanCache();
+    assert.deepEqual(
+      choices(api.createMediaFilterControl(context.document, {})),
+      rememberedChoices
+    );
+
+    const release = dropdown(topLevel);
+    const historical = release
+      .querySelectorAll('input')
+      .find((node) => node.value === 'HistoryTeam');
+    historical.checked = true;
+    historical.listeners.change();
+    const mode = release.querySelector('select');
+    mode.value = 'only';
+    mode.listeners.change();
+    const savedSelection = () => api.getDefaultAdoptionFilterState().excludedFormats[releaseGroup];
+    assert.equal(savedSelection().mode, 'only');
+    assert.deepEqual([...savedSelection().values], ['HistoryTeam']);
+
+    const settings = context.GM_config.definition.types.exclusions;
+    const field = { configId: 'settings', id: 'excluded_formats', value: {}, default: {} };
+    settings.toNode.call(field);
+    const setting = dropdown(field.node);
+    assert.equal(
+      setting.querySelectorAll('input').find((node) => node.value === 'HistoryTeam').checked,
+      true
+    );
+    const resetButton = (select) =>
+      select.children[1].children.find(
+        (node) => node.textContent === 'Reset release group selections'
+      );
+    resetButton(setting).listeners.click();
+    assert.deepEqual([...savedSelection().values], ['HistoryTeam'], 'Settings edits wait for Save');
+    settings.toValue.call(field);
+    assert.deepEqual([...savedSelection().values], []);
+
+    field.node.replaceWith = () => {};
+    settings.reset.call(field);
+    settings.toValue.call(field);
+    const afterReset = dropdown(field.node)
+      .querySelectorAll('input')
+      .find((node) => node.value === 'NewTeam');
+    afterReset.checked = true;
+    afterReset.listeners.change();
+    settings.toValue.call(field);
+    assert.deepEqual([...savedSelection().values], ['NewTeam']);
+
+    resetButton(release).listeners.click();
+    assert.equal(savedSelection().mode, 'ignore');
+    assert.deepEqual([...savedSelection().values], []);
+    assert.deepEqual(storedReleaseGroups().sort(), rememberedChoices.slice(1));
+    assert.deepEqual(choices(topLevel), pageChoices);
+  } finally {
+    restoreCatalog();
+    for (const [name, value] of previousStorage) {
+      if (value === undefined) storage.delete(name);
+      else storage.set(name, value);
+    }
+    api.resetFilteredScanCache();
+    filterRows = previousRows;
+    api.setFilterState(null);
+    if (previousMount) documentNodes.set(mount, previousMount);
+    else documentNodes.delete(mount);
+  }
+});
+
 test('decodes an unchanged saved scan only once per page lifecycle', () => {
   const key = 'ant-adoption-filename-cross-seed:filtered-scan-v2';
   const firstScan = createFilteredScan(['<tr>large saved scan</tr>'], { pageCount: 21 });
@@ -6215,30 +6501,83 @@ test('a complete scan deduplicates and saves rows without opening the filtered A
   parsedDocuments.set(
     'page-one',
     createScannedDocument([
-      { id: '1', html: '<tr>one</tr>' },
-      { id: '2', html: '<tr>two</tr>' }
+      {
+        id: '1',
+        html: '<tr>one</tr>',
+        title: 'Example',
+        edition: ' [2020] - 1080p / WEB / H264 / MKV / Example-Team / Ongoing ',
+        badges: ['POLLINATION extra / badge detail', 'Double Seed bonus', 'Internal', 'Trumpable']
+      },
+      {
+        id: '2',
+        html: '<tr>two</tr>',
+        title: 'Another [2021] - 1080p / WEB / H264 / .mKv / Double Seed challenge'
+      }
     ])
   );
   parsedDocuments.set(
     'page-two',
     createScannedDocument([
       { id: '2', html: '<tr>two duplicate</tr>' },
-      { id: '3', html: '<tr>three</tr>' }
+      {
+        id: '3',
+        html: '<tr>three</tr>',
+        edition:
+          'Example [2022] - 720p / BluRay / H264 / MKV/ Fallback-Internal / Qualifying for Pollination boost'
+      }
     ])
   );
   requestResponses = [
     { status: 200, responseText: 'page-one' },
     { status: 200, responseText: 'page-two' }
   ];
-  await api.scanAdoptionPages(null);
+  const restoreCatalog = isolateReleaseGroupCatalog();
+  try {
+    await api.scanAdoptionPages(null);
 
-  const scan = api.loadFilteredScan();
-  assert.equal(scan.rows.length, 3);
-  assert.deepEqual([...scan.rows], ['<tr>one</tr>', '<tr>two</tr>', '<tr>three</tr>']);
-  assert.deepEqual(
-    Array.from(scan.rowData, (entry) => entry.torrentId),
-    ['1', '2', '3']
-  );
+    const scan = api.loadFilteredScan();
+    assert.equal(scan.rows.length, 3);
+    assert.deepEqual([...scan.rows], ['<tr>one</tr>', '<tr>two</tr>', '<tr>three</tr>']);
+    assert.deepEqual(
+      Array.from(scan.rowData, (entry) => entry.torrentId),
+      ['1', '2', '3']
+    );
+    assert.deepEqual(
+      Array.from(scan.rowData, (entry) => entry.releaseGroup),
+      ['Example-Team', '', 'Fallback-Internal']
+    );
+    assert.deepEqual(storedReleaseGroups(), ['Example-Team', 'Fallback-Internal']);
+    parsedDocuments.set(
+      'next-scan',
+      createScannedDocument([
+        {
+          id: '4',
+          html: '<tr>four</tr>',
+          title: 'Another [2022] - 1080p / WEB / H264 / MKV / NewTeam',
+          badges: ['Double Seed bonus']
+        },
+        {
+          id: '5',
+          html: '<tr>five</tr>',
+          title: 'Another [2022] - 1080p / WEB / H264 / MKV / example-team'
+        }
+      ])
+    );
+    configValues.set('scan_page_count', 1);
+    requestResponses = [{ status: 200, responseText: 'next-scan' }];
+    await api.scanAdoptionPages(null);
+    assert.deepEqual(
+      Array.from(api.loadFilteredScan().rowData, (entry) => entry.releaseGroup),
+      ['NewTeam', 'example-team']
+    );
+    assert.deepEqual(storedReleaseGroups().sort(), [
+      'Example-Team',
+      'Fallback-Internal',
+      'NewTeam'
+    ]);
+  } finally {
+    restoreCatalog();
+  }
 });
 
 test('qui completion marking persists Grabbed and updates the row control', () => {

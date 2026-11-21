@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ANT - Adoption cross-seed finder
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.2.7
+// @version      0.2.8
 // @description  Scan and filter ANT adoption torrents, then find filename and file-list matches on other trackers.
 // @author       Audionut with additions from Surferosa
 // @match        https://anthelion.me/torrents.php?type=adoption*
@@ -73,9 +73,12 @@
   const ROW_PROCESSING_MIGRATION_STORAGE_KEY = `${SCRIPT_PREFIX}:row-processing-migration-v${ROW_PROCESSING_MIGRATION_VERSION}`;
   const ACTION_RECOVERY_SUPPRESS_STORAGE_KEY = `${SCRIPT_PREFIX}:suppress-completed-action-recovery`;
   const FILTERED_SCAN_VERSION = 2;
+  const RELEASE_GROUP_VERSION = 2;
   const FILTERED_SCAN_STORAGE_KEY = `${SCRIPT_PREFIX}:filtered-scan-v2`;
   const FILTERED_SCAN_STORAGE_PREFIX = `${SCRIPT_PREFIX}:filtered-scan`;
   const LEGACY_FILTERED_SCAN_STORAGE_KEYS = [`${SCRIPT_PREFIX}:filtered-scan-v1`];
+  const RELEASE_GROUP_CATALOG_PREFIX = `${SCRIPT_PREFIX}:release-group-catalog:`;
+  const RELEASE_GROUP_SELECTION_STORAGE_KEY = `${SCRIPT_PREFIX}:release-group-selection`;
   const FILTERED_VIEW_PARAM = 'ant_adoption_filtered';
   const ADOPTION_READY_PARAM = 'ant_adoption_ready';
   const ADOPTION_READY_TOKEN_PARAM = 'ant_adoption_token';
@@ -136,6 +139,9 @@
     'iso'
   ]);
 
+  const RELEASE_GROUP_FILTER = 'Release group';
+  const RELEASE_GROUP_MARKER =
+    /^(?:trumpable|internal)$|(?<withDetails>pollination|double\s+seed)/i;
   const EXCLUSION_OPTIONS = {
     Source: ['BluRay', 'WEB', 'DVD', 'HDDVD', 'LaserDisc', 'HDTV', 'TV', 'VHS', 'Unknown', 'Other'],
     Extension: [...VIDEO_EXTENSIONS].map((extension) => extension.toUpperCase()).concat('None'),
@@ -246,7 +252,8 @@
       'Zxx',
       'NoAudio',
       'Other'
-    ]
+    ],
+    [RELEASE_GROUP_FILTER]: []
   };
   const EXCLUSION_CONTROL_CSS = `
     .ant-exclusion-group { margin: 12px 0; padding: 10px; border: 1px solid #666; }
@@ -1154,16 +1161,24 @@
           const wrapper = document.createElement('div');
           wrapper.className = 'config_var';
           wrapper.id = `${this.configId}_${this.id}_var`;
-          this.node = createMediaFilterControl(document, this.value);
+          this.releaseGroupChanged = false;
+          this.node = createSettingsMediaFilterControl(this, getConfiguredMediaFilters(this.value));
           wrapper.appendChild(this.node);
           return wrapper;
         },
         toValue() {
-          return this.node ? readMediaFilterControl(this.node) : normalizeMediaFilters(this.value);
+          if (!this.node) return getConfiguredMediaFilters(this.value);
+          const filters = readMediaFilterControl(this.node);
+          if (this.releaseGroupChanged) {
+            saveReleaseGroupSelection(filters[RELEASE_GROUP_FILTER]);
+            this.releaseGroupChanged = false;
+          }
+          return filters;
         },
         reset() {
           if (!this.node) return;
-          const replacement = createMediaFilterControl(document, this.default);
+          this.releaseGroupChanged = true;
+          const replacement = createSettingsMediaFilterControl(this, this.default);
           this.node.replaceWith(replacement);
           this.node = replacement;
         }
@@ -1771,7 +1786,7 @@
       minimumBounty: getMinimumBounty(),
       minimumCombinedOrbs: getConfiguredNumber('minimum_combined_orbs', 0),
       maximumSizeGib: getConfiguredNumber('maximum_size_gib', 0),
-      excludedFormats: normalizeMediaFilters(GM_config.get('excluded_formats')),
+      excludedFormats: getConfiguredMediaFilters(GM_config.get('excluded_formats')),
       exclusionGroups: normalizeExclusionGroups(GM_config.get('exclusion_groups')),
       hideBelowBountyThreshold: Boolean(GM_config.get('hide_below_bounty_threshold')),
       hideBelowMinimumBounty: Boolean(GM_config.get('hide_below_minimum_bounty')),
@@ -1960,21 +1975,96 @@
     return text.join('');
   }
 
+  function getAdoptionReleaseGroup(row) {
+    const first =
+      getRowTitleLink(row) ??
+      (row.querySelector('.group_info') || row.querySelector('td.big_info') || row.children?.[0])
+        ?.firstChild;
+    const isExtension = (field) =>
+      VIDEO_EXTENSIONS.has(field.trim().replace(/^\./, '').toLowerCase());
+    let text = '';
+    const appendText = (node) => {
+      if (node.nodeType !== 1 && node.nodeType !== 3) return;
+      const value = node.textContent || '';
+      const marker =
+        node.matches?.('.torrent_label, .tl_trumpable') && value.trim().match(RELEASE_GROUP_MARKER);
+      if (marker) {
+        let separator = ' / ';
+        if (marker.groups.withDetails) {
+          const fields = text.split(/\/\s+/);
+          const extensionIndex = fields.findLastIndex(isExtension);
+          // Keep marker details with their field when ANT has already separated it from the group.
+          if (extensionIndex >= 0 && fields.length > extensionIndex + 2) separator = ' ';
+        }
+        text += `${separator}${marker[0]}`;
+      } else if (node.childNodes?.length) {
+        node.childNodes.forEach(appendText);
+      } else {
+        text += value;
+      }
+    };
+    for (let node = first; node; node = node.nextSibling) {
+      if (
+        node.matches?.(
+          'br, .tags, .ant-cross-seed-inline, .ant-cross-seed-qui, .ant-cross-seed-qui-monitor'
+        )
+      )
+        break;
+      if (node.matches?.('.brackets')) continue;
+      appendText(node);
+    }
+    const fields = text.split(/\/\s+/);
+    while (fields.length > 1) {
+      const group = fields.pop().trim();
+      const name = group.toLowerCase();
+      if (!name || RELEASE_GROUP_MARKER.test(group)) continue;
+      return isExtension(group) ? '' : group;
+    }
+    return '';
+  }
+
+  function normalizeReleaseGroupValues(values) {
+    const groups = new Map();
+    for (const value of values) {
+      if (typeof value !== 'string') continue;
+      const group = value.trim();
+      const name = group.toLowerCase();
+      if ((group || value === '') && !RELEASE_GROUP_MARKER.test(group)) groups.set(name, group);
+    }
+    return [...groups.values()];
+  }
+
   function normalizeMediaFilters(value) {
     return Object.fromEntries(
       Object.entries(EXCLUSION_OPTIONS).map(([name, options]) => {
         const group = value?.[name];
+        const selected = Array.isArray(group?.values) ? group.values : [];
         return [
           name,
           {
             mode: group?.mode === 'only' ? 'only' : 'ignore',
-            values: Array.isArray(group?.values)
-              ? options.filter((option) => group.values.includes(option))
-              : []
+            values:
+              name === RELEASE_GROUP_FILTER
+                ? normalizeReleaseGroupValues(selected)
+                : options.filter((option) => selected.includes(option))
           }
         ];
       })
     );
+  }
+
+  function getConfiguredMediaFilters(value) {
+    return normalizeMediaFilters({
+      ...value,
+      [RELEASE_GROUP_FILTER]: GM_getValue(
+        RELEASE_GROUP_SELECTION_STORAGE_KEY,
+        value?.[RELEASE_GROUP_FILTER]
+      )
+    });
+  }
+
+  function saveReleaseGroupSelection(selection) {
+    GM_setValue(RELEASE_GROUP_SELECTION_STORAGE_KEY, selection);
   }
 
   function normalizeMediaFilterSetting() {
@@ -1999,7 +2089,19 @@
     );
   }
 
-  function createMediaFilterControl(doc, value, onChange, exclusionGroup = false) {
+  function createSettingsMediaFilterControl(field, value) {
+    return createMediaFilterControl(document, value, (_values, name) => {
+      if (name === RELEASE_GROUP_FILTER) field.releaseGroupChanged = true;
+    });
+  }
+
+  function createMediaFilterControl(
+    doc,
+    value,
+    onChange,
+    exclusionGroup = false,
+    releaseGroups = getReleaseGroupChoices(undefined, value)
+  ) {
     const filters = normalizeMediaFilters(value);
     const control = doc.createElement('div');
     control.className = 'ant-media-filters';
@@ -2025,6 +2127,7 @@
       mode.hidden = exclusionGroup;
       const inputs = [];
       let ignoreAll;
+      let reset;
       const update = () => {
         const count = inputs.filter((input) => input.checked).length;
         mode.disabled = count === 0;
@@ -2032,10 +2135,11 @@
           ? `${name}: ${exclusionGroup ? 'Match' : mode.value === 'only' ? 'Only show' : 'Ignore'} (${count})`
           : `${name}: Off`;
         if (ignoreAll) ignoreAll.checked = mode.value === 'ignore' && count === inputs.length;
+        if (reset) reset.disabled = count === 0 && mode.value === 'ignore';
       };
       const changed = () => {
         update();
-        onChange?.(readMediaFilterControl(control));
+        onChange?.(readMediaFilterControl(control), name);
       };
       if (name === 'Language') {
         const label = doc.createElement('label');
@@ -2054,7 +2158,24 @@
         options.appendChild(label);
       }
       options.appendChild(mode);
-      for (const value of EXCLUSION_OPTIONS[name]) {
+      if (name === RELEASE_GROUP_FILTER) {
+        reset = doc.createElement('button');
+        reset.type = 'button';
+        reset.textContent = 'Reset release group selections';
+        reset.addEventListener('click', () => {
+          for (const input of inputs) input.checked = false;
+          mode.value = 'ignore';
+          changed();
+        });
+        options.appendChild(reset);
+      }
+      const choices =
+        name === RELEASE_GROUP_FILTER
+          ? normalizeReleaseGroupValues(['', ...releaseGroups, ...filter.values]).sort(
+              (left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' })
+            )
+          : EXCLUSION_OPTIONS[name];
+      for (const value of choices) {
         const label = doc.createElement('label');
         const input = doc.createElement('input');
         input.type = 'checkbox';
@@ -2064,7 +2185,7 @@
         input.addEventListener('change', changed);
         inputs.push(input);
         const text = doc.createElement('span');
-        text.textContent = value;
+        text.textContent = value || 'No release group';
         label.append(input, text);
         options.appendChild(label);
       }
@@ -2095,7 +2216,12 @@
     );
   }
 
-  function createExclusionGroupsControl(doc, value, onChange) {
+  function createExclusionGroupsControl(
+    doc,
+    value,
+    onChange,
+    releaseGroups = getReleaseGroupChoices(undefined, undefined, value)
+  ) {
     const control = doc.createElement('div');
     control.className = 'ant-exclusion-groups';
     const description = doc.createElement('p');
@@ -2108,7 +2234,7 @@
       group.className = 'ant-exclusion-group';
       const legend = doc.createElement('legend');
       legend.textContent = 'Exclude when all selected categories match';
-      const filters = createMediaFilterControl(doc, value, changed, true);
+      const filters = createMediaFilterControl(doc, value, changed, true, releaseGroups);
       const remove = doc.createElement('button');
       remove.type = 'button';
       remove.textContent = 'Remove group';
@@ -2132,15 +2258,30 @@
   }
 
   function buildMediaFilterMatchers(value, groups = []) {
-    const filters = Object.values(normalizeMediaFilters(value))
-      .filter((filter) => filter.values.length > 0)
-      .map((filter) => ({ mode: filter.mode, regexes: buildExcludeRegexes(filter.values) }));
+    const categoryMatchers = (media) =>
+      Object.entries(media)
+        .filter(([, filter]) => filter.values.length > 0)
+        .map(([name, filter]) => {
+          if (name === RELEASE_GROUP_FILTER) {
+            const names = new Set(filter.values.map((name) => name.toLowerCase()));
+            return {
+              mode: filter.mode,
+              matches: (data) => names.has((data?.releaseGroup || '').toLowerCase())
+            };
+          }
+          const regexes = buildExcludeRegexes(filter.values);
+          return {
+            mode: filter.mode,
+            matches: (data) => regexes.some((regex) => regex.test(data?.metadata || ''))
+          };
+        });
+    const filters = categoryMatchers(normalizeMediaFilters(value));
     for (const group of normalizeExclusionGroups(groups)) {
-      const categories = Object.values(group).filter((filter) => filter.values.length > 0);
+      const categories = categoryMatchers(group);
       if (categories.length)
         filters.push({
           mode: 'group',
-          categories: categories.map((filter) => buildExcludeRegexes(filter.values))
+          matches: (data) => categories.every((category) => category.matches(data))
         });
     }
     return filters;
@@ -2289,6 +2430,7 @@
           (data.estimatedRevivalBonus === undefined ||
             isNullableNumber(data.estimatedRevivalBonus)) &&
           typeof data.metadata === 'string' &&
+          (data.releaseGroup === undefined || typeof data.releaseGroup === 'string') &&
           Number.isInteger(data.originalIndex) &&
           data.originalIndex >= 0 &&
           typeof data.seeding === 'boolean' &&
@@ -3360,6 +3502,7 @@
         ),
         html: row.outerHTML,
         metadata: getAdoptionRowMetadata(row),
+        releaseGroup: getAdoptionReleaseGroup(row),
         seeding: isAdoptionRowSeeding(row),
         sizeGiB,
         torrentId,
@@ -3421,6 +3564,7 @@
       });
       const scan = {
         version: FILTERED_SCAN_VERSION,
+        releaseGroupVersion: RELEASE_GROUP_VERSION,
         scannedAt: new Date().toISOString(),
         pageCount,
         scanMode: untilMinimumBounty ? 'minimum-bounty' : 'page-count',
@@ -3434,6 +3578,7 @@
           estimatedRevivalBonus: entry.estimatedRevivalBonus,
           metadata: entry.metadata,
           originalIndex,
+          releaseGroup: entry.releaseGroup,
           seeding: entry.seeding,
           sizeGiB: entry.sizeGiB,
           torrentId: entry.torrentId,
@@ -3441,7 +3586,12 @@
           zeroSeed: entry.zeroSeed
         }))
       };
+      const previousReleaseGroups = getSavedScanReleaseGroups();
       saveFilteredScan(scan);
+      rememberReleaseGroups([
+        ...previousReleaseGroups,
+        ...scan.rowData.map(({ releaseGroup }) => releaseGroup)
+      ]);
       updateOpenLastScanButton();
     } finally {
       if (button) {
@@ -3528,7 +3678,7 @@
     toolbar.insertAdjacentElement('afterend', display);
   }
 
-  function getAdoptionFilterResult(data, action, regexes, state = adoptionFilterState) {
+  function getAdoptionFilterResult(data, action, matchers, state = adoptionFilterState) {
     const bounty = Number.parseFloat(data?.bounty);
     const sizeGiB = Number.parseFloat(data?.sizeGiB);
     const estimatedRate = state.useEstimatedOrbsPerGib
@@ -3537,14 +3687,9 @@
     const bountyPerGib = estimatedRate ?? Number.parseFloat(data?.bountyPerGib);
     const seeding = data?.seeding === true || data?.seeding === 'true';
     const trumpable = data?.trumpable === true || data?.trumpable === 'true';
-    const mediaMatches = regexes.map((filter) => ({
+    const mediaMatches = matchers.map((filter) => ({
       mode: filter.mode,
-      matches:
-        filter.mode === 'group'
-          ? filter.categories.every((regexes) =>
-              regexes.some((regex) => regex.test(data?.metadata || ''))
-            )
-          : filter.regexes.some((regex) => regex.test(data?.metadata || ''))
+      matches: filter.matches(data)
     }));
     const ignoreMatches = mediaMatches.filter((filter) => filter.mode === 'ignore');
     const excluded =
@@ -3581,12 +3726,12 @@
     return { excluded, hidden };
   }
 
-  function partitionFilteredScanEntries(entries, actions, regexes, state = adoptionFilterState) {
+  function partitionFilteredScanEntries(entries, actions, matchers, state = adoptionFilterState) {
     const visibleEntries = [];
     const hiddenEntries = [];
     for (const entry of entries) {
       const action = actions.get(String(entry.data.torrentId)) || '';
-      const result = getAdoptionFilterResult(entry.data, action, regexes, state);
+      const result = getAdoptionFilterResult(entry.data, action, matchers, state);
       (result.hidden ? hiddenEntries : visibleEntries).push(entry);
     }
     return { hiddenEntries, visibleEntries };
@@ -3672,27 +3817,89 @@
     return valid ? rows : null;
   }
 
-  function restoreSavedRevivalEstimates(entries, table, referenceTime) {
-    const legacyEntries = entries.filter(({ data }) => data.estimatedRevivalBonus === undefined);
+  function restoreSavedScanMetadata(scan, entries, table, referenceTime) {
+    const refreshReleaseGroups = scan.releaseGroupVersion !== RELEASE_GROUP_VERSION;
+    const legacyEntries = entries.filter(
+      ({ data }) =>
+        refreshReleaseGroups ||
+        data.releaseGroup === undefined ||
+        (table && data.estimatedRevivalBonus === undefined)
+    );
     if (!legacyEntries.length) return true;
-    const timeIndex = findAdoptionColumnIndex(table, 'listing time');
-    // Keep deferred old rows inert while reading their saved listing times.
+    const timeIndex = table ? findAdoptionColumnIndex(table, 'listing time') : -1;
+    // Keep deferred old rows inert while reading their saved fields.
     const owner = document.createElement('template').content.ownerDocument;
     const rows = parseSavedScanRows(legacyEntries, owner);
     if (!rows) return false;
     rows.forEach((row, index) => {
-      const entry = legacyEntries[index];
-      const listingTime = parseAdoptionListingTime(row.children[timeIndex], referenceTime);
-      entry.data = {
-        ...entry.data,
-        estimatedRevivalBonus: estimateAdoptionRevivalBonus(
-          entry.data.zeroSeed,
+      const { data } = legacyEntries[index];
+      if (refreshReleaseGroups || data.releaseGroup === undefined) {
+        data.releaseGroup = getAdoptionReleaseGroup(row);
+      }
+      if (table && data.estimatedRevivalBonus === undefined) {
+        const listingTime = parseAdoptionListingTime(row.children[timeIndex], referenceTime);
+        data.estimatedRevivalBonus = estimateAdoptionRevivalBonus(
+          data.zeroSeed,
           listingTime,
           referenceTime
-        )
-      };
+        );
+      }
     });
+    scan.releaseGroupVersion = RELEASE_GROUP_VERSION;
     return true;
+  }
+
+  function getSavedScanReleaseGroups() {
+    const scan = loadFilteredScan();
+    if (!scan) return [];
+    if (
+      scan.releaseGroupVersion !== RELEASE_GROUP_VERSION ||
+      scan.rowData.some((data) => data.releaseGroup === undefined)
+    ) {
+      const entries = scan.rows.map((html, index) => ({ data: scan.rowData[index], html }));
+      if (!restoreSavedScanMetadata(scan, entries)) return [];
+    }
+    return normalizeReleaseGroupValues(scan.rowData.map((data) => data.releaseGroup));
+  }
+
+  function getRememberedReleaseGroups() {
+    return normalizeReleaseGroupValues(
+      GM_listValues()
+        .filter((key) => key.startsWith(RELEASE_GROUP_CATALOG_PREFIX))
+        .map((key) => key.slice(RELEASE_GROUP_CATALOG_PREFIX.length))
+    );
+  }
+
+  function rememberReleaseGroups(groups) {
+    const names = normalizeReleaseGroupValues(groups).filter(Boolean);
+    if (!names.length) return;
+    try {
+      const known = new Set(getRememberedReleaseGroups().map((name) => name.toLowerCase()));
+      // Independent entries keep simultaneous scans from overwriting each other's discoveries.
+      for (const name of names) {
+        if (!known.has(name.toLowerCase()))
+          GM_setValue(`${RELEASE_GROUP_CATALOG_PREFIX}${name}`, true);
+      }
+    } catch (error) {
+      console.warn(`[${SCRIPT_PREFIX}] could not remember release groups`, error);
+    }
+  }
+
+  function getReleaseGroupChoices(
+    scannedGroups = getSavedScanReleaseGroups(),
+    filters = getConfiguredMediaFilters(GM_config.get('excluded_formats')),
+    exclusionGroups = GM_config.get('exclusion_groups')
+  ) {
+    const configured = [filters, ...(Array.isArray(exclusionGroups) ? exclusionGroups : [])];
+    const names = [
+      ...scannedGroups,
+      ...configured.flatMap((filter) => {
+        const values = filter?.[RELEASE_GROUP_FILTER]?.values;
+        return Array.isArray(values) ? values : [];
+      })
+    ];
+    rememberReleaseGroups(names);
+    return normalizeReleaseGroupValues([...getRememberedReleaseGroups(), ...names]);
   }
 
   function appendSavedScanRows(body, entries, rows) {
@@ -3729,7 +3936,7 @@
     }
     const scannedAt = Date.parse(scan.scannedAt);
     const referenceTime = Number.isFinite(scannedAt) ? scannedAt : Date.now();
-    if (!restoreSavedRevivalEstimates(entries, table, referenceTime)) {
+    if (!restoreSavedScanMetadata(scan, entries, table, referenceTime)) {
       discardFilteredScanCache('saved row HTML parse mismatch', { storedRows: entries.length });
       alert('The saved adoption scan contained invalid or mismatched torrent rows.');
       return false;
@@ -3737,14 +3944,14 @@
     migrateLegacyRowProcessingCache();
     filteredScanActions = readFilteredScanActions(scan.rowData);
     filteredScanRowData = new WeakMap();
-    const regexes = buildMediaFilterMatchers(
+    const matchers = buildMediaFilterMatchers(
       adoptionFilterState.excludedFormats,
       adoptionFilterState.exclusionGroups
     );
     const { hiddenEntries, visibleEntries: renderEntries } = partitionFilteredScanEntries(
       entries,
       filteredScanActions,
-      regexes
+      matchers
     );
     deferredFilteredScanRows = hiddenEntries;
     const visibleRowsStartedAt = performanceNow();
@@ -3795,14 +4002,14 @@
     const table = findAdoptionTable();
     const body = table?.tBodies[0];
     if (!table || !body) return 0;
-    const regexes = buildMediaFilterMatchers(
+    const matchers = buildMediaFilterMatchers(
       adoptionFilterState.excludedFormats,
       adoptionFilterState.exclusionGroups
     );
     const { hiddenEntries, visibleEntries: entries } = partitionFilteredScanEntries(
       deferredFilteredScanRows,
       filteredScanActions,
-      regexes
+      matchers
     );
     deferredFilteredScanRows = hiddenEntries;
     if (entries.length === 0) return 0;
@@ -3983,6 +4190,8 @@
         row.dataset.antAdoptionBountyGib = bountyPerGib === null ? '' : String(bountyPerGib);
         row.dataset.antAdoptionOriginalIndex ||= String(scanData?.originalIndex ?? index);
         row.dataset.antAdoptionMetadata = scanData?.metadata ?? getAdoptionRowMetadata(row);
+        row.dataset.antAdoptionReleaseGroup =
+          scanData?.releaseGroup ?? getAdoptionReleaseGroup(row);
         row.dataset.antAdoptionSeeding = String(scanData?.seeding ?? isAdoptionRowSeeding(row));
         row.dataset.antAdoptionTrumpable = String(scanData?.trumpable ?? isTrumpableRow(row));
         row.dataset.antAdoptionAction = action;
@@ -4120,7 +4329,7 @@
       adoptionFilterState.showRowProcessingButtons
     );
     const hydratedRows = includeDeferredRows ? hydrateDeferredFilteredScanRows() : 0;
-    const regexes = buildMediaFilterMatchers(
+    const matchers = buildMediaFilterMatchers(
       adoptionFilterState.excludedFormats,
       adoptionFilterState.exclusionGroups
     );
@@ -4147,12 +4356,13 @@
           bountyPerGib,
           estimatedRevivalBonus: parseBounty(row.dataset.antAdoptionEstimatedRevivalBonus),
           metadata: row.dataset.antAdoptionMetadata || '',
+          releaseGroup: row.dataset.antAdoptionReleaseGroup || '',
           seeding: row.dataset.antAdoptionSeeding,
           sizeGiB,
           trumpable: row.dataset.antAdoptionTrumpable
         },
         action,
-        regexes
+        matchers
       );
 
       row.hidden = hidden;
@@ -4305,13 +4515,27 @@
     });
     maximumLabel.appendChild(maximumInput);
 
+    const releaseGroups = getReleaseGroupChoices(
+      [
+        ...Array.from(
+          document.querySelectorAll(FILTERABLE_ROW_SELECTOR),
+          (row) => row.dataset.antAdoptionReleaseGroup
+        ),
+        ...deferredFilteredScanRows.map(({ data }) => data.releaseGroup)
+      ],
+      adoptionFilterState.excludedFormats,
+      adoptionFilterState.exclusionGroups
+    );
     const excludedLabel = createMediaFilterControl(
       document,
       adoptionFilterState.excludedFormats,
-      (values) => {
+      (values, name) => {
+        if (name === RELEASE_GROUP_FILTER) saveReleaseGroupSelection(values[name]);
         adoptionFilterState.excludedFormats = values;
         applyAdoptionFilters();
-      }
+      },
+      false,
+      releaseGroups
     );
 
     const seedingSelect = document.createElement('select');
@@ -4399,10 +4623,15 @@
     createFilterCheckbox(sections.media, 'Combine media filters', 'combineMediaFilters');
     sections.media.appendChild(excludedLabel);
     sections.media.appendChild(
-      createExclusionGroupsControl(document, adoptionFilterState.exclusionGroups, (groups) => {
-        adoptionFilterState.exclusionGroups = groups;
-        applyAdoptionFilters();
-      })
+      createExclusionGroupsControl(
+        document,
+        adoptionFilterState.exclusionGroups,
+        (groups) => {
+          adoptionFilterState.exclusionGroups = groups;
+          applyAdoptionFilters();
+        },
+        releaseGroups
+      )
     );
     for (const [text, select] of [
       ['Grabbed status', grabbedSelect],
