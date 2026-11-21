@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ANT - Adoption cross-seed finder
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.2.3
+// @version      0.2.4
 // @description  Scan and filter ANT adoption torrents, then find filename and file-list matches on other trackers.
 // @author       Audionut with additions from Surferosa
 // @match        https://anthelion.me/torrents.php?type=adoption*
@@ -91,6 +91,20 @@
   const IGNORED_HIGHLIGHT_COLOR = 'rgba(140, 140, 140, 0.35)';
   const MAX_SCAN_PAGES = 30;
   const ROW_DELAY_MIN_SECONDS = 30;
+  const ADOPTION_SKIP_DELAY_MS = 5000;
+  const ADOPTION_ACTION_LABELS = {
+    grabbed: 'Grabbed',
+    ignored: 'Ignored',
+    broken: 'Broken',
+    'not-enough-orbs': 'Not enough Orbs',
+    'already-adopted': 'Already adopted'
+  };
+  const REVIVAL_BONUS_TIERS = [
+    [365, 500000],
+    [180, 250000],
+    [90, 125000],
+    [30, 62500]
+  ];
   const ADOPTION_READY_QUI_POLL_INTERVAL_MS = 10000;
   const ADOPTION_READY_QUI_POLL_DURATION_MS = 60000;
   const ADOPTION_READY_HANDLING_TIMEOUT_MS = 2 * 60 * 1000;
@@ -256,6 +270,11 @@
       default: 0,
       tooltip: 'Use 0 for no minimum bounty.'
     },
+    minimum_combined_orbs: {
+      label: 'Minimum combined Orbs',
+      type: 'unsigned int',
+      default: 0
+    },
     maximum_size_gib: {
       label: 'Maximum size in GiB',
       type: 'unsigned float',
@@ -313,6 +332,16 @@
       type: 'checkbox',
       default: false
     },
+    hide_not_enough_orbs_rows: {
+      label: 'Hide Not enough Orbs rows',
+      type: 'checkbox',
+      default: false
+    },
+    hide_already_adopted_rows: {
+      label: 'Hide Already adopted rows',
+      type: 'checkbox',
+      default: false
+    },
     show_only_grabbed_rows: {
       label: 'Show only Grabbed rows',
       type: 'checkbox',
@@ -337,7 +366,7 @@
       options: ['All rows', 'Seeding only', 'Not seeding only']
     },
     clear_adoption_actions: {
-      label: 'Clear Grabbed/Ignored/Broken actions',
+      label: 'Clear saved adoption actions',
       type: 'button',
       click: clearAdoptionActions
     },
@@ -350,6 +379,11 @@
       label: 'Skip Trumpable rows',
       type: 'checkbox',
       default: true
+    },
+    skip_seeded_torrents: {
+      label: 'Skip torrents that now have seeders',
+      type: 'checkbox',
+      default: false
     },
     row_delay_seconds: {
       label: 'Delay between rows in seconds',
@@ -702,6 +736,7 @@
     'scan_delay_seconds',
     'minimum_bounty_per_gib',
     'minimum_bounty',
+    'minimum_combined_orbs',
     'maximum_size_gib',
     'excluded_formats',
     'exclusion_groups',
@@ -712,10 +747,13 @@
     'combine_media_filters',
     'hide_ignored_rows',
     'hide_grabbed_rows',
+    'hide_not_enough_orbs_rows',
+    'hide_already_adopted_rows',
     'show_only_grabbed_rows',
     'default_sort_field',
     'default_sort_direction',
     'skip_trumpable',
+    'skip_seeded_torrents',
     'seeding_filter',
     'clear_adoption_actions',
     'clear_filtered_scan'
@@ -723,6 +761,7 @@
   const ADOPTION_FILTER_STATE_FIELDS = {
     minimumBountyPerGib: 'minimum_bounty_per_gib',
     minimumBounty: 'minimum_bounty',
+    minimumCombinedOrbs: 'minimum_combined_orbs',
     maximumSizeGib: 'maximum_size_gib',
     excludedFormats: 'excluded_formats',
     exclusionGroups: 'exclusion_groups',
@@ -733,10 +772,13 @@
     combineMediaFilters: 'combine_media_filters',
     hideIgnoredRows: 'hide_ignored_rows',
     hideGrabbedRows: 'hide_grabbed_rows',
+    hideNotEnoughOrbsRows: 'hide_not_enough_orbs_rows',
+    hideAlreadyAdoptedRows: 'hide_already_adopted_rows',
     showOnlyGrabbedRows: 'show_only_grabbed_rows',
     sortField: 'default_sort_field',
     sortDirection: 'default_sort_direction',
     skipTrumpable: 'skip_trumpable',
+    skipSeededTorrents: 'skip_seeded_torrents',
     seedingFilter: 'seeding_filter'
   };
   const CONFIG_HELP_TEXT = {
@@ -744,6 +786,8 @@
     scan_delay_seconds: 'Pause between adoption-page requests to reduce load on ANT.',
     minimum_bounty_per_gib: 'Rows at or below this bounty/GiB value can be hidden.',
     minimum_bounty: 'Minimum total bounty. Zero disables this threshold.',
+    minimum_combined_orbs:
+      'Minimum bounty plus revival bonus, checked before each torrent search. Zero disables this threshold.',
     maximum_size_gib:
       'Maximum torrent size in GiB, not bytes. Rows larger than this can be hidden; zero disables the limit.',
     excluded_formats:
@@ -756,6 +800,8 @@
       'Combine each mode separately: exclude only when every active Ignore category matches; require every Only show category to match. Empty categories are inactive.',
     hide_ignored_rows: 'Hide rows marked Ignored by default.',
     hide_grabbed_rows: 'Hide rows marked Grabbed by default.',
+    hide_not_enough_orbs_rows: 'Hide rows marked Not enough Orbs by default.',
+    hide_already_adopted_rows: 'Hide rows marked Already adopted by default.',
     show_only_grabbed_rows:
       'Show only Grabbed rows by default, overriding every other row filter. This takes precedence over Hide Grabbed.',
     default_sort_field: 'Choose the field used to order a filtered scan when it opens.',
@@ -763,17 +809,17 @@
       'Choose the initial direction. Scan order always uses the original scanned order.',
     seeding_filter:
       'Choose whether the filtered view starts with all, seeding, or non-seeding rows.',
-    clear_adoption_actions:
-      'Deletes every per-torrent Grabbed/Ignored/Broken marker for this script.',
+    clear_adoption_actions: 'Deletes every per-torrent adoption action saved by this script.',
     clear_filtered_scan: 'Deletes the saved multi-page result used by Open last scan.',
     skip_trumpable: 'Ignore ANT rows flagged as Trumpable before spending qui or tracker requests.',
+    skip_seeded_torrents: 'Skip rows when the ANT detail page shows one or more seeders.',
     row_delay_seconds:
-      'Pause between processed ANT rows to avoid hammering tracker APIs. Minimum 30 seconds.',
+      'Pause after tracker processing. Minimum 30 seconds. Rows skipped after checking ANT wait five seconds.',
     row_limit: 'Limit how many uncached eligible rows one button press processes.',
     use_cache:
       'Store ANT metadata, tracker results, qui results, and row completion state locally.',
     load_cache_status_on_page_load:
-      'On page load, restore cached processing details for every row without repeating tracker or qui searches. Grabbed, Ignored, and Broken rows are always restored.',
+      'On page load, restore cached processing details for every row without repeating tracker or qui searches. Rows with saved actions are always restored.',
     clean_site_lookup_cache: 'Clears tracker/qui lookup results and row-complete markers.',
     clean_ant_cache: 'Clears cached ANT detail-page metadata and legacy filename cache.',
     debug_logging:
@@ -1431,10 +1477,12 @@
       `before retry (${index}/${total})`,
       () => !rowProcessingCancelRequested
     );
-    if (!shouldRetry) return false;
+    if (!shouldRetry) {
+      setRowState(entry.row, 'cancelled: ready to check adoption', '');
+      return { cancelled: true };
+    }
     if (button) button.textContent = `Retrying ${index}/${total} eligible rows...`;
-    await processRow(entry.row, index, total, trackers, entry, refreshCache);
-    return true;
+    return await processRow(entry.row, index, total, trackers, entry, refreshCache);
   }
 
   function escapeHtml(value) {
@@ -1680,6 +1728,7 @@
     return {
       minimumBountyPerGib: getConfiguredNumber('minimum_bounty_per_gib', 200000),
       minimumBounty: getMinimumBounty(),
+      minimumCombinedOrbs: getConfiguredNumber('minimum_combined_orbs', 0),
       maximumSizeGib: getConfiguredNumber('maximum_size_gib', 0),
       excludedFormats: normalizeMediaFilters(GM_config.get('excluded_formats')),
       exclusionGroups: normalizeExclusionGroups(GM_config.get('exclusion_groups')),
@@ -1690,6 +1739,8 @@
       combineMediaFilters: Boolean(GM_config.get('combine_media_filters')),
       hideIgnoredRows: Boolean(GM_config.get('hide_ignored_rows')),
       hideGrabbedRows: Boolean(GM_config.get('hide_grabbed_rows')),
+      hideNotEnoughOrbsRows: Boolean(GM_config.get('hide_not_enough_orbs_rows')),
+      hideAlreadyAdoptedRows: Boolean(GM_config.get('hide_already_adopted_rows')),
       showOnlyGrabbedRows: Boolean(GM_config.get('show_only_grabbed_rows')),
       sortField: [
         'Bounty / GiB',
@@ -1705,6 +1756,7 @@
         ? sortDirection
         : 'Descending',
       skipTrumpable: Boolean(GM_config.get('skip_trumpable')),
+      skipSeededTorrents: Boolean(GM_config.get('skip_seeded_torrents')),
       seedingFilter: ['All rows', 'Seeding only', 'Not seeding only'].includes(seedingFilter)
         ? seedingFilter
         : 'All rows'
@@ -2061,13 +2113,31 @@
     return `${ACTION_STORAGE_PREFIX}${torrentId}`;
   }
 
+  function isSkippedAdoptionAction(action) {
+    return action === 'already-adopted' || action === 'not-enough-orbs';
+  }
+
+  function shouldSkipSeededTorrents() {
+    return (
+      adoptionFilterState?.skipSeededTorrents ?? Boolean(GM_config.get('skip_seeded_torrents'))
+    );
+  }
+
+  function getAdoptionSkipReason(row, action) {
+    if (isSkippedAdoptionAction(action)) return ADOPTION_ACTION_LABELS[action];
+    const skip = row.antAdoptionSkip;
+    if (!skip) return '';
+    const stillSkipped = skip.action ? action === 'grabbed' : shouldSkipSeededTorrents();
+    return stillSkipped ? skip.message : '';
+  }
+
   function getTorrentAction(torrentId) {
     const value = String(GM_getValue(actionStorageKey(torrentId), '') || '');
-    return ['grabbed', 'ignored', 'broken'].includes(value) ? value : '';
+    return Object.hasOwn(ADOPTION_ACTION_LABELS, value) ? value : '';
   }
 
   function setTorrentAction(torrentId, action) {
-    if (['grabbed', 'ignored', 'broken'].includes(action)) {
+    if (Object.hasOwn(ADOPTION_ACTION_LABELS, action)) {
       GM_setValue(actionStorageKey(torrentId), action);
       filteredScanActions.set(String(torrentId), action);
     } else {
@@ -2077,8 +2147,7 @@
   }
 
   function clearAdoptionActions() {
-    if (!confirm('Delete every Grabbed/Ignored/Broken action saved by ANT Adoption Finder Plus?'))
-      return;
+    if (!confirm('Delete every saved action for ANT adoption rows?')) return;
     const keys = GM_listValues().filter((key) => String(key).startsWith(ACTION_STORAGE_PREFIX));
     keys.forEach((key) => GM_deleteValue(key));
     GM_setValue(ACTION_RECOVERY_SUPPRESS_STORAGE_KEY, true);
@@ -2086,7 +2155,10 @@
     document.querySelectorAll(FILTERABLE_ROW_SELECTOR).forEach((row) => {
       if (row.dataset.antAdoptionAction === 'broken') {
         setRowState(row, 'ready to retry metadata', '');
+      } else if (isSkippedAdoptionAction(row.dataset.antAdoptionAction) || row.antAdoptionSkip) {
+        setRowState(row, 'ready to check adoption', '');
       }
+      delete row.antAdoptionSkip;
       row.dataset.antAdoptionAction = '';
       const select = row.querySelector(`.${ACTION_COLUMN_CLASS} select`);
       if (select) select.value = '';
@@ -2664,8 +2736,10 @@
     );
   }
 
-  function findAdoptionButton(torrentId) {
-    const detailsRow = document.getElementById(`torrent_${torrentId}`);
+  function findAdoptionButton(
+    torrentId,
+    detailsRow = document.getElementById(`torrent_${torrentId}`)
+  ) {
     const adoptHandlerPattern = new RegExp(
       `^\\s*return\\s+adopt\\(\\s*(?:'${torrentId}'|"${torrentId}")\\s*\\)\\s*;?\\s*$`
     );
@@ -3430,6 +3504,8 @@
         (state.hideExcludedFormats && excluded) ||
         (state.hideIgnoredRows && action === 'ignored') ||
         (state.hideGrabbedRows && action === 'grabbed') ||
+        (state.hideNotEnoughOrbsRows && action === 'not-enough-orbs') ||
+        (state.hideAlreadyAdoptedRows && action === 'already-adopted') ||
         (state.skipTrumpable && trumpable) ||
         wrongSeedingState;
     return { excluded, hidden };
@@ -3709,12 +3785,7 @@
     const cell = document.createElement('td');
     cell.className = ACTION_COLUMN_CLASS;
     const select = document.createElement('select');
-    [
-      ['', '—'],
-      ['grabbed', 'Grabbed'],
-      ['ignored', 'Ignored'],
-      ['broken', 'Broken']
-    ].forEach(([value, label]) => {
+    [['', '—'], ...Object.entries(ADOPTION_ACTION_LABELS)].forEach(([value, label]) => {
       const option = document.createElement('option');
       option.value = value;
       option.textContent = label;
@@ -3722,11 +3793,19 @@
     });
     select.value = action;
     select.addEventListener('change', () => {
-      if (row.dataset.antAdoptionAction === 'broken' && select.value !== 'broken') {
-        setRowState(row, 'action updated: ready to process', '');
-      }
+      const previous = row.dataset.antAdoptionAction;
       setTorrentAction(torrentId, select.value);
       row.dataset.antAdoptionAction = select.value;
+      if (isSkippedAdoptionAction(select.value)) {
+        delete row.antAdoptionSkip;
+        showAdoptionSkip(row, ADOPTION_ACTION_LABELS[select.value]);
+      } else if (
+        previous !== select.value &&
+        (previous === 'broken' || isSkippedAdoptionAction(previous) || row.antAdoptionSkip)
+      ) {
+        delete row.antAdoptionSkip;
+        setRowState(row, 'action updated: ready to process', '');
+      }
       rescan.hidden = select.value !== 'broken';
       applyAdoptionFilters(false);
     });
@@ -3919,6 +3998,14 @@
     const rows = [...document.querySelectorAll(FILTERABLE_ROW_SELECTOR)];
 
     rows.forEach((row) => {
+      if (
+        row.antAdoptionSkip &&
+        !row.antAdoptionSkip.action &&
+        !adoptionFilterState.skipSeededTorrents
+      ) {
+        delete row.antAdoptionSkip;
+        setRowState(row, 'ready to check adoption', '');
+      }
       const bountyPerGib = Number.parseFloat(row.dataset.antAdoptionBountyGib);
       const bounty = Number.parseFloat(row.dataset.antAdoptionBounty);
       const sizeGiB = Number.parseFloat(row.dataset.antAdoptionSizeGib);
@@ -4019,7 +4106,7 @@
     body.className = 'ant-filter-body';
     const sections = {};
     for (const [key, title] of [
-      ['limits', 'Bounty and size'],
+      ['limits', 'Bounty, Orbs and size'],
       ['visibility', 'Row visibility'],
       ['sort', 'Sorting'],
       ['media', 'Media filters']
@@ -4057,6 +4144,21 @@
       applyAdoptionFilters();
     });
     minimumBountyLabel.appendChild(minimumBountyInput);
+
+    const minimumOrbsLabel = document.createElement('label');
+    minimumOrbsLabel.textContent = 'Min combined Orbs ';
+    const minimumOrbsInput = document.createElement('input');
+    minimumOrbsInput.type = 'number';
+    minimumOrbsInput.min = '0';
+    minimumOrbsInput.value = String(adoptionFilterState.minimumCombinedOrbs);
+    minimumOrbsInput.title = 'Adoption bounty plus revival bonus. Checked during processing.';
+    minimumOrbsInput.addEventListener('change', () => {
+      const value = minimumOrbsInput.valueAsNumber;
+      const minimum = Number.isFinite(value) ? Math.max(0, Math.ceil(value)) : 0;
+      adoptionFilterState.minimumCombinedOrbs = minimum;
+      minimumOrbsInput.value = String(minimum);
+    });
+    minimumOrbsLabel.appendChild(minimumOrbsInput);
 
     const maximumLabel = document.createElement('label');
     maximumLabel.textContent = 'Max GiB ';
@@ -4153,6 +4255,7 @@
     );
     sections.limits.appendChild(minimumBountyLabel);
     createFilterCheckbox(sections.limits, 'Hide below minimum bounty', 'hideBelowMinimumBounty');
+    sections.limits.appendChild(minimumOrbsLabel);
     sections.limits.appendChild(maximumLabel);
     createFilterCheckbox(sections.limits, 'Hide above maximum size', 'hideAboveMaximumSize');
     createFilterCheckbox(sections.media, 'Apply media filters', 'hideExcludedFormats');
@@ -4173,7 +4276,18 @@
       label.appendChild(select);
       sections.visibility.appendChild(label);
     }
+    createFilterCheckbox(
+      sections.visibility,
+      'Skip torrents that now have seeders',
+      'skipSeededTorrents'
+    );
     createFilterCheckbox(sections.visibility, 'Hide ignored rows', 'hideIgnoredRows');
+    createFilterCheckbox(sections.visibility, 'Hide Not enough Orbs rows', 'hideNotEnoughOrbsRows');
+    createFilterCheckbox(
+      sections.visibility,
+      'Hide Already adopted rows',
+      'hideAlreadyAdoptedRows'
+    );
     createFilterCheckbox(sections.visibility, 'Hide trumpable rows', 'skipTrumpable');
     sections.sort.append(sortFieldLabel, sortDirectionLabel);
 
@@ -4187,6 +4301,8 @@
       adoptionFilterState.hideExcludedFormats = false;
       adoptionFilterState.hideIgnoredRows = false;
       adoptionFilterState.hideGrabbedRows = false;
+      adoptionFilterState.hideNotEnoughOrbsRows = false;
+      adoptionFilterState.hideAlreadyAdoptedRows = false;
       adoptionFilterState.showOnlyGrabbedRows = false;
       adoptionFilterState.skipTrumpable = false;
       adoptionFilterState.seedingFilter = 'All rows';
@@ -4273,9 +4389,11 @@
 
   function markAdoptionRowIgnored(row, torrentId = '', refreshFilters = true) {
     const id = torrentId || row?.dataset?.antAdoptionTorrentId || getRowTorrentId(row);
+    const action = id ? getTorrentAction(id) : '';
     if (
       row?.dataset?.antAdoptionAction === 'grabbed' ||
-      (id && getTorrentAction(id) === 'grabbed')
+      action === 'grabbed' ||
+      isSkippedAdoptionAction(action)
     ) {
       return false;
     }
@@ -4471,6 +4589,7 @@
     const response = await pageWindow.fetch(url, {
       mode: 'same-origin',
       credentials: 'same-origin',
+      cache: 'no-store',
       signal: pageWindow.AbortSignal.timeout(30000)
     });
     const html = await response.text();
@@ -4966,7 +5085,7 @@
     return normalizeImdbId(imdbLink || ratings.textContent);
   }
 
-  async function getAntMetadata(torrentId, groupId, refreshCache = false) {
+  async function getAntMetadata(torrentId, groupId, refreshCache = false, page = null) {
     debugLog('ANT HTML metadata lookup start', { torrentId, groupId });
     const cacheKey = antMetadataCacheKey(torrentId);
     const cached = cacheGet(cacheKey);
@@ -4975,7 +5094,8 @@
       return cached;
     }
 
-    const metadata = await getAntMetadataFromHtml(torrentId, groupId);
+    const doc = page ?? (await fetchAntTorrentPage(torrentId, groupId));
+    const metadata = readAntTorrentMetadata(doc, torrentId, groupId);
     debugLog('ANT HTML metadata result', { torrentId, groupId, metadata });
     if (metadata?.filename) {
       cacheSet(cacheKey, metadata);
@@ -4985,11 +5105,14 @@
     throw new Error(`Could not resolve ANT metadata for torrent ${torrentId}.`);
   }
 
-  async function getAntMetadataFromHtml(torrentId, groupId) {
-    if (!groupId) return null;
+  async function fetchAntTorrentPage(torrentId, groupId) {
+    if (!groupId) throw new Error(`Missing ANT group ID for torrent ${torrentId}.`);
     const url = `https://anthelion.me/torrents.php?id=${encodeURIComponent(groupId)}&torrentid=${encodeURIComponent(torrentId)}`;
     const html = await requestAntPage(url, `ANT torrent ${torrentId}`);
-    const doc = new DOMParser().parseFromString(html, 'text/html');
+    return new DOMParser().parseFromString(html, 'text/html');
+  }
+
+  function readAntTorrentMetadata(doc, torrentId, groupId) {
     const files = [
       ...doc.querySelectorAll(
         `#files_${CSS.escape(torrentId)} tr:not(.colhead):not(.colhead_dark) > td:first-child, tr[id="torrent_${CSS.escape(torrentId)}"] .filelist_table tr:not(.colhead):not(.colhead_dark) > td:first-child`
@@ -5019,6 +5142,54 @@
       files: normalizedFiles,
       imdbId,
       rootFolder
+    };
+  }
+
+  function getAntRevivalBonus(detailsRow) {
+    const activity = [...detailsRow.querySelectorAll('strong')].find((element) =>
+      element.textContent.trimStart().startsWith('Tracker last activity:')
+    );
+    const age = parseAdoptionListingAge(activity?.querySelector('.time')?.textContent.trim() || '');
+    if (!Number.isFinite(age)) return null;
+    return REVIVAL_BONUS_TIERS.find(([days]) => age >= days * 86400000)?.[1] ?? 0;
+  }
+
+  function checkAntAdoption(row, doc, torrentId) {
+    const summaryRow = doc.getElementById(`torrent${torrentId}`);
+    const detailsRow = doc.getElementById(`torrent_${torrentId}`);
+    if (!summaryRow || !detailsRow) {
+      throw new Error(`ANT response is missing torrent ${torrentId}.`);
+    }
+    if (!findAdoptionButton(torrentId, detailsRow)) {
+      return { action: 'already-adopted', message: 'Already adopted: adoption button unavailable' };
+    }
+
+    // ANT's numeric columns are size, snatches, seeders, and leechers.
+    const columns = summaryRow.querySelectorAll(':scope > td.number_column');
+    const count = columns.length === 4 ? columns[2].textContent.trim().replaceAll(',', '') : '';
+    const seeders = Number(count);
+    if (!/^\d+$/.test(count) || !Number.isSafeInteger(seeders)) {
+      throw new Error(`Could not read the ANT seeder count for torrent ${torrentId}.`);
+    }
+    if (seeders > 0 && shouldSkipSeededTorrents()) {
+      return { message: `Skipped: ANT reports ${seeders} seeder${seeders === 1 ? '' : 's'}` };
+    }
+
+    const bonus = seeders > 0 ? 0 : getAntRevivalBonus(detailsRow);
+    const bounty = parseBounty(row.dataset.antAdoptionBounty);
+    const minimum =
+      adoptionFilterState?.minimumCombinedOrbs ?? getConfiguredNumber('minimum_combined_orbs', 0);
+    const combinedOrbs = (bounty ?? 0) + (bonus ?? 0);
+    if (!minimum || combinedOrbs >= minimum) return null;
+    if (bounty === null || bonus === null) {
+      throw new Error(
+        'Could not determine the combined Orbs from the bounty and tracker activity.'
+      );
+    }
+
+    return {
+      action: 'not-enough-orbs',
+      message: `Not enough Orbs: ${combinedOrbs.toLocaleString()} of ${minimum.toLocaleString()} (${bounty.toLocaleString()} bounty + ${bonus.toLocaleString()} revival bonus)`
     };
   }
 
@@ -6434,6 +6605,7 @@
   }
 
   function handleCompletedquiAddJob(jobKey, job) {
+    if (isSkippedAdoptionAction(getTorrentAction(job.torrentId))) return;
     try {
       markAdoptionRowGrabbed(job.row, job.torrentId);
     } catch (error) {
@@ -7670,13 +7842,21 @@
       skippedMissingId: 0,
       skippedCached: 0,
       skippedBroken: 0,
+      skippedAdoption: 0,
       skippedRefreshed: 0
     };
 
     for (const row of rows) {
-      if (getTorrentAction(getRowTorrentId(row)) === 'broken') {
+      const torrentId = getRowTorrentId(row);
+      const action = getTorrentAction(torrentId);
+      if (action === 'broken') {
         stats.skippedBroken += 1;
         setRowState(row, 'broken: rescan metadata to retry', 'error');
+        continue;
+      }
+      const skipReason = getAdoptionSkipReason(row, action);
+      if (skipReason) {
+        stats.skippedAdoption += 1;
         continue;
       }
       const titleSnapshot = snapshotRowTitleLink(row);
@@ -7696,7 +7876,6 @@
 
       if (!titleSnapshot) {
         stats.skippedMissingTitleLink += 1;
-        const torrentId = getRowTorrentId(row);
         if (torrentId) markAdoptionRowAction(row, 'broken', torrentId, false);
         setRowState(
           row,
@@ -7706,7 +7885,6 @@
         continue;
       }
 
-      const torrentId = getRowTorrentId(row);
       const groupId = getRowGroupId(row);
       const rowTrackers = getTrackersForRow(row, trackers);
       if (!torrentId) {
@@ -7876,8 +8054,14 @@
 
   function restoreCachedRowProcessingData(row) {
     const torrentId = getRowTorrentId(row);
-    if (getTorrentAction(torrentId) === 'broken') {
+    const action = getTorrentAction(torrentId);
+    if (action === 'broken') {
       setRowState(row, 'broken: rescan metadata to retry', 'error');
+      return true;
+    }
+    const skipReason = getAdoptionSkipReason(row, action);
+    if (skipReason) {
+      if (!row.querySelector('.ant-cross-seed-state')) setRowState(row, skipReason, 'skipped');
       return true;
     }
     const cached = getCachedRowProcessingData(torrentId);
@@ -7912,7 +8096,7 @@
       row?.classList?.contains('zeroseed') &&
       !row.hidden &&
       row.dataset.antCrossSeedPageCacheChecked !== 'true' &&
-      (loadAll || ['grabbed', 'ignored', 'broken'].includes(row.dataset.antAdoptionAction))
+      (loadAll || Object.hasOwn(ADOPTION_ACTION_LABELS, row.dataset.antAdoptionAction))
     );
   }
 
@@ -7988,19 +8172,21 @@
     torrentId,
     groupId,
     cachedMetadata = null,
-    refreshCache = false
+    page = null
   ) {
     try {
       const metadata =
-        !refreshCache && cachedMetadata?.filename && cachedMetadata?.imdbId
+        cachedMetadata?.filename && cachedMetadata?.imdbId
           ? cachedMetadata
-          : await getAntMetadata(torrentId, groupId, refreshCache);
+          : await getAntMetadata(torrentId, groupId, false, page);
       if (!isNonemptyString(metadata?.filename)) throw new Error('No usable ANT filename found.');
       return metadata;
     } catch (error) {
-      markAdoptionRowAction(row, 'broken', torrentId, false);
-      setRowState(row, `broken: ${error.message || error}`, 'error');
       debugLog('ANT metadata lookup failed', { torrentId, error });
+      if (!isSkippedAdoptionAction(getTorrentAction(torrentId))) {
+        markAdoptionRowAction(row, 'broken', torrentId, false);
+        setRowState(row, `broken: ${error.message || error}`, 'error');
+      }
       return null;
     }
   }
@@ -8011,25 +8197,42 @@
     setRowProcessingControls(true);
     try {
       setRowState(row, 'rescanning ANT metadata', 'working');
-      const metadata = await resolveRowAntMetadata(row, torrentId, getRowGroupId(row), null, true);
-      if (metadata) {
+      await getAntMetadata(torrentId, getRowGroupId(row), true);
+      if (getTorrentAction(torrentId) === 'broken') {
         markAdoptionRowAction(row, '', torrentId, false);
         setRowState(row, 'metadata resolved: ready to process', 'done');
       }
     } catch (error) {
-      setRowState(row, `rescan failed: ${error.message || error}`, 'error');
+      debugLog('ANT metadata rescan failed', { torrentId, error });
+      if (getTorrentAction(torrentId) === 'broken') {
+        setRowState(row, `broken: ${error.message || error}`, 'error');
+      }
     } finally {
       setRowProcessingControls(false);
     }
   }
 
+  function showAdoptionSkip(row, message, titleSnapshot) {
+    row.querySelector('.ant-cross-seed-matches')?.remove();
+    row.querySelector('.ant-cross-seed-qui')?.remove();
+    setRowState(row, message, 'skipped');
+    restoreRowTitleLink(row, titleSnapshot);
+  }
+
   async function processRow(row, index, total, trackers, rowMeta = {}, refreshCache = false) {
-    if (getTorrentAction(rowMeta.torrentId || getRowTorrentId(row)) === 'broken') return;
+    const torrentId = rowMeta.torrentId || getRowTorrentId(row);
+    const action = getTorrentAction(torrentId);
+    if (action === 'broken') return;
+    const savedSkip = getAdoptionSkipReason(row, action);
+    if (savedSkip) {
+      showAdoptionSkip(row, savedSkip);
+      return { delayMs: ADOPTION_SKIP_DELAY_MS };
+    }
+    delete row.antAdoptionSkip;
     const rowTrackers = rowMeta.trackers || getTrackersForRow(row, trackers);
     const titleSnapshot = snapshotRowTitleLink(row);
     if (!titleSnapshot) {
       debugLog('row skipped', { index, total, reason: 'missing ANT title link' });
-      const torrentId = rowMeta.torrentId || getRowTorrentId(row);
       if (torrentId) markAdoptionRowAction(row, 'broken', torrentId, false);
       setRowState(
         row,
@@ -8053,7 +8256,6 @@
       return;
     }
 
-    const torrentId = rowMeta.torrentId || getRowTorrentId(row);
     const groupId = rowMeta.groupId || getRowGroupId(row);
     if (!torrentId) {
       debugLog('row skipped', { index, total, reason: 'missing ANT torrent id', groupId });
@@ -8062,14 +8264,45 @@
       return;
     }
 
+    function stopForSavedSkip() {
+      const currentAction = getTorrentAction(torrentId);
+      if (!isSkippedAdoptionAction(currentAction)) return false;
+      showAdoptionSkip(row, ADOPTION_ACTION_LABELS[currentAction], titleSnapshot);
+      return true;
+    }
+
     debugLog('row processing start', { index, total, torrentId, groupId });
-    setRowState(row, `resolving metadata (${index}/${total})`, 'working');
+    setRowState(row, `checking ANT adoption (${index}/${total})`, 'working');
+    const page = await fetchAntTorrentPage(torrentId, groupId).catch((error) => {
+      if (!rowProcessingRunning || !rowProcessingCancelRequested) throw error;
+      return null;
+    });
+    if (rowProcessingRunning && rowProcessingCancelRequested) {
+      setRowState(row, 'cancelled: ready to check adoption', '');
+      restoreRowTitleLink(row, titleSnapshot);
+      return { cancelled: true };
+    }
+    if (stopForSavedSkip()) return { delayMs: ADOPTION_SKIP_DELAY_MS };
+    const skip = checkAntAdoption(row, page, torrentId);
+    if (skip) {
+      if (skip.action && getTorrentAction(torrentId) !== 'grabbed') {
+        markAdoptionRowAction(row, skip.action, torrentId, false);
+      } else {
+        row.antAdoptionSkip = skip;
+      }
+      showAdoptionSkip(row, skip.message, titleSnapshot);
+      applyAdoptionFilters(false);
+      return { delayMs: ADOPTION_SKIP_DELAY_MS };
+    }
+
     const antMetadata = await resolveRowAntMetadata(
       row,
       torrentId,
       groupId,
-      rowMeta.cachedMetadata
+      rowMeta.cachedMetadata,
+      page
     );
+    if (stopForSavedSkip()) return { delayMs: ADOPTION_SKIP_DELAY_MS };
     if (!antMetadata) {
       restoreRowTitleLink(row, titleSnapshot);
       return;
@@ -8096,6 +8329,7 @@
       renderquiError(row, error);
     }
 
+    if (stopForSavedSkip()) return;
     setRowState(row, `searching ${filename} (${index}/${total})`, 'working');
 
     const trackerSearch = await searchScopedTrackers(
@@ -8104,9 +8338,11 @@
       rowTrackers,
       refreshCache
     );
+    if (stopForSavedSkip()) return;
     const { matches } = trackerSearch;
     appendMatches(row, matches, filename);
     const autoquiState = await maybeAutoAddTrackerMatchToqui(row, filename, matches);
+    if (stopForSavedSkip()) return;
     const fullyCompleted = isFullyCompletedRowCompletion(
       getRowCompletion(torrentId, filename, rowTrackers)
     );
@@ -8210,7 +8446,7 @@
       return;
     }
 
-    const delayMs = getRowDelaySeconds() * 1000;
+    const normalDelayMs = getRowDelaySeconds() * 1000;
     let failedRows = 0;
     let handledRows = 0;
     let cancelled = false;
@@ -8220,6 +8456,7 @@
         break;
       }
       const entry = batch[i];
+      let outcome;
       try {
         if (button) button.textContent = `Processing ${i + 1}/${batch.length} eligible rows...`;
         updateRunProgress(
@@ -8228,14 +8465,14 @@
           `Processing row ${i + 1} of ${batch.length}...`,
           'running'
         );
-        await processRow(entry.row, i + 1, batch.length, trackers, entry, refreshCache);
+        outcome = await processRow(entry.row, i + 1, batch.length, trackers, entry, refreshCache);
       } catch (error) {
         if (rowProcessingCancelRequested) {
           cancelled = true;
           break;
         }
         try {
-          const retried = await retryRowAfterError(
+          outcome = await retryRowAfterError(
             error,
             entry,
             i + 1,
@@ -8244,10 +8481,6 @@
             refreshCache,
             button
           );
-          if (!retried) {
-            cancelled = true;
-            break;
-          }
         } catch (retryError) {
           debugLog('row processing failed after retry', {
             index: i + 1,
@@ -8258,6 +8491,10 @@
           setRowState(entry.row, `error: ${retryError.message || retryError}`, 'error');
           failedRows += 1;
         }
+      }
+      if (outcome?.cancelled) {
+        cancelled = true;
+        break;
       }
       handledRows = i + 1;
       updateRunProgress(
@@ -8270,6 +8507,7 @@
         cancelled = true;
         break;
       }
+      const delayMs = outcome?.delayMs ?? normalDelayMs;
       if (i < batch.length - 1 && delayMs > 0) {
         debugLog('row delay start', { delayMs, nextIndex: i + 2, total: batch.length });
         updateRunProgress(

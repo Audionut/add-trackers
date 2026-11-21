@@ -638,9 +638,53 @@ function createBatchRow(torrentId, groupId = '45') {
       return `/torrents.php?id=${groupId}&torrentid=${torrentId}`;
     }
   };
-  row.querySelector = (selector) =>
-    selector.includes('torrents.php?id=') ? titleLink : originalQuerySelector(selector);
+  row.querySelector = (selector) => {
+    if (selector.includes('torrents.php?id=')) return titleLink;
+    if (selector === '.ant-cross-seed-state')
+      return findDescendantByClass(row, 'ant-cross-seed-state');
+    return originalQuerySelector(selector);
+  };
   return row;
+}
+
+function queueAntTorrentPage(
+  torrentId,
+  { adoptable = true, seeders = '0', age = '2 days ago', files = [], root = '' } = {}
+) {
+  const summary = {
+    querySelectorAll(selector) {
+      assert.equal(selector, ':scope > td.number_column');
+      return ['2.31 GiB', '32', seeders, '7'].map((textContent) => ({ textContent }));
+    }
+  };
+  const details = {
+    querySelectorAll(selector) {
+      if (selector === 'button') {
+        return adoptable ? [{ getAttribute: () => `return adopt('${torrentId}');` }] : [];
+      }
+      assert.equal(selector, 'strong');
+      return age
+        ? [
+            {
+              textContent: `Tracker last activity: ${age}`,
+              querySelector: () => ({ textContent: age })
+            }
+          ]
+        : [];
+    }
+  };
+  const responseText = `ant-torrent-${torrentId}`;
+  parsedDocuments.set(responseText, {
+    getElementById: (id) =>
+      ({ [`torrent${torrentId}`]: summary, [`torrent_${torrentId}`]: details })[id] || null,
+    querySelectorAll(selector) {
+      assert.match(selector, /tr:not\(\.colhead\):not\(\.colhead_dark\)/);
+      return files.map((textContent) => ({ textContent }));
+    },
+    querySelector: (selector) =>
+      root && selector.includes('.filelist_path') ? { textContent: `/${root}/` } : null
+  });
+  requestResponses.unshift({ status: 200, responseText });
 }
 
 function findDescendantByClass(root, className) {
@@ -741,13 +785,13 @@ function createSavedTorrentRowHtml(torrentId) {
   return `<tr class="torrent torrent_row zeroseed"><td><a href="torrents.php?action=download&amp;id=${torrentId}">Download</a></td></tr>`;
 }
 
-async function flushScheduledPromise(promise, firstTimerIndex) {
+async function flushScheduledPromise(promise, firstTimerIndex, maxAttempts = 100) {
   let timerIndex = firstTimerIndex;
   let settled = false;
   promise.finally(() => {
     settled = true;
   });
-  for (let attempts = 0; !settled && attempts < 100; attempts += 1) {
+  for (let attempts = 0; !settled && attempts < maxAttempts; attempts += 1) {
     await Promise.resolve();
     if (timerIndex < scheduledTimeouts.length) {
       const timer = scheduledTimeouts[timerIndex];
@@ -763,7 +807,7 @@ test('retains the original settings and cache identity', () => {
   assert.match(source, /const SCRIPT_PREFIX = 'ant-adoption-filename-cross-seed';/);
   assert.match(source, /id: 'ANTAdoptionFilenameCrossSeedConfig'/);
   assert.match(source, /\/\/ @name\s+ANT - Adoption cross-seed finder/);
-  assert.match(source, /\/\/ @version\s+0\.2\.2/);
+  assert.match(source, /\/\/ @version\s+0\.2\.4/);
 });
 
 test('parses ANT sizes into GiB', () => {
@@ -787,6 +831,10 @@ test('saves page filter values into the durable shared settings record', () => {
   api.setFilterState({
     ...api.getDefaultAdoptionFilterState(),
     minimumBounty: 750000,
+    minimumCombinedOrbs: 900000,
+    skipSeededTorrents: true,
+    hideNotEnoughOrbsRows: true,
+    hideAlreadyAdoptedRows: true,
     maximumSizeGib: 20,
     showOnlyGrabbedRows: true,
     skipTrumpable: false,
@@ -798,6 +846,10 @@ test('saves page filter values into the durable shared settings record', () => {
   const saved = JSON.parse(storage.get('ANTAdoptionFilenameCrossSeedConfig'));
   assert.equal(saved.maximum_size_gib, 20);
   assert.equal(saved.minimum_bounty, 750000);
+  assert.equal(saved.minimum_combined_orbs, 900000);
+  assert.equal(saved.skip_seeded_torrents, true);
+  assert.equal(saved.hide_not_enough_orbs_rows, true);
+  assert.equal(saved.hide_already_adopted_rows, true);
   assert.equal(saved.show_only_grabbed_rows, true);
   assert.equal(saved.skip_trumpable, false);
   assert.equal(saved.default_sort_field, 'Size');
@@ -807,15 +859,28 @@ test('saves page filter values into the durable shared settings record', () => {
   Object.entries(saved).forEach(([field, value]) => configValues.set(field, value));
   assert.equal(api.getDefaultAdoptionFilterState().maximumSizeGib, 20);
   assert.equal(api.getDefaultAdoptionFilterState().minimumBounty, 750000);
+  assert.equal(api.getDefaultAdoptionFilterState().minimumCombinedOrbs, 900000);
+  assert.equal(api.getDefaultAdoptionFilterState().skipSeededTorrents, true);
+  assert.equal(api.getDefaultAdoptionFilterState().hideNotEnoughOrbsRows, true);
+  assert.equal(api.getDefaultAdoptionFilterState().hideAlreadyAdoptedRows, true);
   assert.equal(api.getDefaultAdoptionFilterState().showOnlyGrabbedRows, true);
   assert.equal(api.getDefaultAdoptionFilterState().skipTrumpable, false);
   assert.equal(api.getDefaultAdoptionFilterState().sortField, 'Size');
   assert.equal(api.getDefaultAdoptionFilterState().sortDirection, 'Ascending');
 
   configValues.set('minimum_bounty', 0);
+  for (const field of [
+    'minimum_combined_orbs',
+    'skip_seeded_torrents',
+    'hide_not_enough_orbs_rows',
+    'hide_already_adopted_rows'
+  ]) {
+    configValues.delete(field);
+  }
   configValues.set('show_only_grabbed_rows', false);
   configValues.set('default_sort_field', 'Bounty / GiB');
   configValues.set('default_sort_direction', 'Descending');
+  api.setFilterState(api.getDefaultAdoptionFilterState());
 });
 
 test('masks an embedded qui proxy token without hiding an ordinary base URL', () => {
@@ -1158,6 +1223,23 @@ test('Show all preserves media choices when another value is selected', () => {
     assert.equal(toolbar.children[0].tagName, 'summary');
     toolbar.open = false;
     const body = toolbar.children[1];
+    const limits = body.children.find((node) => node.className?.includes('ant-filter-limits'));
+    const orbsInput = limits.children.find((label) =>
+      label.textContent?.startsWith('Min combined Orbs')
+    ).children[0];
+    orbsInput.valueAsNumber = 75000;
+    orbsInput.listeners.change();
+    assert.equal(state.minimumCombinedOrbs, 75000);
+    const visibility = body.children.find((node) =>
+      node.className?.includes('ant-filter-visibility')
+    );
+    const skipSeeded = visibility
+      .querySelectorAll('input[data-filter-state]')
+      .find((node) => node.dataset.filterState === 'skipSeededTorrents');
+    assert.ok(skipSeeded, 'Row visibility contains the seeded-torrent option');
+    skipSeeded.checked = true;
+    skipSeeded.listeners.change();
+    assert.equal(state.skipSeededTorrents, true);
     const mediaSection = body.children.find((node) => node.className?.includes('ant-filter-media'));
     const control = mediaSection.children.find((node) => node.className === 'ant-media-filters');
     const actions = body.children.find((node) => node.className === 'ant-filter-actions');
@@ -1425,6 +1507,7 @@ test('fresh under-seeded matches are auto-ignored after complete tracker and qui
   filterRows = [row];
   api.setTorrentAction(torrentId, '');
   requestResponses = [{ status: 200, responseText: '[]' }];
+  queueAntTorrentPage(torrentId);
 
   await api.processRow(
     row,
@@ -2148,6 +2231,7 @@ test('a wrong-typed qui torrent entry cannot auto-ignore after a complete tracke
   });
   api.setTorrentAction('461', '');
   requestResponses = [{ status: 200, responseText: '[{"name":{}}]' }];
+  queueAntTorrentPage('461');
   const previousWarn = context.console.warn;
   context.console.warn = () => {};
   try {
@@ -2181,6 +2265,7 @@ test('a wrong-typed qui torrent entry cannot auto-ignore after a complete tracke
   assert.equal(api.getTorrentAction('461'), '');
 
   requestResponses = [{ status: 200, responseText: '[]' }];
+  queueAntTorrentPage('461');
   await api.processRow(row, 1, 1, [tracker], retry.batch[0], false);
   assert.equal(api.getTorrentAction('461'), 'ignored');
   assert.equal(api.getCachedRowProcessingData('461').quiLookupComplete, true);
@@ -2206,6 +2291,8 @@ test('a malformed cached qui result is evicted and retried before auto-ignore', 
   api.cacheSet('ant-metadata-v3:1461', metadata);
   api.cacheSet('qui-result:MalformedCachedQui.mkv', [{ name: {} }]);
   api.setTorrentAction('1461', '');
+  requestResponses = [];
+  queueAntTorrentPage('1461');
 
   const previousWarn = context.console.warn;
   context.console.warn = () => {};
@@ -2234,6 +2321,7 @@ test('a malformed cached qui result is evicted and retried before auto-ignore', 
   assert.equal(retry.batch.length, 1);
 
   requestResponses = [{ status: 200, responseText: '[]' }];
+  queueAntTorrentPage('1461');
   await api.processRow(row, 1, 1, [tracker], retry.batch[0], false);
   assert.equal(api.getTorrentAction('1461'), 'ignored');
   assert.equal(api.getCachedRowProcessingData('1461').quiLookupComplete, true);
@@ -2260,6 +2348,8 @@ test('processing without qui configuration stays retryable after configuration i
     imdbId: 'tt1234567'
   });
   api.setTorrentAction('463', '');
+  requestResponses = [];
+  queueAntTorrentPage('463');
 
   await api.processRow(
     row,
@@ -3412,6 +3502,38 @@ test('Grabbed persistence failure does not suppress ready-page or follow-up sche
   assert.equal(job.followUpScheduled, true);
   assert.equal(job.followUpStatus, 'pending');
   assert.equal(scheduledTimeouts.length, initialTimerCount + 2);
+
+  const skippedJob = {
+    ...job,
+    adoptionPageScheduled: false,
+    followUpScheduled: false,
+    followUpStatus: '',
+    torrentId: '98719'
+  };
+  api.setTorrentAction(skippedJob.torrentId, 'already-adopted');
+  api.setquiAddJob('skipped-job', skippedJob);
+  api.handleCompletedquiAddJob('skipped-job', skippedJob);
+  const readValue = context.GM_getValue;
+  context.GM_getValue = (key, fallback) => {
+    if (key === `ant-adoption-filename-cross-seed:action:${skippedJob.torrentId}`) {
+      throw new Error('action read unavailable');
+    }
+    return readValue(key, fallback);
+  };
+  try {
+    assert.throws(
+      () => api.handleCompletedquiAddJob('skipped-job', skippedJob),
+      /action read unavailable/
+    );
+  } finally {
+    context.GM_getValue = readValue;
+  }
+  assert.equal(api.getTorrentAction(skippedJob.torrentId), 'already-adopted');
+  assert.equal(skippedJob.adoptionPageScheduled, false);
+  assert.equal(skippedJob.followUpScheduled, false);
+  assert.equal(scheduledTimeouts.length, initialTimerCount + 2);
+  api.setTorrentAction(skippedJob.torrentId, '');
+
   configValues.set('qui_auto_trigger_adoption', false);
 });
 
@@ -5121,6 +5243,56 @@ test('row cancellation stops retries, later rows, and an active delay', async ()
 
   delete context.__collectBatchRowsTestOverride;
   delete context.__processRowTestOverride;
+
+  const previousRows = filterRows;
+  api.setFilterState({
+    ...api.getDefaultAdoptionFilterState(),
+    hideBelowBountyThreshold: false,
+    showOnlyGrabbedRows: false
+  });
+  try {
+    for (const status of [200, 503]) {
+      const id = String(98720 + status);
+      const row = createBatchRow(id);
+      filterRows = [row];
+      requestResponses = [];
+      queueAntTorrentPage(id);
+      requestResponses[0].status = status;
+      requestResponses[0].beforeResponse = () => {
+        assert.equal(api.requestRowProcessingCancellation(), true);
+      };
+      const requestStart = requestedUrls.length;
+      await api.run();
+      assert.equal(requestedUrls.length, requestStart + 1);
+      assert.equal(display.dataset.state, 'cancelled');
+      assert.match(label.textContent, /Cancelled after 0 of 1/);
+      assert.match(
+        findDescendantByClass(row, 'ant-cross-seed-state').textContent,
+        /ready to check/
+      );
+      assert.equal(api.getTorrentAction(id), '');
+    }
+
+    const row = createBatchRow('98731');
+    filterRows = [row];
+    requestResponses = [{ status: 503, responseText: 'unavailable' }];
+    const retryTimer = scheduledTimeouts.length;
+    const retries = api.run();
+    for (let attempt = 0; attempt < 30 && scheduledTimeouts.length === retryTimer; attempt++) {
+      await Promise.resolve();
+    }
+    assert.equal(scheduledTimeouts.length, retryTimer + 1);
+    assert.match(findDescendantByClass(row, 'ant-cross-seed-state').textContent, /retrying/);
+    assert.equal(api.requestRowProcessingCancellation(), true);
+    await scheduledTimeouts[retryTimer].callback();
+    await retries;
+    assert.match(label.textContent, /Cancelled after 0 of 1/);
+    assert.match(findDescendantByClass(row, 'ant-cross-seed-state').textContent, /ready to check/);
+  } finally {
+    filterRows = previousRows;
+    api.setFilterState(null);
+  }
+
   configValues.delete('row_delay_seconds');
   documentNodes.delete('#ant-cross-seed-run');
   documentNodes.delete('#ant-cross-seed-cancel');
@@ -5522,6 +5694,7 @@ test('ANT page reads use the page session for scans and torrent metadata', async
     for (const request of requests) {
       assert.equal(request.credentials, 'same-origin');
       assert.equal(request.mode, 'same-origin');
+      assert.equal(request.cache, 'no-store');
       assert.ok(request.signal instanceof AbortSignal);
     }
   } finally {
@@ -5840,13 +6013,9 @@ test('metadata failures persist Broken, skip normal processing, and rescan bypas
   configValues.set('qui_base_url', '');
   configValues.set('qui_token', '');
   const row = createBatchRow('98301');
-  const query = row.querySelector.bind(row);
-  row.querySelector = (selector) =>
-    selector === '.ant-cross-seed-state'
-      ? findDescendantByClass(row, 'ant-cross-seed-state')
-      : query(selector);
   requestedUrls.length = 0;
-  requestResponses = [{ status: 500, responseText: 'failed' }];
+  requestResponses = [];
+  queueAntTorrentPage('98301');
   await api.processRow(row, 1, 2, []);
   assert.equal(api.getTorrentAction('98301'), 'broken');
   assert.match(findDescendantByClass(row, 'ant-cross-seed-state').textContent, /^broken:/);
@@ -5876,11 +6045,302 @@ test('metadata failures persist Broken, skip normal processing, and rescan bypas
   assert.equal(requestedUrls.length, 3);
   assert.match(findDescendantByClass(row, 'ant-cross-seed-state').textContent, /ready to process/);
   const next = createBatchRow('98302');
+  queueAntTorrentPage('98302');
   await api.processRow(next, 2, 2, [], {
     cachedMetadata: { filename: 'Next.mkv', imdbId: 'tt1234567' }
   });
   assert.equal(api.getTorrentAction('98302'), '');
   assert.ok(api.getCachedRowProcessingData('98302'));
+
+  const changedActions = [
+    { status: 200, action: 'already-adopted', label: 'Already adopted' },
+    { status: 503, action: 'not-enough-orbs', label: 'Not enough Orbs' }
+  ];
+  for (const [index, { status, action, label }] of changedActions.entries()) {
+    const id = String(98750 + index);
+    const pending = createBatchRow(id);
+    api.setTorrentAction(id, 'broken');
+    pending.dataset.antAdoptionAction = 'broken';
+    const actionCell = api.createActionCell(pending, id, 'broken');
+    pending.appendChild(actionCell);
+    requestResponses = [];
+    queueAntTorrentPage(id, { files: ['RescanChanged.mkv'] });
+    requestResponses[0].status = status;
+    requestResponses[0].beforeResponse = () => {
+      const select = actionCell.querySelector('select');
+      select.value = action;
+      select.listeners.change();
+    };
+    await api.rescanBrokenRow(pending, id);
+    assert.equal(api.getTorrentAction(id), action);
+    assert.equal(findDescendantByClass(pending, 'ant-cross-seed-state').textContent, label);
+    assert.equal(api.collectBatchRows([pending], [], 1).batch.length, 0);
+    api.setTorrentAction(id, '');
+  }
+});
+
+test('row processing applies only the highest qualifying revival bonus to the saved bounty', async () => {
+  const state = api.getDefaultAdoptionFilterState();
+  const cases = [
+    ['29 days, 23 hours ago', 0],
+    ['30 days ago', 62500],
+    ['89 days, 23 hours ago', 62500],
+    ['90 days ago', 125000],
+    ['179 days ago', 125000],
+    ['180 days ago', 250000],
+    ['11 months, 3 weeks ago', 250000],
+    ['1 year ago', 500000]
+  ];
+  requestResponses = [];
+  api.setFilterState(state);
+  try {
+    for (const [index, [age, bonus]] of cases.entries()) {
+      const id = String(98700 + index);
+      const row = createBatchRow(id);
+      state.minimumCombinedOrbs = bonus + 1001;
+      queueAntTorrentPage(id, { age });
+      await api.processRow(row, 1, 1, [
+        {
+          site: 'Unexpected',
+          search: () => assert.fail('below-minimum row reached tracker search')
+        }
+      ]);
+      assert.equal(api.getTorrentAction(id), 'not-enough-orbs', age);
+      const status = findDescendantByClass(row, 'ant-cross-seed-state');
+      assert.ok(status.textContent.includes(`${bonus.toLocaleString()} revival bonus`), age);
+      assert.equal(api.collectBatchRows([row], [], 0).batch.length, 0);
+      api.setTorrentAction(id, '');
+    }
+  } finally {
+    api.setFilterState(null);
+  }
+});
+
+test('fresh ANT availability and seeder count gate even rows with cached metadata', async () => {
+  const state = {
+    ...api.getDefaultAdoptionFilterState(),
+    hideBelowBountyThreshold: false
+  };
+  const oldQuiUrl = configValues.get('qui_base_url');
+  const previousRows = filterRows;
+  configValues.set('qui_base_url', '');
+  api.setFilterState(state);
+  const cachedMetadata = { filename: 'CachedAdoption.mkv', imdbId: 'tt1234567' };
+  requestResponses = [];
+  try {
+    const unavailable = createBatchRow('98710');
+    queueAntTorrentPage('98710', { adoptable: false });
+    await api.processRow(unavailable, 1, 1, [], { cachedMetadata });
+    assert.equal(api.getTorrentAction('98710'), 'already-adopted');
+    assert.equal(api.collectBatchRows([unavailable], [], 0).batch.length, 0);
+    assert.equal(api.restoreCachedRowStatuses([createBatchRow('98710')]), 1);
+    assert.equal(
+      api.getAdoptionFilterResult({}, api.getTorrentAction('98710'), [], state).hidden,
+      false
+    );
+    state.hideAlreadyAdoptedRows = true;
+    assert.equal(
+      api.getAdoptionFilterResult({}, api.getTorrentAction('98710'), [], state).hidden,
+      true
+    );
+
+    const grabbed = createBatchRow('98716');
+    const later = createBatchRow('98717');
+    api.markAdoptionRowGrabbed(grabbed);
+    const firstBatch = api.collectBatchRows([grabbed, later], [], 1);
+    assert.equal(firstBatch.batch[0].row, grabbed);
+    queueAntTorrentPage('98716', { adoptable: false });
+    await api.processRow(grabbed, 1, 1, [], firstBatch.batch[0]);
+    assert.equal(api.getTorrentAction('98716'), 'grabbed');
+    assert.equal(api.collectBatchRows([grabbed, later], [], 1).batch[0].row, later);
+
+    const seeded = createBatchRow('98711');
+    state.skipSeededTorrents = true;
+    queueAntTorrentPage('98711', { seeders: '2', age: '1 year ago' });
+    await api.processRow(seeded, 1, 1, [], { cachedMetadata });
+    assert.match(findDescendantByClass(seeded, 'ant-cross-seed-state').textContent, /2 seeders/);
+    assert.equal(api.collectBatchRows([seeded], [], 0).batch.length, 0);
+
+    filterRows = [seeded];
+    state.skipSeededTorrents = false;
+    api.applyAdoptionFilters();
+    state.skipSeededTorrents = true;
+    api.applyAdoptionFilters();
+    assert.equal(api.collectBatchRows([seeded], [], 0).batch.length, 1);
+
+    state.skipSeededTorrents = false;
+    state.minimumCombinedOrbs = 1001;
+    queueAntTorrentPage('98711', { seeders: '2', age: '1 year ago' });
+    await api.processRow(seeded, 1, 1, [], { cachedMetadata });
+    assert.equal(api.getTorrentAction('98711'), 'not-enough-orbs');
+    const status = findDescendantByClass(seeded, 'ant-cross-seed-state');
+    assert.match(status.textContent, /0 revival bonus/);
+    assert.equal(
+      api.getAdoptionFilterResult({}, api.getTorrentAction('98711'), [], state).hidden,
+      false
+    );
+    state.hideNotEnoughOrbsRows = true;
+    assert.equal(
+      api.getAdoptionFilterResult({}, api.getTorrentAction('98711'), [], state).hidden,
+      true
+    );
+
+    api.setTorrentAction('98711', '');
+    state.minimumCombinedOrbs = 1000;
+    queueAntTorrentPage('98711', { seeders: '2', age: '1 year ago' });
+    let searches = 0;
+    const tracker = {
+      site: 'RevivalCheck',
+      ready: () => true,
+      async search() {
+        searches += 1;
+        return null;
+      }
+    };
+    await api.processRow(seeded, 1, 1, [tracker], { cachedMetadata });
+    assert.equal(searches, 1);
+    assert.equal(api.getTorrentAction('98711'), '');
+
+    state.skipSeededTorrents = true;
+    const next = api.collectBatchRows([seeded], [tracker], 1, true).batch[0];
+    assert.equal(next?.row, seeded, 'a previous successful check must not retain a seeded skip');
+    queueAntTorrentPage('98711', { seeders: '0', files: ['CachedAdoption.mkv'] });
+    await api.processRow(seeded, 1, 1, [tracker], next, true);
+    assert.equal(searches, 2);
+  } finally {
+    api.setTorrentAction('98710', '');
+    api.setTorrentAction('98716', '');
+    filterRows = previousRows;
+    api.setFilterState(null);
+    configValues.set('qui_base_url', oldQuiUrl);
+  }
+});
+
+test('unreadable ANT checks stay retryable without marking a torrent adopted or below minimum', async () => {
+  const row = createBatchRow('98712');
+  const state = { ...api.getDefaultAdoptionFilterState(), minimumCombinedOrbs: 1001 };
+  api.setFilterState(state);
+  try {
+    requestResponses = [{ status: 503, responseText: 'unavailable' }];
+    await assert.rejects(api.processRow(row, 1, 1, []), /HTTP 503/);
+    assert.equal(api.getTorrentAction('98712'), '');
+    parsedDocuments.set('wrong-page', { getElementById: () => null });
+    requestResponses = [{ status: 200, responseText: 'wrong-page' }];
+    await assert.rejects(api.processRow(row, 1, 1, []), /missing torrent/);
+    assert.equal(api.getTorrentAction('98712'), '');
+    queueAntTorrentPage('98712', { seeders: '—' });
+    await assert.rejects(api.processRow(row, 1, 1, []), /seeder count/);
+    assert.equal(api.getTorrentAction('98712'), '');
+    queueAntTorrentPage('98712', { age: '' });
+    await assert.rejects(api.processRow(row, 1, 1, []), /combined Orbs/);
+    assert.equal(api.getTorrentAction('98712'), '');
+  } finally {
+    api.setFilterState(null);
+  }
+});
+
+test('a skip selected during ANT, qui or tracker lookup stops further processing', async () => {
+  const oldConfig = new Map(configValues);
+  configValues.set('qui_base_url', 'http://localhost:7476');
+  configValues.set('qui_token', 'token');
+  configValues.set('qui_auto_add_site_torrent', true);
+  configValues.set('use_cache', false);
+  try {
+    for (const [index, stage] of ['ANT', 'qui', 'tracker'].entries()) {
+      const id = String(98740 + index);
+      const action = index === 0 ? 'already-adopted' : 'not-enough-orbs';
+      const row = createBatchRow(id);
+      const actionCell = api.createActionCell(row, id, '');
+      row.appendChild(actionCell);
+      const select = actionCell.querySelector('select');
+      const chooseSkip = () => {
+        select.value = action;
+        select.listeners.change();
+      };
+      requestResponses = [
+        {
+          status: 200,
+          responseText: '[]',
+          beforeResponse: stage === 'qui' ? chooseSkip : undefined
+        }
+      ];
+      queueAntTorrentPage(id, { files: [`Skip${id}.mkv`] });
+      if (stage === 'ANT') requestResponses[0].beforeResponse = chooseSkip;
+      let searches = 0;
+      const tracker = {
+        site: 'SkipDuringSearch',
+        ready: () => true,
+        async search() {
+          searches++;
+          if (stage === 'tracker') chooseSkip();
+          return { site: this.site, seeders: 99, downloadUrl: 'https://tracker.example/download' };
+        }
+      };
+      const requestStart = requestedUrls.length;
+      await api.processRow(row, 1, 1, [tracker]);
+      assert.equal(requestedUrls.length - requestStart, stage === 'ANT' ? 1 : 2, stage);
+      assert.equal(searches, stage === 'tracker' ? 1 : 0, stage);
+      assert.equal(api.getTorrentAction(id), action, stage);
+      assert.equal(api.collectBatchRows([row], [tracker], 1).batch.length, 0);
+      api.setTorrentAction(id, '');
+    }
+  } finally {
+    requestResponses = [];
+    configValues.clear();
+    for (const [key, value] of oldConfig) configValues.set(key, value);
+  }
+});
+
+test('batch processing waits five seconds after a low-Orbs row and sixty after a qui lookup', async () => {
+  const oldConfig = new Map(configValues);
+  const previousRows = filterRows;
+  const timerStart = scheduledTimeouts.length;
+  const requestStart = requestedUrls.length;
+  const checkTimes = [];
+  const ids = ['98713', '98714', '98715'];
+  filterRows = ids.map((id) => createBatchRow(id));
+  api.setFilterState({
+    ...api.getDefaultAdoptionFilterState(),
+    minimumCombinedOrbs: 63500,
+    hideBelowBountyThreshold: false
+  });
+  configValues.set('tracker_scope', 'No lookup trackers');
+  configValues.set('qui_base_url', 'http://localhost:7476');
+  configValues.set('qui_token', 'token');
+  configValues.set('row_limit', 0);
+  configValues.set('row_delay_seconds', 60);
+  configValues.set('use_cache', false);
+  requestResponses = [];
+  for (const [index, id] of [...ids.entries()].reverse()) {
+    if (index > 0) requestResponses.unshift({ status: 200, responseText: '[]' });
+    queueAntTorrentPage(id, {
+      age: index === 0 ? '29 days ago' : '30 days ago',
+      files: [`Revival${id}.mkv`]
+    });
+    requestResponses[0].beforeResponse = () =>
+      checkTimes.push(scheduledTimeouts.length - timerStart);
+  }
+  try {
+    await flushScheduledPromise(api.run(), timerStart, 200);
+    assert.deepEqual(checkTimes, [0, 5, 65]);
+    const requests = requestedUrls.slice(requestStart);
+    assert.equal(requests.length, 5);
+    assert.deepEqual(
+      requests
+        .filter((url) => url.startsWith('https://anthelion.me/'))
+        .map((url) => new URL(url).searchParams.get('torrentid')),
+      ids
+    );
+    assert.equal(api.getTorrentAction(ids[0]), 'not-enough-orbs');
+    assert.equal(api.getTorrentAction(ids[1]), '');
+    assert.equal(api.getTorrentAction(ids[2]), '');
+  } finally {
+    ids.forEach((id) => api.setTorrentAction(id, ''));
+    filterRows = previousRows;
+    api.setFilterState(null);
+    configValues.clear();
+    for (const [key, value] of oldConfig) configValues.set(key, value);
+  }
 });
 
 test('filtered header sorting stays local and supports names and listing times', () => {
@@ -6222,16 +6682,9 @@ test('ANT metadata retains the folder root and relative file paths during row pr
   const previousQuiUrl = configValues.get('qui_base_url');
   configValues.set('qui_auto_add_site_torrent', false);
   configValues.set('qui_base_url', '');
-  parsedDocuments.set('folder-ant-metadata', {
-    querySelectorAll(selector) {
-      assert.match(selector, /tr:not\(\.colhead\):not\(\.colhead_dark\)/);
-      return files.map((textContent) => ({ textContent }));
-    },
-    querySelector(selector) {
-      return selector.includes('.filelist_path') ? { textContent: `/${root}/` } : null;
-    }
-  });
-  requestResponses = [{ status: 200, responseText: 'folder-ant-metadata' }];
+  const requestStart = pageRequests.length;
+  requestResponses = [];
+  queueAntTorrentPage('98501', { root, files });
   let searchedMetadata;
   const trackers = [
     {
@@ -6250,6 +6703,7 @@ test('ANT metadata retains the folder root and relative file paths during row pr
   ];
   try {
     await api.processRow(row, 1, 1, trackers);
+    assert.equal(pageRequests.length, requestStart + 1);
     assert.equal(searchedMetadata.rootFolder, root);
     assert.equal(searchedMetadata.filename, 'Folder.Release.mkv');
     assert.deepEqual(
@@ -6504,19 +6958,10 @@ test('missing ANT roots block proven folder layouts while preserving a single fi
       ['MissingRoot.mkv']
     ].entries()) {
       const id = String(98600 + index);
-      const html = `missing-root-${id}`;
-      parsedDocuments.set(html, {
-        querySelectorAll: () => files.map((textContent) => ({ textContent })),
-        querySelector: () => null
-      });
-      requestResponses = [{ status: 200, responseText: html }];
+      requestResponses = [];
+      queueAntTorrentPage(id, { files });
       let calls = 0;
       const row = createBatchRow(id);
-      const query = row.querySelector.bind(row);
-      row.querySelector = (selector) =>
-        selector === '.ant-cross-seed-state'
-          ? findDescendantByClass(row, 'ant-cross-seed-state')
-          : query(selector);
       await api.processRow(row, 1, 1, [
         {
           site: `MissingRoot${id}`,
@@ -6631,12 +7076,8 @@ test('folder metadata survives processing, cached restoration, qui submission an
   };
   configValues.set('qui_base_url', '');
   configValues.set('qui_auto_add_site_torrent', false);
-  parsedDocuments.set('folder-pipeline-metadata', {
-    querySelectorAll: () => paths.map((textContent) => ({ textContent })),
-    querySelector: (selector) =>
-      selector.includes('.filelist_path') ? { textContent: `/${root}/` } : null
-  });
-  requestResponses = [{ status: 200, responseText: 'folder-pipeline-metadata' }];
+  requestResponses = [];
+  queueAntTorrentPage(id, { root, files: paths });
   const items = [
     { contentPath: 'D:/Elsewhere/Feature.mkv', files: ['Feature.mkv'] },
     { contentPath: `D:/Media/${root}`, files: [`${root}/Feature.mkv`, `${root}/extras/Extra.mkv`] },
