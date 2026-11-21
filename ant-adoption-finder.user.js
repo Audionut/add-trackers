@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ANT - Adoption cross-seed finder
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.2.5
+// @version      0.2.6
 // @description  Scan and filter ANT adoption torrents, then find filename and file-list matches on other trackers.
 // @author       Audionut with additions from Surferosa
 // @match        https://anthelion.me/torrents.php?type=adoption*
@@ -402,6 +402,11 @@
       type: 'checkbox',
       default: false
     },
+    show_row_processing_buttons: {
+      label: 'Show per-row processing buttons',
+      type: 'checkbox',
+      default: false
+    },
     row_delay_seconds: {
       label: 'Delay between rows in seconds',
       type: 'unsigned int',
@@ -772,6 +777,7 @@
     'default_sort_direction',
     'skip_trumpable',
     'skip_seeded_torrents',
+    'show_row_processing_buttons',
     'seeding_filter',
     'clear_adoption_actions',
     'clear_filtered_scan'
@@ -798,6 +804,7 @@
     sortDirection: 'default_sort_direction',
     skipTrumpable: 'skip_trumpable',
     skipSeededTorrents: 'skip_seeded_torrents',
+    showRowProcessingButtons: 'show_row_processing_buttons',
     seedingFilter: 'seeding_filter'
   };
   const CONFIG_HELP_TEXT = {
@@ -835,6 +842,8 @@
     clear_filtered_scan: 'Deletes the saved multi-page result used by Open last scan.',
     skip_trumpable: 'Ignore ANT rows flagged as Trumpable before spending qui or tracker requests.',
     skip_seeded_torrents: 'Skip rows when the ANT detail page shows one or more seeders.',
+    show_row_processing_buttons:
+      'Show a Process this row button in the saved scan’s Action column.',
     row_delay_seconds:
       'Pause after tracker processing. Minimum 30 seconds. Rows skipped after checking ANT wait five seconds.',
     row_limit: 'Limit how many uncached eligible rows one button press processes.',
@@ -1771,6 +1780,7 @@
         : 'Descending',
       skipTrumpable: Boolean(GM_config.get('skip_trumpable')),
       skipSeededTorrents: Boolean(GM_config.get('skip_seeded_torrents')),
+      showRowProcessingButtons: Boolean(GM_config.get('show_row_processing_buttons')),
       seedingFilter: ['All rows', 'Seeding only', 'Not seeding only'].includes(seedingFilter)
         ? seedingFilter
         : 'All rows'
@@ -3903,8 +3913,15 @@
     rescan.className = 'ant-cross-seed-rescan-metadata';
     rescan.textContent = 'Rescan metadata';
     rescan.hidden = action !== 'broken';
+    rescan.disabled = rowProcessingRunning;
     rescan.addEventListener('click', () => rescanBrokenRow(row, torrentId));
-    cell.append(select, rescan);
+    const processButton = document.createElement('button');
+    processButton.type = 'button';
+    processButton.className = 'ant-cross-seed-process-row';
+    processButton.textContent = 'Process this row';
+    processButton.disabled = rowProcessingRunning;
+    processButton.addEventListener('click', () => startRowProcessing(row));
+    cell.append(select, rescan, processButton);
     return cell;
   }
 
@@ -4089,6 +4106,9 @@
   function applyAdoptionFilters(includeDeferredRows = true) {
     const startedAt = performanceNow();
     if (!adoptionFilterState) adoptionFilterState = getDefaultAdoptionFilterState();
+    document.documentElement.dataset.antShowRowProcessingButtons = String(
+      adoptionFilterState.showRowProcessingButtons
+    );
     const hydratedRows = includeDeferredRows ? hydrateDeferredFilteredScanRows() : 0;
     const regexes = buildMediaFilterMatchers(
       adoptionFilterState.excludedFormats,
@@ -4396,6 +4416,11 @@
       'hideAlreadyAdoptedRows'
     );
     createFilterCheckbox(sections.visibility, 'Hide trumpable rows', 'skipTrumpable');
+    createFilterCheckbox(
+      sections.visibility,
+      fields.show_row_processing_buttons.label,
+      'showRowProcessingButtons'
+    );
     sections.sort.append(sortFieldLabel, sortDirectionLabel);
 
     const showAll = document.createElement('button');
@@ -5897,11 +5922,11 @@
       attempted.push(url);
       try {
         const response = await gmRequest({ method: 'POST', url, data: formData });
-        if (!shouldContinue()) return null;
         if (response.status >= 200 && response.status < 300) {
           debugLog('qui add candidate succeeded', { url, status: response.status });
           return response;
         }
+        if (!shouldContinue()) return null;
         debugLog('qui add candidate rejected', { url, status: response.status });
         if (![401, 403, 404].includes(response.status)) {
           throw new Error(`Add failed with ${response.status}`);
@@ -6133,7 +6158,7 @@
   }
 
   function shouldPollquiAddJob(job) {
-    return !!job && !job.error && isquiAddJobPending(job);
+    return job?.status !== 'Submitting' && isquiAddJobPending(job);
   }
 
   function hasPollablequiAddJobs() {
@@ -7571,7 +7596,16 @@
     debugLog('tracker qui add start', { filename, match, savePath: config.savePath });
 
     try {
-      await postToqui(config, [match.downloadUrl]);
+      const submitted = await postToqui(
+        config,
+        [match.downloadUrl],
+        () => !autoAdded || !isRowProcessingCancellationRequested()
+      );
+      if (!submitted) {
+        quiAddJobs.delete(jobKey);
+        renderquiAddMonitor(row);
+        return false;
+      }
       cacheDelete(`qui-result:${filename}`);
       job.status = 'Submitted';
       job.updatedAt = Date.now();
@@ -8111,9 +8145,13 @@
 
   function setRowProcessingControls(running) {
     rowProcessingRunning = running;
-    document.querySelectorAll('.ant-cross-seed-rescan-metadata').forEach((button) => {
-      button.disabled = running;
-    });
+    const runButton = document.querySelector('#ant-cross-seed-run');
+    if (runButton) runButton.disabled = running;
+    document
+      .querySelectorAll('.ant-cross-seed-rescan-metadata, .ant-cross-seed-process-row')
+      .forEach((button) => {
+        button.disabled = running;
+      });
     const cancelButton = document.querySelector('#ant-cross-seed-cancel');
     if (!cancelButton) return;
     cancelButton.disabled = !running || rowProcessingCancelRequested;
@@ -8131,10 +8169,14 @@
     updateRunProgress(
       Number(bar?.value) || 0,
       Number(bar?.max) || 0,
-      'Cancellation requested; finishing the current request...',
+      'Cancellation requested; finishing work already in progress...',
       'running'
     );
     return true;
+  }
+
+  function isRowProcessingCancellationRequested() {
+    return rowProcessingRunning && rowProcessingCancelRequested;
   }
 
   function rowProcessingCacheKey(torrentId) {
@@ -8216,8 +8258,7 @@
   }
 
   function isRowEligibleForCachedDataRestore(row, loadAll) {
-    return Boolean(
-      row?.classList?.contains('zeroseed') &&
+    return (
       !row.hidden &&
       row.dataset.antCrossSeedPageCacheChecked !== 'true' &&
       (loadAll || Object.hasOwn(ADOPTION_ACTION_LABELS, row.dataset.antAdoptionAction))
@@ -8225,7 +8266,7 @@
   }
 
   function getRowsForCachedDataRestore(loadAll) {
-    return [...document.querySelectorAll('tr.torrent.torrent_row.zeroseed')].filter((row) =>
+    return [...document.querySelectorAll(FILTERABLE_ROW_SELECTOR)].filter((row) =>
       isRowEligibleForCachedDataRestore(row, loadAll)
     );
   }
@@ -8395,17 +8436,24 @@
       return true;
     }
 
+    function stopForCancellation(invalidateSnapshot = false) {
+      if (!isRowProcessingCancellationRequested()) return false;
+      if (invalidateSnapshot && GM_config.get('use_cache')) {
+        // Cached tracker results can be reused, but the row still has actions to finish.
+        cacheDelete(rowProcessingCacheKey(torrentId));
+      }
+      setRowState(row, 'cancelled: ready to check adoption', '');
+      restoreRowTitleLink(row, titleSnapshot);
+      return true;
+    }
+
     debugLog('row processing start', { index, total, torrentId, groupId });
     setRowState(row, `checking ANT adoption (${index}/${total})`, 'working');
     const page = await fetchAntTorrentPage(torrentId, groupId).catch((error) => {
-      if (!rowProcessingRunning || !rowProcessingCancelRequested) throw error;
+      if (!isRowProcessingCancellationRequested()) throw error;
       return null;
     });
-    if (rowProcessingRunning && rowProcessingCancelRequested) {
-      setRowState(row, 'cancelled: ready to check adoption', '');
-      restoreRowTitleLink(row, titleSnapshot);
-      return { cancelled: true };
-    }
+    if (stopForCancellation()) return { cancelled: true };
     if (stopForSavedSkip()) return { delayMs: ADOPTION_SKIP_DELAY_MS };
     const skip = checkAntAdoption(row, page, torrentId);
     if (skip) {
@@ -8427,6 +8475,7 @@
       page
     );
     if (stopForSavedSkip()) return { delayMs: ADOPTION_SKIP_DELAY_MS };
+    if (stopForCancellation()) return { cancelled: true };
     if (!antMetadata) {
       restoreRowTitleLink(row, titleSnapshot);
       return;
@@ -8454,6 +8503,7 @@
     }
 
     if (stopForSavedSkip()) return;
+    if (stopForCancellation()) return { cancelled: true };
     setRowState(row, `searching ${filename} (${index}/${total})`, 'working');
 
     const trackerSearch = await searchScopedTrackers(
@@ -8463,10 +8513,12 @@
       refreshCache
     );
     if (stopForSavedSkip()) return;
+    if (stopForCancellation(true)) return { cancelled: true };
     const { matches } = trackerSearch;
     appendMatches(row, matches, filename);
     const autoquiState = await maybeAutoAddTrackerMatchToqui(row, filename, matches);
     if (stopForSavedSkip()) return;
+    if (autoquiState !== 'accepted' && stopForCancellation(true)) return { cancelled: true };
     const fullyCompleted = isFullyCompletedRowCompletion(
       getRowCompletion(torrentId, filename, rowTrackers)
     );
@@ -8516,10 +8568,10 @@
     setRowState(row, statusText, statusState);
   }
 
-  async function run() {
+  async function run(targetRow = null) {
     if (rowProcessingRunning) return;
     const button = document.querySelector('#ant-cross-seed-run');
-    const rows = getRows();
+    const rows = targetRow ? [targetRow] : getRows();
     const limit = getRowLimit();
     const trackers = getScopedTrackers();
     const refreshCache = shouldRefreshTrackerCache();
@@ -8544,32 +8596,21 @@
         hasToken: Boolean(getquiConfig().token)
       }
     });
-    if (button) {
-      button.disabled = true;
-      button.textContent =
-        batch.length > 0
-          ? `Processing 0/${batch.length} eligible rows...`
-          : 'No uncached rows remaining';
-    }
-    updateRunProgress(
-      0,
-      batch.length,
-      batch.length > 0
-        ? `Processing 0 of ${batch.length} eligible rows.`
-        : 'No uncached eligible rows remain.',
-      batch.length > 0 ? 'running' : 'complete'
-    );
-
     if (batch.length === 0) {
-      if (button) {
-        button.disabled = false;
-        button.textContent = getRunButtonIdleText(limit, false);
-      }
+      if (button) button.textContent = getRunButtonIdleText(limit, Boolean(targetRow));
+      updateRunProgress(
+        0,
+        0,
+        targetRow ? 'This row is skipped or already cached.' : 'No uncached eligible rows remain.',
+        'complete'
+      );
       setRowProcessingControls(false);
       debugLog('run complete: no eligible rows', { stats });
       return;
     }
 
+    if (button) button.textContent = `Processing 0/${batch.length} eligible rows...`;
+    updateRunProgress(0, batch.length, `Processing 0 of ${batch.length} eligible rows.`, 'running');
     const normalDelayMs = getRowDelaySeconds() * 1000;
     let failedRows = 0;
     let handledRows = 0;
@@ -8654,10 +8695,9 @@
     }
 
     if (button) {
-      button.disabled = false;
       button.textContent = getRunButtonIdleText(
         limit,
-        hasRemaining || cancelled || handledRows < batch.length
+        Boolean(targetRow) || hasRemaining || cancelled || handledRows < batch.length
       );
     }
     if (cancelled) {
@@ -8696,6 +8736,23 @@
     });
     rowProcessingCancelRequested = false;
     setRowProcessingControls(false);
+  }
+
+  function startRowProcessing(targetRow) {
+    return run(targetRow).catch((error) => {
+      console.error('ANT adoption row processing failed:', error);
+      const button = document.querySelector('#ant-cross-seed-run');
+      if (button) button.textContent = getRunButtonIdleText(getRowLimit(), true);
+      rowProcessingCancelRequested = false;
+      setRowProcessingControls(false);
+      const bar = document.querySelector('#ant-cross-seed-progress progress');
+      updateRunProgress(
+        Number(bar?.value) || 0,
+        Number(bar?.max) || 0,
+        `Processing failed: ${error.message || error}`,
+        'error'
+      );
+    });
   }
 
   function addControls() {
@@ -8738,22 +8795,7 @@
       button.id = 'ant-cross-seed-run';
       button.type = 'button';
       button.textContent = getRunButtonIdleText(getRowLimit(), true);
-      button.addEventListener('click', () => {
-        run().catch((error) => {
-          console.error('ANT adoption row processing failed:', error);
-          button.disabled = false;
-          button.textContent = getRunButtonIdleText(getRowLimit(), true);
-          rowProcessingCancelRequested = false;
-          setRowProcessingControls(false);
-          const bar = document.querySelector('#ant-cross-seed-progress progress');
-          updateRunProgress(
-            Number(bar?.value) || 0,
-            Number(bar?.max) || 0,
-            `Processing failed: ${error.message || error}`,
-            'error'
-          );
-        });
-      });
+      button.addEventListener('click', () => startRowProcessing());
 
       const cancelButton = document.createElement('button');
       cancelButton.id = 'ant-cross-seed-cancel';
@@ -8978,6 +9020,15 @@
       .${ACTION_COLUMN_CLASS} {
         text-align: center;
         white-space: nowrap;
+      }
+
+      .${ACTION_COLUMN_CLASS} > button {
+        margin-inline-start: 4px;
+      }
+
+      :root:not([data-ant-show-row-processing-buttons="true"]) .ant-cross-seed-process-row,
+      tr[data-ant-adoption-action="broken"] .ant-cross-seed-process-row {
+        display: none;
       }
 
       .ant-adoption-highlight-grabbed {

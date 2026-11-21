@@ -118,6 +118,7 @@ Changes made in the filtered page take effect immediately on that page. They do 
 | Skip/hide trumpable                 | Hides Trumpable rows and prevents them from being processed.                                                                                                    |
 | Seeding filter                      | Shows all rows, seeding rows only, or non-seeding rows only.                                                                                                    |
 | Skip torrents that now have seeders | Skips rows whose ANT detail page reports at least one seeder during processing. Find this option under **Row visibility**.                                      |
+| Show per-row processing buttons     | Shows **Process this row** in the Action column. Find this option under **Row visibility**.                                                                     |
 | Sort by / direction                 | Sorts by bounty/GiB, total bounty, size, torrent name, listing time, or original scan order in the selected direction. Scan order ignores the direction.        |
 | Show all                            | Turns off the hide filters, including Apply media filters, and returns the grabbed and seeding filters to their all-row states. Media selections are retained.  |
 | Save page settings globally         | Saves the current page filters and sorting as the defaults used by later scans and Settings.                                                                    |
@@ -168,9 +169,9 @@ Actions are saved per ANT torrent and survive page refreshes and later scans. Se
 
 ## Process adoption rows
 
-On the filtered page, select **Search adoption rows** or **Process next _N_ adoption rows**.
+On the filtered page, select **Search adoption rows** or **Process next _N_ adoption rows** to run a batch. To check a single torrent, enable **Show per-row processing buttons** under **Adoption filters → Row visibility**, then click **Process this row** in its **Action** column. The toggle starts off. Use **Save page settings globally** to keep your choice for future scans. The button uses the same tracker scope, cache rules, and current ANT checks as batch processing. You can also select a row that had seeders when the scan was saved. On Broken rows, use **Rescan metadata** first.
 
-Processing starts with visible rows that had zero seeders in the adoption scan. Hidden rows, cached completed rows, and rows marked **Broken**, **Not enough Orbs**, or **Already adopted** are skipped before applying the batch limit. Trumpable rows are skipped when that option is enabled. M2TS rows are also skipped. ANT file metadata failures mark a row Broken. Failed or unreadable adoption checks can be retried.
+Batches start with visible rows that had zero seeders in the adoption scan. Cached completed rows and rows marked **Broken**, **Not enough Orbs**, or **Already adopted** are skipped before applying the batch limit. Trumpable rows are skipped when that option is enabled. M2TS rows are also skipped. ANT file metadata failures mark a row Broken. Failed or unreadable adoption checks can be retried.
 
 For each eligible row, the script:
 
@@ -197,7 +198,7 @@ When **Hide below minimum bounty/GiB** and **Include estimated revival bonus in 
 
 For an ANT folder torrent, the candidate must contain the video files under the same root directory and relative paths. A standalone file with the same video filename is rejected. Candidates without enough file-path information to verify the folder are also rejected, including filename-only BHD/HDB results. Single-file ANT adoptions can still match videos inside source folders. When an ANT folder is submitted during the qui follow-up, its save path is the parent of the verified source root directory.
 
-The progress display remains separate from the filter-panel header. **Cancel row processing** requests a safe cancellation: the active network request is allowed to finish, then no further rows are started.
+The progress display remains separate from the filter-panel header. **Cancel row processing** lets the current lookup finish, then stops before the next processing stage or row. A torrent already submitted to qui continues to be monitored.
 
 The delay after a row skipped by ANT's availability, seeder, or Orbs check is 5 seconds. The normal row delay defaults to 60 seconds with a 30-second minimum. A Rows per button press value of `0` processes every uncached eligible visible row.
 
@@ -289,6 +290,7 @@ Transient adoption-flow storage reads are retried on the same 10-second cadence 
 | Seeding filter                         |       All rows | Default seeding-state filter.                                                                                                                    |
 | Skip Trumpable rows                    |        Enabled | Hides and skips Trumpable rows.                                                                                                                  |
 | Skip torrents that now have seeders    |       Disabled | Skips torrents with one or more seeders on their current detail page.                                                                            |
+| Show per-row processing buttons        |       Disabled | Shows **Process this row** in the Action column on saved scans.                                                                                  |
 
 ### Processing and cache
 
@@ -375,7 +377,7 @@ No valid saved scan exists, or a scan is still running. Wait for the scan to fin
 
 ### Processing reports fewer rows than are present in the scan
 
-Only visible zero-seed rows are eligible. Hidden, Trumpable, M2TS, cached-complete, and otherwise ineligible rows are skipped. Hidden rows do not count against Rows per button press.
+Batch processing starts with visible zero-seed rows. Trumpable rows are skipped when the skip option is enabled. M2TS, cached-complete, and otherwise ineligible rows are also skipped. Hidden rows do not count against Rows per button press.
 
 ### Missing credentials or cached results
 
@@ -385,7 +387,7 @@ Configured qui lookup failures remain retryable. Correcting a tracker configurat
 
 ### Cancellation is not immediate
 
-Cancellation stops between requests. The currently active request is allowed to finish before the run stops.
+Cancellation lets the current lookup finish, including tracker searches started together. The run then stops before the next stage.
 
 ### Max GiB looks like a byte value after upgrading
 

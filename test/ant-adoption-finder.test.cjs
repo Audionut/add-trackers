@@ -231,6 +231,7 @@ const context = {
   },
   document: {
     title: 'ANT torrent',
+    documentElement: { dataset: {} },
     createTextNode(textContent) {
       return { textContent };
     },
@@ -820,7 +821,7 @@ test('retains the original settings and cache identity', () => {
   assert.match(source, /const SCRIPT_PREFIX = 'ant-adoption-filename-cross-seed';/);
   assert.match(source, /id: 'ANTAdoptionFilenameCrossSeedConfig'/);
   assert.match(source, /\/\/ @name\s+ANT - Adoption cross-seed finder/);
-  assert.match(source, /\/\/ @version\s+0\.2\.5/);
+  assert.match(source, /\/\/ @version\s+0\.2\.6/);
 });
 
 test('parses ANT sizes into GiB', () => {
@@ -847,6 +848,7 @@ test('saves page filter values into the durable shared settings record', () => {
     useEstimatedOrbsPerGib: true,
     minimumCombinedOrbs: 900000,
     skipSeededTorrents: true,
+    showRowProcessingButtons: true,
     hideNotEnoughOrbsRows: true,
     hideAlreadyAdoptedRows: true,
     maximumSizeGib: 20,
@@ -863,6 +865,7 @@ test('saves page filter values into the durable shared settings record', () => {
   assert.equal(saved.use_estimated_orbs_per_gib, true);
   assert.equal(saved.minimum_combined_orbs, 900000);
   assert.equal(saved.skip_seeded_torrents, true);
+  assert.equal(saved.show_row_processing_buttons, true);
   assert.equal(saved.hide_not_enough_orbs_rows, true);
   assert.equal(saved.hide_already_adopted_rows, true);
   assert.equal(saved.show_only_grabbed_rows, true);
@@ -877,6 +880,7 @@ test('saves page filter values into the durable shared settings record', () => {
   assert.equal(api.getDefaultAdoptionFilterState().useEstimatedOrbsPerGib, true);
   assert.equal(api.getDefaultAdoptionFilterState().minimumCombinedOrbs, 900000);
   assert.equal(api.getDefaultAdoptionFilterState().skipSeededTorrents, true);
+  assert.equal(api.getDefaultAdoptionFilterState().showRowProcessingButtons, true);
   assert.equal(api.getDefaultAdoptionFilterState().hideNotEnoughOrbsRows, true);
   assert.equal(api.getDefaultAdoptionFilterState().hideAlreadyAdoptedRows, true);
   assert.equal(api.getDefaultAdoptionFilterState().showOnlyGrabbedRows, true);
@@ -889,6 +893,7 @@ test('saves page filter values into the durable shared settings record', () => {
     'minimum_combined_orbs',
     'use_estimated_orbs_per_gib',
     'skip_seeded_torrents',
+    'show_row_processing_buttons',
     'hide_not_enough_orbs_rows',
     'hide_already_adopted_rows'
   ]) {
@@ -1263,10 +1268,21 @@ test('Show all preserves media choices when another value is selected', () => {
     skipSeeded.checked = true;
     skipSeeded.listeners.change();
     assert.equal(state.skipSeededTorrents, true);
+    const rowProcessing = visibility
+      .querySelectorAll('input[data-filter-state]')
+      .find((node) => node.dataset.filterState === 'showRowProcessingButtons');
+    assert.equal(rowProcessing.checked, false);
+    rowProcessing.checked = true;
+    rowProcessing.listeners.change();
+    assert.equal(context.document.documentElement.dataset.antShowRowProcessingButtons, 'true');
     const mediaSection = body.children.find((node) => node.className?.includes('ant-filter-media'));
     const control = mediaSection.children.find((node) => node.className === 'ant-media-filters');
     const actions = body.children.find((node) => node.className === 'ant-filter-actions');
     actions.children.find((node) => node.textContent === 'Show all').listeners.click();
+    assert.equal(rowProcessing.checked, true);
+    rowProcessing.checked = false;
+    rowProcessing.listeners.change();
+    assert.equal(context.document.documentElement.dataset.antShowRowProcessingButtons, 'false');
     assert.equal(state.hideExcludedFormats, false);
     assert.equal(state.combineMediaFilters, true);
     const groupControl = mediaSection.children.find(
@@ -5212,6 +5228,180 @@ test('a triggered scan stays on the current page and locks Open last scan until 
   configValues.set('minimum_bounty', 0);
 });
 
+test('the per-row processing button checks only the clicked torrent', async () => {
+  const previousRows = filterRows;
+  const previousResponses = requestResponses;
+  const first = createBatchRow('98732');
+  const selected = createBatchRow('98733');
+  const runButton = { disabled: false, textContent: 'Search adoption rows' };
+  const bar = { max: 0, value: 0 };
+  const label = { textContent: '' };
+  const display = {
+    dataset: {},
+    querySelector: (selector) => (selector === 'progress' ? bar : label)
+  };
+  const processingButtons = [first, selected].map((row) => {
+    row.appendChild(api.createActionCell(row, row.dataset.antAdoptionTorrentId, ''));
+    return findDescendantByClass(row, 'ant-cross-seed-process-row');
+  });
+  const [firstButton, selectedButton] = processingButtons;
+  const processingSelector = '.ant-cross-seed-rescan-metadata, .ant-cross-seed-process-row';
+  try {
+    assert.ok(firstButton && selectedButton, 'both rows offer a processing button');
+    documentNodes.set('#ant-cross-seed-run', runButton);
+    documentNodes.set('#ant-cross-seed-progress', display);
+    documentNodeLists.set(processingSelector, processingButtons);
+    filterRows = [first, selected];
+    requestResponses = [];
+    queueAntTorrentPage('98733', { adoptable: false });
+    const requestStart = requestedUrls.length;
+
+    const processing = selectedButton.listeners.click();
+    assert.equal(runButton.disabled, true);
+    assert.equal(firstButton.disabled, true);
+    assert.equal(selectedButton.disabled, true);
+    await firstButton.listeners.click();
+    await api.run();
+    await processing;
+
+    const requests = requestedUrls.slice(requestStart);
+    assert.deepEqual(
+      requests.map((url) => new URL(url).searchParams.get('torrentid')),
+      ['98733']
+    );
+    assert.equal(api.getTorrentAction('98733'), 'already-adopted');
+    assert.equal(findDescendantByClass(first, 'ant-cross-seed-state'), null);
+    assert.equal(bar.value, 1);
+    assert.equal(bar.max, 1);
+    assert.equal(selectedButton.disabled, false);
+    assert.equal(runButton.disabled, false);
+    assert.equal(runButton.textContent, 'Search adoption rows');
+
+    await selectedButton.listeners.click();
+    assert.equal(
+      requestedUrls.length,
+      requestStart + 1,
+      'saved skips still apply to a selected row'
+    );
+    assert.equal(label.textContent, 'This row is skipped or already cached.');
+    assert.equal(runButton.textContent, 'Search adoption rows');
+  } finally {
+    api.setTorrentAction('98733', '');
+    documentNodes.delete('#ant-cross-seed-run');
+    documentNodes.delete('#ant-cross-seed-progress');
+    documentNodeLists.delete(processingSelector);
+    filterRows = previousRows;
+    requestResponses = previousResponses;
+  }
+});
+
+test('cancelling a selected row stops new requests and keeps accepted submissions', async () => {
+  const oldConfig = new Map(configValues);
+  const previousResponses = requestResponses;
+  const cancel = () => assert.equal(api.requestRowProcessingCancellation(), true);
+  api.stopquiAddPolling();
+  api.clearquiAddJobs();
+  configValues.set('tracker_scope', 'BHD');
+  configValues.set('bhd', true);
+  configValues.set('bhd_api', 'fixture');
+  configValues.set('bhd_rss', 'fixture');
+  configValues.set('qui_base_url', 'http://localhost:7476');
+  configValues.set('qui_token', 'fixture');
+  configValues.set('qui_auto_add_site_torrent', true);
+  configValues.set('qui_auto_add_min_seeders', 1);
+  configValues.set('use_cache', true);
+  api.cacheSet(
+    api.iconCacheKey('BHD', 'https://beyond-hd.me/favicon.ico'),
+    'data:image/png;base64,aWNvbg=='
+  );
+
+  try {
+    const stages = ['qui lookup', 'tracker lookup', 'rejected add', 'accepted add'];
+    for (const [index, stage] of stages.entries()) {
+      const id = String(98813 + index);
+      const filename = `Cancel${id}.mkv`;
+      const downloadUrl = `https://beyond-hd.me/torrents/download/${id}`;
+      const row = createBatchRow(id);
+      const cell = api.createActionCell(row, id, '');
+      row.appendChild(cell);
+      const button = findDescendantByClass(cell, 'ant-cross-seed-process-row');
+      if (stage === 'tracker lookup') {
+        configValues.set('bhd_api', '');
+        requestResponses = [{ status: 200, responseText: '[]' }];
+        queueAntTorrentPage(id, { files: [filename] });
+        await button.listeners.click();
+        configValues.set('bhd_api', 'fixture');
+      }
+      let overlappingPoll;
+      requestResponses = [
+        {
+          status: 200,
+          responseText: '[]',
+          beforeResponse: stage === 'qui lookup' ? cancel : undefined
+        },
+        {
+          status: 200,
+          responseText: JSON.stringify({
+            results: [
+              {
+                name: `Cancel${id}`,
+                seeders: 25,
+                download_url: downloadUrl
+              }
+            ]
+          }),
+          beforeResponse: stage === 'tracker lookup' ? cancel : undefined
+        },
+        {
+          status: stage === 'accepted add' ? 200 : 404,
+          beforeResponse: stage.endsWith(' add')
+            ? () => {
+                if (stage === 'rejected add') overlappingPoll = api.pollquiAddJobs();
+                cancel();
+              }
+            : undefined
+        },
+        ...Array.from({ length: 3 }, () => ({ status: 200, responseText: '[]' }))
+      ];
+      if (stage === 'tracker lookup') requestResponses.shift();
+      queueAntTorrentPage(id, { files: [filename] });
+      const requestStart = requestedOptions.length;
+
+      await button.listeners.click();
+      await overlappingPoll;
+      await new Promise(setImmediate);
+
+      const requests = requestedOptions.slice(requestStart);
+      const adds = requests.filter(({ url }) => url.includes('/torrents/add'));
+      assert.equal(adds.length, stage.endsWith(' add') ? 1 : 0, stage);
+      if (stage === 'qui lookup') assert.equal(requests.length, 2, stage);
+      const job = api.getquiAddJob(`${filename}:BHD:${downloadUrl}`);
+      const state = findDescendantByClass(row, 'ant-cross-seed-state').textContent;
+      if (stage === 'accepted add') {
+        assert.equal(job?.error, '');
+        assert.equal(state, '1 match');
+      } else {
+        assert.equal(job, undefined, stage);
+        assert.match(state, /cancelled/, stage);
+      }
+      if (stage === 'tracker lookup') {
+        const bhd = api.getTrackerDefinitions().find((tracker) => tracker.site === 'BHD');
+        assert.equal(
+          api.collectBatchRows([row], [bhd], 1).batch.length,
+          1,
+          'cancelled row can retry'
+        );
+      }
+    }
+  } finally {
+    requestResponses = previousResponses;
+    api.clearquiAddJobs();
+    api.stopquiAddPolling();
+    configValues.clear();
+    for (const [key, value] of oldConfig) configValues.set(key, value);
+  }
+});
+
 test('row cancellation stops retries, later rows, and an active delay', async () => {
   const runButton = { disabled: false, textContent: '' };
   const cancelButton = { disabled: true, textContent: '' };
@@ -5382,10 +5572,11 @@ test('configurable sorting supports field, direction, and restoring scan order',
   assert.deepEqual(rows, [first, second, third]);
 });
 
-test('page load restores cached processing details for action rows without lookup requests', () => {
+test('page load restores action rows and opt-in seeded rows without lookup requests', () => {
   configValues.set('use_cache', true);
   configValues.set('load_cache_status_on_page_load', false);
-  const normal = createRestorableRow('901');
+  const normal = createRestorableRow('901', '', { seeding: true });
+  normal.classList.contains = () => false;
   const grabbed = createRestorableRow('902', 'grabbed');
   grabbed.hidden = false;
   filterRows = [normal, grabbed];
@@ -5433,6 +5624,8 @@ test('page load restores cached processing details for action rows without looku
   configValues.set('load_cache_status_on_page_load', true);
   api.loadCachedRowStatusesOnPageLoad();
   assert.equal(findDescendantByClass(normal, 'ant-cross-seed-state').textContent, '1 match');
+  assert.ok(findDescendantByClass(normal, 'ant-cross-seed-qui-title'));
+  assert.ok(findDescendantByClass(normal, 'ant-cross-seed-match'));
   assert.equal(requestedUrls.length, requestCount);
 
   configValues.delete('load_cache_status_on_page_load');
