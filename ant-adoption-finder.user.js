@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ANT - Adoption cross-seed finder
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      0.2.6
+// @version      0.2.7
 // @description  Scan and filter ANT adoption torrents, then find filename and file-list matches on other trackers.
 // @author       Audionut with additions from Surferosa
 // @match        https://anthelion.me/torrents.php?type=adoption*
@@ -402,6 +402,11 @@
       type: 'checkbox',
       default: false
     },
+    stop_at_adoption_limit: {
+      label: 'Stop processing at ANT adoption limit',
+      type: 'checkbox',
+      default: true
+    },
     show_row_processing_buttons: {
       label: 'Show per-row processing buttons',
       type: 'checkbox',
@@ -777,6 +782,7 @@
     'default_sort_direction',
     'skip_trumpable',
     'skip_seeded_torrents',
+    'stop_at_adoption_limit',
     'show_row_processing_buttons',
     'seeding_filter',
     'clear_adoption_actions',
@@ -804,6 +810,7 @@
     sortDirection: 'default_sort_direction',
     skipTrumpable: 'skip_trumpable',
     skipSeededTorrents: 'skip_seeded_torrents',
+    stopAtAdoptionLimit: 'stop_at_adoption_limit',
     showRowProcessingButtons: 'show_row_processing_buttons',
     seedingFilter: 'seeding_filter'
   };
@@ -842,6 +849,8 @@
     clear_filtered_scan: 'Deletes the saved multi-page result used by Open last scan.',
     skip_trumpable: 'Ignore ANT rows flagged as Trumpable before spending qui or tracker requests.',
     skip_seeded_torrents: 'Skip rows when the ANT detail page shows one or more seeders.',
+    stop_at_adoption_limit:
+      'End processing when ANT says you have reached your pending adoption limit.',
     show_row_processing_buttons:
       'Show a Process this row button in the saved scan’s Action column.',
     row_delay_seconds:
@@ -1780,6 +1789,7 @@
         : 'Descending',
       skipTrumpable: Boolean(GM_config.get('skip_trumpable')),
       skipSeededTorrents: Boolean(GM_config.get('skip_seeded_torrents')),
+      stopAtAdoptionLimit: Boolean(GM_config.get('stop_at_adoption_limit')),
       showRowProcessingButtons: Boolean(GM_config.get('show_row_processing_buttons')),
       seedingFilter: ['All rows', 'Seeding only', 'Not seeding only'].includes(seedingFilter)
         ? seedingFilter
@@ -4408,6 +4418,11 @@
       'Skip torrents that now have seeders',
       'skipSeededTorrents'
     );
+    createFilterCheckbox(
+      sections.visibility,
+      fields.stop_at_adoption_limit.label,
+      'stopAtAdoptionLimit'
+    );
     createFilterCheckbox(sections.visibility, 'Hide ignored rows', 'hideIgnoredRows');
     createFilterCheckbox(sections.visibility, 'Hide Not enough Orbs rows', 'hideNotEnoughOrbsRows');
     createFilterCheckbox(
@@ -5285,13 +5300,21 @@
     return revivalBonusForAge(age);
   }
 
-  function checkAntAdoption(row, doc, torrentId) {
+  function hasAntAdoptionLimitNotice(detailsRow) {
+    return [...(detailsRow?.querySelectorAll('em') || [])].some((notice) =>
+      /^Can['’]t adopt:\s*You already have\s+\d[\d,]*\s+pending adoptions?\b/i.test(
+        notice.textContent.trim()
+      )
+    );
+  }
+
+  function checkAntAdoption(row, doc, torrentId, adoptionLimitReached) {
     const summaryRow = doc.getElementById(`torrent${torrentId}`);
     const detailsRow = doc.getElementById(`torrent_${torrentId}`);
     if (!summaryRow || !detailsRow) {
       throw new Error(`ANT response is missing torrent ${torrentId}.`);
     }
-    if (!findAdoptionButton(torrentId, detailsRow)) {
+    if (!adoptionLimitReached && !findAdoptionButton(torrentId, detailsRow)) {
       return { action: 'already-adopted', message: 'Already adopted: adoption button unavailable' };
     }
 
@@ -8454,8 +8477,22 @@
       return null;
     });
     if (stopForCancellation()) return { cancelled: true };
-    if (stopForSavedSkip()) return { delayMs: ADOPTION_SKIP_DELAY_MS };
-    const skip = checkAntAdoption(row, page, torrentId);
+    const adoptionLimitReached = hasAntAdoptionLimitNotice(
+      page.getElementById(`torrent_${torrentId}`)
+    );
+    const skippedWhileChecking = stopForSavedSkip();
+    if (
+      adoptionLimitReached &&
+      (adoptionFilterState?.stopAtAdoptionLimit ?? Boolean(GM_config.get('stop_at_adoption_limit')))
+    ) {
+      if (!skippedWhileChecking) {
+        setRowState(row, 'ANT adoption limit reached', '');
+        restoreRowTitleLink(row, titleSnapshot);
+      }
+      return { adoptionLimitReached: true };
+    }
+    if (skippedWhileChecking) return { delayMs: ADOPTION_SKIP_DELAY_MS };
+    const skip = checkAntAdoption(row, page, torrentId, adoptionLimitReached);
     if (skip) {
       if (skip.action && getTorrentAction(torrentId) !== 'grabbed') {
         markAdoptionRowAction(row, skip.action, torrentId, false);
@@ -8615,6 +8652,7 @@
     let failedRows = 0;
     let handledRows = 0;
     let cancelled = false;
+    let stoppedAtAdoptionLimit = false;
     for (let i = 0; i < batch.length; i += 1) {
       if (rowProcessingCancelRequested) {
         cancelled = true;
@@ -8661,6 +8699,10 @@
         cancelled = true;
         break;
       }
+      if (outcome?.adoptionLimitReached) {
+        stoppedAtAdoptionLimit = true;
+        break;
+      }
       handledRows = i + 1;
       updateRunProgress(
         handledRows,
@@ -8700,14 +8742,15 @@
         Boolean(targetRow) || hasRemaining || cancelled || handledRows < batch.length
       );
     }
-    if (cancelled) {
+    if (cancelled || stoppedAtAdoptionLimit) {
+      const reason = stoppedAtAdoptionLimit ? 'Stopped at ANT adoption limit' : 'Cancelled';
       updateRunProgress(
         handledRows,
         batch.length,
-        `Cancelled after ${handledRows} of ${batch.length} rows${failedRows ? `; ${failedRows} failed` : ''}.`,
-        'cancelled'
+        `${reason} after ${handledRows} of ${batch.length} rows${failedRows ? `; ${failedRows} failed` : ''}.`,
+        stoppedAtAdoptionLimit ? 'stopped' : 'cancelled'
       );
-      debugLog('run cancelled', {
+      debugLog(stoppedAtAdoptionLimit ? 'run stopped at adoption limit' : 'run cancelled', {
         rowCount: rows.length,
         batchCount: batch.length,
         handledRows,
@@ -8876,7 +8919,8 @@
         accent-color: #c94f4f;
       }
 
-      #ant-cross-seed-progress[data-state="cancelled"] progress {
+      #ant-cross-seed-progress[data-state="cancelled"] progress,
+      #ant-cross-seed-progress[data-state="stopped"] progress {
         accent-color: #aaa;
       }
 

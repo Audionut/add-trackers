@@ -650,7 +650,14 @@ function createBatchRow(torrentId, groupId = '45') {
 
 function queueAntTorrentPage(
   torrentId,
-  { adoptable = true, seeders = '0', age = '2 days ago', files = [], root = '' } = {}
+  {
+    adoptable = true,
+    pendingAdoptions = null,
+    seeders = '0',
+    age = '2 days ago',
+    files = [],
+    root = ''
+  } = {}
 ) {
   const summary = {
     querySelectorAll(selector) {
@@ -661,7 +668,18 @@ function queueAntTorrentPage(
   const details = {
     querySelectorAll(selector) {
       if (selector === 'button') {
-        return adoptable ? [{ getAttribute: () => `return adopt('${torrentId}');` }] : [];
+        return adoptable && pendingAdoptions === null
+          ? [{ getAttribute: () => `return adopt('${torrentId}');` }]
+          : [];
+      }
+      if (selector === 'em') {
+        return pendingAdoptions === null
+          ? []
+          : [
+              {
+                textContent: `Can't adopt: You already have ${pendingAdoptions} pending adoptions. Seed these torrents and complete your foster stint before applying for additional adoptions.`
+              }
+            ];
       }
       assert.equal(selector, 'strong');
       return age
@@ -821,7 +839,7 @@ test('retains the original settings and cache identity', () => {
   assert.match(source, /const SCRIPT_PREFIX = 'ant-adoption-filename-cross-seed';/);
   assert.match(source, /id: 'ANTAdoptionFilenameCrossSeedConfig'/);
   assert.match(source, /\/\/ @name\s+ANT - Adoption cross-seed finder/);
-  assert.match(source, /\/\/ @version\s+0\.2\.6/);
+  assert.match(source, /\/\/ @version\s+0\.2\.7/);
 });
 
 test('parses ANT sizes into GiB', () => {
@@ -848,6 +866,7 @@ test('saves page filter values into the durable shared settings record', () => {
     useEstimatedOrbsPerGib: true,
     minimumCombinedOrbs: 900000,
     skipSeededTorrents: true,
+    stopAtAdoptionLimit: false,
     showRowProcessingButtons: true,
     hideNotEnoughOrbsRows: true,
     hideAlreadyAdoptedRows: true,
@@ -865,6 +884,7 @@ test('saves page filter values into the durable shared settings record', () => {
   assert.equal(saved.use_estimated_orbs_per_gib, true);
   assert.equal(saved.minimum_combined_orbs, 900000);
   assert.equal(saved.skip_seeded_torrents, true);
+  assert.equal(saved.stop_at_adoption_limit, false);
   assert.equal(saved.show_row_processing_buttons, true);
   assert.equal(saved.hide_not_enough_orbs_rows, true);
   assert.equal(saved.hide_already_adopted_rows, true);
@@ -880,6 +900,7 @@ test('saves page filter values into the durable shared settings record', () => {
   assert.equal(api.getDefaultAdoptionFilterState().useEstimatedOrbsPerGib, true);
   assert.equal(api.getDefaultAdoptionFilterState().minimumCombinedOrbs, 900000);
   assert.equal(api.getDefaultAdoptionFilterState().skipSeededTorrents, true);
+  assert.equal(api.getDefaultAdoptionFilterState().stopAtAdoptionLimit, false);
   assert.equal(api.getDefaultAdoptionFilterState().showRowProcessingButtons, true);
   assert.equal(api.getDefaultAdoptionFilterState().hideNotEnoughOrbsRows, true);
   assert.equal(api.getDefaultAdoptionFilterState().hideAlreadyAdoptedRows, true);
@@ -893,6 +914,7 @@ test('saves page filter values into the durable shared settings record', () => {
     'minimum_combined_orbs',
     'use_estimated_orbs_per_gib',
     'skip_seeded_torrents',
+    'stop_at_adoption_limit',
     'show_row_processing_buttons',
     'hide_not_enough_orbs_rows',
     'hide_already_adopted_rows'
@@ -6646,6 +6668,104 @@ test('a skip selected during ANT, qui or tracker lookup stops further processing
     }
   } finally {
     requestResponses = [];
+    configValues.clear();
+    for (const [key, value] of oldConfig) configValues.set(key, value);
+  }
+});
+
+test('the ANT adoption limit stops a batch without marking its row and can be bypassed for qui', async () => {
+  const oldConfig = new Map(configValues);
+  const previousRows = filterRows;
+  const previousResponses = requestResponses;
+  const limitedId = '98761';
+  const laterId = '98762';
+  const limited = createBatchRow(limitedId);
+  const later = createBatchRow(laterId);
+  const actionCell = api.createActionCell(limited, limitedId, '');
+  limited.appendChild(actionCell);
+  const select = actionCell.querySelector('select');
+  const runButton = { disabled: false, textContent: '' };
+  const label = { textContent: '' };
+  const bar = { value: 0, max: 0 };
+  const progress = {
+    dataset: {},
+    querySelector: (selector) => (selector === 'progress' ? bar : label)
+  };
+  documentNodes.set('#ant-cross-seed-run', runButton);
+  documentNodes.set('#ant-cross-seed-progress', progress);
+  configValues.set('tracker_scope', 'No lookup trackers');
+  configValues.set('qui_base_url', 'http://localhost:7476');
+  configValues.set('qui_token', 'fixture');
+  configValues.set('row_limit', 0);
+  configValues.set('row_delay_seconds', 30);
+  configValues.set('use_cache', false);
+  configValues.delete('stop_at_adoption_limit');
+  const state = {
+    ...api.getDefaultAdoptionFilterState(),
+    hideBelowBountyThreshold: false,
+    minimumCombinedOrbs: 0
+  };
+  api.setFilterState(state);
+  filterRows = [limited, later];
+
+  try {
+    requestResponses = [];
+    queueAntTorrentPage(laterId, { adoptable: false });
+    queueAntTorrentPage(limitedId, { pendingAdoptions: 30, files: ['Limit.mkv'] });
+    const requestStart = requestedUrls.length;
+    const timerStart = scheduledTimeouts.length;
+
+    await flushScheduledPromise(api.run(), timerStart);
+
+    assert.equal(requestedUrls.length, requestStart + 1);
+    assert.equal(scheduledTimeouts.length, timerStart);
+    assert.match(label.textContent, /ANT adoption limit/i);
+    assert.equal(bar.value, 0);
+    assert.equal(runButton.disabled, false);
+    assert.equal(api.getTorrentAction(limitedId), '');
+    assert.equal(api.collectBatchRows([limited, later], [], 0).batch[0].row, limited);
+
+    requestResponses = [];
+    queueAntTorrentPage(laterId, { adoptable: false });
+    queueAntTorrentPage(limitedId, { pendingAdoptions: 15 });
+    requestResponses[0].beforeResponse = () => {
+      select.value = 'not-enough-orbs';
+      select.listeners.change();
+    };
+    await flushScheduledPromise(api.run(), scheduledTimeouts.length);
+
+    assert.equal(requestedUrls.length, requestStart + 2);
+    assert.match(label.textContent, /ANT adoption limit/i);
+    assert.equal(api.getTorrentAction(limitedId), 'not-enough-orbs');
+    assert.equal(api.getTorrentAction(laterId), '');
+    select.value = '';
+    select.listeners.change();
+
+    state.stopAtAdoptionLimit = false;
+    const bypassStart = requestedUrls.length;
+    requestResponses = [];
+    queueAntTorrentPage(laterId, { adoptable: false });
+    requestResponses.unshift({ status: 200, responseText: '[]' });
+    queueAntTorrentPage(limitedId, { pendingAdoptions: 7, files: ['Limit.mkv'] });
+    await flushScheduledPromise(api.run(), scheduledTimeouts.length);
+
+    const requests = requestedUrls.slice(bypassStart).map((url) => new URL(url));
+    assert.deepEqual(
+      requests.map((url) => url.searchParams.get('torrentid')),
+      [limitedId, null, laterId]
+    );
+    assert.equal(requests[1].hostname, 'localhost');
+    assert.equal(api.getTorrentAction(limitedId), '');
+    assert.equal(api.getTorrentAction(laterId), 'already-adopted');
+    assert.equal(bar.value, 2);
+  } finally {
+    api.setTorrentAction(laterId, '');
+    api.setTorrentAction(limitedId, '');
+    api.setFilterState(null);
+    filterRows = previousRows;
+    requestResponses = previousResponses;
+    documentNodes.delete('#ant-cross-seed-run');
+    documentNodes.delete('#ant-cross-seed-progress');
     configValues.clear();
     for (const [key, value] of oldConfig) configValues.set(key, value);
   }

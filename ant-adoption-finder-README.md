@@ -97,31 +97,32 @@ The in-page **Adoption filters** panel is collapsed by default. Select its heade
 
 Changes made in the filtered page take effect immediately on that page. They do not replace the global defaults until you select **Save page settings globally**.
 
-| Page control                        | Behavior                                                                                                                                                        |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Min bounty/GiB                      | Sets the bounty-per-GiB threshold. Rows at the minimum qualify when the estimated revival bonus is included.                                                    |
-| Include estimated revival bonus     | Applies the bounty/GiB threshold to **Est. Orbs / GiB** and verifies the rate during processing.                                                                |
-| Min bounty                          | Sets the minimum total bounty. `0` disables this threshold; otherwise rows below it can be hidden.                                                              |
-| Min combined Orbs                   | Requires the saved adoption bounty plus the revival bonus to meet this amount. The script checks the total when it processes the row. `0` disables the minimum. |
-| Max GiB                             | Sets the maximum torrent size in GiB. `0` disables the size limit.                                                                                              |
-| Media filters                       | Multi-select dropdowns for Source, Extension, Codec, Audio, Subtitles, Resolution, and Language. Each category supports Ignore selected or Only show selected.  |
-| Hide below min bounty/GiB           | Applies the rate threshold to the selected bounty/GiB basis.                                                                                                    |
-| Hide below min bounty               | Hides rows below Min bounty.                                                                                                                                    |
-| Hide above maximum                  | Hides rows larger than Max GiB.                                                                                                                                 |
-| Apply media filters                 | Applies the active media-category selections. Empty categories do not filter rows.                                                                              |
-| Combine media filters               | Requires every active Ignore category to match before excluding a row. Only-show categories are combined separately and must all match.                         |
-| Exclusion groups                    | Add or remove groups of dropdown conditions. Match all categories within a group; a match in any group excludes the row.                                        |
-| Hide ignored                        | Hides rows whose saved action is Ignored.                                                                                                                       |
-| Hide Not enough Orbs rows           | Hides rows marked Not enough Orbs.                                                                                                                              |
-| Hide Already adopted rows           | Hides rows marked Already adopted.                                                                                                                              |
-| Grabbed filter                      | Shows all grabbed states, hides Grabbed rows, or shows only Grabbed rows. Show only overrides every other row filter.                                           |
-| Skip/hide trumpable                 | Hides Trumpable rows and prevents them from being processed.                                                                                                    |
-| Seeding filter                      | Shows all rows, seeding rows only, or non-seeding rows only.                                                                                                    |
-| Skip torrents that now have seeders | Skips rows whose ANT detail page reports at least one seeder during processing. Find this option under **Row visibility**.                                      |
-| Show per-row processing buttons     | Shows **Process this row** in the Action column. Find this option under **Row visibility**.                                                                     |
-| Sort by / direction                 | Sorts by bounty/GiB, total bounty, size, torrent name, listing time, or original scan order in the selected direction. Scan order ignores the direction.        |
-| Show all                            | Turns off the hide filters, including Apply media filters, and returns the grabbed and seeding filters to their all-row states. Media selections are retained.  |
-| Save page settings globally         | Saves the current page filters and sorting as the defaults used by later scans and Settings.                                                                    |
+| Page control                          | Behavior                                                                                                                                                        |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Min bounty/GiB                        | Sets the bounty-per-GiB threshold. Rows at the minimum qualify when the estimated revival bonus is included.                                                    |
+| Include estimated revival bonus       | Applies the bounty/GiB threshold to **Est. Orbs / GiB** and verifies the rate during processing.                                                                |
+| Min bounty                            | Sets the minimum total bounty. `0` disables this threshold; otherwise rows below it can be hidden.                                                              |
+| Min combined Orbs                     | Requires the saved adoption bounty plus the revival bonus to meet this amount. The script checks the total when it processes the row. `0` disables the minimum. |
+| Max GiB                               | Sets the maximum torrent size in GiB. `0` disables the size limit.                                                                                              |
+| Media filters                         | Multi-select dropdowns for Source, Extension, Codec, Audio, Subtitles, Resolution, and Language. Each category supports Ignore selected or Only show selected.  |
+| Hide below min bounty/GiB             | Applies the rate threshold to the selected bounty/GiB basis.                                                                                                    |
+| Hide below min bounty                 | Hides rows below Min bounty.                                                                                                                                    |
+| Hide above maximum                    | Hides rows larger than Max GiB.                                                                                                                                 |
+| Apply media filters                   | Applies the active media-category selections. Empty categories do not filter rows.                                                                              |
+| Combine media filters                 | Requires every active Ignore category to match before excluding a row. Only-show categories are combined separately and must all match.                         |
+| Exclusion groups                      | Add or remove groups of dropdown conditions. Match all categories within a group; a match in any group excludes the row.                                        |
+| Hide ignored                          | Hides rows whose saved action is Ignored.                                                                                                                       |
+| Hide Not enough Orbs rows             | Hides rows marked Not enough Orbs.                                                                                                                              |
+| Hide Already adopted rows             | Hides rows marked Already adopted.                                                                                                                              |
+| Grabbed filter                        | Shows all grabbed states, hides Grabbed rows, or shows only Grabbed rows. Show only overrides every other row filter.                                           |
+| Skip/hide trumpable                   | Hides Trumpable rows and prevents them from being processed.                                                                                                    |
+| Seeding filter                        | Shows all rows, seeding rows only, or non-seeding rows only.                                                                                                    |
+| Skip torrents that now have seeders   | Skips rows whose ANT detail page reports at least one seeder during processing. Find this option under **Row visibility**.                                      |
+| Stop processing at ANT adoption limit | Stops the run when ANT reports that your pending adoption limit has been reached. Find this option under **Row visibility**.                                    |
+| Show per-row processing buttons       | Shows **Process this row** in the Action column. Find this option under **Row visibility**.                                                                     |
+| Sort by / direction                   | Sorts by bounty/GiB, total bounty, size, torrent name, listing time, or original scan order in the selected direction. Scan order ignores the direction.        |
+| Show all                              | Turns off the hide filters, including Apply media filters, and returns the grabbed and seeding filters to their all-row states. Media selections are retained.  |
+| Save page settings globally           | Saves the current page filters and sorting as the defaults used by later scans and Settings.                                                                    |
 
 Within a media category, any selected value can match. By default, a match in any Ignore category excludes a row, and every Only-show category must match. Enable **Combine media filters** to exclude a row only when every active Ignore category matches. Only-show categories still all have to match, independently of the Ignore group. For example, ignoring WEB and H265 in combined mode excludes WEB/H265 rows while retaining WEB/H264 and BluRay/H265 rows, provided they pass any Only-show categories. This option is off by default and is available in Settings and the in-page panel. **Show all** preserves it alongside the media selections. **Ignore selected** excludes matching rows, while **Only show selected** requires a match. With no selections, a category is Off and its mode selector is disabled. The Language dropdown starts with **Ignore all listed languages**, which selects every listed language and switches to Ignore selected. Unchecking it clears the language selections. These values match row metadata; shared labels such as Other are not restricted to a typed metadata field.
 
@@ -160,7 +161,7 @@ Each row also has an Action selector:
 - **Ignored** records that it should not be acted on.
 - **Broken** records that ANT metadata could not be resolved. Normal processing skips these rows, including when refreshing tracker caches. Each Broken row has a **Rescan metadata** button that performs a fresh ANT lookup without using cached metadata. A successful lookup clears Broken and makes the row available for normal processing; another failure leaves it Broken. Rescanning does not itself search trackers or submit torrents.
 - **Not enough Orbs** records that the saved bounty plus the revival bonus fell below the processing minimum.
-- **Already adopted** records that the torrent's ANT detail page no longer offers the adoption button.
+- **Already adopted** records that the torrent's ANT detail page no longer offers the adoption button and gives no pending-adoption limit notice.
 - **—** clears the saved action.
 
 Grabbed rows retain green tinting and Ignored rows retain gray tinting. The general highlighting option has been removed.
@@ -172,6 +173,8 @@ Actions are saved per ANT torrent and survive page refreshes and later scans. Se
 On the filtered page, select **Search adoption rows** or **Process next _N_ adoption rows** to run a batch. To check a single torrent, enable **Show per-row processing buttons** under **Adoption filters → Row visibility**, then click **Process this row** in its **Action** column. The toggle starts off. Use **Save page settings globally** to keep your choice for future scans. The button uses the same tracker scope, cache rules, and current ANT checks as batch processing. You can also select a row that had seeders when the scan was saved. On Broken rows, use **Rescan metadata** first.
 
 Batches start with visible rows that had zero seeders in the adoption scan. Cached completed rows and rows marked **Broken**, **Not enough Orbs**, or **Already adopted** are skipped before applying the batch limit. Trumpable rows are skipped when that option is enabled. M2TS rows are also skipped. ANT file metadata failures mark a row Broken. Failed or unreadable adoption checks can be retried.
+
+**Stop processing at ANT adoption limit** is on by default. When ANT reports that your pending adoption limit has been reached, the run stops before processing that row. The row keeps its existing action and can be retried after a slot opens. Turn off the option under **Adoption filters → Row visibility** to keep running tracker and qui lookups while at the limit. The seeder and Orbs checks still apply.
 
 For each eligible row, the script:
 
@@ -290,6 +293,7 @@ Transient adoption-flow storage reads are retried on the same 10-second cadence 
 | Seeding filter                         |       All rows | Default seeding-state filter.                                                                                                                    |
 | Skip Trumpable rows                    |        Enabled | Hides and skips Trumpable rows.                                                                                                                  |
 | Skip torrents that now have seeders    |       Disabled | Skips torrents with one or more seeders on their current detail page.                                                                            |
+| Stop processing at ANT adoption limit  |        Enabled | Stops before processing a row when ANT reports your pending adoption limit.                                                                      |
 | Show per-row processing buttons        |       Disabled | Shows **Process this row** in the Action column on saved scans.                                                                                  |
 
 ### Processing and cache
