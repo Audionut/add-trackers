@@ -1,11 +1,13 @@
 // ==UserScript==
 // @name         OPS/RED - add releases
 // @namespace    https://github.com/Audionut/add-trackers
-// @version      1.2.5
+// @version      1.2.6
 // @description  Add releases to/from RED/OPS
 // @author       Audionut
 // @match        https://orpheus.network/torrents.php?id=*
 // @match        https://orpheus.network/artist.php?id=*
+// @match        https://orpheus.network/forums.php?action=viewthread&threadid=22384
+// @match        https://orpheus.network/forums.php?action=viewthread&threadid=22384&*
 // @match        https://redacted.sh/torrents.php?id=*
 // @match        https://redacted.sh/artist.php?id=*
 // @grant        GM_xmlhttpRequest
@@ -25,6 +27,20 @@
 (function() {
     'use strict';
 
+    const CACHE_EXPIRY_KEY = 'CACHE_EXPIRY_TIME';
+    const DEFAULT_CACHE_EXPIRY_DAYS = 7;
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const CACHE_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
+
+    function normalizeCacheExpiryDays(value) {
+        const days = Number(value);
+        return days >= 1 && Number.isFinite(days * DAY_MS) ? days : DEFAULT_CACHE_EXPIRY_DAYS;
+    }
+
+    function getCacheExpiryDays() {
+        return normalizeCacheExpiryDays(GM_getValue(CACHE_EXPIRY_KEY, DEFAULT_CACHE_EXPIRY_DAYS));
+    }
+
     function createSettingsMenu() {
         // Remove any existing modal
         const oldModal = document.getElementById('opsRedSettingsModal');
@@ -42,7 +58,7 @@
                 <label><span>Show "OPS" label on matched rows at RED</span><input type="checkbox" id="show_ops_label" ${GM_getValue('showOPSLabel', true) ? 'checked' : ''} /></label>
                 <label><span>Show file count column</span><input type="checkbox" id="show_file_count" ${GM_getValue('showFileCount', true) ? 'checked' : ''} /></label>
                 <label><span>Size Tolerance (in MiB)</span><input type="number" id="size_matching" value="${GM_getValue('sizeMatching', 0)}" min="0" style="width:60px;" /></label>
-                <label><span>Cache Expiry Time (in days)</span><input type="number" id="cache_expiry" value="${GM_getValue('CACHE_EXPIRY_TIME', 7)}" min="1" style="width:60px;" /></label>
+                <label><span>Cache Expiry Time (in days)</span><input type="number" id="cache_expiry" value="${getCacheExpiryDays()}" min="1" style="width:60px;" /></label>
                 <div class="opsRedSettingsBtns">
                     <button id="opsRedSettingsSave">Save</button>
                     <button id="opsRedSettingsClose">Close</button>
@@ -89,7 +105,7 @@
             GM_setValue('showFileCount', document.getElementById('show_file_count').checked);
             GM_setValue('showOPSLabel', document.getElementById('show_ops_label').checked);
             GM_setValue('sizeMatching', Number(document.getElementById('size_matching').value));
-            GM_setValue('CACHE_EXPIRY_TIME', Number(document.getElementById('cache_expiry').value));
+            GM_setValue(CACHE_EXPIRY_KEY, normalizeCacheExpiryDays(document.getElementById('cache_expiry').value));
             document.getElementById('opsRedSettingsModal').remove();
             alert('Settings saved!');
             location.reload();
@@ -108,6 +124,7 @@
     GM_registerMenuCommand('Configure API & Cache Settings', createSettingsMenu);
 
     const isOPS = window.location.hostname.includes("orpheus.network");
+    const isCacheThread = window.location.pathname === '/forums.php';
     const sourceSiteUrl = isOPS ? 'https://orpheus.network' : 'https://redacted.sh';
     const targetSiteUrl = isOPS ? 'https://redacted.sh' : 'https://orpheus.network';
 
@@ -120,8 +137,6 @@
     const RED_API_KEY = GM_getValue('RED_API_KEY');
     const highLighting = GM_getValue('High_Lighting', false);
     const sizeMatching = GM_getValue('sizeMatching', 0);
-    const CACHE_EXPIRY_DAYS = GM_getValue('CACHE_EXPIRY_TIME', 14);
-    const CACHE_EXPIRY_TIME = CACHE_EXPIRY_DAYS * 24 * 60 * 60 * 1000; // Convert days to milliseconds
     const isArtistPage = window.location.href.includes('artist.php?id=');
     const showOPSLabel = GM_getValue('showOPSLabel', true);
     const RED_CACHE_EVENT_NAME = 'OPSaddREDartistcachedata';
@@ -145,21 +160,23 @@
         return null;
     }
 
+    function isArtistCacheKey(key) {
+        return (key.startsWith('OPS_') || key.startsWith('RED_')) && key !== 'OPS_API_KEY' && key !== 'RED_API_KEY';
+    }
+
     function flushCache() {
-        const keys = GM_listValues();
-        keys.forEach(key => {
-            // Delete keys except OPS_API_KEY and RED_API_KEY
-            if ((key.startsWith('CACHE_') || key.startsWith('OPS_') || key.startsWith('RED_') || key.startsWith('TARGET_') || key.startsWith('SOURCE_') || key.startsWith('https'))
-                && key !== 'OPS_API_KEY' && key !== 'RED_API_KEY') {
+        for (const key of GM_listValues()) {
+            if (key === CACHE_EXPIRY_KEY) continue;
+            if (isArtistCacheKey(key) || key.startsWith('CACHE_') || key.startsWith('TARGET_') || key.startsWith('SOURCE_') || key.startsWith('https')) {
                 GM_deleteValue(key);
             }
-        });
-        alert("Cache has been flushed, except API keys.");
+        }
+        alert('Cache has been flushed. Settings were preserved.');
     }
 
     // Create the "Flush Cache" link
     const flushLink = document.createElement('a');
-    flushLink.textContent = 'Flush Cache';
+    flushLink.textContent = isCacheThread ? '[Flush Cache]' : 'Flush Cache';
     flushLink.href = '#';
     flushLink.style.marginLeft = '10px';
     flushLink.onclick = (e) => {
@@ -167,29 +184,13 @@
         flushCache();
     };
 
-    // Append the link to div.linkbox
-    const linkboxDiv = document.querySelector('div.linkbox');
+    const linkboxDiv = isCacheThread
+        ? document.getElementById('searchthread')?.closest('div.linkbox') ?? document.querySelectorAll('#content > .thin > div.linkbox')[1]
+        : document.querySelector('div.linkbox');
     if (linkboxDiv) {
         linkboxDiv.appendChild(flushLink);
     } else {
         console.warn('linkbox div not found, cannot append cache flush link.');
-    }
-    let siteName;
-    if (!isOPS) {
-        siteName = "OPS";
-    } else {
-        siteName = "RED";
-    }
-    // Add the h2 text as the first child of <div id="SnatchData">
-    const snatchDataDiv = document.querySelector('.header');
-    let searchingHeader = document.getElementById('searching-header');
-    if (!searchingHeader) {
-        searchingHeader = document.createElement('h2');
-        searchingHeader.classList.add('page__title');
-        searchingHeader.textContent = `Pulling data from ${siteName} API.....`;
-        searchingHeader.style.color = "yellow";
-        searchingHeader.id = "searching-header";
-        snatchDataDiv.insertBefore(searchingHeader, snatchDataDiv.secondChild);
     }
 
     // Function to compress and cache data
@@ -203,23 +204,61 @@
         GM_setValue(key, compressedData);
     };
 
-    // Function to decompress and retrieve cached data
-    const getCache = (key) => {
+    function readCacheEntry(key) {
         const compressedData = GM_getValue(key, null);
-        if (compressedData && typeof compressedData === 'string') {
-            const decompressedData = LZString.decompress(compressedData);
-            if (decompressedData) {
-                const cacheData = JSON.parse(decompressedData);
-                const currentTime = Date.now();
-                if (currentTime - cacheData.timestamp > CACHE_EXPIRY_TIME) {
-                    GM_deleteValue(key); // Delete expired cache
-                    return null;
-                }
-                return cacheData.data;
-            }
+        if (!compressedData || typeof compressedData !== 'string') return null;
+
+        try {
+            const entry = JSON.parse(LZString.decompress(compressedData));
+            return Number.isFinite(entry?.timestamp) ? entry : null;
+        } catch {
+            return null;
         }
-        return null;
-    };
+    }
+
+    function getFreshCacheEntry(key, cutoff) {
+        const entry = readCacheEntry(key);
+        if (entry && entry.timestamp <= cutoff) {
+            GM_deleteValue(key);
+            return null;
+        }
+        return entry;
+    }
+
+    function getCache(key) {
+        const cutoff = Date.now() - getCacheExpiryDays() * DAY_MS;
+        return getFreshCacheEntry(key, cutoff)?.data ?? null;
+    }
+
+    function pruneExpiredCache() {
+        const now = Date.now();
+        const maxAge = getCacheExpiryDays() * DAY_MS;
+        const cutoff = now - maxAge;
+        // Check shared storage hourly even if nothing is due to expire yet.
+        let nextCheck = now + CACHE_SWEEP_INTERVAL_MS;
+        for (const key of GM_listValues()) {
+            if (!isArtistCacheKey(key)) continue;
+            const entry = getFreshCacheEntry(key, cutoff);
+            if (entry) nextCheck = Math.min(nextCheck, entry.timestamp + maxAge);
+        }
+        setTimeout(pruneExpiredCache, Math.max(0, Math.ceil(nextCheck - Date.now())));
+    }
+
+    setTimeout(pruneExpiredCache, 0);
+
+    if (isCacheThread) return;
+
+    const siteName = isOPS ? 'RED' : 'OPS';
+    const snatchDataDiv = document.querySelector('.header');
+    let searchingHeader = document.getElementById('searching-header');
+    if (!searchingHeader) {
+        searchingHeader = document.createElement('h2');
+        searchingHeader.classList.add('page__title');
+        searchingHeader.textContent = `Pulling data from ${siteName} API.....`;
+        searchingHeader.style.color = "yellow";
+        searchingHeader.id = "searching-header";
+        snatchDataDiv.insertBefore(searchingHeader, snatchDataDiv.secondChild);
+    }
 
     const emitRedArtistCachePayload = (artistName, cacheKey, data, source) => {
         if (!data || typeof data !== 'object') return;
